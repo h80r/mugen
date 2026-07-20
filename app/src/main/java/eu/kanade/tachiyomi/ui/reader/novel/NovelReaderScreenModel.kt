@@ -525,6 +525,10 @@ class NovelReaderScreenModel(
 
                 override fun onUtteranceDone(utteranceId: String) {
                     screenModelScope.launch {
+                        if (utteranceId == TTS_PREVIEW_UTTERANCE_ID) {
+                            clearTtsVoicePreview(restoreSelectedVoice = true)
+                            return@launch
+                        }
                         ttsWordProgressJob?.cancel()
                         ttsSessionController.onUtteranceCompleted(utteranceId)
                     }
@@ -532,6 +536,10 @@ class NovelReaderScreenModel(
 
                 override fun onUtteranceError(utteranceId: String) {
                     screenModelScope.launch {
+                        if (utteranceId == TTS_PREVIEW_UTTERANCE_ID) {
+                            clearTtsVoicePreview(restoreSelectedVoice = true)
+                            return@launch
+                        }
                         ttsWordProgressJob?.cancel()
                         ttsUiState = ttsUiState.copy(
                             errorMessage = application.stringResource(MR.strings.novel_tts_error_speak),
@@ -1721,6 +1729,64 @@ class NovelReaderScreenModel(
         setGlobal = { novelReaderPreferences.ttsPitch().set(value) },
         setOverride = { it.copy(ttsPitch = value) },
     )
+
+    /**
+     * Speaks a short locale-aware sample with [voiceId] without advancing chapter TTS.
+     * Empty [voiceId] previews the engine default voice for the selected language.
+     */
+    fun previewTtsVoice(voiceId: String) {
+        screenModelScope.launch {
+            try {
+                if (ttsSessionController.state.value.playbackState == NovelTtsPlaybackState.PLAYING) {
+                    ttsSessionController.pause()
+                }
+                ttsEngine.stop()
+                ttsEngine.setSpeechRate(ttsUiState.speechRate)
+                ttsEngine.setPitch(ttsUiState.pitch)
+                ttsEngine.setLocale(ttsUiState.selectedLocaleTag.takeIf { it.isNotBlank() })
+                ttsEngine.setVoice(voiceId.takeIf { it.isNotBlank() })
+                ttsUiState = ttsUiState.copy(previewingVoiceId = voiceId)
+                refreshTtsUiState()
+                ttsEngine.speak(
+                    utteranceId = TTS_PREVIEW_UTTERANCE_ID,
+                    text = ttsPreviewSampleText(ttsUiState.selectedLocaleTag),
+                    flushQueue = true,
+                )
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "TTS voice preview failed" }
+                clearTtsVoicePreview(restoreSelectedVoice = true)
+            }
+        }
+    }
+
+    fun stopTtsVoicePreview() {
+        screenModelScope.launch {
+            if (ttsUiState.previewingVoiceId == null) return@launch
+            ttsEngine.stop()
+            clearTtsVoicePreview(restoreSelectedVoice = true)
+        }
+    }
+
+    private suspend fun clearTtsVoicePreview(restoreSelectedVoice: Boolean) {
+        if (ttsUiState.previewingVoiceId == null) return
+        ttsUiState = ttsUiState.copy(previewingVoiceId = null)
+        if (restoreSelectedVoice) {
+            runCatching {
+                ttsEngine.setLocale(ttsUiState.selectedLocaleTag.takeIf { it.isNotBlank() })
+                ttsEngine.setVoice(ttsUiState.selectedVoiceId.takeIf { it.isNotBlank() })
+            }
+        }
+        refreshTtsUiState()
+    }
+
+    private fun ttsPreviewSampleText(localeTag: String): String {
+        val lang = localeTag.substringBefore('-').substringBefore('_').lowercase()
+        return if (lang == "ru") {
+            application.stringResource(AYMR.strings.novel_reader_tts_preview_sample_ru)
+        } else {
+            application.stringResource(AYMR.strings.novel_reader_tts_preview_sample)
+        }
+    }
 
     fun disableTts() {
         val currentState = mutableState.value as? State.Success ?: return
@@ -4438,6 +4504,7 @@ class NovelReaderScreenModel(
         private const val TTS_BASE_MILLIS_PER_WORD = 360f
         private const val TTS_MIN_UTTERANCE_DURATION_MS = 700L
         private const val TTS_WORD_PROGRESS_UPDATE_INTERVAL_MS = 60L
+        private const val TTS_PREVIEW_UTTERANCE_ID = "tts-preview"
         private const val DEEPSEEK_TEMPERATURE_MIN = 1.3f
         private const val DEEPSEEK_TEMPERATURE_MAX = 1.5f
         private const val DEEPSEEK_TOP_P_MIN = 0.9f

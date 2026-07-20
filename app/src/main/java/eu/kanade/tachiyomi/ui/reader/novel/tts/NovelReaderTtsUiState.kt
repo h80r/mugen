@@ -23,10 +23,15 @@ data class NovelReaderTtsUiState(
     val pitch: Float = 1f,
     val capabilities: NovelTtsEngineCapabilities = NovelTtsEngineCapabilities.NONE,
     val errorMessage: String? = null,
+    /** Voice id currently being previewed in settings; empty string means system default. Null = idle. */
+    val previewingVoiceId: String? = null,
 ) {
     val isPlaying: Boolean
         get() = playbackState == NovelTtsPlaybackState.PLAYING
 
     val canResume: Boolean
         get() = playbackState == NovelTtsPlaybackState.PAUSED && activeSession != null
+
+    val isPreviewingVoice: Boolean
+        get() = previewingVoiceId != null
 }

@@ -310,6 +310,8 @@ class NovelReaderScreen(
                     onSetTtsSpeechRate = screenModel::setTtsSpeechRate,
                     onSetTtsPitch = screenModel::setTtsPitch,
                     onDisableTts = screenModel::disableTts,
+                    onPreviewTtsVoice = screenModel::previewTtsVoice,
+                    onStopTtsVoicePreview = screenModel::stopTtsVoicePreview,
                     onSelectedTextSelectionChanged = screenModel::updateSelectedTextSelection,
                     onTranslateSelectedText = screenModel::translateSelectedText,
                     onRetrySelectedTextTranslation = screenModel::retrySelectedTextTranslation,

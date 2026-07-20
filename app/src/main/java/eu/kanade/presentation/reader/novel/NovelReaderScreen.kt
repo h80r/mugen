@@ -410,6 +410,8 @@ fun NovelReaderScreen(
     onSetTtsSpeechRate: (Float) -> Unit = {},
     onSetTtsPitch: (Float) -> Unit = {},
     onDisableTts: () -> Unit = {},
+    onPreviewTtsVoice: (String) -> Unit = {},
+    onStopTtsVoicePreview: () -> Unit = {},
     onOpenPreviousChapter: ((Long) -> Unit)? = null,
     onOpenNextChapter: ((Long) -> Unit)? = null,
     onPrepareAutoScrollHandoff: (targetChapterId: Long, speed: Int) -> Unit = { _, _ -> },
@@ -4100,6 +4102,8 @@ fun NovelReaderScreen(
                             onSetSpeechRate = onSetTtsSpeechRate,
                             onSetPitch = onSetTtsPitch,
                             onDisableTts = onDisableTts,
+                            onPreviewVoice = onPreviewTtsVoice,
+                            onStopVoicePreview = onStopTtsVoicePreview,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(

@@ -581,6 +581,10 @@
     <string name="novel_reader_tts_voice_settings">Настройки озвучки</string>
     <string name="novel_reader_tts_behavior_settings">Параметры озвучки</string>
     <string name="novel_reader_tts_disable">Выключить TTS</string>
+    <string name="novel_reader_tts_done">Готово</string>
+    <string name="novel_reader_tts_preview_action">Прослушать</string>
+    <string name="novel_reader_tts_preview_sample">This is a short sample to test how this voice sounds when reading a novel.</string>
+    <string name="novel_reader_tts_preview_sample_ru">Это короткий фрагмент, чтобы проверить, как звучит этот голос при чтении новеллы.</string>
     <string name="novel_reader_tts_action_previous">Предыдущий фрагмент</string>
     <string name="novel_reader_tts_action_pause">Пауза</string>
     <string name="novel_reader_tts_action_play">Воспроизвести</string>

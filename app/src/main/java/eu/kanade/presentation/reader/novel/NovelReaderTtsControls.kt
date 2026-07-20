@@ -9,11 +9,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.ZeroCornerSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -24,7 +28,6 @@ import androidx.compose.material.icons.outlined.SettingsVoice
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SkipPrevious
 import androidx.compose.material.icons.outlined.Stop
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,8 +44,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import eu.kanade.presentation.components.AdaptiveSheet
 import eu.kanade.presentation.reader.settings.auroraRimColor
 import eu.kanade.presentation.theme.AuroraTheme
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTtsHighlightMode
@@ -333,6 +338,8 @@ internal fun NovelReaderTtsControls(
     onSetSpeechRate: (Float) -> Unit,
     onSetPitch: (Float) -> Unit,
     onDisableTts: () -> Unit,
+    onPreviewVoice: (String) -> Unit = {},
+    onStopVoicePreview: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val snapshot = resolveNovelReaderTtsControlSnapshot(uiState)
@@ -464,13 +471,22 @@ internal fun NovelReaderTtsControls(
     if (showOptions) {
         NovelReaderTtsOptionsDialog(
             uiState = uiState,
-            onDismiss = { showOptions = false },
+            onDismiss = {
+                onStopVoicePreview()
+                showOptions = false
+            },
             onSetEnginePackage = onSetEnginePackage,
             onSetVoiceId = onSetVoiceId,
             onSetLocaleTag = onSetLocaleTag,
             onSetSpeechRate = onSetSpeechRate,
             onSetPitch = onSetPitch,
-            onDisableTts = onDisableTts,
+            onDisableTts = {
+                onStopVoicePreview()
+                onDisableTts()
+                showOptions = false
+            },
+            onPreviewVoice = onPreviewVoice,
+            onStopVoicePreview = onStopVoicePreview,
         )
     }
 }
@@ -485,7 +501,10 @@ private fun NovelReaderTtsOptionsDialog(
     onSetSpeechRate: (Float) -> Unit,
     onSetPitch: (Float) -> Unit,
     onDisableTts: () -> Unit,
+    onPreviewVoice: (String) -> Unit,
+    onStopVoicePreview: () -> Unit,
 ) {
+    val aurora = AuroraTheme.colors
     val snapshot = resolveNovelReaderTtsOptionsSnapshot(uiState)
     val textSnapshot = rememberNovelReaderTtsTextSnapshot()
     var browsingLanguageTag by remember(
@@ -528,41 +547,95 @@ private fun NovelReaderTtsOptionsDialog(
         languagePicker.voices.firstOrNull { it.selected }?.title ?: textSnapshot.defaultVoice
     }
     val onSelectLanguage: (String) -> Unit = { localeTag ->
+        onStopVoicePreview()
         browsingLanguageTag = localeTag
         languageSearchQuery = ""
         onSetLocaleTag(localeTag)
         activePicker = if (snapshot.showLocaleFallback) null else NovelReaderTtsPicker.VOICE
     }
+    val previewSample = if (
+        languagePicker.activeLanguageTag.substringBefore('-').substringBefore('_')
+            .equals("ru", ignoreCase = true)
+    ) {
+        stringResource(AYMR.strings.novel_reader_tts_preview_sample_ru)
+    } else {
+        stringResource(AYMR.strings.novel_reader_tts_preview_sample)
+    }
+    val sheetContainer = when {
+        aurora.isEInk -> MaterialTheme.colorScheme.surfaceContainerHigh
+        aurora.isDark -> Color.Black.copy(alpha = 0.72f)
+        else -> Color.White.copy(alpha = 0.90f)
+    }
+    val sheetShape = MaterialTheme.shapes.extraLarge.copy(
+        bottomStart = ZeroCornerSize,
+        bottomEnd = ZeroCornerSize,
+    )
+    val pageMaxHeight = (LocalConfiguration.current.screenHeightDp * 0.72f).dp
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(28.dp),
-        containerColor = AuroraTheme.colors.surface,
-        titleContentColor = AuroraTheme.colors.textPrimary,
-        textContentColor = AuroraTheme.colors.textPrimary,
-        title = {
-            val picker = activePicker
-            if (picker == null) {
+    AdaptiveSheet(
+        onDismissRequest = {
+            onStopVoicePreview()
+            onDismiss()
+        },
+        modifier = Modifier.border(width = 1.dp, color = auroraRimColor(), shape = sheetShape),
+        containerColor = sheetContainer,
+        applyStatusBarsPadding = false,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = pageMaxHeight)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(aurora.textSecondary.copy(alpha = 0.35f)),
+                )
+            }
+
+            if (activePicker == null) {
                 Text(
                     text = stringResource(AYMR.strings.novel_reader_tts_section),
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
+                    color = aurora.textPrimary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             } else {
                 NovelReaderTtsPickerTitle(
                     text = stringResource(
-                        when (picker) {
+                        when (activePicker) {
                             NovelReaderTtsPicker.ENGINE -> AYMR.strings.novel_reader_tts_engine
                             NovelReaderTtsPicker.LANGUAGE -> AYMR.strings.novel_reader_tts_language
                             NovelReaderTtsPicker.VOICE -> AYMR.strings.novel_reader_tts_voice
+                            null -> AYMR.strings.novel_reader_tts_section
                         },
                     ),
-                    onBack = { activePicker = null },
+                    onBack = {
+                        onStopVoicePreview()
+                        activePicker = null
+                    },
                 )
+                Spacer(modifier = Modifier.height(8.dp))
             }
-        },
-        text = {
+
             Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 when (activePicker) {
@@ -572,31 +645,40 @@ private fun NovelReaderTtsOptionsDialog(
                             value = snapshot.selectedEngine?.label
                                 ?: stringResource(AYMR.strings.novel_reader_tts_no_engines_found),
                             enabled = uiState.availableEngines.isNotEmpty(),
-                            onClick = { activePicker = NovelReaderTtsPicker.ENGINE },
+                            onClick = {
+                                onStopVoicePreview()
+                                activePicker = NovelReaderTtsPicker.ENGINE
+                            },
                         )
                         if (uiState.isLoadingVoices) {
                             Text(
                                 text = stringResource(AYMR.strings.novel_reader_tts_loading_voices),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = AuroraTheme.colors.textSecondary,
+                                color = aurora.textSecondary,
                             )
                         } else {
                             NovelReaderTtsNavRow(
                                 label = stringResource(AYMR.strings.novel_reader_tts_language),
                                 value = activeLanguageLabel,
-                                onClick = { activePicker = NovelReaderTtsPicker.LANGUAGE },
+                                onClick = {
+                                    onStopVoicePreview()
+                                    activePicker = NovelReaderTtsPicker.LANGUAGE
+                                },
                             )
                             if (snapshot.showLocaleFallback) {
                                 Text(
                                     text = stringResource(AYMR.strings.novel_reader_tts_locale_fallback_summary),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = AuroraTheme.colors.textSecondary,
+                                    color = aurora.textSecondary,
                                 )
                             } else {
                                 NovelReaderTtsNavRow(
                                     label = stringResource(AYMR.strings.novel_reader_tts_voice),
                                     value = selectedVoiceTitle,
-                                    onClick = { activePicker = NovelReaderTtsPicker.VOICE },
+                                    onClick = {
+                                        onStopVoicePreview()
+                                        activePicker = NovelReaderTtsPicker.VOICE
+                                    },
                                 )
                             }
                         }
@@ -609,7 +691,7 @@ private fun NovelReaderTtsOptionsDialog(
                             ),
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold,
-                            color = AuroraTheme.colors.accent,
+                            color = aurora.accent,
                         )
                         Slider(
                             value = uiState.speechRate.coerceIn(0.5f, 2f),
@@ -623,30 +705,20 @@ private fun NovelReaderTtsOptionsDialog(
                             ),
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold,
-                            color = AuroraTheme.colors.accent,
+                            color = aurora.accent,
                         )
                         Slider(
                             value = uiState.pitch.coerceIn(0.5f, 2f),
                             onValueChange = onSetPitch,
                             valueRange = 0.5f..2f,
                         )
-
-                        TextButton(
-                            onClick = onDisableTts,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                text = stringResource(AYMR.strings.novel_reader_tts_disable),
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
                     }
                     NovelReaderTtsPicker.ENGINE -> {
                         if (uiState.availableEngines.isEmpty()) {
                             Text(
                                 text = stringResource(AYMR.strings.novel_reader_tts_no_engines_found),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = AuroraTheme.colors.textSecondary,
+                                color = aurora.textSecondary,
                             )
                         } else {
                             uiState.availableEngines.forEach { engine ->
@@ -659,6 +731,7 @@ private fun NovelReaderTtsOptionsDialog(
                                     },
                                     selected = engine.packageName == snapshot.selectedEngine?.packageName,
                                     onClick = {
+                                        onStopVoicePreview()
                                         onSetEnginePackage(engine.packageName)
                                         activePicker = null
                                     },
@@ -679,7 +752,7 @@ private fun NovelReaderTtsOptionsDialog(
                             Text(
                                 text = stringResource(AYMR.strings.novel_reader_tts_locale_fallback_summary),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = AuroraTheme.colors.textSecondary,
+                                color = aurora.textSecondary,
                             )
                         }
                         if (languageSearchQuery.isBlank() && languagePicker.recentLanguages.isNotEmpty()) {
@@ -702,7 +775,7 @@ private fun NovelReaderTtsOptionsDialog(
                             Text(
                                 text = stringResource(AYMR.strings.novel_reader_tts_no_languages_available),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = AuroraTheme.colors.textSecondary,
+                                color = aurora.textSecondary,
                             )
                         } else {
                             filteredLanguages.forEach { language ->
@@ -716,50 +789,97 @@ private fun NovelReaderTtsOptionsDialog(
                         }
                     }
                     NovelReaderTtsPicker.VOICE -> {
-                        NovelReaderTtsSelectableCard(
+                        NovelReaderTtsPreviewSampleStrip(
+                            sampleText = previewSample,
+                            isPreviewingSelected = uiState.previewingVoiceId != null &&
+                                uiState.previewingVoiceId == uiState.selectedVoiceId,
+                            onPreviewSelected = {
+                                if (uiState.previewingVoiceId != null) {
+                                    onStopVoicePreview()
+                                } else {
+                                    onPreviewVoice(uiState.selectedVoiceId)
+                                }
+                            },
+                        )
+                        NovelReaderTtsVoiceRow(
                             title = stringResource(AYMR.strings.novel_reader_tts_default_voice),
                             subtitle = stringResource(AYMR.strings.novel_reader_tts_system_default_voice_summary),
                             selected = uiState.selectedVoiceId.isBlank(),
-                            onClick = {
+                            isPreviewing = uiState.previewingVoiceId == "",
+                            onSelect = {
+                                onStopVoicePreview()
                                 onSetVoiceId("")
                                 activePicker = null
                             },
-                            modifier = Modifier.fillMaxWidth(),
+                            onPreview = {
+                                if (uiState.previewingVoiceId == "") {
+                                    onStopVoicePreview()
+                                } else {
+                                    onPreviewVoice("")
+                                }
+                            },
                         )
                         if (languagePicker.voices.isEmpty()) {
                             Text(
                                 text = stringResource(AYMR.strings.novel_reader_tts_no_voices_for_selected_language),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = AuroraTheme.colors.textSecondary,
+                                color = aurora.textSecondary,
                             )
                         } else {
                             languagePicker.voices.forEach { voice ->
-                                NovelReaderTtsSelectableCard(
+                                NovelReaderTtsVoiceRow(
                                     title = voice.title,
                                     subtitle = voice.subtitle,
                                     selected = voice.selected && uiState.selectedVoiceId.isNotBlank(),
-                                    onClick = {
+                                    isPreviewing = uiState.previewingVoiceId == voice.voiceId,
+                                    onSelect = {
+                                        onStopVoicePreview()
                                         onSetVoiceId(voice.voiceId)
                                         activePicker = null
                                     },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    onPreview = {
+                                        if (uiState.previewingVoiceId == voice.voiceId) {
+                                            onStopVoicePreview()
+                                        } else {
+                                            onPreviewVoice(voice.voiceId)
+                                        }
+                                    },
                                 )
                             }
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    text = stringResource(AYMR.strings.novel_reader_selected_text_translation_action_close),
-                    color = AuroraTheme.colors.accent,
-                    fontWeight = FontWeight.SemiBold,
-                )
+
+            if (activePicker == null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onDisableTts) {
+                        Text(
+                            text = stringResource(AYMR.strings.novel_reader_tts_disable),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            onStopVoicePreview()
+                            onDismiss()
+                        },
+                    ) {
+                        Text(
+                            text = stringResource(AYMR.strings.novel_reader_tts_done),
+                            color = aurora.accent,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
             }
-        },
-    )
+        }
+    }
 }
 
 private enum class NovelReaderTtsPicker {
@@ -865,6 +985,110 @@ private fun NovelReaderTtsSectionLabel(text: String) {
         fontWeight = FontWeight.SemiBold,
         color = AuroraTheme.colors.accent,
     )
+}
+
+@Composable
+private fun NovelReaderTtsPreviewSampleStrip(
+    sampleText: String,
+    isPreviewingSelected: Boolean,
+    onPreviewSelected: () -> Unit,
+) {
+    val colors = AuroraTheme.colors
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                if (colors.isDark) Color.White.copy(alpha = 0.07f) else Color.Black.copy(alpha = 0.05f),
+            )
+            .border(width = 1.dp, color = auroraRimColor(), shape = shape)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = sampleText,
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.textSecondary,
+            modifier = Modifier.weight(1f),
+            maxLines = 3,
+        )
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(colors.accent.copy(alpha = if (colors.isDark) 0.20f else 0.14f))
+                .border(width = 1.dp, color = colors.accent.copy(alpha = 0.55f), shape = CircleShape)
+                .clickable(onClick = onPreviewSelected),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (isPreviewingSelected) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
+                contentDescription = stringResource(AYMR.strings.novel_reader_tts_preview_action),
+                tint = colors.accent,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NovelReaderTtsVoiceRow(
+    title: String,
+    selected: Boolean,
+    isPreviewing: Boolean,
+    onSelect: () -> Unit,
+    onPreview: () -> Unit,
+    subtitle: String? = null,
+) {
+    val colors = AuroraTheme.colors
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                when {
+                    selected -> colors.accent.copy(alpha = if (colors.isDark) 0.16f else 0.12f)
+                    colors.isDark -> Color.White.copy(alpha = 0.07f)
+                    else -> Color.Black.copy(alpha = 0.05f)
+                },
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) colors.accent.copy(alpha = 0.55f) else auroraRimColor(),
+                shape = shape,
+            )
+            .clickable(onClick = onSelect)
+            .padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (selected) colors.accent else colors.textPrimary,
+            )
+            subtitle?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                )
+            }
+        }
+        IconButton(onClick = onPreview) {
+            Icon(
+                imageVector = if (isPreviewing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
+                contentDescription = stringResource(AYMR.strings.novel_reader_tts_preview_action),
+                tint = colors.accent,
+            )
+        }
+    }
 }
 
 @Composable
