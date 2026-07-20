@@ -1898,20 +1898,27 @@ class NovelReaderScreenModel(
     }
     private fun enqueueProgressPersistence(update: PendingProgressPersistence) {
         progressPersistenceScheduled = true
-        screenModelScope.launch(NonCancellable) {
-            progressPersistenceMutex.withLock {
-                pendingProgressPersistenceByChapterId[update.chapterId] =
-                    pendingProgressPersistenceByChapterId[update.chapterId]?.merge(update) ?: update
-                if (progressPersistenceJob?.isActive == true) {
-                    return@launch
-                }
-                progressPersistenceJob = screenModelScope.launch(NonCancellable) {
-                    try {
-                        flushPendingProgressPersistence()
-                    } finally {
-                        progressPersistenceMutex.withLock {
-                            progressPersistenceJob = null
-                            progressPersistenceScheduled = pendingProgressPersistenceByChapterId.isNotEmpty()
+        // NonCancellable must wrap the block via withContext — passing it to launch() is
+        // deprecated and breaks structured concurrency (will become an error).
+        screenModelScope.launch {
+            withContext(NonCancellable) {
+                progressPersistenceMutex.withLock {
+                    pendingProgressPersistenceByChapterId[update.chapterId] =
+                        pendingProgressPersistenceByChapterId[update.chapterId]?.merge(update) ?: update
+                    if (progressPersistenceJob?.isActive == true) {
+                        return@withLock
+                    }
+                    progressPersistenceJob = screenModelScope.launch {
+                        withContext(NonCancellable) {
+                            try {
+                                flushPendingProgressPersistence()
+                            } finally {
+                                progressPersistenceMutex.withLock {
+                                    progressPersistenceJob = null
+                                    progressPersistenceScheduled =
+                                        pendingProgressPersistenceByChapterId.isNotEmpty()
+                                }
+                            }
                         }
                     }
                 }

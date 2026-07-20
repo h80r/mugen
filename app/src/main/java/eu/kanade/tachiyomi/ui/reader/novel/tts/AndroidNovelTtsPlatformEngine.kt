@@ -197,7 +197,9 @@ private class AndroidNovelTtsPlatformEngine(
         if (engine.setLanguage(locale) >= TextToSpeech.LANG_AVAILABLE) return true
         // Retry with the bare language when the exact region variant is missing.
         if (locale.country.isNotBlank()) {
-            return engine.setLanguage(Locale(locale.language)) >= TextToSpeech.LANG_AVAILABLE
+            // Locale(String) is deprecated; bare-language tag is the modern equivalent.
+            return engine.setLanguage(Locale.forLanguageTag(locale.language)) >=
+                TextToSpeech.LANG_AVAILABLE
         }
         return false
     }
