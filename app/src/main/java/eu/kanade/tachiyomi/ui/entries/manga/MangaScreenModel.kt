@@ -320,6 +320,10 @@ class MangaScreenModel(
                             }
                         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                             throw e
+                        } catch (e: LinkageError) {
+                            logcat {
+                                "[MangaScreenModel] External suggestions failed (incompatible extension): ${e.message}"
+                            }
                         } catch (e: Exception) {
                             logcat { "[MangaScreenModel] External suggestions failed: ${e.message}" }
                         }
@@ -353,6 +357,10 @@ class MangaScreenModel(
                                 }
                             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                                 throw e
+                            } catch (e: LinkageError) {
+                                logcat {
+                                    "[MangaScreenModel] Native search fallback failed (incompatible extension): ${e.message}"
+                                }
                             } catch (e: Exception) {
                                 logcat { "[MangaScreenModel] Native search fallback failed: ${e.message}" }
                             }
@@ -384,6 +392,11 @@ class MangaScreenModel(
                 }
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 throw e
+            } catch (e: LinkageError) {
+                logcat { "MangaScreenModel suggestions fetch failed (incompatible extension): ${e.message}" }
+                updateSuccessState {
+                    it.copy(suggestions = SuggestionState.Error(e.message ?: "Incompatible extension"))
+                }
             } catch (e: Exception) {
                 logcat { "MangaScreenModel suggestions fetch failed: ${e.message}" }
                 updateSuccessState { it.copy(suggestions = SuggestionState.Error(e.message ?: "Unknown error")) }

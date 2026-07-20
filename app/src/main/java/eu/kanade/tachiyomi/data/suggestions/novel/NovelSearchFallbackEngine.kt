@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.data.suggestions.SuggestionSeed
 import eu.kanade.tachiyomi.data.suggestions.SuggestionSourceWeight
 import eu.kanade.tachiyomi.data.suggestions.SuggestionTitleResolver
 import eu.kanade.tachiyomi.data.suggestions.sources.SuggestionMediaType
+import eu.kanade.tachiyomi.data.suggestions.util.ExtensionInterop
 import eu.kanade.tachiyomi.data.suggestions.util.bestMatchScoreFor
 import eu.kanade.tachiyomi.data.suggestions.util.dedupeByCleanTitle
 import eu.kanade.tachiyomi.novelsource.NovelCatalogueSource
@@ -14,8 +15,11 @@ import eu.kanade.tachiyomi.novelsource.model.NovelFilter
 import eu.kanade.tachiyomi.novelsource.model.NovelFilterList
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.entries.novel.model.Novel
+import java.util.concurrent.atomic.AtomicInteger
 
 class NovelSearchFallbackEngine {
 
@@ -74,11 +78,10 @@ class NovelSearchFallbackEngine {
 
         val authorParts = rawAuthorParts
 
-        val freshFilterList = try {
-            source.getFilterList()
-        } catch (e: Exception) {
-            NovelFilterList()
-        }
+        // getFilterList() executes extension code: a plugin built against a
+        // different library ABI fails here with a LinkageError, not an Exception.
+        val freshFilterList = ExtensionInterop.runInterop(TAG, "getFilterList") { source.getFilterList() }
+            ?: NovelFilterList()
         val rawGenreParts = novel.displayGenre
             .orEmpty()
             .mapNotNull(::normalizeGenreToken)
@@ -172,7 +175,11 @@ class NovelSearchFallbackEngine {
         val candidatesToScore = seed.candidateTitles.distinct()
 
         val uniqueResults = LinkedHashMap<String, SuggestionItem>() // key: providerUrl
-        val filterList = source.getFilterList()
+        // Reuse the already fetched (and interop-guarded) filter list instead of
+        // asking the extension a second time.
+        val filterList = freshFilterList
+        val searchSemaphore = Semaphore(MAX_CONCURRENT_QUERIES)
+        val thumbnailDetailBudget = AtomicInteger(MAX_THUMBNAIL_DETAIL_LOOKUPS)
         var authorAdded = 0
         var genreAdded = 0
         val maxAuthor = 8
@@ -198,7 +205,9 @@ class NovelSearchFallbackEngine {
                         if (synchronized(uniqueResults) { uniqueResults.size >= boundedMaxResults }) return@launch
                         try {
                             logcat { "[NovelSearchFallbackEngine] Searching for query: '$query'" }
-                            val page = source.getSearchNovels(1, query, filterList)
+                            val page = searchSemaphore.withPermit {
+                                source.getSearchNovels(1, query, filterList)
+                            }
                             if (page.novels.isEmpty()) {
                                 logcat {
                                     "[NovelSearchFallbackEngine] Query '$query' returned 0 results from source '${source.name}'"
@@ -260,7 +269,7 @@ class NovelSearchFallbackEngine {
                                     val item = SuggestionItem(
                                         title = sNovel.title,
                                         searchQueries = listOf(sNovel.title),
-                                        thumbnailUrl = resolveThumbnail(source, sNovel),
+                                        thumbnailUrl = resolveThumbnail(source, sNovel, thumbnailDetailBudget),
                                         providerName = source.name,
                                         providerUrl = sNovel.url,
                                         providerId = "${source.id}:${sNovel.url}",
@@ -306,6 +315,10 @@ class NovelSearchFallbackEngine {
                             }
                         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                             throw e
+                        } catch (e: LinkageError) {
+                            logcat {
+                                "[NovelSearchFallbackEngine] Incompatible extension ABI for query '$query': ${e.message}"
+                            }
                         } catch (e: Exception) {
                             logcat { "[NovelSearchFallbackEngine] Search failed for query '$query': ${e.message}" }
                         }
@@ -324,6 +337,7 @@ class NovelSearchFallbackEngine {
                 selectedGenres = genreParts,
                 maxResults = boundedMaxResults,
                 uniqueResults = uniqueResults,
+                thumbnailDetailBudget = thumbnailDetailBudget,
                 onProgress = onProgress,
             )
         }
@@ -335,6 +349,7 @@ class NovelSearchFallbackEngine {
                 maxResults = boundedMaxResults,
                 uniqueResults = uniqueResults,
                 popularBackfillCap = fallbackPolicy.popularBackfillCap,
+                thumbnailDetailBudget = thumbnailDetailBudget,
                 onProgress = onProgress,
             )
         }
@@ -371,6 +386,7 @@ class NovelSearchFallbackEngine {
         selectedGenres: List<String>,
         maxResults: Int,
         uniqueResults: LinkedHashMap<String, SuggestionItem>,
+        thumbnailDetailBudget: AtomicInteger,
         onProgress: ((List<SuggestionItem>) -> Unit)?,
     ) {
         val targetGenres = selectedGenres.take(4)
@@ -380,29 +396,23 @@ class NovelSearchFallbackEngine {
         val candidateMetadata = LinkedHashMap<String, SuggestionItem>()
 
         targetGenres.forEach { genre ->
-            val filterList = source.getFilterList()
+            // A fresh filter list per genre is required because applyGenreFilter
+            // mutates it; keep the fetch interop-guarded and skip the genre when
+            // the extension cannot provide filters.
+            val filterList = ExtensionInterop.runInterop(TAG, "getFilterList") { source.getFilterList() }
+                ?: return@forEach
             applyGenreFilter(filterList, listOf(genre))
 
-            var page = try {
+            var page = ExtensionInterop.runInterop(TAG, "getPopularNovels(genre='$genre')") {
                 source.getPopularNovels(1, filterList)
-            } catch (e: Exception) {
-                logcat {
-                    "[NovelSearchFallbackEngine] Genre filter search via getPopularNovels failed for '$genre': ${e.message}"
-                }
-                null
             }
 
             if (page == null || page.novels.isEmpty()) {
                 logcat {
                     "[NovelSearchFallbackEngine] Genre filter search via getPopularNovels returned 0 results for '$genre'. Trying searchNovels with empty query."
                 }
-                page = try {
+                page = ExtensionInterop.runInterop(TAG, "getSearchNovels(genre filter '$genre')") {
                     source.getSearchNovels(1, "", filterList)
-                } catch (e: Exception) {
-                    logcat {
-                        "[NovelSearchFallbackEngine] Genre filter search with empty query failed for '$genre': ${e.message}"
-                    }
-                    null
                 }
             }
 
@@ -410,11 +420,8 @@ class NovelSearchFallbackEngine {
                 logcat {
                     "[NovelSearchFallbackEngine] Genre filter search with empty query returned 0 results. Trying keyword search."
                 }
-                page = try {
+                page = ExtensionInterop.runInterop(TAG, "getSearchNovels(genre keyword '$genre')") {
                     source.getSearchNovels(1, genre, source.getFilterList())
-                } catch (e: Exception) {
-                    logcat { "[NovelSearchFallbackEngine] Genre keyword search failed for '$genre': ${e.message}" }
-                    null
                 }
             }
 
@@ -429,7 +436,7 @@ class NovelSearchFallbackEngine {
                     candidateMetadata[sNovel.url] = SuggestionItem(
                         title = sNovel.title,
                         searchQueries = listOf(sNovel.title),
-                        thumbnailUrl = resolveThumbnail(source, sNovel),
+                        thumbnailUrl = resolveThumbnail(source, sNovel, thumbnailDetailBudget),
                         providerName = source.name,
                         providerUrl = sNovel.url,
                         providerId = "${source.id}:${sNovel.url}",
@@ -465,6 +472,7 @@ class NovelSearchFallbackEngine {
         maxResults: Int,
         uniqueResults: LinkedHashMap<String, SuggestionItem>,
         popularBackfillCap: Int,
+        thumbnailDetailBudget: AtomicInteger,
         onProgress: ((List<SuggestionItem>) -> Unit)?,
     ) {
         val currentCount = synchronized(uniqueResults) { uniqueResults.size }
@@ -477,12 +485,9 @@ class NovelSearchFallbackEngine {
         var page = 1
         var hasNextPage = true
         while (hasNextPage && synchronized(uniqueResults) { uniqueResults.size < targetCount }) {
-            val novelsPage = try {
+            val novelsPage = ExtensionInterop.runInterop(TAG, "getPopularNovels(page=$page)") {
                 source.getPopularNovels(page)
-            } catch (e: Exception) {
-                logcat { "[NovelSearchFallbackEngine] Popular backfill failed on page $page: ${e.message}" }
-                return
-            }
+            } ?: return
             if (novelsPage.novels.isEmpty()) return
 
             var addedAny = false
@@ -495,7 +500,7 @@ class NovelSearchFallbackEngine {
                 uniqueResults[sNovel.url] = SuggestionItem(
                     title = sNovel.title,
                     searchQueries = listOf(sNovel.title),
-                    thumbnailUrl = resolveThumbnail(source, sNovel),
+                    thumbnailUrl = resolveThumbnail(source, sNovel, thumbnailDetailBudget),
                     providerName = source.name,
                     providerUrl = sNovel.url,
                     providerId = "${source.id}:${sNovel.url}",
@@ -587,16 +592,33 @@ class NovelSearchFallbackEngine {
         traverse(filterList)
     }
 
+    /**
+     * Resolves a thumbnail for a search result. A full details request is issued
+     * only while [detailBudget] allows it, so sources that omit thumbnails in
+     * search results can no longer trigger an unbounded "one details request per
+     * result" burst.
+     */
     private suspend fun resolveThumbnail(
         source: NovelCatalogueSource,
         novel: eu.kanade.tachiyomi.novelsource.model.SNovel,
+        detailBudget: AtomicInteger,
     ): String? {
-        return novel.thumbnail_url?.takeIf { it.isNotBlank() }
-            ?: runCatching { source.getNovelDetails(novel.copy()).thumbnail_url?.takeIf { it.isNotBlank() } }
-                .getOrNull()
+        novel.thumbnail_url?.takeIf { it.isNotBlank() }?.let { return it }
+        if (detailBudget.getAndDecrement() <= 0) return null
+        return ExtensionInterop.runInterop(TAG, "getNovelDetails(thumbnail)") {
+            source.getNovelDetails(novel.copy()).thumbnail_url?.takeIf { it.isNotBlank() }
+        }
     }
 
     private companion object {
+        const val TAG = "NovelSearchFallbackEngine"
+
+        /** Max parallel search requests against a single source. */
+        const val MAX_CONCURRENT_QUERIES = 3
+
+        /** Max extra detail requests per fetch, used only to backfill missing thumbnails. */
+        const val MAX_THUMBNAIL_DETAIL_LOOKUPS = 6
+
         val broadGenres = setOf(
             "фэнтези", "fantasy",
             "приключения", "adventure",

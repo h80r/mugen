@@ -471,6 +471,10 @@ class AnimeScreenModel(
                             }
                         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                             throw e
+                        } catch (e: LinkageError) {
+                            logcat {
+                                "[AnimeScreenModel] External suggestions failed (incompatible extension): ${e.message}"
+                            }
                         } catch (e: Exception) {
                             logcat { "[AnimeScreenModel] External suggestions failed: ${e.message}" }
                         }
@@ -504,6 +508,10 @@ class AnimeScreenModel(
                                 }
                             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                                 throw e
+                            } catch (e: LinkageError) {
+                                logcat {
+                                    "[AnimeScreenModel] Native search fallback failed (incompatible extension): ${e.message}"
+                                }
                             } catch (e: Exception) {
                                 logcat { "[AnimeScreenModel] Native search fallback failed: ${e.message}" }
                             }
@@ -535,6 +543,11 @@ class AnimeScreenModel(
                 }
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 throw e
+            } catch (e: LinkageError) {
+                logcat { "AnimeScreenModel suggestions fetch failed (incompatible extension): ${e.message}" }
+                updateSuccessState {
+                    it.copy(suggestions = SuggestionState.Error(e.message ?: "Incompatible extension"))
+                }
             } catch (e: Exception) {
                 logcat { "AnimeScreenModel suggestions fetch failed: ${e.message}" }
                 updateSuccessState { it.copy(suggestions = SuggestionState.Error(e.message ?: "Unknown error")) }

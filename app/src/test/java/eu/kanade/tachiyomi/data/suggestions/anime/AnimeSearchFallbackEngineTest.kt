@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.data.suggestions.anime
 
+import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.suggestions.SuggestionSeed
 import eu.kanade.tachiyomi.data.suggestions.sources.SuggestionMediaType
@@ -169,5 +170,35 @@ class AnimeSearchFallbackEngineTest {
         val success = outcome as AnimeFallbackOutcome.Success
         assertEquals(1, success.items.size)
         assertEquals("Волейбол", success.items.first().title)
+    }
+
+    @Test
+    fun `fetchSearchFallback survives getFilterList LinkageError and still searches`() = runTest {
+        val anime = Anime.create().copy(id = 123L, title = "Solo Leveling", url = "/solo-link-error")
+        val source = object : FakeAnimeCatalogueSource() {
+            override fun getFilterList(): AnimeFilterList {
+                throw NoSuchMethodError(
+                    "No static method runBlockingK in class kotlinx.coroutines.BuildersKt",
+                )
+            }
+        }
+        source.searchAnimesToReturn = listOf(
+            SAnime.create().apply {
+                title = "Solo Leveling Side Stories"
+                url = "/solo-1"
+            },
+        )
+
+        val seed = SuggestionSeed(
+            mediaType = SuggestionMediaType.ANIME,
+            primaryTitle = "Solo Leveling",
+            candidateTitles = listOf("Solo Leveling"),
+            description = "",
+        )
+
+        val outcome = AnimeSearchFallbackEngine().fetchSearchFallback(anime, source, seed)
+
+        assertTrue(outcome is AnimeFallbackOutcome.Success)
+        assertEquals(1, (outcome as AnimeFallbackOutcome.Success).items.size)
     }
 }
