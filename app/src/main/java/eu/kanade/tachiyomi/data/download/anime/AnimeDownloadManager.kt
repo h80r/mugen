@@ -89,9 +89,10 @@ class AnimeDownloadManager(
     fun startDownloads() {
         if (downloader.isRunning) return
 
-        if (!AnimeDownloadJob.isRunning(context)) {
-            AnimeDownloadJob.start(context)
-        }
+        // Always re-enqueue the unique worker (REPLACE policy): this revives work
+        // stuck in ENQUEUED on aggressive OEMs (MIUI/HyperOS) and avoids blocking
+        // the main thread on WorkManager futures.
+        AnimeDownloadJob.start(context)
         downloader.start()
     }
 
@@ -178,7 +179,7 @@ class AnimeDownloadManager(
             addAll(0, downloads)
             reorderQueue(this)
         }
-        if (!AnimeDownloadJob.isRunning(context)) startDownloads()
+        startDownloads()
     }
 
     /**

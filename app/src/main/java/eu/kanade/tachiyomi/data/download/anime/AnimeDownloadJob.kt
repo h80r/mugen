@@ -12,6 +12,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -144,6 +145,8 @@ class AnimeDownloadJob(context: Context, workerParams: WorkerParameters) : Corou
             val downloadPreferences = Injekt.get<DownloadPreferences>()
             val request = OneTimeWorkRequestBuilder<AnimeDownloadJob>()
                 .setConstraints(getConstraints(downloadPreferences.downloadOnlyOverWifi().get()))
+                // Expedited work starts far more reliably on throttling OEMs (MIUI/HyperOS).
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .addTag(TAG)
                 .build()
             WorkManager.getInstance(context)
@@ -159,14 +162,14 @@ class AnimeDownloadJob(context: Context, workerParams: WorkerParameters) : Corou
             return WorkManager.getInstance(context)
                 .getWorkInfosForUniqueWork(TAG)
                 .get()
-                .let { list -> list.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED } }
+                .let { list -> list.any { it.state == WorkInfo.State.RUNNING } }
         }
 
         fun isRunningFlow(context: Context): Flow<Boolean> {
             return WorkManager.getInstance(context)
                 .getWorkInfosForUniqueWorkLiveData(TAG)
                 .asFlow()
-                .map { list -> list.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED } }
+                .map { list -> list.any { it.state == WorkInfo.State.RUNNING } }
         }
 
         private fun getConstraints(requireWifi: Boolean): Constraints {

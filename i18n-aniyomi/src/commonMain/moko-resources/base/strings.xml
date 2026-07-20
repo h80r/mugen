@@ -2524,6 +2524,7 @@
     <string name="download_power_policy_xiaomi_summary">On Xiaomi/Redmi/POCO enable Auto-start, battery mode "No restrictions" and pin the app in recent apps — this way MIUI/HyperOS interrupts downloads less often.</string>
     <string name="download_power_policy_battery_action">Battery</string>
     <string name="download_power_policy_autostart_action">Auto-start</string>
+    <string name="download_power_policy_dismiss">Don’t show again</string>
 
     <!-- Novel download anti-rate-limit controls -->
     <string name="novel_download_throttle_menu">Request settings</string>
