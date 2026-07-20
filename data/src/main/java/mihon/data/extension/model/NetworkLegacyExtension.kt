@@ -27,13 +27,15 @@ data class NetworkLegacyExtension(
     fun toAvailableExtensionData(
         store: ExtensionStore,
         storeBaseUrl: String,
-    ): AvailableExtensionData {
+    ): AvailableExtensionData? {
+        // One malformed entry must not fail the whole store index (see service mapNotNull).
+        val libVersion = version.substringBeforeLast('.').toDoubleOrNull() ?: return null
         return AvailableExtensionData(
             name = name.substringAfter("Tachiyomi: "),
             pkgName = pkg,
             apkUrl = "$storeBaseUrl/apk/$apk",
             iconUrl = "$storeBaseUrl/icon/$pkg.png",
-            libVersion = version.substringBeforeLast('.').toDouble(),
+            libVersion = libVersion,
             versionCode = code,
             versionName = version,
             lang = lang,

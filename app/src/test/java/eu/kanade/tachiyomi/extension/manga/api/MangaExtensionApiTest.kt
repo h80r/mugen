@@ -137,6 +137,15 @@ class MangaExtensionApiTest {
     }
 
     @Test
+    fun `supported lib versions cover current extensions-lib releases`() {
+        (1.4 in MangaExtensionLoader.SUPPORTED_LIB_VERSIONS) shouldBe true
+        (1.5 in MangaExtensionLoader.SUPPORTED_LIB_VERSIONS) shouldBe true
+        (1.6 in MangaExtensionLoader.SUPPORTED_LIB_VERSIONS) shouldBe true
+        (1.3 in MangaExtensionLoader.SUPPORTED_LIB_VERSIONS) shouldBe false
+        (1.7 in MangaExtensionLoader.SUPPORTED_LIB_VERSIONS) shouldBe false
+    }
+
+    @Test
     fun `getApkUrl returns full http apk url unchanged`() {
         val extension = eu.kanade.tachiyomi.extension.manga.model.MangaExtension.Available(
             name = "Ext",

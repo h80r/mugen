@@ -168,7 +168,7 @@ class ExtensionStoreService(
                 val storeBaseUrl = store.indexUrl.removeSuffix("/repo.json")
                 withDecodedBody("$storeBaseUrl/index.min.json") { source ->
                     json.decodeFromBufferedSource<List<NetworkLegacyExtension>>(source)
-                        .map { it.toAvailableExtensionData(store, storeBaseUrl) }
+                        .mapNotNull { it.toAvailableExtensionData(store, storeBaseUrl) }
                 }
             }
             Result.success(extensions)

@@ -51,7 +51,7 @@ internal object AnimeExtensionLoader {
     const val LIB_VERSION_MIN = 12.0
     const val LIB_VERSION_MAX = 16.0
 
-    val SUPPORTED_LIB_VERSIONS = (LIB_VERSION_MIN.toInt()..LIB_VERSION_MAX.toInt()).map { it.toDouble() }
+    val SUPPORTED_LIB_VERSIONS: ClosedFloatingPointRange<Double> = LIB_VERSION_MIN..LIB_VERSION_MAX
 
     @Suppress("DEPRECATION")
     private val PACKAGE_FLAGS = PackageManager.GET_CONFIGURATIONS or

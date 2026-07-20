@@ -2,11 +2,18 @@ package mihon.data.extension.mapper
 
 import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
 import eu.kanade.tachiyomi.extension.anime.util.AnimeExtensionLoader
+import logcat.LogPriority
 import mihon.data.extension.model.AvailableExtensionData
 import mihon.domain.extensionstore.model.legacyBaseUrl
+import tachiyomi.core.common.util.system.logcat
 
 fun AvailableExtensionData.toAnimeExtensionAvailable(): AnimeExtension.Available? {
     if (libVersion !in AnimeExtensionLoader.SUPPORTED_LIB_VERSIONS) {
+        AnimeExtensionStoreMapperLog.logcat(LogPriority.WARN) {
+            "Skipping extension $pkgName $versionName from store '${store.name}': " +
+                "unsupported extensions-lib version $libVersion " +
+                "(supported: ${AnimeExtensionLoader.SUPPORTED_LIB_VERSIONS})"
+        }
         return null
     }
     val repoBase = store.legacyBaseUrl()
@@ -32,3 +39,5 @@ fun AvailableExtensionData.toAnimeExtensionAvailable(): AnimeExtension.Available
         repoName = store.name.ifBlank { store.badgeLabel },
     )
 }
+
+private object AnimeExtensionStoreMapperLog
