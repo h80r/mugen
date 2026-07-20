@@ -157,6 +157,7 @@ import tachiyomi.domain.items.novelchapter.model.NovelChapterUpdate
 import tachiyomi.domain.items.novelchapter.repository.NovelChapterRepository
 import tachiyomi.domain.series.novel.interactor.GetNovelSeriesWithEntries
 import tachiyomi.domain.source.novel.service.NovelSourceManager
+import tachiyomi.i18n.MR
 import tachiyomi.i18n.aniyomi.AYMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -403,6 +404,9 @@ class NovelReaderScreenModel(
     )
     private var settingsJob: Job? = null
     private var ttsWordProgressJob: Job? = null
+
+    /** True once the current utterance received exact word offsets from the engine. */
+    private var ttsExactWordProgressActive = false
     private var contentModel: NovelReaderContentModel? = null
     private var currentNovel: Novel? = null
     private var currentChapter: NovelChapter? = null
@@ -509,6 +513,16 @@ class NovelReaderScreenModel(
                     }
                 }
 
+                override fun onUtteranceRangeStart(
+                    utteranceId: String,
+                    startChar: Int,
+                    endCharExclusive: Int,
+                ) {
+                    screenModelScope.launch {
+                        handleTtsUtteranceRangeStart(utteranceId, startChar)
+                    }
+                }
+
                 override fun onUtteranceDone(utteranceId: String) {
                     screenModelScope.launch {
                         ttsWordProgressJob?.cancel()
@@ -519,7 +533,9 @@ class NovelReaderScreenModel(
                 override fun onUtteranceError(utteranceId: String) {
                     screenModelScope.launch {
                         ttsWordProgressJob?.cancel()
-                        ttsUiState = ttsUiState.copy(errorMessage = "Failed to speak utterance")
+                        ttsUiState = ttsUiState.copy(
+                            errorMessage = application.stringResource(MR.strings.novel_tts_error_speak),
+                        )
                         refreshTtsUiState()
                     }
                 }
@@ -1384,12 +1400,36 @@ class NovelReaderScreenModel(
         val session = ttsSessionController.state.value.session ?: return
         if (session.utterance.id != utteranceId) return
         ttsWordProgressJob?.cancel()
+        ttsExactWordProgressActive = false
         startEstimatedTtsWordProgress(session)
+    }
+
+    /**
+     * Exact word progress reported by the platform engine (onRangeStart).
+     * The first event for an utterance permanently switches that utterance from
+     * estimated to exact highlighting by cancelling the estimator ticker.
+     */
+    private suspend fun handleTtsUtteranceRangeStart(utteranceId: String, startChar: Int) {
+        if (ttsUiState.activeHighlightMode == NovelTtsHighlightMode.OFF) return
+        val sessionState = ttsSessionController.state.value
+        val utterance = sessionState.session?.utterance ?: return
+        if (utterance.id != utteranceId) return
+        val wordIndex = utterance.wordIndexForCharOffset(startChar) ?: return
+        if (!ttsExactWordProgressActive) {
+            ttsExactWordProgressActive = true
+            ttsWordProgressJob?.cancel()
+            ttsWordProgressJob = null
+        }
+        if (sessionState.playbackState != NovelTtsPlaybackState.PLAYING) return
+        ttsSessionController.updateWordProgress(wordIndex)
+        ttsUiState = ttsUiState.copy(activeWordRange = utterance.wordRanges.getOrNull(wordIndex))
+        refreshTtsUiState()
     }
 
     private fun startEstimatedTtsWordProgress(session: NovelTtsSession) {
         val highlightMode = ttsUiState.activeHighlightMode
         if (highlightMode == NovelTtsHighlightMode.OFF) return
+        if (ttsExactWordProgressActive) return
         ttsWordProgressJob = screenModelScope.launch {
             val utterance = session.utterance
             val estimatedDurationMs = estimateTtsUtteranceDurationMs(
@@ -1647,9 +1687,26 @@ class NovelReaderScreenModel(
     }
 
     fun setTtsLocaleTag(value: String) {
+        // Switching the language must also drop a voice that belongs to another
+        // language, otherwise the stored voice wins during the next runtime
+        // initialization and the language silently snaps back.
+        val selectedVoiceLocale = ttsUiState.availableVoices
+            .firstOrNull { it.id == ttsUiState.selectedVoiceId }
+            ?.localeTag
+        val clearVoice = selectedVoiceLocale != null && !selectedVoiceLocale.equals(value, ignoreCase = true)
         updateTtsSetting(
-            setGlobal = { novelReaderPreferences.ttsLocaleTag().set(value) },
-            setOverride = { it.copy(ttsLocaleTag = value) },
+            setGlobal = {
+                novelReaderPreferences.ttsLocaleTag().set(value)
+                if (clearVoice) {
+                    novelReaderPreferences.ttsVoiceId().set("")
+                }
+            },
+            setOverride = {
+                it.copy(
+                    ttsLocaleTag = value,
+                    ttsVoiceId = if (clearVoice) "" else it.ttsVoiceId,
+                )
+            },
             restartPlayback = true,
         )
         rememberRecentTtsLanguage(value)

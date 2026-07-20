@@ -1770,4 +1770,12 @@
     <string name="reward_special_tab_glow_desc">An accent-colored glow below the tab switcher</string>
     <string name="reward_special_navbar_aurora_celestial_title">Celestial Navigation</string>
     <string name="reward_special_navbar_aurora_celestial_desc">Night sky, travelling light wave and polar halo for the Aurora bottom bar</string>
+    <!-- Novel reader TTS playback -->
+    <string name="novel_tts_notification_title">Novel text-to-speech</string>
+    <string name="novel_tts_action_previous">Previous</string>
+    <string name="novel_tts_action_play">Play</string>
+    <string name="novel_tts_action_pause">Pause</string>
+    <string name="novel_tts_action_next">Next</string>
+    <string name="novel_tts_action_stop">Stop</string>
+    <string name="novel_tts_error_speak">Failed to speak the selected text</string>
 </resources>

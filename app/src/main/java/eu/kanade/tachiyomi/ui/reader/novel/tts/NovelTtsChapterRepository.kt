@@ -24,6 +24,8 @@ import eu.kanade.tachiyomi.ui.reader.novel.resolveNovelChapterWebUrl
 import eu.kanade.tachiyomi.ui.reader.novel.sanitizeChapterHtmlForReader
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -73,16 +75,20 @@ class NovelTtsChapterRepository internal constructor(
         },
     ),
 ) {
+    private val chapterListCacheMutex = Mutex()
     private val chapterListCache = mutableMapOf<Long, Pair<Long, List<NovelChapter>>>()
 
     private suspend fun getCachedOrLoadChapterList(novelId: Long): List<NovelChapter> {
-        val now = System.currentTimeMillis()
-        val cached = chapterListCache[novelId]
-        if (cached != null && (now - cached.first) < 60_000L) {
-            return cached.second
+        chapterListCacheMutex.withLock {
+            val cached = chapterListCache[novelId]
+            if (cached != null && (System.currentTimeMillis() - cached.first) < CHAPTER_LIST_CACHE_TTL_MS) {
+                return cached.second
+            }
         }
         val loaded = loadChapterOrderList(novelId)
-        chapterListCache[novelId] = Pair(now, loaded)
+        chapterListCacheMutex.withLock {
+            chapterListCache[novelId] = System.currentTimeMillis() to loaded
+        }
         return loaded
     }
 
@@ -318,6 +324,8 @@ private fun resolveSnapshotContentResourceUrl(
         novelUrl = novelUrl,
     )
 }
+
+private const val CHAPTER_LIST_CACHE_TTL_MS = 60_000L
 
 private fun String.sanitizeSnapshotTextBlock(): String {
     return replace('\u00A0', ' ')

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.Binder
 import android.os.IBinder
+import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
@@ -21,6 +22,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.i18n.MR
 
 enum class NovelTtsTransportAction {
     PREVIOUS,
@@ -36,27 +39,6 @@ data class NovelTtsForegroundNotificationState(
     val isPlaying: Boolean,
 )
 
-internal data class NovelTtsNotificationLayoutSnapshot(
-    val usesSystemMediaStyle: Boolean,
-    val usesCustomRemoteViews: Boolean,
-    val compactActionIndices: List<Int>,
-    val compactActions: List<NovelTtsTransportAction>,
-    val expandedActions: List<NovelTtsTransportAction>,
-)
-
-internal fun resolveNovelTtsNotificationLayoutSnapshot(
-    actions: List<NovelTtsTransportAction>,
-): NovelTtsNotificationLayoutSnapshot {
-    val compactActions = actions.take(3)
-    return NovelTtsNotificationLayoutSnapshot(
-        usesSystemMediaStyle = true,
-        usesCustomRemoteViews = false,
-        compactActionIndices = compactActions.indices.toList(),
-        compactActions = compactActions,
-        expandedActions = actions,
-    )
-}
-
 class NovelTtsPlaybackServiceRuntime(
     private val controller: NovelTtsPlaybackController,
     private val audioFocusManager: NovelTtsAudioFocusController,
@@ -67,10 +49,7 @@ class NovelTtsPlaybackServiceRuntime(
         val currentState = controller.state.value
         val session = currentState.session
         return NovelTtsForegroundNotificationState(
-            title = session?.model?.chapterTitle
-                ?.takeIf { it.isNotBlank() }
-                ?: session?.let { "Chapter ${it.chapterId}" }
-                ?: "Novel TTS",
+            title = session?.model?.chapterTitle?.takeIf { it.isNotBlank() }.orEmpty(),
             text = session?.utterance?.text.orEmpty(),
             isPlaying = currentState.playbackState == NovelTtsPlaybackState.PLAYING,
         )
@@ -114,7 +93,7 @@ class NovelTtsPlaybackServiceRuntime(
 
 class NovelTtsPlaybackService : Service() {
     companion object {
-        private const val NOTIFICATION_ID = 20260408
+        private const val MAX_COMPACT_ACTIONS = 3
         private const val ACTION_PREVIOUS = "eu.kanade.tachiyomi.ui.reader.novel.tts.action.PREVIOUS"
         private const val ACTION_PLAY = "eu.kanade.tachiyomi.ui.reader.novel.tts.action.PLAY"
         private const val ACTION_PAUSE = "eu.kanade.tachiyomi.ui.reader.novel.tts.action.PAUSE"
@@ -164,7 +143,7 @@ class NovelTtsPlaybackService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         handleIntent(mediaSession, intent)
         resolveTransportAction(intent?.action)?.let(::dispatchTransportAction)
-        startForeground(NOTIFICATION_ID, buildNotification())
+        startForeground(Notifications.ID_NOVEL_TTS_PLAYBACK, buildNotification())
         return START_STICKY
     }
 
@@ -175,7 +154,7 @@ class NovelTtsPlaybackService : Service() {
             runtime.playbackState().collectLatest {
                 updateMediaSessionState()
                 NotificationManagerCompat.from(this@NovelTtsPlaybackService)
-                    .notify(NOTIFICATION_ID, buildNotification())
+                    .notify(Notifications.ID_NOVEL_TTS_PLAYBACK, buildNotification())
                 if (
                     it.playbackState == NovelTtsPlaybackState.IDLE ||
                     it.playbackState == NovelTtsPlaybackState.COMPLETED
@@ -185,7 +164,7 @@ class NovelTtsPlaybackService : Service() {
             }
         }
         updateMediaSessionState()
-        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
+        NotificationManagerCompat.from(this).notify(Notifications.ID_NOVEL_TTS_PLAYBACK, buildNotification())
     }
 
     override fun onDestroy() {
@@ -200,7 +179,7 @@ class NovelTtsPlaybackService : Service() {
             runtime?.handleTransportAction(action)
             updateMediaSessionState()
             NotificationManagerCompat.from(this@NovelTtsPlaybackService)
-                .notify(NOTIFICATION_ID, buildNotification())
+                .notify(Notifications.ID_NOVEL_TTS_PLAYBACK, buildNotification())
             if (action == NovelTtsTransportAction.STOP) {
                 stopForegroundPlayback()
             }
@@ -220,7 +199,7 @@ class NovelTtsPlaybackService : Service() {
 
     private fun updateMediaSessionState() {
         val notificationState = runtime?.notificationState()
-            ?: NovelTtsForegroundNotificationState(title = "Novel TTS", text = "", isPlaying = false)
+            ?: NovelTtsForegroundNotificationState(title = "", text = "", isPlaying = false)
         val playbackState = PlaybackStateCompat.Builder()
             .setActions(
                 PlaybackStateCompat.ACTION_PLAY or
@@ -239,24 +218,31 @@ class NovelTtsPlaybackService : Service() {
                 1f,
             )
             .build()
+        mediaSession.setMetadata(
+            MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, notificationState.title.ifBlank(::defaultTitle))
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, notificationState.text)
+                .build(),
+        )
         mediaSession.setPlaybackState(playbackState)
     }
+
+    private fun defaultTitle(): String = stringResource(MR.strings.novel_tts_notification_title)
 
     private fun buildNotification() = notificationBuilder(Notifications.CHANNEL_COMMON) {
         val notificationState = runtime?.notificationState()
             ?: NovelTtsForegroundNotificationState(
-                title = "Novel TTS",
+                title = "",
                 text = "",
                 isPlaying = false,
             )
         val transportActions = runtime?.transportActions().orEmpty()
-        val layoutSnapshot = resolveNovelTtsNotificationLayoutSnapshot(transportActions)
-        layoutSnapshot.expandedActions.forEach { action ->
+        transportActions.forEach { action ->
             addAction(buildNotificationAction(action))
         }
         setSmallIcon(R.drawable.ic_play_arrow_24dp)
         setLargeIcon(BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher))
-        setContentTitle(notificationState.title)
+        setContentTitle(notificationState.title.ifBlank(::defaultTitle))
         setContentText(notificationState.text)
         setOngoing(notificationState.isPlaying)
         setOnlyAlertOnce(true)
@@ -266,7 +252,7 @@ class NovelTtsPlaybackService : Service() {
                 .setMediaSession(mediaSession.sessionToken)
                 .setShowCancelButton(true)
                 .setCancelButtonIntent(createServicePendingIntent(ACTION_STOP))
-                .setShowActionsInCompactView(*layoutSnapshot.compactActionIndices.toIntArray()),
+                .setShowActionsInCompactView(*transportActions.indices.take(MAX_COMPACT_ACTIONS).toIntArray()),
         )
         setDeleteIntent(createServicePendingIntent(ACTION_STOP))
     }.build()
@@ -291,11 +277,11 @@ class NovelTtsPlaybackService : Service() {
 
     private fun resolveNotificationActionTitle(action: NovelTtsTransportAction): String {
         return when (action) {
-            NovelTtsTransportAction.PREVIOUS -> "Previous"
-            NovelTtsTransportAction.PLAY -> "Play"
-            NovelTtsTransportAction.PAUSE -> "Pause"
-            NovelTtsTransportAction.NEXT -> "Next"
-            NovelTtsTransportAction.STOP -> "Stop"
+            NovelTtsTransportAction.PREVIOUS -> stringResource(MR.strings.novel_tts_action_previous)
+            NovelTtsTransportAction.PLAY -> stringResource(MR.strings.novel_tts_action_play)
+            NovelTtsTransportAction.PAUSE -> stringResource(MR.strings.novel_tts_action_pause)
+            NovelTtsTransportAction.NEXT -> stringResource(MR.strings.novel_tts_action_next)
+            NovelTtsTransportAction.STOP -> stringResource(MR.strings.novel_tts_action_stop)
         }
     }
 

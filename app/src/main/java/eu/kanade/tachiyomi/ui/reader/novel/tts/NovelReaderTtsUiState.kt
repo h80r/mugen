@@ -21,12 +21,7 @@ data class NovelReaderTtsUiState(
     val selectedLocaleTag: String = "",
     val speechRate: Float = 1f,
     val pitch: Float = 1f,
-    val capabilities: NovelTtsEngineCapabilities = NovelTtsEngineCapabilities(
-        supportsExactWordOffsets = false,
-        supportsReliablePauseResume = false,
-        supportsVoiceEnumeration = false,
-        supportsLocaleEnumeration = false,
-    ),
+    val capabilities: NovelTtsEngineCapabilities = NovelTtsEngineCapabilities.NONE,
     val errorMessage: String? = null,
 ) {
     val isPlaying: Boolean

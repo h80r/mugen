@@ -142,4 +142,99 @@ class NovelReaderTtsHighlightRenderTest {
         assertEquals(12, rendered.spanStyles.single().start)
         assertEquals(24, rendered.spanStyles.single().end)
     }
+
+    @Test
+    fun `word range with block coordinates narrows highlight to the spoken word`() {
+        val blockText = "Alpha beta. Gamma delta."
+        val rendered = applyNovelReaderTtsHighlight(
+            text = AnnotatedString(blockText),
+            blockText = blockText,
+            sourceBlockIndex = 0,
+            highlightState = NovelReaderTtsHighlightState(
+                sourceBlockIndex = 0,
+                utteranceText = "Gamma delta.",
+                wordRange = NovelTtsWordRange(
+                    wordIndex = 1,
+                    text = "delta",
+                    startChar = 6,
+                    endChar = 11,
+                    blockStartChar = 18,
+                    blockEndCharExclusive = 23,
+                ),
+                blockTextStart = 12,
+                blockTextEndExclusive = 24,
+                mode = NovelTtsHighlightMode.EXACT,
+            ),
+            highlightColor = Color.Yellow,
+        )
+
+        assertEquals(blockText, rendered.text)
+        val wordSpan = rendered.spanStyles.single { it.item.background == Color.Yellow }
+        assertEquals(18, wordSpan.start)
+        assertEquals(23, wordSpan.end)
+        val backdropSpan = rendered.spanStyles.single { it.item.background != Color.Yellow }
+        assertEquals(12, backdropSpan.start)
+        assertEquals(24, backdropSpan.end)
+    }
+
+    @Test
+    fun `word range without block coordinates narrows highlight via utterance position`() {
+        val blockText = "alpha beta gamma"
+        val rendered = applyNovelReaderTtsHighlight(
+            text = AnnotatedString(blockText),
+            blockText = blockText,
+            sourceBlockIndex = 4,
+            highlightState = NovelReaderTtsHighlightState(
+                sourceBlockIndex = 4,
+                utteranceText = blockText,
+                wordRange = NovelTtsWordRange(
+                    wordIndex = 1,
+                    text = "beta",
+                    startChar = 6,
+                    endChar = 10,
+                ),
+                mode = NovelTtsHighlightMode.ESTIMATED,
+            ),
+            highlightColor = Color.Yellow,
+        )
+
+        val wordSpan = rendered.spanStyles.single { it.item.background == Color.Yellow }
+        assertEquals(6, wordSpan.start)
+        assertEquals(10, wordSpan.end)
+    }
+
+    @Test
+    fun `page aware word range maps into page local coordinates`() {
+        val blockText = "Alpha beta gamma delta epsilon zeta."
+        val pageText = "delta epsilon zeta."
+        val rendered = applyNovelReaderTtsHighlight(
+            text = AnnotatedString(pageText),
+            blockText = blockText,
+            sourceBlockIndex = 0,
+            pageIndex = 1,
+            pageBlockTextStart = 17,
+            pageBlockTextEndExclusive = blockText.length,
+            highlightState = NovelReaderTtsHighlightState(
+                sourceBlockIndex = 0,
+                utteranceText = "gamma delta epsilon zeta.",
+                wordRange = NovelTtsWordRange(
+                    wordIndex = 1,
+                    text = "delta",
+                    startChar = 6,
+                    endChar = 11,
+                    blockStartChar = 17,
+                    blockEndCharExclusive = 22,
+                ),
+                pageIndex = 1,
+                blockTextStart = 11,
+                blockTextEndExclusive = blockText.length,
+                mode = NovelTtsHighlightMode.EXACT,
+            ),
+            highlightColor = Color.Yellow,
+        )
+
+        val wordSpan = rendered.spanStyles.single { it.item.background == Color.Yellow }
+        assertEquals(0, wordSpan.start)
+        assertEquals(5, wordSpan.end)
+    }
 }

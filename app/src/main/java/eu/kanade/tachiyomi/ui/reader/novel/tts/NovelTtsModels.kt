@@ -9,10 +9,16 @@ data class NovelTtsChapterModel(
     val utterances: List<NovelTtsUtterance>,
 ) {
     private val segmentsById = segments.associateBy { it.id }
+    private val utteranceIndexById = buildMap(utterances.size) {
+        utterances.forEachIndexed { index, utterance -> put(utterance.id, index) }
+    }
+
+    /** Returns the index of the utterance with [utteranceId], or -1 when unknown. */
+    fun indexOfUtterance(utteranceId: String): Int = utteranceIndexById[utteranceId] ?: -1
 
     fun findSegmentForUtterance(utteranceId: String): NovelTtsSegment? {
-        val utterance = utterances.firstOrNull { it.id == utteranceId } ?: return null
-        return segmentsById[utterance.segmentId]
+        val index = utteranceIndexById[utteranceId] ?: return null
+        return segmentsById[utterances[index].segmentId]
     }
 }
 
@@ -36,13 +42,40 @@ data class NovelTtsUtterance(
     val blockTextEndExclusive: Int? = null,
     val pageCandidate: Int? = null,
     val wordRanges: List<NovelTtsWordRange>,
-)
+) {
+    /**
+     * Maps a character offset reported by the speech engine (for example from
+     * `UtteranceProgressListener.onRangeStart`) to the index of the spoken word.
+     * Returns the last word whose start lies at or before [charOffset],
+     * or `null` when the utterance has no words at all.
+     */
+    fun wordIndexForCharOffset(charOffset: Int): Int? {
+        if (wordRanges.isEmpty()) return null
+        var low = 0
+        var high = wordRanges.lastIndex
+        var result = 0
+        while (low <= high) {
+            val mid = (low + high) ushr 1
+            if (wordRanges[mid].startChar <= charOffset) {
+                result = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+        return result
+    }
+}
 
 data class NovelTtsWordRange(
     val wordIndex: Int,
     val text: String,
     val startChar: Int,
     val endChar: Int,
+    /** Start offset of this word inside the raw source block text, when known. */
+    val blockStartChar: Int? = null,
+    /** Exclusive end offset of this word inside the raw source block text, when known. */
+    val blockEndCharExclusive: Int? = null,
 )
 
 data class NovelTtsChapterModelBuildOptions(
@@ -67,6 +100,16 @@ data class NovelTtsEngineCapabilities(
             }
             NovelTtsHighlightMode.ESTIMATED -> NovelTtsHighlightMode.ESTIMATED
         }
+    }
+
+    companion object {
+        /** Capabilities of an engine that has not been initialized yet. */
+        val NONE = NovelTtsEngineCapabilities(
+            supportsExactWordOffsets = false,
+            supportsReliablePauseResume = false,
+            supportsVoiceEnumeration = false,
+            supportsLocaleEnumeration = false,
+        )
     }
 }
 

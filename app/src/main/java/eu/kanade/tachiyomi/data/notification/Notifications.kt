@@ -57,6 +57,8 @@ object Notifications {
     const val ID_NEW_CHAPTERS = -301
     const val ID_NEW_NOVEL_CHAPTERS = -302
     const val ID_NEW_EPISODES = -1301
+
+    const val ID_NOVEL_TTS_PLAYBACK = -1101
     const val GROUP_NEW_CHAPTERS = "eu.kanade.tachiyomi.NEW_CHAPTERS"
     const val GROUP_NEW_NOVEL_CHAPTERS = "eu.kanade.tachiyomi.NEW_NOVEL_CHAPTERS"
     const val GROUP_NEW_EPISODES = "eu.kanade.tachiyomi.NEW_EPISODES"

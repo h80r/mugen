@@ -47,6 +47,8 @@ internal fun applyNovelReaderTtsHighlight(
             state.blockTextEndExclusive != null
         )
 
+    var utteranceStartInText: Int? = null
+    var usesRawBlockCoordinates = false
     val pageAwareFragmentRange = if (hasPageContext) {
         val overlapStart = maxOf(state.blockTextStart, pageBlockTextStart)
         val overlapEnd = minOf(state.blockTextEndExclusive, pageBlockTextEndExclusive)
@@ -70,6 +72,7 @@ internal fun applyNovelReaderTtsHighlight(
                     val safeStart = start.coerceIn(0, text.length)
                     val safeEnd = endExclusive.coerceIn(0, text.length)
                     if (safeStart < safeEnd) {
+                        usesRawBlockCoordinates = true
                         safeStart until safeEnd
                     } else {
                         null
@@ -80,6 +83,7 @@ internal fun applyNovelReaderTtsHighlight(
             ?.let { snippet ->
                 val utteranceStart = blockText.indexOf(snippet)
                 if (utteranceStart >= 0) {
+                    utteranceStartInText = utteranceStart
                     val start = utteranceStart.coerceAtLeast(0)
                     val end = (utteranceStart + snippet.length).coerceAtMost(blockText.length)
                     start until end
@@ -93,12 +97,74 @@ internal fun applyNovelReaderTtsHighlight(
     val highlightEndExclusive = (blockRange.last + 1).coerceAtMost(text.length)
     if (highlightEndExclusive <= blockRange.first) return text
 
+    val wordRangeInText = resolveWordRangeInText(
+        word = state.wordRange,
+        hasPageContext = hasPageContext,
+        pageBlockTextStart = pageBlockTextStart,
+        usesRawBlockCoordinates = usesRawBlockCoordinates,
+        utteranceStartInText = utteranceStartInText,
+    )?.let { candidate ->
+        val start = candidate.first.coerceAtLeast(blockRange.first)
+        val endExclusive = (candidate.last + 1).coerceAtMost(highlightEndExclusive)
+        if (start < endExclusive) start until endExclusive else null
+    }
+
     return buildAnnotatedString {
         append(text)
-        addStyle(
-            style = SpanStyle(background = highlightColor),
-            start = blockRange.first,
-            end = highlightEndExclusive,
-        )
+        if (wordRangeInText != null) {
+            addStyle(
+                style = SpanStyle(
+                    background = highlightColor.copy(
+                        alpha = highlightColor.alpha * UTTERANCE_BACKDROP_ALPHA_FACTOR,
+                    ),
+                ),
+                start = blockRange.first,
+                end = highlightEndExclusive,
+            )
+            addStyle(
+                style = SpanStyle(background = highlightColor),
+                start = wordRangeInText.first,
+                end = wordRangeInText.last + 1,
+            )
+        } else {
+            addStyle(
+                style = SpanStyle(background = highlightColor),
+                start = blockRange.first,
+                end = highlightEndExclusive,
+            )
+        }
+    }
+}
+
+/** Alpha multiplier for the sentence backdrop rendered behind the currently spoken word. */
+private const val UTTERANCE_BACKDROP_ALPHA_FACTOR = 0.35f
+
+/**
+ * Resolves the currently spoken word into the coordinate space of the rendered text, or `null`
+ * when the word cannot be located reliably (falls back to the whole utterance highlight).
+ */
+private fun resolveWordRangeInText(
+    word: NovelTtsWordRange?,
+    hasPageContext: Boolean,
+    pageBlockTextStart: Int?,
+    usesRawBlockCoordinates: Boolean,
+    utteranceStartInText: Int?,
+): IntRange? {
+    word ?: return null
+    val rawStart = word.blockStartChar
+    val rawEndExclusive = word.blockEndCharExclusive
+    return when {
+        rawStart != null && rawEndExclusive != null && rawStart < rawEndExclusive -> when {
+            hasPageContext && pageBlockTextStart != null ->
+                (rawStart - pageBlockTextStart) until (rawEndExclusive - pageBlockTextStart)
+            !hasPageContext && usesRawBlockCoordinates ->
+                rawStart until rawEndExclusive
+            utteranceStartInText != null && word.startChar < word.endChar ->
+                (utteranceStartInText + word.startChar) until (utteranceStartInText + word.endChar)
+            else -> null
+        }
+        utteranceStartInText != null && word.startChar < word.endChar ->
+            (utteranceStartInText + word.startChar) until (utteranceStartInText + word.endChar)
+        else -> null
     }
 }

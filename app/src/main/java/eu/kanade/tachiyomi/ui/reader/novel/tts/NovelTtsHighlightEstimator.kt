@@ -58,9 +58,9 @@ class NovelTtsHighlightEstimator {
         wordRange: NovelTtsWordRange,
     ): Double {
         val wordLength = wordRange.text.length
-        var weight = 1.0 + wordLength.coerceAtMost(16) * 0.08
-        if (wordLength >= 10) {
-            weight += 0.4
+        var weight = BASE_WORD_WEIGHT + wordLength.coerceAtMost(WEIGHTED_CHAR_CAP) * WEIGHT_PER_CHAR
+        if (wordLength >= LONG_WORD_THRESHOLD) {
+            weight += LONG_WORD_BONUS
         }
 
         val trailingText = utteranceText
@@ -73,10 +73,22 @@ class NovelTtsHighlightEstimator {
 
     private fun punctuationWeight(char: Char): Double {
         return when (char) {
-            ',', ';', ':' -> 0.7
-            '.', '!', '?', '…' -> 1.1
-            '-', '–', '—' -> 0.35
-            else -> 0.15
+            ',', ';', ':' -> CLAUSE_PAUSE_WEIGHT
+            '.', '!', '?', '…' -> SENTENCE_PAUSE_WEIGHT
+            '-', '–', '—' -> DASH_PAUSE_WEIGHT
+            else -> OTHER_PUNCTUATION_WEIGHT
         }
+    }
+
+    private companion object {
+        const val BASE_WORD_WEIGHT = 1.0
+        const val WEIGHT_PER_CHAR = 0.08
+        const val WEIGHTED_CHAR_CAP = 16
+        const val LONG_WORD_THRESHOLD = 10
+        const val LONG_WORD_BONUS = 0.4
+        const val CLAUSE_PAUSE_WEIGHT = 0.7
+        const val SENTENCE_PAUSE_WEIGHT = 1.1
+        const val DASH_PAUSE_WEIGHT = 0.35
+        const val OTHER_PUNCTUATION_WEIGHT = 0.15
     }
 }

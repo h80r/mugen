@@ -37,13 +37,13 @@ class NovelTtsSelectionResolverTest {
     }
 
     @Test
-    fun `missing selected voice falls back to first voice for the engine`() {
+    fun `missing selected voice falls back to system language instead of arbitrary voice`() {
         val resolved = resolveNovelTtsVoiceSelection(
             availableVoices = listOf(
                 NovelTtsVoiceDescriptor(
-                    id = "voice.jp",
-                    name = "Hana",
-                    localeTag = "ja-JP",
+                    id = "voice.ar",
+                    name = "Amira",
+                    localeTag = "ar-XA",
                 ),
                 NovelTtsVoiceDescriptor(
                     id = "voice.en",
@@ -51,7 +51,7 @@ class NovelTtsSelectionResolverTest {
                     localeTag = "en-US",
                 ),
             ),
-            availableLocales = listOf("ja-JP", "en-US"),
+            availableLocales = listOf("ar-XA", "en-US"),
             capabilities = NovelTtsEngineCapabilities(
                 supportsExactWordOffsets = false,
                 supportsReliablePauseResume = true,
@@ -60,10 +60,68 @@ class NovelTtsSelectionResolverTest {
             ),
             preferredVoiceId = "voice.missing",
             preferredLocaleTag = "",
+            systemLocaleTag = "en-US",
         )
 
-        resolved.selectedVoiceId shouldBe "voice.jp"
-        resolved.selectedLocaleTag shouldBe "ja-JP"
+        resolved.selectedVoiceId shouldBe ""
+        resolved.selectedLocaleTag shouldBe "en-US"
+    }
+
+    @Test
+    fun `no preference and no system language match keeps the engine default`() {
+        val resolved = resolveNovelTtsVoiceSelection(
+            availableVoices = listOf(
+                NovelTtsVoiceDescriptor(
+                    id = "voice.ar",
+                    name = "Amira",
+                    localeTag = "ar-XA",
+                ),
+            ),
+            availableLocales = listOf("ar-XA"),
+            capabilities = NovelTtsEngineCapabilities(
+                supportsExactWordOffsets = false,
+                supportsReliablePauseResume = true,
+                supportsVoiceEnumeration = true,
+                supportsLocaleEnumeration = true,
+            ),
+            preferredVoiceId = "",
+            preferredLocaleTag = "",
+            systemLocaleTag = "en-US",
+        )
+
+        resolved.selectedVoiceId shouldBe ""
+        resolved.selectedLocaleTag shouldBe ""
+    }
+
+    @Test
+    fun `missing voice with stored language falls back to a voice of that language`() {
+        val resolved = resolveNovelTtsVoiceSelection(
+            availableVoices = listOf(
+                NovelTtsVoiceDescriptor(
+                    id = "voice.ar",
+                    name = "Amira",
+                    localeTag = "ar-XA",
+                ),
+                NovelTtsVoiceDescriptor(
+                    id = "voice.en",
+                    name = "Emma",
+                    localeTag = "en-US",
+                ),
+            ),
+            availableLocales = listOf("ar-XA", "en-US"),
+            capabilities = NovelTtsEngineCapabilities(
+                supportsExactWordOffsets = false,
+                supportsReliablePauseResume = true,
+                supportsVoiceEnumeration = true,
+                supportsLocaleEnumeration = true,
+            ),
+            preferredVoiceId = "voice.missing",
+            preferredLocaleTag = "en-US",
+            systemLocaleTag = "ru-RU",
+        )
+
+        resolved.selectedVoiceId shouldBe "voice.en"
+        resolved.selectedLocaleTag shouldBe "en-US"
     }
 
     @Test
