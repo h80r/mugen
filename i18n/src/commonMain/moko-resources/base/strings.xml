@@ -1483,9 +1483,9 @@
     <string name="suggestions_empty_search_novel">No search matches found on this source</string>
     <string name="suggestions_fallback_exhausted_novel">No suggestions available for this novel</string>
     <string name="action_show_more">Show more</string>
-    <string name="pref_category_epub_import">EPUB Import</string>
-    <string name="pref_epub_import_add_to_library">Add imported EPUBs to library</string>
-    <string name="pref_epub_import_add_to_library_summary">Imported EPUB novels will automatically appear in the library. When disabled, they can be added manually from the local source browse.</string>
+    <string name="pref_category_epub_import">Local book import</string>
+    <string name="pref_epub_import_add_to_library">Add imported books to library</string>
+    <string name="pref_epub_import_add_to_library_summary">Imported EPUB/FB2 novels will automatically appear in the library. When disabled, they can be added manually from the local source browse.</string>
 
     <!-- Library Grouping -->
     <string name="action_group">Group</string>

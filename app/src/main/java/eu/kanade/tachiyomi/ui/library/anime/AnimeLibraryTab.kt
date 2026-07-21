@@ -729,7 +729,11 @@ data object AnimeLibraryTab : Tab {
                             }
                             Unit
                         }.takeIf { showContinueViewingButton },
-                        onImportEpub = { epubImportLauncher.launch(arrayOf("application/epub+zip")) },
+                        onImportEpub = {
+                            epubImportLauncher.launch(
+                                eu.kanade.domain.entries.novel.LocalNovelBookImport.PICKER_MIME_TYPES,
+                            )
+                        },
                         showInlineHeader = false,
                         libraryPreferences = activeNovelScreenModel.libraryPreferences,
                     )
@@ -1179,7 +1183,11 @@ data object AnimeLibraryTab : Tab {
                                     onRefreshCurrent = onAuroraRefreshCurrent,
                                     onRefreshGlobal = onAuroraRefreshGlobal,
                                     onOpenRandomEntry = onAuroraOpenRandom,
-                                    onImportEpub = { epubImportLauncher.launch(arrayOf("application/epub+zip")) },
+                                    onImportEpub = {
+                                        epubImportLauncher.launch(
+                                            eu.kanade.domain.entries.novel.LocalNovelBookImport.PICKER_MIME_TYPES,
+                                        )
+                                    },
                                     categories = auroraCategories,
                                     selectedCategoryIndex = auroraCategoryIndex,
                                     showCategories = showAuroraCategoryTabs,

@@ -19,7 +19,7 @@ import java.io.InputStream
  * - Inline images and covers are resolved from `<binary>` payloads.
  * - Footnote links are rendered inline and referenced notes are appended after the chapter text.
  */
-internal class Fb2Book private constructor(private val root: Element) {
+class Fb2Book private constructor(private val root: Element) {
 
     data class ChapterRef(val index: Int, val title: String)
 

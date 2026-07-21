@@ -190,7 +190,9 @@ data object NovelLibraryTab : Tab {
                             }
                         }
                     },
-                    onClickImportEpub = { epubImportLauncher.launch(arrayOf("application/epub+zip")) },
+                    onClickImportEpub = {
+                        epubImportLauncher.launch(eu.kanade.domain.entries.novel.LocalNovelBookImport.PICKER_MIME_TYPES)
+                    },
                     searchQuery = state.searchQuery,
                     onSearchQueryChange = screenModel::search,
                     scrollBehavior = scrollBehavior,

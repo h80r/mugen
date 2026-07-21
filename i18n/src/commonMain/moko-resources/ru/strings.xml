@@ -1288,9 +1288,9 @@
     <string name="suggestions_empty_search_novel">На этом источнике не найдено совпадений при поиске</string>
     <string name="suggestions_fallback_exhausted_novel">Для этой новеллы нет доступных рекомендаций</string>
     <string name="action_show_more">Показать больше</string>
-    <string name="pref_category_epub_import">Импорт EPUB</string>
-    <string name="pref_epub_import_add_to_library">Добавлять импортированные EPUB в библиотеку</string>
-    <string name="pref_epub_import_add_to_library_summary">Импортированные EPUB-новеллы сразу появятся в библиотеке. Если отключено, их можно добавить вручную из локального источника.</string>
+    <string name="pref_category_epub_import">Импорт локальных книг</string>
+    <string name="pref_epub_import_add_to_library">Добавлять импортированные книги в библиотеку</string>
+    <string name="pref_epub_import_add_to_library_summary">Импортированные EPUB/FB2 сразу появятся в библиотеке. Если отключено, их можно добавить вручную из локального источника.</string>
 
     <!-- Library Grouping -->
     <string name="action_group">Группа</string>

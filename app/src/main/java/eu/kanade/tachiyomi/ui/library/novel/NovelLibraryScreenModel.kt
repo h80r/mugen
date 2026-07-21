@@ -10,6 +10,7 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.preference.asState
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.entries.novel.LocalNovelBookImport
 import eu.kanade.domain.entries.novel.interactor.UpdateNovel
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.novel.MapNovelTrackStatusToLibrary
@@ -85,6 +86,7 @@ import tachiyomi.domain.source.novel.service.NovelSourceManager
 import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.domain.track.novel.interactor.GetTracksPerNovel
 import tachiyomi.domain.track.novel.model.NovelTrack
+import tachiyomi.source.local.entries.novel.Fb2Book
 import tachiyomi.source.local.entries.novel.LocalNovelSource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -1313,7 +1315,13 @@ class NovelLibraryScreenModel(
         }.distinctUntilChanged()
     }
 
-    suspend fun importEpub(uri: Uri) {
+    /**
+     * Imports a local book file (EPUB or FB2) into `localnovel/` and inserts a LocalNovel row.
+     * Kept as [importEpub] for call-site compatibility.
+     */
+    suspend fun importEpub(uri: Uri) = importLocalBook(uri)
+
+    suspend fun importLocalBook(uri: Uri) {
         withContext(Dispatchers.IO) {
             val context = Injekt.get<Application>()
             val storageManager = Injekt.get<StorageManager>()
@@ -1322,10 +1330,12 @@ class NovelLibraryScreenModel(
             val novelRepository = Injekt.get<NovelRepository>()
             val sourcePreferences = Injekt.get<SourcePreferences>()
 
-            val displayName = getEpubDisplayName(context, uri)
-            val sanitizedName = displayName.replace("[/\\\\:*?\"<>|]".toRegex(), "_")
-            if (!sanitizedName.substringAfterLast('.', "").equals("epub", ignoreCase = true)) {
-                throw IOException("Only EPUB files can be imported as local novels (got: $sanitizedName)")
+            val displayName = getLocalBookDisplayName(context, uri)
+            val sanitizedName = LocalNovelBookImport.sanitizeFileName(displayName)
+            if (!LocalNovelBookImport.isSupportedImportFileName(sanitizedName)) {
+                throw IOException(
+                    "Only EPUB or FB2 files can be imported as local novels (got: $sanitizedName)",
+                )
             }
 
             val targetFile = localDir.findFile(sanitizedName)
@@ -1336,51 +1346,19 @@ class NovelLibraryScreenModel(
                 targetFile.openOutputStream().use { output ->
                     input.copyTo(output)
                 }
-            }
+            } ?: throw IOException("Cannot open selected file")
 
-            var epubTitle: String? = null
-            var epubAuthor: String? = null
-            var epubDescription: String? = null
-            try {
-                targetFile.epubReader(context).use { epub ->
-                    val ref = epub.getPackageHref()
-                    val doc = epub.getPackageDocument(ref)
-
-                    // Multiple title fallbacks
-                    var title = doc.getElementsByTag("dc:title").firstOrNull()?.text()
-                    if (title.isNullOrBlank()) {
-                        title = doc.select("docTitle").firstOrNull()?.text()
-                    }
-                    if (title.isNullOrBlank()) {
-                        title = doc.select("meta[name=title]").firstOrNull()?.attr("content")
-                    }
-
-                    // Collection name
-                    val collection = doc.select("meta[property=belongs-to-collection]").firstOrNull()?.text()
-
-                    epubTitle = collection.takeIf { !it.isNullOrBlank() } ?: title
-                    epubAuthor = doc.getElementsByTag("dc:creator").firstOrNull()?.text()
-
-                    var desc = doc.getElementsByTag("dc:description").firstOrNull()?.text()
-                    if (desc.isNullOrBlank()) {
-                        desc = doc.select("dc\\:description").firstOrNull()?.text()
-                    }
-                    epubDescription = desc
-                }
-            } catch (e: Exception) {
-                // Ignore parsing errors, fallback to file name
-            }
-
-            val finalTitle = epubTitle?.takeIf { it.isNotBlank() }
-                ?: sanitizedName.removeSuffix(".epub").removeSuffix(".EPUB")
+            val meta = readLocalBookMetadata(context, targetFile, LocalNovelBookImport.extensionOf(sanitizedName))
+            val finalTitle = meta.title?.takeIf { it.isNotBlank() }
+                ?: LocalNovelBookImport.titleFallbackFromFileName(sanitizedName)
 
             val addToLibrary = sourcePreferences.importEpubAddToLibrary().get()
             val novel = Novel.create().copy(
                 source = LocalNovelSource.ID,
                 url = sanitizedName,
                 title = finalTitle,
-                author = epubAuthor,
-                description = epubDescription,
+                author = meta.author,
+                description = meta.description,
                 favorite = addToLibrary,
                 dateAdded = if (addToLibrary) System.currentTimeMillis() else 0L,
                 initialized = true,
@@ -1390,7 +1368,77 @@ class NovelLibraryScreenModel(
         }
     }
 
-    private fun getEpubDisplayName(context: Application, uri: Uri): String {
+    private data class LocalBookMetadata(
+        val title: String?,
+        val author: String?,
+        val description: String?,
+    )
+
+    private fun readLocalBookMetadata(
+        context: Application,
+        targetFile: com.hippo.unifile.UniFile,
+        extension: String,
+    ): LocalBookMetadata {
+        return when (extension) {
+            "epub" -> readEpubMetadata(context, targetFile)
+            "fb2" -> readFb2Metadata(targetFile)
+            else -> LocalBookMetadata(null, null, null)
+        }
+    }
+
+    private fun readEpubMetadata(
+        context: Application,
+        targetFile: com.hippo.unifile.UniFile,
+    ): LocalBookMetadata {
+        return try {
+            targetFile.epubReader(context).use { epub ->
+                val ref = epub.getPackageHref()
+                val doc = epub.getPackageDocument(ref)
+
+                var title = doc.getElementsByTag("dc:title").firstOrNull()?.text()
+                if (title.isNullOrBlank()) {
+                    title = doc.select("docTitle").firstOrNull()?.text()
+                }
+                if (title.isNullOrBlank()) {
+                    title = doc.select("meta[name=title]").firstOrNull()?.attr("content")
+                }
+
+                val collection = doc.select("meta[property=belongs-to-collection]").firstOrNull()?.text()
+                val resolvedTitle = collection.takeIf { !it.isNullOrBlank() } ?: title
+                val author = doc.getElementsByTag("dc:creator").firstOrNull()?.text()
+
+                var desc = doc.getElementsByTag("dc:description").firstOrNull()?.text()
+                if (desc.isNullOrBlank()) {
+                    desc = doc.select("dc\\:description").firstOrNull()?.text()
+                }
+
+                LocalBookMetadata(
+                    title = resolvedTitle?.trim()?.takeIf { it.isNotBlank() },
+                    author = author?.trim()?.takeIf { it.isNotBlank() },
+                    description = desc?.trim()?.takeIf { it.isNotBlank() },
+                )
+            }
+        } catch (_: Exception) {
+            LocalBookMetadata(null, null, null)
+        }
+    }
+
+    private fun readFb2Metadata(targetFile: com.hippo.unifile.UniFile): LocalBookMetadata {
+        return try {
+            targetFile.openInputStream().use { stream ->
+                val book = Fb2Book.parse(stream)
+                LocalBookMetadata(
+                    title = book.bookTitle,
+                    author = book.authors.takeIf { it.isNotEmpty() }?.joinToString(", "),
+                    description = book.annotation,
+                )
+            }
+        } catch (_: Exception) {
+            LocalBookMetadata(null, null, null)
+        }
+    }
+
+    private fun getLocalBookDisplayName(context: Application, uri: Uri): String {
         context.contentResolver.query(
             uri,
             arrayOf(OpenableColumns.DISPLAY_NAME),
