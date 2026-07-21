@@ -1882,6 +1882,11 @@
     <string name="achievement_filter_master_desc">Используйте фильтры 20 раз</string>
     <string name="achievement_backup_master_title">Мастер резервных копий</string>
     <string name="achievement_backup_master_desc">Создайте 1 резервную копию</string>
+    <!-- Backup wizard (backup-refactor UI) -->
+    <string name="backup_not_included_info">Не входит: скачанные главы и эпизоды, файлы локальных источников и пользовательские обложки.</string>
+    <string name="backup_compat_drops_warning">Совместимый формат сохраняет мангу и новеллы (новеллы превращаются в записи манги). Аниме, достижения, статистика, ленты и пользовательские кнопки в этом режиме не экспортируются.</string>
+    <string name="backup_restore_origin_tadami">Резервная копия Tadami</string>
+    <string name="backup_restore_origin_legacy">Старая резервная копия Aniyomi</string>
     <string name="achievement_settings_explorer_title">Исследователь настроек</string>
     <string name="achievement_settings_explorer_desc">Откройте настройки 15 раз</string>
     <string name="achievement_stats_viewer_title">Просмотрщик статистики</string>

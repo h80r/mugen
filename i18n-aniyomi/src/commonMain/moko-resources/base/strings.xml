@@ -2766,4 +2766,8 @@
     <string name="aurora_reader_preview_title">Filter preview</string>
     <string name="aurora_reader_preview_hint">Sample panel — filters update this preview instantly</string>
     <string name="aurora_reader_processing">Image processing</string>
+    <string name="backup_not_included_info">Not included: downloaded chapters and episodes, local source files, and custom covers.</string>
+    <string name="backup_compat_drops_warning">Compatible format keeps manga and novels (novels are flattened into manga entries). Anime, achievements, statistics, feeds and custom buttons are not exported in this mode.</string>
+    <string name="backup_restore_origin_tadami">Tadami backup</string>
+    <string name="backup_restore_origin_legacy">Legacy Aniyomi backup</string>
 </resources>

@@ -834,6 +834,17 @@
     <string name="relative_time_span_never">Никогда</string>
     <string name="pref_flash_page_summ">Уменьшает артефакты у экранов e-ink</string>
     <string name="last_auto_backup_info">Последнее автоматическое резервное копирование: %s</string>
+    <!-- Backup wizard (backup-refactor UI) -->
+    <string name="backup_step_content">Шаг 1 — Что попадёт в файл</string>
+    <string name="backup_step_compatibility">Шаг 2 — Совместимость</string>
+    <string name="backup_step_destination">Шаг 3 — Куда сохранится файл</string>
+    <string name="backup_destination_info">После нажатия «Создать» вы сами выберете папку и имя файла. Храните файл в надёжном месте — его можно восстановить на любом устройстве.</string>
+    <string name="backup_restore_options_title">Что восстанавливать</string>
+    <string name="backup_restore_origin_mihon">Резервная копия Mihon / Tachiyomi</string>
+    <string name="backup_restore_origin_mihon_info">Файл создан родственным приложением (Mihon, Komikku, TachiyomiSY или похожим). Совместимые данные будут импортированы; данные, специфичные для другого приложения, пропускаются.</string>
+    <string name="backup_restore_merge_info">Восстановление объединяет файл с текущей библиотекой. Ничего не удаляется: существующие записи сохраняются и обновляются более новыми данными.</string>
+    <string name="backup_restore_safety_info">Перед восстановлением автоматически создаётся страховочная резервная копия текущих данных.</string>
+    <string name="backup_restore_empty_preview">В этом файле нет данных, которые можно восстановить.</string>
     <string name="pref_category_eink">E-ink</string>
     <string name="pref_flash_page">Мигать при смене страницы</string>
     <string name="pref_storage_usage">Использование хранилища</string>

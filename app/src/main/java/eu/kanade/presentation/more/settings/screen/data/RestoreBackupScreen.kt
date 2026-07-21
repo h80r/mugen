@@ -2,10 +2,8 @@ package eu.kanade.presentation.more.settings.screen.data
 
 import android.content.Context
 import android.net.Uri
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
@@ -15,10 +13,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cafe.adriel.voyager.core.model.StateScreenModel
@@ -31,15 +26,16 @@ import eu.kanade.presentation.more.settings.canScroll
 import eu.kanade.presentation.more.settings.rememberResolvedSettingsUiStyle
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.data.backup.BackupFileValidator
+import eu.kanade.tachiyomi.data.backup.BackupInspection
+import eu.kanade.tachiyomi.data.backup.BackupOrigin
 import eu.kanade.tachiyomi.data.backup.restore.BackupRestoreJob
 import eu.kanade.tachiyomi.data.backup.restore.RestoreOptions
 import eu.kanade.tachiyomi.util.system.DeviceUtil
 import kotlinx.coroutines.flow.update
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.components.LabeledCheckbox
 import tachiyomi.presentation.core.components.LazyColumnWithAction
-import tachiyomi.presentation.core.components.SectionCard
-import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 
 class RestoreBackupScreen(
@@ -77,9 +73,116 @@ class RestoreBackupScreen(
                     }
                 }
 
+                val inspection = state.inspection
+                if (inspection != null) {
+                    item {
+                        BackupSection(MR.strings.backup_restore_preview_title) {
+                            BackupOriginChip(
+                                text = stringResource(
+                                    when (inspection.origin) {
+                                        BackupOrigin.TADAMI -> AYMR.strings.backup_restore_origin_tadami
+                                        BackupOrigin.MIHON -> MR.strings.backup_restore_origin_mihon
+                                        BackupOrigin.LEGACY_ANIYOMI -> AYMR.strings.backup_restore_origin_legacy
+                                    },
+                                ),
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            if (inspection.isEmpty) {
+                                Text(
+                                    text = stringResource(MR.strings.backup_restore_empty_preview),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            } else {
+                                if (inspection.mangaCount > 0) {
+                                    BackupStatRow(
+                                        stringResource(AYMR.strings.label_manga),
+                                        inspection.mangaCount.toString(),
+                                    )
+                                }
+                                if (inspection.animeCount > 0) {
+                                    BackupStatRow(
+                                        stringResource(AYMR.strings.label_anime),
+                                        inspection.animeCount.toString(),
+                                    )
+                                }
+                                if (inspection.novelCount > 0) {
+                                    BackupStatRow(
+                                        stringResource(AYMR.strings.label_novel),
+                                        inspection.novelCount.toString(),
+                                    )
+                                }
+                                if (inspection.categoriesCount > 0) {
+                                    BackupStatRow(
+                                        stringResource(MR.strings.categories),
+                                        inspection.categoriesCount.toString(),
+                                    )
+                                }
+                                if (inspection.hasAppSettings) {
+                                    BackupStatRow(stringResource(MR.strings.app_settings), "\u2713")
+                                }
+                                if (inspection.hasSourceSettings) {
+                                    BackupStatRow(stringResource(MR.strings.source_settings), "\u2713")
+                                }
+                                if (inspection.hasExtensions) {
+                                    BackupStatRow(stringResource(MR.strings.label_extensions), "\u2713")
+                                }
+                                if (inspection.hasAchievements) {
+                                    BackupStatRow(stringResource(AYMR.strings.achievements), "\u2713")
+                                }
+                            }
+                        }
+                    }
+
+                    if (inspection.origin == BackupOrigin.MIHON) {
+                        item {
+                            BackupStatusBanner(
+                                tone = BackupBannerTone.Info,
+                                message = stringResource(MR.strings.backup_restore_origin_mihon_info),
+                            )
+                        }
+                    }
+                }
+
                 if (state.canRestore) {
                     item {
-                        SectionCard {
+                        BackupStatusBanner(
+                            tone = BackupBannerTone.Info,
+                            message = stringResource(MR.strings.backup_restore_merge_info),
+                        )
+                    }
+                }
+
+                val error = state.error
+                if (error is MissingRestoreComponents) {
+                    if (error.sources.isNotEmpty()) {
+                        item {
+                            BackupStatusBanner(
+                                tone = BackupBannerTone.Warning,
+                                title = stringResource(MR.strings.backup_restore_missing_sources),
+                                message = error.sources.joinToString(separator = "\n") { "\u2022 $it" },
+                            )
+                        }
+                    }
+                    if (error.trackers.isNotEmpty()) {
+                        item {
+                            BackupStatusBanner(
+                                tone = BackupBannerTone.Warning,
+                                title = stringResource(MR.strings.backup_restore_missing_trackers),
+                                message = error.trackers.joinToString(separator = "\n") { "\u2022 $it" },
+                            )
+                        }
+                    }
+                    item {
+                        BackupStatusBanner(
+                            tone = BackupBannerTone.Info,
+                            message = stringResource(MR.strings.backup_restore_content_full),
+                        )
+                    }
+                }
+
+                if (state.canRestore) {
+                    item {
+                        BackupSection(MR.strings.backup_restore_options_title) {
                             RestoreOptions.options.forEach { option ->
                                 LabeledCheckbox(
                                     label = stringResource(option.label),
@@ -92,74 +195,32 @@ class RestoreBackupScreen(
                             }
                         }
                     }
+
+                    item {
+                        BackupStatusBanner(
+                            tone = BackupBannerTone.Info,
+                            message = stringResource(MR.strings.backup_restore_safety_info),
+                        )
+                    }
                 }
 
-                if (state.error != null) {
-                    errorMessageItem(state.error)
-                }
-            }
-        }
-    }
-
-    private fun LazyListScope.errorMessageItem(
-        error: Any?,
-    ) {
-        item {
-            SectionCard {
-                Column(
-                    modifier = Modifier.padding(horizontal = MaterialTheme.padding.medium),
-                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
-                ) {
-                    val msg = buildAnnotatedString {
-                        when (error) {
-                            is MissingRestoreComponents -> {
-                                appendLine(stringResource(MR.strings.backup_restore_content_full))
-                                if (error.sources.isNotEmpty()) {
-                                    appendLine()
-                                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                                        appendLine(stringResource(MR.strings.backup_restore_missing_sources))
-                                    }
-                                    error.sources.joinTo(
-                                        this,
-                                        separator = "\n- ",
-                                        prefix = "- ",
-                                    )
-                                }
-                                if (error.trackers.isNotEmpty()) {
-                                    appendLine()
-                                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                                        appendLine(stringResource(MR.strings.backup_restore_missing_trackers))
-                                    }
-                                    error.trackers.joinTo(
-                                        this,
-                                        separator = "\n- ",
-                                        prefix = "- ",
-                                    )
-                                }
-                            }
-
-                            is InvalidRestore -> {
-                                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                                    appendLine(stringResource(MR.strings.invalid_backup_file))
-                                }
-                                appendLine(error.uri.toString())
-
-                                appendLine()
-
-                                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                                    appendLine(stringResource(MR.strings.invalid_backup_file_error))
-                                }
-                                appendLine(error.message)
-                            }
-
-                            else -> {
-                                appendLine(error.toString())
+                if (error is InvalidRestore) {
+                    item {
+                        BackupStatusBanner(
+                            tone = BackupBannerTone.Error,
+                            title = stringResource(MR.strings.invalid_backup_file),
+                            message = error.message,
+                        )
+                    }
+                    item {
+                        BackupSection {
+                            SelectionContainer {
+                                Text(
+                                    text = error.uri.toString(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
                             }
                         }
-                    }
-
-                    SelectionContainer {
-                        Text(text = msg)
                     }
                 }
             }
@@ -196,31 +257,45 @@ private class RestoreBackupScreenModel(
         val results = try {
             BackupFileValidator(context).validate(uri)
         } catch (e: Exception) {
-            setError(
-                error = InvalidRestore(uri, e.message.toString()),
-                canRestore = false,
-            )
+            mutableState.update {
+                it.copy(
+                    error = InvalidRestore(uri, humanReadableError(e)),
+                    canRestore = false,
+                    inspection = null,
+                )
+            }
             return
         }
 
-        if (results.missingSources.isNotEmpty() || results.missingTrackers.isNotEmpty()) {
-            setError(
-                error = MissingRestoreComponents(uri, results.missingSources, results.missingTrackers),
-                canRestore = true,
-            )
-            return
-        }
-
-        setError(error = null, canRestore = true)
-    }
-
-    private fun setError(error: Any?, canRestore: Boolean) {
         mutableState.update {
             it.copy(
-                error = error,
-                canRestore = canRestore,
+                error = if (results.missingSources.isNotEmpty() || results.missingTrackers.isNotEmpty()) {
+                    MissingRestoreComponents(uri, results.missingSources, results.missingTrackers)
+                } else {
+                    null
+                },
+                canRestore = true,
+                inspection = results.inspection,
             )
         }
+    }
+
+    /**
+     * Unwraps the cause chain (the validator wraps decode failures in an
+     * [IllegalStateException]) and returns the most specific message instead
+     * of a raw exception class dump.
+     */
+    private fun humanReadableError(e: Throwable): String {
+        var current: Throwable? = e
+        var message: String? = null
+        while (current != null) {
+            val m = current.message
+            if (!m.isNullOrBlank()) {
+                message = m
+            }
+            current = current.cause
+        }
+        return message ?: e.javaClass.simpleName
     }
 
     @Immutable
@@ -228,6 +303,7 @@ private class RestoreBackupScreenModel(
         val error: Any? = null,
         val canRestore: Boolean = false,
         val options: RestoreOptions = RestoreOptions(),
+        val inspection: BackupInspection? = null,
     )
 }
 

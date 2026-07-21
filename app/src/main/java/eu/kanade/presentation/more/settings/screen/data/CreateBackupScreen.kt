@@ -6,21 +6,31 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.WarningBanner
+import eu.kanade.presentation.more.settings.LocalSettingsUiStyle
 import eu.kanade.presentation.more.settings.SettingsScaffold
+import eu.kanade.presentation.more.settings.SettingsUiStyle
 import eu.kanade.presentation.more.settings.canScroll
 import eu.kanade.presentation.more.settings.rememberResolvedSettingsUiStyle
+import eu.kanade.presentation.theme.AuroraTheme
 import eu.kanade.presentation.util.Screen
+import eu.kanade.presentation.util.relativeTimeSpanString
 import eu.kanade.tachiyomi.data.backup.create.BackupCreateJob
 import eu.kanade.tachiyomi.data.backup.create.BackupCreator
 import eu.kanade.tachiyomi.data.backup.create.BackupOptions
@@ -28,13 +38,15 @@ import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.flow.update
-import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.domain.backup.service.BackupPreferences
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.components.LabeledCheckbox
 import tachiyomi.presentation.core.components.LazyColumnWithAction
-import tachiyomi.presentation.core.components.SectionCard
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.util.collectAsState
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 class CreateBackupScreen : Screen() {
 
@@ -44,6 +56,7 @@ class CreateBackupScreen : Screen() {
         val navigator = LocalNavigator.currentOrThrow
         val model = rememberScreenModel { CreateBackupScreenModel() }
         val state by model.state.collectAsStateWithLifecycle()
+        val lastAutoBackup by model.lastAutoBackup.collectAsState()
         val uiStyle = rememberResolvedSettingsUiStyle()
         val listState = rememberLazyListState()
 
@@ -91,36 +104,103 @@ class CreateBackupScreen : Screen() {
                 }
 
                 item {
-                    SectionCard(MR.strings.label_library) {
+                    BackupStatusBanner(
+                        tone = BackupBannerTone.Info,
+                        message = stringResource(MR.strings.backup_info),
+                    )
+                }
+
+                item {
+                    BackupStatusBanner(
+                        tone = BackupBannerTone.Info,
+                        message = stringResource(AYMR.strings.backup_not_included_info),
+                    )
+                }
+
+                item {
+                    BackupStepHeader(MR.strings.backup_step_content)
+                }
+
+                item {
+                    BackupSection(MR.strings.label_library) {
                         Options(BackupOptions.libraryOptions, state, model)
                     }
                 }
 
                 item {
-                    SectionCard(MR.strings.label_settings) {
+                    BackupSection(MR.strings.label_settings) {
                         Options(BackupOptions.settingsOptions, state, model)
                     }
                 }
 
                 item {
-                    SectionCard(MR.strings.label_extensions) {
+                    BackupSection(MR.strings.label_extensions) {
                         Options(BackupOptions.extensionOptions, state, model)
                     }
                 }
 
                 item {
-                    SectionCard(AYMR.strings.achievements) {
+                    BackupSection(AYMR.strings.achievements) {
                         Options(BackupOptions.achievementsOptions, state, model)
                     }
                 }
 
                 item {
-                    SectionCard(MR.strings.label_backup) {
+                    BackupStepHeader(MR.strings.backup_step_compatibility)
+                }
+
+                item {
+                    BackupSection(MR.strings.label_backup) {
                         Options(BackupOptions.compatOptions, state, model)
+                        if (!state.options.sisterAppCompatible) {
+                            SectionText(stringResource(MR.strings.pref_backup_sister_app_compat_summary))
+                        }
+                    }
+                }
+
+                if (state.options.sisterAppCompatible) {
+                    item {
+                        BackupStatusBanner(
+                            tone = BackupBannerTone.Warning,
+                            message = stringResource(AYMR.strings.backup_compat_drops_warning),
+                        )
+                    }
+                }
+
+                item {
+                    BackupStepHeader(MR.strings.backup_step_destination)
+                }
+
+                item {
+                    BackupSection {
+                        SectionText(stringResource(MR.strings.backup_destination_info))
+                        if (lastAutoBackup > 0L) {
+                            Spacer(Modifier.height(4.dp))
+                            SectionText(
+                                stringResource(
+                                    MR.strings.last_auto_backup_info,
+                                    relativeTimeSpanString(lastAutoBackup),
+                                ),
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+
+    @Composable
+    private fun SectionText(text: String) {
+        val isAurora = LocalSettingsUiStyle.current == SettingsUiStyle.Aurora
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (isAurora) {
+                AuroraTheme.colors.textSecondary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
     }
 
     @Composable
@@ -142,7 +222,11 @@ class CreateBackupScreen : Screen() {
     }
 }
 
-private class CreateBackupScreenModel : StateScreenModel<CreateBackupScreenModel.State>(State()) {
+private class CreateBackupScreenModel(
+    backupPreferences: BackupPreferences = Injekt.get(),
+) : StateScreenModel<CreateBackupScreenModel.State>(State()) {
+
+    val lastAutoBackup = backupPreferences.lastAutoBackupTimestamp()
 
     fun toggle(setter: (BackupOptions, Boolean) -> BackupOptions, enabled: Boolean) {
         mutableState.update {

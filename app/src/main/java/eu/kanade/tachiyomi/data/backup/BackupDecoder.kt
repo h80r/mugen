@@ -30,7 +30,13 @@ class BackupDecoder(
     /**
      * Decode a potentially-gzipped backup.
      */
-    fun decode(uri: Uri): Backup {
+    fun decode(uri: Uri): Backup = decodeDetailed(uri).backup
+
+    /**
+     * Decode a potentially-gzipped backup, also reporting the detected origin
+     * (native Tadami, Mihon/Tachiyomi-derived, or legacy Aniyomi).
+     */
+    fun decodeDetailed(uri: Uri): DecodedBackup {
         return context.contentResolver.openInputStream(uri)!!.use { inputStream ->
             val source = inputStream.source().buffer()
 
@@ -49,19 +55,25 @@ class BackupDecoder(
             try {
                 when {
                     BackupDetector.isLegacyBackup(backupString) -> {
-                        parser.decodeFromByteArray(LegacyBackup.serializer(), backupString)
-                            .toBackup()
+                        DecodedBackup(
+                            parser.decodeFromByteArray(LegacyBackup.serializer(), backupString)
+                                .toBackup(),
+                            BackupOrigin.LEGACY_ANIYOMI,
+                        )
                     }
                     BackupDetector.isMihonBackup(backupString) -> {
                         // Positively detected Mihon / Tachiyomi(-derived) backup: decode with
                         // the dedicated Mihon schema directly so diverging manga fields (notes/rating
                         // at 110, notes/initialized at 111) and Mihon-only data are preserved, instead of
                         // relying on a Tadami decode that may silently misread or drop them.
-                        parser.decodeFromByteArray(MihonBackup.serializer(), backupString)
-                            .toTadamiBackup(mangaSourceManager, novelSourceManager, animeSourceManager)
+                        DecodedBackup(
+                            parser.decodeFromByteArray(MihonBackup.serializer(), backupString)
+                                .toTadamiBackup(mangaSourceManager, novelSourceManager, animeSourceManager),
+                            BackupOrigin.MIHON,
+                        )
                     }
                     else -> {
-                        decodeNativeBackup(backupString)
+                        DecodedBackup(decodeNativeBackup(backupString), BackupOrigin.TADAMI)
                     }
                 }
             } catch (e: Exception) {
@@ -69,8 +81,11 @@ class BackupDecoder(
                 // (e.g. a wire-type mismatch on diverging manga fields 110/111), retry with
                 // the dedicated Mihon schema before giving up.
                 try {
-                    parser.decodeFromByteArray(MihonBackup.serializer(), backupString)
-                        .toTadamiBackup(mangaSourceManager, novelSourceManager, animeSourceManager)
+                    DecodedBackup(
+                        parser.decodeFromByteArray(MihonBackup.serializer(), backupString)
+                            .toTadamiBackup(mangaSourceManager, novelSourceManager, animeSourceManager),
+                        BackupOrigin.MIHON,
+                    )
                 } catch (_: Exception) {
                     throw IOException(context.stringResource(MR.strings.invalid_backup_file_unknown))
                 }
