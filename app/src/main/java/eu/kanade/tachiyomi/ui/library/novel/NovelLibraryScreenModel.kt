@@ -1324,6 +1324,9 @@ class NovelLibraryScreenModel(
 
             val displayName = getEpubDisplayName(context, uri)
             val sanitizedName = displayName.replace("[/\\\\:*?\"<>|]".toRegex(), "_")
+            if (!sanitizedName.substringAfterLast('.', "").equals("epub", ignoreCase = true)) {
+                throw IOException("Only EPUB files can be imported as local novels (got: $sanitizedName)")
+            }
 
             val targetFile = localDir.findFile(sanitizedName)
                 ?: localDir.createFile(sanitizedName)

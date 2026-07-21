@@ -13,6 +13,7 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.entries.metadata.FetchEntryMetadataFromTracker
 import eu.kanade.domain.entries.metadata.TrackerMetadataFetchOutcome
+import eu.kanade.domain.entries.novel.LocalNovelIntegrity
 import eu.kanade.domain.entries.novel.interactor.GetNovelExcludedScanlators
 import eu.kanade.domain.entries.novel.interactor.NovelRatingFetcher
 import eu.kanade.domain.entries.novel.interactor.SetNovelExcludedScanlators
@@ -133,6 +134,7 @@ import tachiyomi.domain.source.novel.service.NovelSourceManager
 import tachiyomi.domain.track.novel.interactor.GetNovelTracks
 import tachiyomi.domain.track.novel.model.NovelTrack
 import tachiyomi.i18n.MR
+import tachiyomi.source.local.entries.novel.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
@@ -456,12 +458,36 @@ class NovelScreenModel(
             readerSettingsCache = readerSettings
             val translatedDownloadFormat = novelReaderPreferences.translatedDownloadFormat(novel.id)
             val isJaomixPagedSource = source.isJaomixPagedSource()
-            val shouldAutoRefreshNovel = !novel.initialized || chapters.isEmpty()
-            // Manga parity: an initialized entry with cached chapters opens instantly from the
-            // database and never hits the source on open (survives process restarts). New
-            // chapters come from library updates or the manual refresh action; paged (jaomix)
-            // sources are the only exception because they cannot cache a full list.
-            val shouldAutoRefreshChapters = chapters.isEmpty() || isJaomixPagedSource
+            val isLocalNovel = novel.isLocal()
+            val hasForeignMangaLocalCover = isLocalNovel &&
+                LocalNovelIntegrity.isMangaLocalStorageCoverUrl(novel.thumbnailUrl)
+            // Local novels are filesystem-backed: always re-sync chapters so deleted/unsupported
+            // files cannot leave ghost chapters that skip-source-refresh would otherwise keep.
+            // Remote sources keep manga parity (open from cache; refresh via library/manual).
+            val shouldAutoRefreshNovel = !novel.initialized ||
+                chapters.isEmpty() ||
+                hasForeignMangaLocalCover
+            val shouldAutoRefreshChapters = chapters.isEmpty() ||
+                isJaomixPagedSource ||
+                LocalNovelIntegrity.shouldForceLocalChapterResync(isLocalNovel)
+            val displayNovel = if (hasForeignMangaLocalCover) {
+                logcat(LogPriority.WARN) {
+                    "Local novel id=$novelId has manga-local cover URL; forcing refresh/sanitize"
+                }
+                val clearedAt = Instant.now().toEpochMilli()
+                runCatching {
+                    updateNovel.await(
+                        NovelUpdate(
+                            id = novelId,
+                            thumbnailUrl = "",
+                            coverLastModified = clearedAt,
+                        ),
+                    )
+                }
+                novel.copy(thumbnailUrl = null, coverLastModified = clearedAt)
+            } else {
+                novel
+            }
             val currentDownloadedIds = (state.value as? State.Success)
                 ?.downloadedChapterIds
                 ?.intersect(chapters.mapTo(mutableSetOf()) { it.id })
@@ -470,7 +496,7 @@ class NovelScreenModel(
             // the first frame; run the cheap manifest check now and discover asynchronously.
             val isSourceConfigurable = source.hasVisiblePluginSettings()
             val initialState = State.Success(
-                novel = novel,
+                novel = displayNovel,
                 source = source,
                 isSourceConfigurable = isSourceConfigurable,
                 rating = restoredState?.rating,
@@ -520,7 +546,11 @@ class NovelScreenModel(
             }
 
             // Fetch suggestions asynchronously
-            loadSuggestions(buildSuggestionSeed(novel), novel = novel, source = novel.toCatalogueSource())
+            loadSuggestions(
+                buildSuggestionSeed(displayNovel),
+                novel = displayNovel,
+                source = displayNovel.toCatalogueSource(),
+            )
             // Seed the UI with lightweight neutral Gemini actions immediately, then
             // resolve translated download and translation cache state in the background.
             queuedChapterIds = translationQueueManager.queue.value.mapTo(mutableSetOf()) { it.chapterId }
@@ -606,16 +636,16 @@ class NovelScreenModel(
             logRefreshSnapshot(
                 stage = "initial-state",
                 source = source,
-                novel = novel,
+                novel = displayNovel,
                 chapterCount = chapters.size,
                 manualFetch = false,
             )
 
             // PERF instrumentation (TADAMI_PERF_NOVEL_TITLE) - removable after validation
             logcat(LogPriority.DEBUG) { "TADAMI_PERF_NOVEL_TITLE db-loaded id=$novelId chapters=${chapters.size}" }
-            if (isLikelyWebViewLoginRequired(source, novel, chapters.size)) {
+            if (isLikelyWebViewLoginRequired(source, displayNovel, chapters.size)) {
                 logcat(LogPriority.DEBUG) {
-                    "Novel ${novel.id} (${source.name}) may need WebView login (pre-refresh): " +
+                    "Novel ${displayNovel.id} (${source.name}) may need WebView login (pre-refresh): " +
                         "chapters=0, descriptionBlank=true"
                 }
             }
@@ -1544,7 +1574,14 @@ class NovelScreenModel(
         val resolvedTitle = if (remoteTitle.isEmpty() || state.novel.favorite) null else remoteTitle
         val shouldUpdateCover = manualFetch ||
             state.novel.thumbnailUrl.isNullOrEmpty() ||
-            !state.novel.initialized
+            !state.novel.initialized ||
+            (state.novel.isLocal() && LocalNovelIntegrity.isMangaLocalStorageCoverUrl(state.novel.thumbnailUrl))
+        val remoteThumbnail = if (state.novel.isLocal()) {
+            LocalNovelIntegrity.sanitizeLocalNovelThumbnailUrl(networkNovel.thumbnail_url)
+                ?.takeIf { it.isNotEmpty() }
+        } else {
+            networkNovel.thumbnail_url?.takeIf { it.isNotEmpty() }
+        }
         updateSuccessState { current ->
             if (current.novel.id != state.novel.id) return@updateSuccessState current
             current.copy(
@@ -1555,13 +1592,13 @@ class NovelScreenModel(
                     genre = networkNovel.getGenres(),
                     status = networkNovel.status.toLong(),
                     thumbnailUrl = if (shouldUpdateCover) {
-                        networkNovel.thumbnail_url?.takeIf { it.isNotEmpty() }
+                        remoteThumbnail
                     } else {
                         current.novel.thumbnailUrl
                     },
                     initialized = true,
                     updateStrategy = networkNovel.update_strategy,
-                    coverLastModified = if (shouldUpdateCover && !networkNovel.thumbnail_url.isNullOrEmpty()) {
+                    coverLastModified = if (shouldUpdateCover && !remoteThumbnail.isNullOrEmpty()) {
                         Instant.now().toEpochMilli()
                     } else {
                         current.novel.coverLastModified
@@ -1666,6 +1703,35 @@ class NovelScreenModel(
                     "WebView login after fetch: chapters=0, descriptionBlank=true"
             }
         }
+
+        // Local novel with 0 source chapters: purge cached ghosts (history cascades on chapter delete).
+        // SyncNovelChaptersWithSource throws NoChaptersException without deleting existing rows.
+        if (
+            LocalNovelIntegrity.shouldPurgeChaptersOnEmptyLocalSource(
+                isLocalSource = state.novel.isLocal(),
+                sourceChapterCount = sourceChapters.size,
+                cachedChapterCount = state.chapters.size,
+            )
+        ) {
+            purgeGhostLocalNovelChapters(state)
+            return
+        }
+        if (sourceChapters.isEmpty() && state.novel.isLocal()) {
+            // No cached chapters either — still clear previews and mark refresh complete.
+            updateSuccessState { current ->
+                if (current.novel.id != state.novel.id) {
+                    current
+                } else {
+                    current.copy(
+                        chapters = emptyList(),
+                        chapterSourcePreview = emptyList(),
+                        hasCompletedChapterRefresh = true,
+                    )
+                }
+            }
+            return
+        }
+
         val syncStart = System.currentTimeMillis()
         val newChapters = syncNovelChaptersWithSource.await(
             rawSourceChapters = sourceChapters,
@@ -1698,6 +1764,35 @@ class NovelScreenModel(
                 .map { it.id }
                 .toList(),
         )
+    }
+
+    /**
+     * Removes DB chapters for a local novel that no longer resolves to supported files.
+     * History rows cascade-delete via FK on chapter_id.
+     */
+    private suspend fun purgeGhostLocalNovelChapters(state: State.Success) {
+        val existing = novelChapterRepository.getChapterByNovelId(state.novel.id)
+        if (existing.isNotEmpty()) {
+            logcat(LogPriority.WARN) {
+                "Purging ${existing.size} ghost local-novel chapter(s) for id=${state.novel.id} url=${state.novel.url}"
+            }
+            novelChapterRepository.removeChaptersWithIds(existing.map { it.id })
+        }
+        recentChapterListCache.remove(state.novel.id)
+        updateSuccessState { current ->
+            if (current.novel.id != state.novel.id) {
+                current
+            } else {
+                current.copy(
+                    chapters = emptyList(),
+                    chapterSourcePreview = emptyList(),
+                    hasCompletedChapterRefresh = true,
+                    resumeChapterId = null,
+                    newChapterIds = emptySet(),
+                    selectedChapterIds = emptySet(),
+                )
+            }
+        }
     }
 
     fun selectChapterPage(page: Int) {

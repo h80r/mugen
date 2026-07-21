@@ -632,7 +632,16 @@ class NovelReaderScreenModel(
                     maybeAutoStartGoogleTranslation()
                 }
         }
-        saveHistorySnapshot(chapter.id, sessionReadDurationMs = 0L)
+        if (eu.kanade.domain.entries.novel.LocalNovelIntegrity.shouldRecordHistoryForChapterHtml(
+                normalizedChapterHtml,
+            )
+        ) {
+            saveHistorySnapshot(chapter.id, sessionReadDurationMs = 0L)
+        } else {
+            logcat(LogPriority.DEBUG) {
+                "Skip novel history for empty chapter content novelId=${novel.id} chapterId=${chapter.id}"
+            }
+        }
         updateContent(initialSettings)
         initializeTtsRuntime()
         maybeRestoreTtsAfterChapterHandoff(

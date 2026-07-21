@@ -27,7 +27,9 @@ import tachiyomi.domain.entries.novel.model.Novel
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.source.local.filter.novel.NovelOrderBy
 import tachiyomi.source.local.image.novel.LocalNovelCoverManager
+import tachiyomi.source.local.io.novel.LocalNovelFormats
 import tachiyomi.source.local.io.novel.LocalNovelSourceFileSystem
+import tachiyomi.source.local.io.novel.resolveLocalNovelEntry
 import java.util.concurrent.TimeUnit
 import tachiyomi.source.local.io.ArchiveManga.isSupported as isArchiveSupported
 
@@ -474,8 +476,7 @@ actual class LocalNovelSource(
 
     private fun isChapterSupported(file: UniFile): Boolean {
         if (file.isDirectory) return true
-        val ext = file.extension?.lowercase() ?: return false
-        return ext in SUPPORTED_EXTENSIONS
+        return LocalNovelFormats.isSupportedExtension(file.extension)
     }
 
     private data class LocalChapterFile(
@@ -485,7 +486,13 @@ actual class LocalNovelSource(
     )
 
     private fun collectChapterFiles(novelEntry: UniFile): List<LocalChapterFile> {
+        // Standalone files must pass the same format whitelist as Browse.
+        // Otherwise unsupported roots (e.g. PDF) create a single empty chapter
+        // that history/hub keep alive after the file is gone or was never novel.
         if (!novelEntry.isDirectory) {
+            if (!LocalNovelFormats.isSupportedExtension(novelEntry.extension)) {
+                return emptyList()
+            }
             return listOf(
                 LocalChapterFile(
                     file = novelEntry,
@@ -589,11 +596,7 @@ actual class LocalNovelSource(
     }
 
     private fun resolveNovelEntry(url: String): UniFile? {
-        val base = fileSystem.getBaseDirectory() ?: return null
-        return base.findFile(url)
-            ?: base.listFiles().orEmpty().firstOrNull {
-                !it.isDirectory && it.nameWithoutExtension.orEmpty().equals(url, ignoreCase = true)
-            }
+        return fileSystem.resolveLocalNovelEntry(url)
     }
 
     companion object {
@@ -602,16 +605,6 @@ actual class LocalNovelSource(
 
         private val LATEST_THRESHOLD = TimeUnit.MILLISECONDS.convert(7, TimeUnit.DAYS)
         private const val EMPTY_CHAPTER_HTML = "<html><body></body></html>"
-
-        private val SUPPORTED_EXTENSIONS = setOf(
-            "txt", "text",
-            "md", "markdown",
-            "html", "htm", "xhtml",
-            "epub",
-            "fb2",
-            "zip", "cbz",
-            "rar", "cbr",
-        )
 
         private const val FB2_FRAGMENT_PREFIX = "fb2:"
 
