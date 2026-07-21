@@ -417,6 +417,7 @@
     <string name="ext_update_all">Update all</string>
     <string name="ext_reinstall_required">Reinstall required</string>
     <string name="ext_reinstall_required_hint">A newer plugin was found in another repository. Reinstall is required.</string>
+    <string name="ext_update_available_banner">A newer version of this extension is available from its store.</string>
     <string name="ext_obsolete">Orphaned</string>
     <string name="ext_repo_update_short">Different repository</string>
     <string name="ext_repo_update_required">Reinstall required</string>

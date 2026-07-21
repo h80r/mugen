@@ -4,7 +4,8 @@ import android.content.Context
 import eu.kanade.tachiyomi.extension.ExtensionUpdateNotifier
 import eu.kanade.tachiyomi.extension.anime.AnimeExtensionManager
 import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
-import eu.kanade.tachiyomi.extension.anime.model.newestByVersion
+import eu.kanade.tachiyomi.extension.anime.model.selectAnimeRegularUpdate
+import eu.kanade.tachiyomi.extension.anime.model.selectAnimeReinstallCandidates
 import mihon.data.extension.mapper.toAnimeExtensionAvailable
 import mihon.data.extension.repository.ExtensionStoreFetcher
 import mihon.domain.extensionrepo.anime.interactor.UpdateAnimeExtensionRepo
@@ -78,20 +79,19 @@ internal class AnimeExtensionApi(
         }
         lastExtCheck.set(nowMs)
 
-        val extensionsByPkgName = extensions
-            .groupBy { it.pkgName }
-            .mapValues { (_, variants) -> variants.newestByVersion()!! }
+        val extensionVariantsByPkgName = extensions.groupBy { it.pkgName }
 
         val installedExtensions = animeExtensionManager.installedExtensionsFlow.value
 
         val extensionsWithUpdate = mutableListOf<AnimeExtension.Installed>()
         for (installedExt in installedExtensions) {
-            val pkgName = installedExt.pkgName
-            val availableExt = extensionsByPkgName[pkgName] ?: continue
-
-            val hasUpdatedVer = availableExt.versionCode > installedExt.versionCode
-            val hasUpdatedLib = availableExt.libVersion > installedExt.libVersion
-            val hasUpdate = hasUpdatedVer || hasUpdatedLib
+            val variants = extensionVariantsByPkgName[installedExt.pkgName].orEmpty()
+            if (variants.isEmpty()) continue
+            // Same repo-aware selection as the manager and the UI: count an update
+            // only when it is actually installable (regular update from the same
+            // store, or an explicit reinstall from another store).
+            val hasUpdate = selectAnimeRegularUpdate(installedExt, variants) != null ||
+                selectAnimeReinstallCandidates(installedExt, variants).isNotEmpty()
             if (hasUpdate) {
                 extensionsWithUpdate.add(installedExt)
             }

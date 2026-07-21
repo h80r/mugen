@@ -4,7 +4,8 @@ import android.content.Context
 import eu.kanade.tachiyomi.extension.ExtensionUpdateNotifier
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
-import eu.kanade.tachiyomi.extension.manga.model.newestByVersion
+import eu.kanade.tachiyomi.extension.manga.model.selectMangaRegularUpdate
+import eu.kanade.tachiyomi.extension.manga.model.selectMangaReinstallCandidates
 import mihon.data.extension.mapper.toMangaExtensionAvailable
 import mihon.data.extension.repository.ExtensionStoreFetcher
 import mihon.domain.extensionrepo.manga.interactor.UpdateMangaExtensionRepo
@@ -78,19 +79,19 @@ internal class MangaExtensionApi(
         }
         lastExtCheck.set(nowMs)
 
-        val extensionsByPkgName = extensions
-            .groupBy { it.pkgName }
-            .mapValues { (_, variants) -> variants.newestByVersion()!! }
+        val extensionVariantsByPkgName = extensions.groupBy { it.pkgName }
 
         val installedExtensions = extensionManager.installedExtensionsFlow.value
 
         val extensionsWithUpdate = mutableListOf<MangaExtension.Installed>()
         for (installedExt in installedExtensions) {
-            val pkgName = installedExt.pkgName
-            val availableExt = extensionsByPkgName[pkgName] ?: continue
-            val hasUpdatedVer = availableExt.versionCode > installedExt.versionCode
-            val hasUpdatedLib = availableExt.libVersion > installedExt.libVersion
-            val hasUpdate = hasUpdatedVer || hasUpdatedLib
+            val variants = extensionVariantsByPkgName[installedExt.pkgName].orEmpty()
+            if (variants.isEmpty()) continue
+            // Same repo-aware selection as the manager and the UI: count an update
+            // only when it is actually installable (regular update from the same
+            // store, or an explicit reinstall from another store).
+            val hasUpdate = selectMangaRegularUpdate(installedExt, variants) != null ||
+                selectMangaReinstallCandidates(installedExt, variants).isNotEmpty()
             if (hasUpdate) {
                 extensionsWithUpdate.add(installedExt)
             }

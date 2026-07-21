@@ -138,8 +138,13 @@ internal object MangaExtensionLoader {
             }
 
             if (!extensionSignatures.containsAll(getSignatures(currentExtension)!!)) {
-                logcat(LogPriority.ERROR) { "Installed extension signature is not matched." }
-                return false
+                // The same extension can be re-published by another store with a new
+                // signing key. Allow replacing the private copy instead of failing the
+                // update: trust is re-evaluated at load time, so an unknown key will
+                // surface as Untrusted (with a prompt) rather than a silent dead end.
+                logcat(LogPriority.WARN) {
+                    "Extension signature changed, replacing private extension (trust is re-checked on load)."
+                }
             }
         }
 
