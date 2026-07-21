@@ -1183,10 +1183,14 @@ data object AnimeLibraryTab : Tab {
                                     onRefreshCurrent = onAuroraRefreshCurrent,
                                     onRefreshGlobal = onAuroraRefreshGlobal,
                                     onOpenRandomEntry = onAuroraOpenRandom,
-                                    onImportEpub = {
-                                        epubImportLauncher.launch(
-                                            eu.kanade.domain.entries.novel.LocalNovelBookImport.PICKER_MIME_TYPES,
-                                        )
+                                    onImportEpub = if (shouldShowLibraryBookImport(auroraCurrentSection)) {
+                                        {
+                                            epubImportLauncher.launch(
+                                                eu.kanade.domain.entries.novel.LocalNovelBookImport.PICKER_MIME_TYPES,
+                                            )
+                                        }
+                                    } else {
+                                        null
                                     },
                                     categories = auroraCategories,
                                     selectedCategoryIndex = auroraCategoryIndex,
@@ -1903,6 +1907,11 @@ internal fun auroraLibraryPinnedHeaderMenuItems(
             add(AuroraLibraryPinnedHeaderMenuItem.ImportEpub)
         }
     }
+}
+
+/** Import book is a local-novel action; never expose it on anime/manga library sections. */
+internal fun shouldShowLibraryBookImport(section: AnimeLibraryTab.Section?): Boolean {
+    return section == AnimeLibraryTab.Section.Novel
 }
 
 @Composable
