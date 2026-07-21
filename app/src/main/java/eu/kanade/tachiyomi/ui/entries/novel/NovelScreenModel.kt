@@ -153,6 +153,7 @@ data class NovelEpubExportPreferencesState(
     val applyReaderTheme: Boolean,
     val includeCustomCss: Boolean,
     val includeCustomJs: Boolean,
+    val includeCover: Boolean,
 )
 
 internal fun buildNovelChapterActionUiStates(
@@ -2413,6 +2414,7 @@ class NovelScreenModel(
             applyReaderTheme = novelReaderPreferences.epubExportUseReaderTheme().get(),
             includeCustomCss = novelReaderPreferences.epubExportUseCustomCSS().get(),
             includeCustomJs = novelReaderPreferences.epubExportUseCustomJS().get(),
+            includeCover = novelReaderPreferences.epubExportIncludeCover().get(),
         )
     }
 
@@ -2421,11 +2423,13 @@ class NovelScreenModel(
         applyReaderTheme: Boolean,
         includeCustomCss: Boolean,
         includeCustomJs: Boolean,
+        includeCover: Boolean,
     ) {
         novelReaderPreferences.epubExportLocation().set(destinationTreeUri)
         novelReaderPreferences.epubExportUseReaderTheme().set(applyReaderTheme)
         novelReaderPreferences.epubExportUseCustomCSS().set(includeCustomCss)
         novelReaderPreferences.epubExportUseCustomJS().set(includeCustomJs)
+        novelReaderPreferences.epubExportIncludeCover().set(includeCover)
     }
 
     suspend fun exportAsEpub(
@@ -2436,6 +2440,7 @@ class NovelScreenModel(
         applyReaderTheme: Boolean,
         includeCustomCss: Boolean,
         includeCustomJs: Boolean,
+        includeCover: Boolean,
         onProgress: (NovelEpubExportProgress) -> Unit = {},
     ): NovelEpubExportResult {
         val state = successState ?: return NovelEpubExportResult.Failure(NovelEpubExportFailure.UNKNOWN)
@@ -2464,6 +2469,7 @@ class NovelScreenModel(
                     destinationTreeUri = destinationTreeUri.trim().ifBlank { null },
                     stylesheet = stylesheet,
                     javaScript = javaScript,
+                    includeCover = includeCover,
                     failOnMissingChapters = downloadedOnly,
                 ),
                 onProgress = onProgress,

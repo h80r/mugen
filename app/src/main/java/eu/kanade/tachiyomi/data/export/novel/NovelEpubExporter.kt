@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import eu.kanade.domain.items.novelchapter.model.toSNovelChapter
+import eu.kanade.tachiyomi.data.cache.NovelCoverCache
 import eu.kanade.tachiyomi.data.download.novel.NovelDownloadManager
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.util.storage.DiskUtil
@@ -31,6 +32,7 @@ data class NovelEpubExportOptions(
     val destinationTreeUri: String? = null,
     val stylesheet: String? = null,
     val javaScript: String? = null,
+    val includeCover: Boolean = true,
     val failOnMissingChapters: Boolean = false,
 )
 
@@ -84,6 +86,7 @@ class NovelEpubExporter(
     private val sourceManager: NovelSourceManager? = runCatching { Injekt.get<NovelSourceManager>() }.getOrNull(),
     private val downloadManager: NovelDownloadManager = NovelDownloadManager(),
     networkHelper: NetworkHelper? = runCatching { Injekt.get<NetworkHelper>() }.getOrNull(),
+    private val coverCache: NovelCoverCache? = runCatching { Injekt.get<NovelCoverCache>() }.getOrNull(),
 ) {
     private val assetResolver = EpubAssetResolver(networkHelper)
 
@@ -223,8 +226,12 @@ class NovelEpubExporter(
                     path
                 }
 
-            val resolvedCoverAsset = resolveCoverAsset(novel)
-            if (!novel.thumbnailUrl.isNullOrBlank() && resolvedCoverAsset.asset == null) {
+            val resolvedCoverAsset = if (options.includeCover) {
+                resolveCoverAsset(novel)
+            } else {
+                EpubAssetResolutionReport(asset = null)
+            }
+            if (options.includeCover && !novel.thumbnailUrl.isNullOrBlank() && resolvedCoverAsset.asset == null) {
                 skippedImages += 1
                 warnings += resolvedCoverAsset.warning ?: "Cover image could not be embedded."
             }
@@ -570,6 +577,16 @@ class NovelEpubExporter(
     }
 
     private fun resolveCoverAsset(novel: Novel): EpubAssetResolutionReport {
+        // Prefer the user-set custom cover, then the locally cached cover file,
+        // and only fall back to fetching the thumbnail URL from the network.
+        val localCover = listOfNotNull(
+            coverCache?.getCustomCoverFile(novel.id),
+            coverCache?.getCoverFile(novel.thumbnailUrl),
+        ).firstOrNull { it.exists() && it.length() > 0L }
+        if (localCover != null) {
+            val resolved = assetResolver.resolveBinaryAssetWithReport(localCover.toURI().toString(), emptyList())
+            if (resolved.asset != null) return resolved
+        }
         val src = novel.thumbnailUrl?.trim().orEmpty()
         if (src.isBlank()) return EpubAssetResolutionReport(asset = null)
         return assetResolver.resolveBinaryAssetWithReport(src, emptyList())

@@ -44,12 +44,15 @@ import eu.kanade.presentation.entries.components.aurora.resolveAuroraPosterScrim
 import eu.kanade.presentation.entries.components.aurora.shouldDrawAuroraPosterBlurOverlay
 import eu.kanade.presentation.novel.sourceAwareNovelCoverModel
 import eu.kanade.presentation.theme.AuroraTheme
+import eu.kanade.tachiyomi.data.cache.NovelCoverCache
 import eu.kanade.tachiyomi.data.coil.AuroraPosterRequest
 import eu.kanade.tachiyomi.util.debugTitleCoverFlow
 import eu.kanade.tachiyomi.util.previewTitleCoverUrl
 import eu.kanade.tachiyomi.util.previewTitleCoverValue
 import kotlinx.coroutines.flow.collectLatest
 import tachiyomi.domain.entries.novel.model.Novel
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 /**
  * Fixed fullscreen poster background with scroll-based dimming and blur effects.
@@ -73,10 +76,18 @@ fun FullscreenPosterBackground(
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val placeholderPainter = rememberAuroraCoverPlaceholderPainter(AuroraCoverPlaceholderVariant.Wide)
-    val posterRequest = remember(resolvedCoverUrl, novel.thumbnailUrl) {
+    val coverCache = remember { Injekt.get<NovelCoverCache>() }
+    // Issue #154: surface the user-set custom cover on the details poster,
+    // matching what the library grid already shows.
+    val customCoverFile = remember(novel.id, novel.coverLastModified) {
+        coverCache.getCustomCoverFile(novel.id).takeIf { it.exists() }
+    }
+    val posterRequest = remember(resolvedCoverUrl, novel.thumbnailUrl, customCoverFile, novel.coverLastModified) {
         AuroraPosterRequest(
             primaryUrl = resolvedCoverUrl?.takeIf { it.isNotBlank() },
             fallbackUrl = novel.thumbnailUrl,
+            customCoverFile = customCoverFile,
+            coverLastModified = novel.coverLastModified,
         )
     }
     val placeholderCover = remember(
@@ -91,10 +102,12 @@ fun FullscreenPosterBackground(
     // Stable preview from the thumbnail shown in list/grid before open.
     // We keep this layer always visible initially so enter never shows black,
     // then overlay the (possibly higher-quality or full-screen-sized) poster.
-    val previewCoverModel = remember(novel.id) {
+    val previewCoverModel = remember(novel.id, novel.thumbnailUrl, novel.coverLastModified) {
         sourceAwareNovelCoverModel(novel)
     }
-    val isPosterLoadable = !posterRequest.primaryUrl.isNullOrBlank() || !posterRequest.fallbackUrl.isNullOrBlank()
+    val isPosterLoadable = !posterRequest.primaryUrl.isNullOrBlank() ||
+        !posterRequest.fallbackUrl.isNullOrBlank() ||
+        posterRequest.customCoverFile != null
     val colors = AuroraTheme.colors
     val hasScrolledAway = firstVisibleItemIndex > 0 || scrollOffset > 100
 
@@ -207,7 +220,7 @@ fun FullscreenPosterBackground(
             // Preview layer (thumbnail from before navigation) is always rendered first.
             // This matches old behavior: show preview poster immediately, full version
             // replaces via background overlay animation (not crude black swap).
-            val previewRequest = remember(novel.id) {
+            val previewRequest = remember(novel.id, previewCoverModel) {
                 ImageRequest.Builder(context)
                     .data(previewCoverModel)
                     .size(containerWidthPx, containerHeightPx)

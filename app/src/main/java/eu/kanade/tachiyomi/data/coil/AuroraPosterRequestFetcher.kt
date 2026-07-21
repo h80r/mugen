@@ -15,12 +15,21 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okio.Buffer
 import okio.FileSystem
+import okio.Path.Companion.toOkioPath
+import java.io.File
 import java.io.IOException
 
 data class AuroraPosterRequest(
     val primaryUrl: String?,
     val fallbackUrl: String? = null,
     val refererUrl: String? = null,
+    /**
+     * User-set custom cover file for the entry, if any. When the file exists
+     * it always wins over [primaryUrl]/[fallbackUrl] (issue #154).
+     */
+    val customCoverFile: File? = null,
+    /** Entry cover timestamp so cache keys change after cover edits. */
+    val coverLastModified: Long = 0L,
 )
 
 class AuroraPosterRequestKeyer : Keyer<AuroraPosterRequest> {
@@ -30,6 +39,11 @@ class AuroraPosterRequestKeyer : Keyer<AuroraPosterRequest> {
             append(data.primaryUrl.orEmpty())
             append(';')
             append(data.fallbackUrl.orEmpty())
+            append(';')
+            append(data.coverLastModified)
+            if (data.customCoverFile?.exists() == true) {
+                append(";custom")
+            }
         }
     }
 }
@@ -50,6 +64,11 @@ class AuroraPosterRequestFetcher(
         }
 
     override suspend fun fetch(): FetchResult {
+        // Issue #154: a user-set custom cover must always win over URL-resolved
+        // posters and over the URL-keyed poster disk cache.
+        data.customCoverFile?.takeIf { it.exists() }?.let { file ->
+            return customCoverLoader(file)
+        }
         readFromDiskCache()?.let { return it }
 
         val fetched = loadAuroraPosterSource(
@@ -59,6 +78,17 @@ class AuroraPosterRequestFetcher(
         )
         if (fetched !is SourceFetchResult) return fetched
         return writeToDiskCache(fetched) ?: fetched
+    }
+
+    private fun customCoverLoader(file: File): FetchResult {
+        return SourceFetchResult(
+            source = ImageSource(
+                file = file.toOkioPath(),
+                fileSystem = FileSystem.SYSTEM,
+            ),
+            mimeType = "image/*",
+            dataSource = DataSource.DISK,
+        )
     }
 
     private fun readFromDiskCache(): FetchResult? {

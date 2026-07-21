@@ -777,6 +777,7 @@ class NovelScreen(
                 initialApplyReaderTheme = epubExportPreferences.applyReaderTheme,
                 initialIncludeCustomCss = epubExportPreferences.includeCustomCss,
                 initialIncludeCustomJs = epubExportPreferences.includeCustomJs,
+                initialIncludeCover = epubExportPreferences.includeCover,
                 progress = epubExportProgress,
                 onDismissRequest = {
                     if (epubExportProgress == null) {
@@ -791,6 +792,7 @@ class NovelScreen(
                         applyReaderTheme,
                         includeCustomCss,
                         includeCustomJs,
+                        includeCover,
                     ->
                     coroutineScope.launch {
                         screenModel.saveEpubExportPreferences(
@@ -798,6 +800,7 @@ class NovelScreen(
                             applyReaderTheme = applyReaderTheme,
                             includeCustomCss = includeCustomCss,
                             includeCustomJs = includeCustomJs,
+                            includeCover = includeCover,
                         )
                         epubExportProgress = NovelEpubExportProgress.Preparing(successState.chapters.size)
                         val exportResult = try {
@@ -809,6 +812,7 @@ class NovelScreen(
                                 applyReaderTheme = applyReaderTheme,
                                 includeCustomCss = includeCustomCss,
                                 includeCustomJs = includeCustomJs,
+                                includeCover = includeCover,
                                 onProgress = { progress ->
                                     epubExportProgress = progress
                                 },
@@ -1635,6 +1639,7 @@ private fun NovelEpubExportSheet(
     initialApplyReaderTheme: Boolean,
     initialIncludeCustomCss: Boolean,
     initialIncludeCustomJs: Boolean,
+    initialIncludeCover: Boolean,
     progress: NovelEpubExportProgress?,
     onDismissRequest: () -> Unit,
     onExportClicked: (
@@ -1645,6 +1650,7 @@ private fun NovelEpubExportSheet(
         applyReaderTheme: Boolean,
         includeCustomCss: Boolean,
         includeCustomJs: Boolean,
+        includeCover: Boolean,
     ) -> Unit,
 ) {
     val context = LocalContext.current
@@ -1657,6 +1663,7 @@ private fun NovelEpubExportSheet(
     var applyReaderTheme by rememberSaveable(initialApplyReaderTheme) { mutableStateOf(initialApplyReaderTheme) }
     var includeCustomCss by rememberSaveable(initialIncludeCustomCss) { mutableStateOf(initialIncludeCustomCss) }
     var includeCustomJs by rememberSaveable(initialIncludeCustomJs) { mutableStateOf(initialIncludeCustomJs) }
+    var includeCover by rememberSaveable(initialIncludeCover) { mutableStateOf(initialIncludeCover) }
     val isExporting = progress != null
     val destinationLabel = remember(destinationTreeUri) { resolveTreeUriDisplayName(context, destinationTreeUri) }
 
@@ -1902,6 +1909,12 @@ private fun NovelEpubExportSheet(
                     onClick = { applyReaderTheme = !applyReaderTheme },
                 )
                 AuroraSwitchItem(
+                    label = stringResource(AYMR.strings.novel_export_include_cover),
+                    checked = includeCover,
+                    enabled = !isExporting,
+                    onClick = { includeCover = !includeCover },
+                )
+                AuroraSwitchItem(
                     label = stringResource(AYMR.strings.novel_export_include_custom_css),
                     checked = includeCustomCss,
                     enabled = !isExporting,
@@ -1978,6 +1991,7 @@ private fun NovelEpubExportSheet(
                             applyReaderTheme,
                             includeCustomCss,
                             includeCustomJs,
+                            includeCover,
                         )
                     }
                     .padding(vertical = 14.dp),

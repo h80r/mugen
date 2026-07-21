@@ -1238,6 +1238,7 @@
     <string name="novel_export_destination_folder">Destination folder (optional)</string>
     <string name="novel_export_select_folder">Select folder</string>
     <string name="novel_export_apply_reader_theme">Apply reader theme to EPUB</string>
+    <string name="novel_export_include_cover">Include cover image</string>
     <string name="novel_export_include_custom_css">Include custom CSS</string>
     <string name="novel_export_include_custom_js">Include custom JavaScript</string>
     <string name="novel_export_custom_js_warning">Custom JavaScript may not be supported by all EPUB readers</string>

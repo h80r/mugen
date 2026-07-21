@@ -37,12 +37,15 @@ import eu.kanade.presentation.entries.components.aurora.rememberAuroraPosterColo
 import eu.kanade.presentation.entries.components.aurora.resolveAuroraPosterScrimBrush
 import eu.kanade.presentation.entries.components.aurora.shouldDrawAuroraPosterBlurOverlay
 import eu.kanade.presentation.theme.AuroraTheme
+import eu.kanade.tachiyomi.data.cache.AnimeCoverCache
 import eu.kanade.tachiyomi.data.coil.AuroraPosterRequest
 import eu.kanade.tachiyomi.util.debugTitleCoverFlow
 import eu.kanade.tachiyomi.util.previewTitleCoverUrl
 import kotlinx.coroutines.flow.collectLatest
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.entries.anime.model.asAnimeCover
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 /**
  * Fixed fullscreen poster background with scroll-based dimming and blur effects.
@@ -67,14 +70,29 @@ fun FullscreenPosterBackground(
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val placeholderPainter = rememberAuroraCoverPlaceholderPainter(AuroraCoverPlaceholderVariant.Wide)
-    val posterRequest = remember(resolvedCoverUrl, resolvedCoverUrlFallback, refererUrl, anime.thumbnailUrl) {
+    val coverCache = remember { Injekt.get<AnimeCoverCache>() }
+    // Issue #154: surface the user-set custom cover on the details poster,
+    // matching what the library grid already shows.
+    val customCoverFile = remember(anime.id, anime.coverLastModified) {
+        coverCache.getCustomCoverFile(anime.id).takeIf { it.exists() }
+    }
+    val posterRequest = remember(
+        resolvedCoverUrl,
+        resolvedCoverUrlFallback,
+        refererUrl,
+        anime.thumbnailUrl,
+        customCoverFile,
+        anime.coverLastModified,
+    ) {
         AuroraPosterRequest(
             primaryUrl = resolvedCoverUrl?.takeIf { it.isNotBlank() },
             fallbackUrl = resolvedCoverUrlFallback?.takeIf { it.isNotBlank() } ?: anime.thumbnailUrl,
             refererUrl = refererUrl?.takeIf { it.isNotBlank() },
+            customCoverFile = customCoverFile,
+            coverLastModified = anime.coverLastModified,
         )
     }
-    val posterModel = posterRequest.primaryUrl ?: posterRequest.fallbackUrl
+    val posterModel = posterRequest.primaryUrl ?: posterRequest.fallbackUrl ?: posterRequest.customCoverFile?.path
     val posterColorFilter = rememberAuroraPosterColorFilter()
 
     val hasScrolledAway = firstVisibleItemIndex > 0 || scrollOffset > 100

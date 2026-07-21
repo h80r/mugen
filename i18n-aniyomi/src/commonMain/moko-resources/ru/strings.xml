@@ -929,6 +929,7 @@
     <string name="novel_export_destination_folder">Папка назначения (необязательно)</string>
     <string name="novel_export_select_folder">Выбрать папку</string>
     <string name="novel_export_apply_reader_theme">Применить тему ридера к EPUB</string>
+    <string name="novel_export_include_cover">Включить изображение обложки</string>
     <string name="novel_export_include_custom_css">Включить пользовательский CSS</string>
     <string name="novel_export_include_custom_js">Включить пользовательский JavaScript</string>
     <string name="novel_export_custom_js_warning">Пользовательский JavaScript поддерживается не всеми EPUB-ридерами</string>

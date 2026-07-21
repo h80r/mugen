@@ -863,6 +863,8 @@ class NovelReaderPreferences(
 
     fun epubExportUseCustomJS() = preferenceStore.getBoolean("novel_epub_export_use_custom_js", false)
 
+    fun epubExportIncludeCover() = preferenceStore.getBoolean("novel_epub_export_include_cover", true)
+
     fun sourceOverrides() = preferenceStore.getObject(
         "novel_reader_source_overrides",
         emptyMap(),
