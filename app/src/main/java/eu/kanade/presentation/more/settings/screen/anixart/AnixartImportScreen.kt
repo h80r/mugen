@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.net.Uri
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -86,15 +88,29 @@ import eu.kanade.presentation.util.Screen as ParentScreen
  * Anixart import wizard — Aurora glass UI (parity with [eu.kanade.presentation.more.settings.screen.shikimori.ShikimoriImportScreen]):
  * Settings-style top-bar icons (44.dp soft circles), haze-backed list rows, solid outlines,
  * and [AuroraGlassCtaSurface] primary actions.
+ *
+ * Constructor takes a serializable content [uriString] only. Voyager persists Screens in the
+ * activity saved-state bundle; a lambda here previously crashed with
+ * BadParcelableException / NotSerializableException when the SAF picker returned (Android 16+
+ * dumpStats path). Open the stream inside [Content] instead.
  */
 class AnixartImportScreen(
-    private val openStream: () -> java.io.InputStream,
+    private val uriString: String,
 ) : ParentScreen() {
 
     @Composable
     override fun Content() {
+        val context = LocalContext.current
+        val appContext = context.applicationContext
         val navigator = LocalNavigator.currentOrThrow
-        val model = rememberScreenModel { AnixartImportScreenModel(openStream) }
+        val model = rememberScreenModel {
+            AnixartImportScreenModel(
+                openStream = {
+                    appContext.contentResolver.openInputStream(Uri.parse(uriString))
+                        ?: error("Cannot open selected file")
+                },
+            )
+        }
         val state by model.state.collectAsState()
         val colors = AuroraTheme.colors
         val hazeState = remember { HazeState() }
