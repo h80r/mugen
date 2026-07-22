@@ -178,6 +178,7 @@ fun AnimeInfoCard(
                                         )
                                     }
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
+                                contentAlignment = Alignment.Center,
                             ) {
                                 Text(
                                     text = genre,
@@ -195,6 +196,7 @@ fun AnimeInfoCard(
                                     .background(colors.accent.copy(alpha = 0.8f))
                                     .clickable { onSearchSelected?.invoke() }
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
+                                contentAlignment = Alignment.Center,
                             ) {
                                 Text(
                                     text = "🔎 Search (${selectedGenres.size})",
@@ -209,6 +211,7 @@ fun AnimeInfoCard(
                                     .background(colors.accent.copy(alpha = 0.15f))
                                     .clickable { onClearSelected?.invoke() }
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
+                                contentAlignment = Alignment.Center,
                             ) {
                                 Text("✕", color = colors.accent, fontSize = 11.sp)
                             }

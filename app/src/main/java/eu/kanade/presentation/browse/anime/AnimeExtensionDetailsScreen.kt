@@ -45,11 +45,11 @@ import androidx.compose.ui.unit.dp
 import com.tadami.aurora.R
 import eu.kanade.domain.extension.anime.interactor.AnimeExtensionSourceItem
 import eu.kanade.presentation.browse.anime.components.AnimeExtensionIcon
-import eu.kanade.presentation.browse.manga.NsfwWarningDialog
 import eu.kanade.presentation.browse.components.ExtensionAuroraButton
 import eu.kanade.presentation.browse.components.ExtensionBannerTone
 import eu.kanade.presentation.browse.components.ExtensionDetailsGlassCard
 import eu.kanade.presentation.browse.components.ExtensionStatusBanner
+import eu.kanade.presentation.browse.manga.NsfwWarningDialog
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget

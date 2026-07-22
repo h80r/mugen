@@ -46,11 +46,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.tadami.aurora.R
 import eu.kanade.domain.extension.manga.interactor.MangaExtensionSourceItem
-import eu.kanade.presentation.browse.manga.components.MangaExtensionIcon
 import eu.kanade.presentation.browse.components.ExtensionAuroraButton
 import eu.kanade.presentation.browse.components.ExtensionBannerTone
 import eu.kanade.presentation.browse.components.ExtensionDetailsGlassCard
 import eu.kanade.presentation.browse.components.ExtensionStatusBanner
+import eu.kanade.presentation.browse.manga.components.MangaExtensionIcon
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget

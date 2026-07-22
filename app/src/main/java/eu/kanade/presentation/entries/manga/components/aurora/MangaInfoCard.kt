@@ -169,6 +169,7 @@ fun MangaInfoCard(
                                             )
                                         }
                                         .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    contentAlignment = Alignment.Center,
                                 ) {
                                     Text(
                                         text = genre,
@@ -186,6 +187,7 @@ fun MangaInfoCard(
                                         .background(colors.accent.copy(alpha = 0.8f))
                                         .clickable { onSearchSelected?.invoke() }
                                         .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    contentAlignment = Alignment.Center,
                                 ) {
                                     Text(
                                         text = "🔎 Search (${selectedGenres.size})",
@@ -200,6 +202,7 @@ fun MangaInfoCard(
                                         .background(colors.accent.copy(alpha = 0.15f))
                                         .clickable { onClearSelected?.invoke() }
                                         .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    contentAlignment = Alignment.Center,
                                 ) {
                                     Text("✕", color = colors.accent, fontSize = 11.sp)
                                 }

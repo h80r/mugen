@@ -248,8 +248,9 @@ fun AuroraHeroGenreChips(
 
             Box(
                 modifier = baseModifier
-                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
                     .then(interactiveModifier),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = genre,
@@ -267,7 +268,8 @@ fun AuroraHeroGenreChips(
                     .clip(CircleShape)
                     .background(colors.accent.copy(alpha = 0.8f))
                     .clickable { onSearchSelected?.invoke() }
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = "🔎 ${stringResource(MR.strings.action_search)} (${selectedGenres.size})",
@@ -290,7 +292,8 @@ fun AuroraHeroGenreChips(
                         },
                     )
                     .clickable { onClearSelected?.invoke() }
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = "✕",

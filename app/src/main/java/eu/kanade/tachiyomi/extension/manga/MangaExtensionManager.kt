@@ -8,11 +8,11 @@ import eu.kanade.tachiyomi.extension.ExtensionUpdateNotifier
 import eu.kanade.tachiyomi.extension.InstallStep
 import eu.kanade.tachiyomi.extension.manga.api.MangaExtensionApi
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
+import eu.kanade.tachiyomi.extension.manga.model.MangaLoadResult
 import eu.kanade.tachiyomi.extension.manga.model.inferMangaInstalledRepo
+import eu.kanade.tachiyomi.extension.manga.model.newestByVersion
 import eu.kanade.tachiyomi.extension.manga.model.selectMangaRegularUpdate
 import eu.kanade.tachiyomi.extension.manga.model.selectMangaReinstallCandidates
-import eu.kanade.tachiyomi.extension.manga.model.MangaLoadResult
-import eu.kanade.tachiyomi.extension.manga.model.newestByVersion
 import eu.kanade.tachiyomi.extension.manga.util.MangaExtensionInstallReceiver
 import eu.kanade.tachiyomi.extension.manga.util.MangaExtensionInstaller
 import eu.kanade.tachiyomi.extension.manga.util.MangaExtensionLoader
