@@ -198,3 +198,50 @@ fun Modifier.latticeCircuitBar(animate: Boolean = true): Modifier {
         )
     }
 }
+
+/** Vertical circuit line along the trailing edge of a navigation rail (tablet / landscape). */
+@Composable
+fun Modifier.latticeCircuitRail(animate: Boolean = true): Modifier {
+    val accent = Color(0xFF5FE9FF)
+    val reduced = rememberLatticeReducedMotion()
+    val progress: Float
+    if (animate && !reduced) {
+        val transition = rememberInfiniteTransition(label = "latticeCircuitRail")
+        val p by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(5200, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "latticeCircuitRailPulse",
+        )
+        progress = p
+    } else {
+        progress = 0.35f
+    }
+    return this.drawBehind {
+        val x = size.width - 1.dp.toPx()
+        val stroke = 1.5f * density
+        drawLine(accent.copy(alpha = 0.45f), Offset(x, 0f), Offset(x, size.height), stroke)
+        val ticks = 12
+        for (i in 1 until ticks) {
+            val y = size.height * i / ticks
+            drawLine(accent.copy(alpha = 0.3f), Offset(x, y), Offset(x - 4.dp.toPx(), y), density)
+        }
+        val py = size.height * progress
+        val half = size.height * 0.08f
+        drawLine(
+            brush = Brush.verticalGradient(
+                0f to Color.Transparent,
+                0.5f to accent,
+                1f to Color.Transparent,
+                startY = py - half,
+                endY = py + half,
+            ),
+            start = Offset(x, py - half),
+            end = Offset(x, py + half),
+            strokeWidth = stroke * 1.6f,
+        )
+    }
+}

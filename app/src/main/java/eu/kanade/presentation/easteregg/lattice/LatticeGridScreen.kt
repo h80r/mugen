@@ -17,14 +17,18 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
@@ -311,20 +315,28 @@ fun LatticeGridScreen(onClose: () -> Unit) {
                     .fillMaxSize()
                     .alpha(if (phase == LatticePhase.REWARDS) 1f - rewardsReveal.value else 1f),
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Spacer(Modifier.height(36.dp))
+                val stage = when {
+                    phase == LatticePhase.LOADING || activeBoard == null -> LatticeStage.LOADING
+                    phase == LatticePhase.SYNTHESIS || phase == LatticePhase.REWARDS -> LatticeStage.CORE
+                    else -> LatticeStage.BOARD
+                }
+                val boardModifierPortrait = Modifier
+                    .fillMaxWidth(0.9f)
+                    .widthIn(max = 440.dp)
+                    .aspectRatio(1f)
+                val boardModifierLandscape = Modifier
+                    .fillMaxHeight(0.9f)
+                    .aspectRatio(1f, matchHeightConstraintsFirst = true)
+
+                @Composable
+                fun LatticeHeaderBlock() {
                     Crossfade(
                         targetState = headerStage,
                         animationSpec = tween(if (reduced) 1 else 700),
                         label = "latticeHeaderLine1",
-                    ) { stage ->
+                    ) { h ->
                         Text(
-                            text = when (stage) {
+                            text = when (h) {
                                 LatticeHeader.BREACH -> stringResource(AYMR.strings.lattice_breach_line1)
                                 LatticeHeader.ROUTE -> stringResource(AYMR.strings.lattice_routing_line1)
                                 LatticeHeader.LOCK -> stringResource(AYMR.strings.lattice_circuit_locked)
@@ -349,9 +361,9 @@ fun LatticeGridScreen(onClose: () -> Unit) {
                         targetState = headerStage,
                         animationSpec = tween(if (reduced) 1 else 700),
                         label = "latticeHeaderLine2",
-                    ) { stage ->
+                    ) { h ->
                         Text(
-                            text = when (stage) {
+                            text = when (h) {
                                 LatticeHeader.BREACH -> ""
                                 LatticeHeader.ROUTE -> stringResource(AYMR.strings.lattice_breach_line2)
                                 LatticeHeader.LOCK -> stringResource(AYMR.strings.lattice_synthesis_line1)
@@ -365,13 +377,10 @@ fun LatticeGridScreen(onClose: () -> Unit) {
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
-                    Spacer(Modifier.weight(1f))
+                }
 
-                    val stage = when {
-                        phase == LatticePhase.LOADING || activeBoard == null -> LatticeStage.LOADING
-                        phase == LatticePhase.SYNTHESIS || phase == LatticePhase.REWARDS -> LatticeStage.CORE
-                        else -> LatticeStage.BOARD
-                    }
+                @Composable
+                fun LatticeStageBlock(boardModifier: Modifier) {
                     Crossfade(
                         targetState = stage,
                         animationSpec = tween(if (reduced) 1 else 1000),
@@ -398,7 +407,6 @@ fun LatticeGridScreen(onClose: () -> Unit) {
                                         .latticeCoreGlow(),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    // Pulsing core disc
                                     Box(
                                         Modifier
                                             .size((48 + ignitionProgress * 36).dp)
@@ -470,6 +478,7 @@ fun LatticeGridScreen(onClose: () -> Unit) {
                                         revealProgress = powerReveal.value,
                                         fuseProgress = fuseProgress.value,
                                         animateFlow = circuit.closed && !reduced,
+                                        modifier = boardModifier,
                                     ) { q, r ->
                                         if (spinCell != null) return@LatticeBoardCanvas
                                         scope.launch {
@@ -510,9 +519,48 @@ fun LatticeGridScreen(onClose: () -> Unit) {
                             }
                         }
                     }
+                }
 
-                    Spacer(Modifier.weight(1f))
-                    Spacer(Modifier.height(32.dp))
+                // Landscape: side panel (header) + board/core; portrait: stacked cinematic column.
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val isLandscape = maxWidth > maxHeight
+                    if (isLandscape) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 32.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                LatticeHeaderBlock()
+                            }
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                LatticeStageBlock(boardModifier = boardModifierLandscape)
+                            }
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Spacer(Modifier.height(36.dp))
+                            LatticeHeaderBlock()
+                            Spacer(Modifier.weight(1f))
+                            LatticeStageBlock(boardModifier = boardModifierPortrait)
+                            Spacer(Modifier.weight(1f))
+                            Spacer(Modifier.height(32.dp))
+                        }
+                    }
                 }
             }
 
@@ -554,6 +602,7 @@ private fun LatticeBoardCanvas(
     revealProgress: Float,
     fuseProgress: Float,
     animateFlow: Boolean,
+    modifier: Modifier = Modifier,
     onTap: (Int, Int) -> Unit,
 ) {
     val a11y = stringResource(AYMR.strings.lattice_board_a11y)
@@ -574,9 +623,7 @@ private fun LatticeBoardCanvas(
     }
 
     Canvas(
-        modifier = Modifier
-            .fillMaxWidth(0.9f)
-            .aspectRatio(1f)
+        modifier = modifier
             .semantics { contentDescription = a11y }
             .pointerInput(enabled, board) {
                 if (!enabled) return@pointerInput
