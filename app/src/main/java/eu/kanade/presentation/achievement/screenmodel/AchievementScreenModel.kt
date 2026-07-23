@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import eu.kanade.presentation.achievement.utils.AchievementRevealHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
@@ -153,22 +154,28 @@ sealed interface AchievementScreenState {
         }
 
         val filteredAchievements: List<Achievement>
-            get() = when (selectedCategory) {
-                AchievementCategory.BOTH -> achievements
-                AchievementCategory.ANIME -> achievements.filter {
-                    it.category == AchievementCategory.ANIME ||
-                        it.category == AchievementCategory.BOTH
+            get() {
+                val visible = achievements.filter { achievement ->
+                    !AchievementRevealHelper.isCompletelyHiddenUntilUnlocked(achievement) ||
+                        progress[achievement.id]?.isUnlocked == true
                 }
-                AchievementCategory.MANGA -> achievements.filter {
-                    it.category == AchievementCategory.MANGA ||
-                        it.category == AchievementCategory.BOTH
-                }
-                AchievementCategory.NOVEL -> achievements.filter {
-                    it.category == AchievementCategory.NOVEL ||
-                        it.category == AchievementCategory.BOTH
-                }
-                AchievementCategory.SECRET -> achievements.filter {
-                    it.category == AchievementCategory.SECRET || it.isSecret
+                return when (selectedCategory) {
+                    AchievementCategory.BOTH -> visible
+                    AchievementCategory.ANIME -> visible.filter {
+                        it.category == AchievementCategory.ANIME ||
+                            it.category == AchievementCategory.BOTH
+                    }
+                    AchievementCategory.MANGA -> visible.filter {
+                        it.category == AchievementCategory.MANGA ||
+                            it.category == AchievementCategory.BOTH
+                    }
+                    AchievementCategory.NOVEL -> visible.filter {
+                        it.category == AchievementCategory.NOVEL ||
+                            it.category == AchievementCategory.BOTH
+                    }
+                    AchievementCategory.SECRET -> visible.filter {
+                        it.category == AchievementCategory.SECRET || it.isSecret
+                    }
                 }
             }
 
@@ -179,7 +186,10 @@ sealed interface AchievementScreenState {
             get() = progress.count { it.value.isUnlocked }
 
         val totalCount: Int
-            get() = achievements.size
+            get() = achievements.count { achievement ->
+                !AchievementRevealHelper.isCompletelyHiddenUntilUnlocked(achievement) ||
+                    progress[achievement.id]?.isUnlocked == true
+            }
 
         val currentStreak: Int
             get() = calculateCurrentStreak(activityData)

@@ -132,9 +132,11 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import coil3.compose.AsyncImage
+import eu.kanade.domain.easteregg.lattice.LatticeCarrier
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.relativeDateTimeText
+import eu.kanade.presentation.easteregg.lattice.LatticeCarrierSlot
 import eu.kanade.presentation.reader.DisplayRefreshHost
 import eu.kanade.presentation.reader.ReaderChapterListItem
 import eu.kanade.presentation.reader.ReaderChapterListSheet
@@ -4198,6 +4200,7 @@ fun NovelReaderScreen(
                                 }
                             }
                         }
+                        LatticeCarrierSlot(LatticeCarrier.NOVEL)
                         if (ttsPlacement.showFooterEntry) {
                             IconButton(onClick = { showTtsBehaviorSettings = true }) {
                                 Icon(

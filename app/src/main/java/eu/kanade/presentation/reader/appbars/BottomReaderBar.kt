@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.tadami.aurora.R
+import eu.kanade.domain.easteregg.lattice.LatticeCarrier
+import eu.kanade.presentation.easteregg.lattice.LatticeCarrierSlot
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import tachiyomi.i18n.MR
@@ -73,6 +75,7 @@ fun BottomReaderBar(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            LatticeCarrierSlot(LatticeCarrier.MANGA)
             order.forEach { buttonId ->
                 when (buttonId) {
                     "reading_mode" -> {

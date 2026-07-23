@@ -131,6 +131,8 @@ class UiPreferences(
 
     fun showCelestialNavbar() = preferenceStore.getBoolean("show_celestial_navbar", false)
 
+    fun showCircuitNavbar() = preferenceStore.getBoolean("show_circuit_navbar", false)
+
     fun animatedAuroraBackground() = preferenceStore.getBoolean("animated_aurora_background", true)
 
     fun auroraDarkRimLightEnabled() = preferenceStore.getBoolean("aurora_dark_rim_light_enabled", true)

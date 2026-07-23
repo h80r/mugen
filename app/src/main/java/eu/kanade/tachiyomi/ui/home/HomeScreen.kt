@@ -87,7 +87,9 @@ import eu.kanade.presentation.components.LocalHostScaffoldContentPadding
 import eu.kanade.presentation.components.auroraCelestialBar
 import eu.kanade.presentation.components.auroraCelestialHalo
 import eu.kanade.presentation.components.auroraMenuRimLightBrush
+import eu.kanade.presentation.components.latticeCircuitBar
 import eu.kanade.presentation.components.rememberAuroraCelestialNavbarUnlocked
+import eu.kanade.presentation.components.rememberLatticeCircuitNavbarUnlocked
 import eu.kanade.presentation.theme.AuroraTheme
 import eu.kanade.presentation.theme.LocalIsEInkMode
 import eu.kanade.presentation.tutorial.coachAnchorForTab
@@ -365,7 +367,8 @@ object HomeScreen : Screen() {
                                     val celestialSelectedIndex = celestialTabNavigator?.let { tn ->
                                         navStyle.tabs.indexOfFirst { it::class == tn.current::class }
                                     } ?: -1
-                                    val decoratedNavModifier = if (celestialNavbar && auroraColors != null) {
+                                    val circuitNavbar = !isEInkMode && rememberLatticeCircuitNavbarUnlocked()
+                                    val decoratedNavModifierBase = if (celestialNavbar && auroraColors != null) {
                                         navModifier.auroraCelestialBar(
                                             accent = auroraColors.accent,
                                             accentVariant = auroraColors.accentVariant,
@@ -375,6 +378,11 @@ object HomeScreen : Screen() {
                                         )
                                     } else {
                                         navModifier
+                                    }
+                                    val decoratedNavModifier = if (circuitNavbar) {
+                                        decoratedNavModifierBase.latticeCircuitBar()
+                                    } else {
+                                        decoratedNavModifierBase
                                     }
 
                                     if (isEInkMode) {

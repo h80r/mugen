@@ -59,6 +59,8 @@ fun MoreScreen(
     onClickDebugAppUpdatePreview: () -> Unit,
     onClickDebugUpdatedChangelogPreview: () -> Unit,
     onClickDebugResetAuroraHeart: () -> Unit,
+    onClickDebugResetLatticeResonance: () -> Unit,
+    onClickDebugForceLatticeBreach: () -> Unit,
 ) {
     TutorialScreenEntry(TipAnchor.MORE_TAB)
     Scaffold { contentPadding ->
@@ -222,6 +224,22 @@ fun MoreScreen(
                         subtitle = stringResource(AYMR.strings.debug_reset_aurora_heart_summary),
                         icon = Icons.Outlined.ReportProblem,
                         onPreferenceClick = onClickDebugResetAuroraHeart,
+                    )
+                }
+                item {
+                    TextPreferenceWidget(
+                        title = stringResource(AYMR.strings.debug_reset_lattice_resonance),
+                        subtitle = stringResource(AYMR.strings.debug_reset_lattice_resonance_summary),
+                        icon = Icons.Outlined.ReportProblem,
+                        onPreferenceClick = onClickDebugResetLatticeResonance,
+                    )
+                }
+                item {
+                    TextPreferenceWidget(
+                        title = stringResource(AYMR.strings.debug_force_lattice_breach),
+                        subtitle = stringResource(AYMR.strings.debug_force_lattice_breach_summary),
+                        icon = Icons.Outlined.NewReleases,
+                        onPreferenceClick = onClickDebugForceLatticeBreach,
                     )
                 }
             }

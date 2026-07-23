@@ -115,6 +115,22 @@ data object MoreTab : Tab {
                         }
                     }
                 },
+                onDebugResetLatticeResonanceClick = {
+                    screenModel.screenModelScope.launchIO {
+                        val app = Injekt.get<android.app.Application>()
+                        eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app).debugReset()
+                        runCatching {
+                            val repo = Injekt.get<tachiyomi.domain.achievement.repository.AchievementRepository>()
+                            repo.deleteAchievement("lattice_resonance")
+                        }
+                    }
+                },
+                onDebugForceLatticeBreachClick = {
+                    screenModel.screenModelScope.launchIO {
+                        val app = Injekt.get<android.app.Application>()
+                        eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app).debugForceBreach()
+                    }
+                },
                 onStatsClick = { navigator.push(StatsTab) },
                 onLibraryUpdateErrorsClick = { navigator.push(LibraryUpdateErrorScreen()) },
                 onAchievementsClick = { navigator.push(AchievementScreenVoyager) },
@@ -152,6 +168,22 @@ data object MoreTab : Tab {
                             val repo = Injekt.get<tachiyomi.domain.achievement.repository.AchievementRepository>()
                             repo.deleteAchievement("aurora_heart")
                         }
+                    }
+                },
+                onClickDebugResetLatticeResonance = {
+                    screenModel.screenModelScope.launchIO {
+                        val app = Injekt.get<android.app.Application>()
+                        eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app).debugReset()
+                        runCatching {
+                            val repo = Injekt.get<tachiyomi.domain.achievement.repository.AchievementRepository>()
+                            repo.deleteAchievement("lattice_resonance")
+                        }
+                    }
+                },
+                onClickDebugForceLatticeBreach = {
+                    screenModel.screenModelScope.launchIO {
+                        val app = Injekt.get<android.app.Application>()
+                        eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app).debugForceBreach()
                     }
                 },
             )

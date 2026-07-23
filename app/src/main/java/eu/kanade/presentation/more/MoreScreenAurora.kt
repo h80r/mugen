@@ -88,6 +88,8 @@ fun MoreScreenAurora(
     onDebugAppUpdatePreviewClick: () -> Unit,
     onDebugUpdatedChangelogPreviewClick: () -> Unit,
     onDebugResetAuroraHeartClick: () -> Unit,
+    onDebugResetLatticeResonanceClick: () -> Unit,
+    onDebugForceLatticeBreachClick: () -> Unit,
     onStatsClick: () -> Unit,
     onLibraryUpdateErrorsClick: () -> Unit,
     onAchievementsClick: () -> Unit,
@@ -271,6 +273,20 @@ fun MoreScreenAurora(
                         subtitle = stringResource(AYMR.strings.debug_reset_aurora_heart_summary),
                         icon = Icons.Outlined.ReportProblem,
                         onClick = onDebugResetAuroraHeartClick,
+                        darkRimLightEnabled = darkRimLightEnabled,
+                    )
+                    AuroraSettingItem(
+                        title = stringResource(AYMR.strings.debug_reset_lattice_resonance),
+                        subtitle = stringResource(AYMR.strings.debug_reset_lattice_resonance_summary),
+                        icon = Icons.Outlined.ReportProblem,
+                        onClick = onDebugResetLatticeResonanceClick,
+                        darkRimLightEnabled = darkRimLightEnabled,
+                    )
+                    AuroraSettingItem(
+                        title = stringResource(AYMR.strings.debug_force_lattice_breach),
+                        subtitle = stringResource(AYMR.strings.debug_force_lattice_breach_summary),
+                        icon = Icons.Outlined.NewReleases,
+                        onClick = onDebugForceLatticeBreachClick,
                         darkRimLightEnabled = darkRimLightEnabled,
                     )
                 }

@@ -35,6 +35,7 @@ enum class AppTheme(
     EVENT_HORIZON(AYMR.strings.theme_event_horizon, isHidden = true),
     VOID_RED(AYMR.strings.theme_void_red, isHidden = true),
     AURORA_PRIME(AYMR.strings.theme_aurora_prime, isHidden = true),
+    LATTICE_PROTOCOL(AYMR.strings.theme_lattice_protocol, isHidden = true),
 
     // Deprecated
     DARK_BLUE(null),

@@ -1721,7 +1721,9 @@
     <string name="unlockable_profile_nickname_effect_glitch_rune_red">Crimson Glitch Nickname Effect</string>
     <string name="unlockable_avatar_frame_glitch_red">Crimson Avatar Frame</string>
     <string name="unlockable_theme_AURORA_PRIME">Aurora Prime Theme</string>
+    <string name="unlockable_theme_LATTICE_PROTOCOL">Lattice Protocol Theme</string>
     <string name="unlockable_special_navbar_aurora_celestial">Celestial Navigation</string>
+    <string name="unlockable_special_navbar_lattice_circuit">Circuit Edge</string>
 
     <!-- Download engine -->
     <string name="download_engine_title">Download Engine</string>
@@ -1791,4 +1793,7 @@
     <string name="novel_tts_action_next">Next</string>
     <string name="novel_tts_action_stop">Stop</string>
     <string name="novel_tts_error_speak">Failed to speak the selected text</string>
+    <!-- Lattice Resonance reward (hidden) -->
+    <string name="reward_special_navbar_lattice_circuit_title">Circuit Edge</string>
+    <string name="reward_special_navbar_lattice_circuit_desc">Bottom-only rim-light along the navigation bar underside</string>
 </resources>

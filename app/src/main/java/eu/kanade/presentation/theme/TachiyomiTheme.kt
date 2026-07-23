@@ -21,6 +21,7 @@ import eu.kanade.domain.ui.model.EInkProfile
 import eu.kanade.domain.ui.model.EInkThemeMode
 import eu.kanade.presentation.easteregg.aurora.AuroraPrimeColors
 import eu.kanade.presentation.easteregg.aurora.rememberAuroraPrimeColors
+import eu.kanade.presentation.easteregg.lattice.rememberLatticeProtocolLiveColors
 import eu.kanade.presentation.theme.colorscheme.AuroraColorScheme
 import eu.kanade.presentation.theme.colorscheme.BaseColorScheme
 import eu.kanade.presentation.theme.colorscheme.CloudflareColorScheme
@@ -28,6 +29,7 @@ import eu.kanade.presentation.theme.colorscheme.CottoncandyColorScheme
 import eu.kanade.presentation.theme.colorscheme.DoomColorScheme
 import eu.kanade.presentation.theme.colorscheme.EventHorizonColorScheme
 import eu.kanade.presentation.theme.colorscheme.GreenAppleColorScheme
+import eu.kanade.presentation.theme.colorscheme.LatticeProtocolColorScheme
 import eu.kanade.presentation.theme.colorscheme.LavenderColorScheme
 import eu.kanade.presentation.theme.colorscheme.MatrixColorScheme
 import eu.kanade.presentation.theme.colorscheme.MidnightDuskColorScheme
@@ -110,10 +112,18 @@ private fun BaseTachiyomiTheme(
         eInkProfile = eInkProfile,
         isDark = isDark,
     )
-    val colorScheme = if (appTheme == AppTheme.AURORA_PRIME) {
-        auroraPrimeOverlay(base = baseColorScheme, isAmoled = isAmoled, isDark = isDark)
-    } else {
-        baseColorScheme
+    val colorScheme = when (appTheme) {
+        AppTheme.AURORA_PRIME -> auroraPrimeOverlay(
+            base = baseColorScheme,
+            isAmoled = isAmoled,
+            isDark = isDark,
+        )
+        AppTheme.LATTICE_PROTOCOL -> latticeProtocolOverlay(
+            base = baseColorScheme,
+            isAmoled = isAmoled,
+            isDark = isDark,
+        )
+        else -> baseColorScheme
     }
     val appFontFamily = rememberAppFontFamily(appUiFontId)
     val coverTitleFontFamily = rememberAppFontFamily(coverTitleFontId)
@@ -227,6 +237,7 @@ private val colorSchemes: Map<AppTheme, BaseColorScheme> = mapOf(
     AppTheme.EVENT_HORIZON to EventHorizonColorScheme,
     AppTheme.VOID_RED to VoidRedColorScheme,
     AppTheme.AURORA_PRIME to AuroraColorScheme,
+    AppTheme.LATTICE_PROTOCOL to LatticeProtocolColorScheme,
 )
 
 @Composable
@@ -243,6 +254,35 @@ private fun auroraPrimeOverlay(base: ColorScheme, isAmoled: Boolean, isDark: Boo
         live = live,
         isAmoled = isAmoled,
         isDark = isDark,
+    )
+}
+
+@Composable
+private fun latticeProtocolOverlay(base: ColorScheme, isAmoled: Boolean, isDark: Boolean): ColorScheme {
+    val context = LocalContext.current
+    val powerSave = remember {
+        (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isPowerSaveMode == true
+    }
+    val live = rememberLatticeProtocolLiveColors(animated = !powerSave)
+    return base.copy(
+        primary = live.primary,
+        onPrimary = if (isDark) Color(0xFF00323B) else Color.White,
+        primaryContainer = live.primary.copy(alpha = 0.22f),
+        onPrimaryContainer = live.primary,
+        secondary = live.secondary,
+        onSecondary = if (isDark) Color(0xFF00323B) else Color.White,
+        secondaryContainer = live.secondary.copy(alpha = 0.18f),
+        onSecondaryContainer = live.secondary,
+        tertiary = live.tertiary,
+        onTertiary = Color(0xFF442B00),
+        tertiaryContainer = live.tertiary.copy(alpha = 0.2f),
+        onTertiaryContainer = live.tertiary,
+        surfaceTint = live.primary,
+        outline = live.primary.copy(alpha = if (isDark) 0.5f else 0.35f),
+        outlineVariant = live.primary.copy(alpha = if (isDark) 0.22f else 0.16f),
+        // Keep void blacks in dark/AMOLED; light scheme surfaces stay from base.
+        background = if (isDark && !isAmoled) Color(0xFF050608) else base.background,
+        surface = if (isDark && !isAmoled) Color(0xFF050608) else base.surface,
     )
 }
 

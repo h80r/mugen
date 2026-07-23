@@ -1642,6 +1642,10 @@
     <string name="debug_updated_changelog_preview_summary">Открыть экран списка изменений после обновления с тестовыми данными</string>
     <string name="debug_reset_aurora_heart">Сбросить «Сердце Авроры» (пасхалка)</string>
     <string name="debug_reset_aurora_heart_summary">Полностью очищает прогресс квеста, кодекс эхо, счётчик ночей и секретное достижение (только debug-сборки)</string>
+    <string name="debug_reset_lattice_resonance">Сбросить «Резонанс Каркаса» (пасхалка)</string>
+    <string name="debug_reset_lattice_resonance_summary">Очищает прогресс несущих, топологию платы и состояние синтеза (только debug-сборки)</string>
+    <string name="debug_force_lattice_breach">Форс-пролом Каркаса (debug)</string>
+    <string name="debug_force_lattice_breach_summary">Захватывает все несущие и открывает оболочку Грида</string>
     <string name="aurora_library">Библиотека</string>
     <string name="aurora_categories">Категории</string>
     <string name="aurora_data_storage">Данные и хранилище</string>
@@ -2790,6 +2794,40 @@
     <string name="aurora_reader_preview_title">Превью фильтров</string>
     <string name="aurora_reader_preview_hint">Пример панели — фильтры сразу видны здесь</string>
     <string name="aurora_reader_processing">Обработка изображения</string>
+    <!-- Lattice Resonance (hidden) -->
+    <string name="theme_lattice_protocol">Протокол Каркаса</string>
+    <string name="treasury_tagline_lattice_protocol">Каркас под оболочкой</string>
+    <string name="lattice_carrier_node_a11y">Служебный узел</string>
+    <string name="lattice_carrier_latched">НЕСУЩАЯ %1$d/3 ЗАХВАЧЕНА</string>
+    <string name="lattice_carrier_signal">СИГНАЛ ЗАХВАЧЕН</string>
+    <string name="lattice_frame_whisper">ОБНАРУЖЕН ДРЕЙФ КАРКАСА</string>
+    <string name="lattice_breach_line1">ОБОЛОЧКА СНЯТА</string>
+    <string name="lattice_breach_line2">ПРОВЕДИ СИГНАЛ ОТ ПОРТА К ЯДРУ</string>
+    <string name="lattice_board_a11y">Плата маршрутизации сигнала</string>
+    <string name="lattice_synthesis_commit">СИНТЕЗ</string>
+    <string name="lattice_core_online">ЯДРО АКТИВНО</string>
+    <string name="lattice_synthesis_line1">ТОПОЛОГИЯ ПОДТВЕРЖДЕНА</string>
+    <string name="lattice_synthesis_line2">СИНТЕЗ ЗАВЕРШЁН. АРХИТЕКТОР ОПОЗНАН.</string>
+    <string name="lattice_synthesis_reward">НАГРАДА · ПРОТОКОЛ КАРКАСА · КРОМКА КОНТУРА</string>
+    <string name="lattice_synthesis_continue">ОТКРЫТИЕ ХРАНИЛИЩА НАГРАД…</string>
+    <string name="lattice_circuit_locked">КОНТУР ЗАМКНУТ · СИНТЕЗ</string>
+    <string name="lattice_synth_failed">СБОЙ СИНТЕЗА · ПОДСТРОЙ ТОПОЛОГИЮ</string>
+    <string name="lattice_accept">ПРИНЯТЬ</string>
+    <string name="lattice_residual">КАРКАС ПОМНИТ ТЕБЯ, АРХИТЕКТОР.</string>
+    <string name="lattice_overlay_close">Закрыть</string>
+    <string name="lattice_rewards_kicker">— ДОПУСК АРХИТЕКТОРА —</string>
+    <string name="lattice_rewards_title">ХРАНИЛИЩЕ НАГРАД</string>
+    <string name="lattice_rewards_subtitle">Грид выдаёт два артефакта поверхности. Только превью — включение в Сокровищнице.</string>
+    <string name="lattice_rewards_kind_theme">ТЕМА</string>
+    <string name="lattice_rewards_kind_navbar">НАВБАР</string>
+    <string name="lattice_rewards_theme_desc">Тема пустоты с циановыми трассами сигнала и янтарными сервисными акцентами.</string>
+    <string name="lattice_rewards_circuit_title">Кромка контура</string>
+    <string name="lattice_rewards_circuit_desc">Нижний rim-light вдоль донца навигационной капсулы.</string>
+    <string name="lattice_rewards_preview_badge">ПРЕВЬЮ · НЕ ВКЛЮЧАЕТСЯ ЗДЕСЬ</string>
+    <string name="lattice_rewards_preview_only">ВИЗУАЛЬНЫЙ ПОКАЗ  ПЕРЕКЛЮЧЕНИЕ В СОКРОВИЩНИЦЕ</string>
+    <string name="achievement_lattice_resonance_title">Резонанс Каркаса</string>
+    <string name="achievement_lattice_resonance_desc">Оболочка снята. Сигнал дошёл до ядра. Архитектор опознан.</string>
+    <string name="achievement_lattice_resonance_hint_vague">Что-то дрейфует под оболочкой рендера…</string>
 </resources>
 
 

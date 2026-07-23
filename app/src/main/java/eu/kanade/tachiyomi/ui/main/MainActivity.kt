@@ -445,6 +445,7 @@ class MainActivity : BaseActivity() {
                             }
                             // Aurora easter egg overlay
                             eu.kanade.presentation.easteregg.aurora.AuroraEchoOverlay()
+                            eu.kanade.presentation.easteregg.lattice.LatticeOverlayHost()
                         }
                     }
 
