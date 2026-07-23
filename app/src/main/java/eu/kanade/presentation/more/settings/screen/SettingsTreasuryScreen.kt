@@ -2896,7 +2896,15 @@ internal fun calculateTreasuryRewardProgress(
     auraIds: List<String>,
     hiddenThemes: List<AppTheme>,
 ): TreasuryRewardProgress {
-    val distinctPresetIds = presetIds.distinct()
+    // Ultra-secret cosmetics render no slot in the vault until unlocked, so they
+    // must not inflate the denominator while invisible (the "6 of 12 = 50%" bug).
+    val ultraSecretIds = setOf(
+        "special_navbar_aurora_celestial",
+        "special_navbar_lattice_circuit",
+    )
+    val distinctPresetIds = presetIds.distinct().filter { id ->
+        id !in ultraSecretIds || id in unlockedUnlockables
+    }
     val distinctAuraIds = auraIds.distinct()
     val distinctHiddenThemes = hiddenThemes.distinct()
 

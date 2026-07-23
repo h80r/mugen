@@ -43,4 +43,32 @@ class TreasuryRewardProgressTest {
         assertEquals(2, progress.unlocked)
         assertEquals(3, progress.total)
     }
+
+    @Test
+    fun `progress hides ultra secret navbar slots until unlocked`() {
+        val hiddenTheme = AppTheme.entries.first(AppTheme::isHidden)
+        val presetIds = listOf(
+            "title_a",
+            "special_navbar_aurora_celestial",
+            "special_navbar_lattice_circuit",
+        )
+
+        val locked = calculateTreasuryRewardProgress(
+            unlockedUnlockables = setOf("title_a"),
+            presetIds = presetIds,
+            auraIds = listOf("aura_one"),
+            hiddenThemes = listOf(hiddenTheme),
+        )
+        assertEquals(1, locked.unlocked)
+        assertEquals(3, locked.total)
+
+        val unlocked = calculateTreasuryRewardProgress(
+            unlockedUnlockables = setOf("title_a", "special_navbar_lattice_circuit"),
+            presetIds = presetIds,
+            auraIds = listOf("aura_one"),
+            hiddenThemes = listOf(hiddenTheme),
+        )
+        assertEquals(2, unlocked.unlocked)
+        assertEquals(4, unlocked.total)
+    }
 }

@@ -2803,6 +2803,7 @@
     <string name="lattice_frame_whisper">ОБНАРУЖЕН ДРЕЙФ КАРКАСА</string>
     <string name="lattice_breach_line1">ОБОЛОЧКА СНЯТА</string>
     <string name="lattice_breach_line2">ПРОВЕДИ СИГНАЛ ОТ ПОРТА К ЯДРУ</string>
+    <string name="lattice_routing_line1">РЕЖИМ ТРАССИРОВКИ</string>
     <string name="lattice_board_a11y">Плата маршрутизации сигнала</string>
     <string name="lattice_synthesis_commit">СИНТЕЗ</string>
     <string name="lattice_core_online">ЯДРО АКТИВНО</string>

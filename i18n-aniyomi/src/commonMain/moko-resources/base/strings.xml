@@ -2784,6 +2784,7 @@
     <string name="lattice_frame_whisper">FRAME DRIFT DETECTED</string>
     <string name="lattice_breach_line1">SHELL DETACHED</string>
     <string name="lattice_breach_line2">ROUTE THE SIGNAL FROM PORT TO CORE</string>
+    <string name="lattice_routing_line1">ROUTING MODE</string>
     <string name="lattice_board_a11y">Signal routing board</string>
     <string name="lattice_synthesis_commit">SYNTHESIZE</string>
     <string name="lattice_core_online">CORE ONLINE</string>
