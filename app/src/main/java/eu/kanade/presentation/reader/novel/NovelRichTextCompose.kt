@@ -124,7 +124,7 @@ internal fun NovelRichNativeScrollItem(
     ttsHighlightColor: Color = Color.Transparent,
     selectionSessionIdProvider: () -> Long,
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit,
-    onPlainTap: ((Float, Float) -> Unit)? = null,
+    onPlainTap: ((Float, Float, Float, Float) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val onLinkClick: (String) -> Unit = { rawUrl ->

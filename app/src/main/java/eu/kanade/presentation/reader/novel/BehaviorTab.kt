@@ -107,6 +107,31 @@ fun BehaviorTab(
                     )
                 },
             )
+            AuroraToggleRow(
+                label = stringResource(AYMR.strings.novel_reader_custom_tap_zones),
+                subtitle = stringResource(AYMR.strings.novel_reader_custom_tap_zones_summary),
+                checked = settings.customTapZones,
+                onClick = {
+                    update(
+                        !settings.customTapZones,
+                        { o, v -> o.copy(customTapZones = v) },
+                        { preferences.customTapZones().set(it) },
+                    )
+                },
+            )
+            if (settings.customTapZones) {
+                NovelReaderTapZonesEditor(
+                    serializedActions = settings.tapZoneActions,
+                    onSerializedActionsChange = { serialized ->
+                        update(
+                            serialized,
+                            { o, v -> o.copy(tapZoneActions = v) },
+                            { preferences.tapZoneActions().set(it) },
+                        )
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
         }
 
         AuroraGlassSection(title = stringResource(AYMR.strings.novel_reader_selected_text_translation_section)) {

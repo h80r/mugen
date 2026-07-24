@@ -166,11 +166,14 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundSource
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundTexture
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
+import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTapZoneAction
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTheme
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTranslationProvider
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTranslationStylePreset
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTtsHighlightMode
 import eu.kanade.tachiyomi.ui.reader.novel.setting.TextAlign
+import eu.kanade.tachiyomi.ui.reader.novel.setting.parseNovelReaderTapZoneActions
+import eu.kanade.tachiyomi.ui.reader.novel.setting.resolveConfiguredNovelReaderTapAction
 import eu.kanade.tachiyomi.ui.reader.novel.tts.NativeScrollTtsNavigationAdapter
 import eu.kanade.tachiyomi.ui.reader.novel.tts.NativeScrollTtsNavigator
 import eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsNavigationAnchor
@@ -1882,14 +1885,29 @@ fun NovelReaderScreen(
         moveForwardByReaderActionWithAnimation(bookFlipPageAnimationDurationMillis)
     }
 
-    val latestReaderShortTapHandler by rememberUpdatedState<(Float, Float) -> Unit> { tapX, width ->
-        dispatchReaderTapAction(
+    val latestCustomTapZonesEnabled by rememberUpdatedState(state.readerSettings.customTapZones)
+    val latestTapZoneActions by rememberUpdatedState(
+        parseNovelReaderTapZoneActions(state.readerSettings.tapZoneActions),
+    )
+    val latestReaderShortTapHandler by rememberUpdatedState<(Float, Float, Float, Float) -> Unit> {
+            tapX,
+            tapY,
+            width,
+            height,
+        ->
+        dispatchConfiguredReaderTapAction(
             tapX = tapX,
+            tapY = tapY,
             width = width,
+            height = height,
+            customTapZonesEnabled = latestCustomTapZonesEnabled,
+            tapZoneActions = latestTapZoneActions,
             tapToScrollEnabled = latestTapToScrollEnabled,
             onToggleUi = { onSetShowReaderUi(!latestShowReaderUi) },
             onBackward = { coroutineScope.launch { moveBackwardByReaderAction() } },
             onForward = { coroutineScope.launch { moveForwardByReaderAction() } },
+            onNextChapter = { openNextChapterFromReader() },
+            onPrevChapter = { openPreviousChapterFromReader() },
         )
     }
 
@@ -2247,7 +2265,9 @@ fun NovelReaderScreen(
                                 openPreviousChapterFromReader()
                             },
                             onOpenNextChapter = { openNextChapterFromReader() },
-                            onTextTap = { tapX, width -> latestReaderShortTapHandler(tapX, width) },
+                            onTextTap = { tapX, tapY, width, height ->
+                                latestReaderShortTapHandler(tapX, tapY, width, height)
+                            },
                             selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                             onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
                         )
@@ -2298,7 +2318,9 @@ fun NovelReaderScreen(
                             onChapterNavigationRequestConsumed = {
                                 pageTurnChapterNavigationRequest = null
                             },
-                            onTextTap = { tapX, width -> latestReaderShortTapHandler(tapX, width) },
+                            onTextTap = { tapX, tapY, width, height ->
+                                latestReaderShortTapHandler(tapX, tapY, width, height)
+                            },
                             selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                             onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
                         )
@@ -2321,7 +2343,12 @@ fun NovelReaderScreen(
                                         if (elapsedMillis >= viewConfiguration.longPressTimeoutMillis) {
                                             return@awaitEachGesture
                                         }
-                                        latestReaderShortTapHandler(up.position.x, size.width.toFloat())
+                                        latestReaderShortTapHandler(
+                                            up.position.x,
+                                            up.position.y,
+                                            size.width.toFloat(),
+                                            size.height.toFloat(),
+                                        )
                                     }
                                 }
                                 .then(
@@ -2478,7 +2505,9 @@ fun NovelReaderScreen(
                                         ttsHighlightColor = ttsHighlightColor,
                                         selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                                         onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
-                                        onPlainTap = { tapX, width -> latestReaderShortTapHandler(tapX, width) },
+                                        onPlainTap = { tapX, tapY, width, height ->
+                                            latestReaderShortTapHandler(tapX, tapY, width, height)
+                                        },
                                     )
                                 }
                             } else {
@@ -2532,8 +2561,8 @@ fun NovelReaderScreen(
                                                         selectionRenderer = NovelSelectedTextRenderer.NATIVE_SCROLL,
                                                         selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                                                         onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
-                                                        onPlainTap = { tapX, width ->
-                                                            latestReaderShortTapHandler(tapX, width)
+                                                        onPlainTap = { tapX, tapY, width, height ->
+                                                            latestReaderShortTapHandler(tapX, tapY, width, height)
                                                         },
                                                         modifier = Modifier.fillMaxWidth(),
                                                     )
@@ -2571,8 +2600,8 @@ fun NovelReaderScreen(
                                                     selectionRenderer = NovelSelectedTextRenderer.NATIVE_SCROLL,
                                                     selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                                                     onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
-                                                    onPlainTap = { tapX, width ->
-                                                        latestReaderShortTapHandler(tapX, width)
+                                                    onPlainTap = { tapX, tapY, width, height ->
+                                                        latestReaderShortTapHandler(tapX, tapY, width, height)
                                                     },
                                                     modifier = Modifier.padding(
                                                         top = if (index == 0) statusBarTopPadding else 0.dp,
@@ -2944,25 +2973,39 @@ fun NovelReaderScreen(
                                 object : GestureDetector.SimpleOnGestureListener() {
                                     override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                                         val viewWidth = webView.width.takeIf { it > 0 } ?: return false
+                                        val viewHeight = webView.height.takeIf { it > 0 } ?: return false
                                         return when (
-                                            resolveReaderTapAction(
+                                            resolveConfiguredNovelReaderTapAction(
                                                 tapX = e.x,
+                                                tapY = e.y,
                                                 width = viewWidth.toFloat(),
+                                                height = viewHeight.toFloat(),
+                                                customTapZonesEnabled = latestCustomTapZonesEnabled,
+                                                tapZoneActions = latestTapZoneActions,
                                                 tapToScrollEnabled = latestTapToScrollEnabled,
                                             )
                                         ) {
-                                            ReaderTapAction.TOGGLE_UI -> {
+                                            NovelReaderTapZoneAction.TOGGLE_UI -> {
                                                 onSetShowReaderUi(!latestShowReaderUi)
                                                 true
                                             }
-                                            ReaderTapAction.BACKWARD -> {
+                                            NovelReaderTapZoneAction.BACKWARD -> {
                                                 coroutineScope.launch { moveBackwardByReaderAction() }
                                                 true
                                             }
-                                            ReaderTapAction.FORWARD -> {
+                                            NovelReaderTapZoneAction.FORWARD -> {
                                                 coroutineScope.launch { moveForwardByReaderAction() }
                                                 true
                                             }
+                                            NovelReaderTapZoneAction.NEXT_CHAPTER -> {
+                                                openNextChapterFromReader()
+                                                true
+                                            }
+                                            NovelReaderTapZoneAction.PREV_CHAPTER -> {
+                                                openPreviousChapterFromReader()
+                                                true
+                                            }
+                                            NovelReaderTapZoneAction.NONE -> true
                                         }
                                     }
                                 },

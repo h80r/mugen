@@ -381,7 +381,7 @@ private class NovelPageReaderTextView constructor(
     private val selectionRenderer: NovelSelectedTextRenderer,
     private val selectionSessionIdProvider: () -> Long,
     private val onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit,
-    private var onPlainTap: ((Float, Float) -> Unit)?,
+    private var onPlainTap: ((Float, Float, Float, Float) -> Unit)?,
     private val touchHandlingEnabled: Boolean,
     selectionInteractionEnabled: Boolean,
 ) : TextView(context) {
@@ -541,9 +541,13 @@ private class NovelPageReaderTextView constructor(
                         clickableSpan.onClick(this)
                         return true
                     }
+                    val windowOffset = IntArray(2)
+                    getLocationInWindow(windowOffset)
                     onPlainTap?.invoke(
-                        event.x,
-                        width.toFloat(),
+                        windowOffset[0] + event.x,
+                        windowOffset[1] + event.y,
+                        rootView.width.toFloat().coerceAtLeast(1f),
+                        rootView.height.toFloat().coerceAtLeast(1f),
                     )
                     return true
                 }
@@ -723,7 +727,7 @@ private class NovelPageReaderTextView constructor(
         return start until end
     }
 
-    fun updatePlainTapHandler(handler: ((Float, Float) -> Unit)?) {
+    fun updatePlainTapHandler(handler: ((Float, Float, Float, Float) -> Unit)?) {
         onPlainTap = handler
     }
 
@@ -766,7 +770,7 @@ internal fun NovelPageReaderPageContent(
     selectionRenderer: NovelSelectedTextRenderer = NovelSelectedTextRenderer.PAGE_READER,
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
-    onPlainTap: ((Float, Float) -> Unit)? = null,
+    onPlainTap: ((Float, Float, Float, Float) -> Unit)? = null,
     touchHandlingEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -1015,7 +1019,7 @@ internal fun NovelPageReaderTextBlock(
     selectionRenderer: NovelSelectedTextRenderer? = null,
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
-    onPlainTap: ((Float, Float) -> Unit)? = null,
+    onPlainTap: ((Float, Float, Float, Float) -> Unit)? = null,
     touchHandlingEnabled: Boolean = true,
     onUrlClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,

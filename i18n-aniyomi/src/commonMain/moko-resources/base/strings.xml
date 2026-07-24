@@ -630,6 +630,16 @@
     <string name="novel_reader_swipe_to_next">Swipe up to next chapter</string>
     <string name="novel_reader_swipe_to_prev">Swipe down to previous chapter</string>
     <string name="novel_reader_tap_to_scroll">Tap edges to navigate</string>
+    <string name="novel_reader_custom_tap_zones">Custom tap zones</string>
+    <string name="novel_reader_custom_tap_zones_summary">Choose what a tap does in each of the nine screen zones</string>
+    <string name="novel_reader_tap_zones_editor_title">Tap zone layout</string>
+    <string name="novel_reader_tap_zones_editor_hint">Tap a zone to cycle its action</string>
+    <string name="novel_reader_tap_zone_action_none">Nothing</string>
+    <string name="novel_reader_tap_zone_action_toggle_ui">Show/hide interface</string>
+    <string name="novel_reader_tap_zone_action_forward">Page forward</string>
+    <string name="novel_reader_tap_zone_action_backward">Page backward</string>
+    <string name="novel_reader_tap_zone_action_next_chapter">Next chapter</string>
+    <string name="novel_reader_tap_zone_action_prev_chapter">Previous chapter</string>
     <string name="novel_reader_page_mode">Page mode</string>
     <string name="novel_reader_page_mode_summary">Display content in pages instead of continuous scroll</string>
     <string name="novel_reader_show_page_chapter_title">Show chapter title</string>

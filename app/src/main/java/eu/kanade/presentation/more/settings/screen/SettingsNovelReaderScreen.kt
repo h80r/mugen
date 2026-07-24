@@ -66,6 +66,7 @@ import eu.kanade.presentation.reader.novel.NovelReaderBackgroundCard
 import eu.kanade.presentation.reader.novel.NovelReaderCustomBackgroundCard
 import eu.kanade.presentation.reader.novel.NovelReaderFontOption
 import eu.kanade.presentation.reader.novel.NovelReaderFontSource
+import eu.kanade.presentation.reader.novel.NovelReaderTapZonesEditor
 import eu.kanade.presentation.reader.novel.areChapterSwipeControlsEnabled
 import eu.kanade.presentation.reader.novel.autoScrollSpeedToInterval
 import eu.kanade.presentation.reader.novel.buildNovelReaderBackgroundCardsFromCustomItems
@@ -997,6 +998,10 @@ object SettingsNovelReaderScreen : SearchableSettings {
         val context = LocalContext.current
         val swipeGesturesPref = prefs.swipeGestures()
         val swipeGestures by swipeGesturesPref.collectAsState()
+        val customTapZonesPref = prefs.customTapZones()
+        val customTapZones by customTapZonesPref.collectAsState()
+        val tapZoneActionsPref = prefs.tapZoneActions()
+        val tapZoneActions by tapZoneActionsPref.collectAsState()
         val pageReaderPref = prefs.pageReader()
         val pageReader by pageReaderPref.collectAsState()
         val showPageChapterTitlePref = prefs.showPageChapterTitle()
@@ -1152,6 +1157,31 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     title = stringResource(AYMR.strings.novel_reader_tap_to_scroll),
                 ),
             )
+            add(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = customTapZonesPref,
+                    title = stringResource(AYMR.strings.novel_reader_custom_tap_zones),
+                    subtitle = stringResource(AYMR.strings.novel_reader_custom_tap_zones_summary),
+                ),
+            )
+            if (customTapZones) {
+                add(
+                    Preference.PreferenceItem.CustomPreference(
+                        title = stringResource(AYMR.strings.novel_reader_tap_zones_editor_title),
+                    ) {
+                        BasePreferenceWidget(
+                            title = stringResource(AYMR.strings.novel_reader_tap_zones_editor_title),
+                            subcomponent = {
+                                NovelReaderTapZonesEditor(
+                                    serializedActions = tapZoneActions,
+                                    onSerializedActionsChange = { tapZoneActionsPref.set(it) },
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                )
+                            },
+                        )
+                    },
+                )
+            }
             add(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = pageReaderPref,

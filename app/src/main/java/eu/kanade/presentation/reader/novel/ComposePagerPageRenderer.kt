@@ -171,7 +171,7 @@ internal fun ComposePagerPageRenderer(
     onMoveForward: () -> Unit,
     onOpenPreviousChapter: () -> Unit,
     onOpenNextChapter: () -> Unit,
-    onTextTap: (Float, Float) -> Unit = { _, _ -> onToggleUi() },
+    onTextTap: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> onToggleUi() },
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
 ) {
@@ -287,7 +287,7 @@ internal fun ComposePagerPageRenderer(
             .pointerInput(readerSettings.tapToScroll) {
                 detectTapGestures(
                     onTap = { offset ->
-                        onTextTap(offset.x, size.width.toFloat())
+                        onTextTap(offset.x, offset.y, size.width.toFloat(), size.height.toFloat())
                     },
                 )
             },

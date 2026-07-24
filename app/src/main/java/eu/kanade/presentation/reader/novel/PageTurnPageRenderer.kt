@@ -505,7 +505,7 @@ internal fun PageTurnPageRenderer(
     onOpenNextChapter: () -> Unit,
     chapterNavigationRequest: PageTurnChapterNavigationRequest? = null,
     onChapterNavigationRequestConsumed: () -> Unit = {},
-    onTextTap: (Float, Float) -> Unit = { _, _ -> onToggleUi() },
+    onTextTap: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> onToggleUi() },
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
 ) {

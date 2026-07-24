@@ -85,6 +85,8 @@ data class NovelReaderSettings(
     val swipeToNextChapter: Boolean,
     val swipeToPrevChapter: Boolean,
     val tapToScroll: Boolean,
+    val customTapZones: Boolean = false,
+    val tapZoneActions: String = NOVEL_READER_DEFAULT_TAP_ZONE_ACTIONS,
     val autoScroll: Boolean,
     val autoScrollInterval: Int,
     val autoScrollOffset: Int,
@@ -356,6 +358,8 @@ data class NovelReaderOverride(
     val swipeToNextChapter: Boolean? = null,
     val swipeToPrevChapter: Boolean? = null,
     val tapToScroll: Boolean? = null,
+    val customTapZones: Boolean? = null,
+    val tapZoneActions: String? = null,
     val autoScroll: Boolean? = null,
     val autoScrollInterval: Int? = null,
     val autoScrollOffset: Int? = null,
@@ -601,6 +605,11 @@ class NovelReaderPreferences(
     fun swipeToPrevChapter() = preferenceStore.getBoolean("novel_reader_swipe_to_prev_chapter", false)
 
     fun tapToScroll() = preferenceStore.getBoolean("novel_reader_tap_to_scroll", true)
+
+    fun customTapZones() = preferenceStore.getBoolean("novel_reader_custom_tap_zones", false)
+
+    fun tapZoneActions() =
+        preferenceStore.getString("novel_reader_tap_zone_actions", NOVEL_READER_DEFAULT_TAP_ZONE_ACTIONS)
 
     fun autoScroll() = preferenceStore.getBoolean("novel_reader_auto_scroll", false)
 
@@ -1061,6 +1070,8 @@ class NovelReaderPreferences(
                 swipeToNextChapter = swipeToNextChapter().get(),
                 swipeToPrevChapter = swipeToPrevChapter().get(),
                 tapToScroll = tapToScroll().get(),
+                customTapZones = customTapZones().get(),
+                tapZoneActions = tapZoneActions().get(),
                 autoScroll = autoScroll().get(),
                 autoScrollInterval = autoScrollInterval().get(),
                 autoScrollOffset = autoScrollOffset().get(),
@@ -1219,6 +1230,8 @@ class NovelReaderPreferences(
             swipeToNextChapter = override?.swipeToNextChapter ?: swipeToNextChapter().get(),
             swipeToPrevChapter = override?.swipeToPrevChapter ?: swipeToPrevChapter().get(),
             tapToScroll = override?.tapToScroll ?: tapToScroll().get(),
+            customTapZones = override?.customTapZones ?: customTapZones().get(),
+            tapZoneActions = override?.tapZoneActions ?: tapZoneActions().get(),
             autoScroll = override?.autoScroll ?: autoScroll().get(),
             autoScrollInterval = override?.autoScrollInterval ?: autoScrollInterval().get(),
             autoScrollOffset = override?.autoScrollOffset ?: autoScrollOffset().get(),
@@ -1415,6 +1428,8 @@ class NovelReaderPreferences(
             autoScrollEndPauseMs().changes(),
             showAutoScrollFloatingButton().changes(),
             prefetchNextChapter().changes(),
+            customTapZones().changes(),
+            tapZoneActions().changes(),
         ) { values: Array<Any?> ->
             NavigationSettings(
                 values[0] as Boolean,
@@ -1441,6 +1456,8 @@ class NovelReaderPreferences(
                 values[21] as Long,
                 values[22] as Boolean,
                 values[23] as Boolean,
+                values[24] as Boolean,
+                values[25] as String,
             )
         }.distinctUntilChanged()
 
@@ -1703,6 +1720,8 @@ class NovelReaderPreferences(
                 swipeToNextChapter = override?.swipeToNextChapter ?: navigation.swipeToNextChapter,
                 swipeToPrevChapter = override?.swipeToPrevChapter ?: navigation.swipeToPrevChapter,
                 tapToScroll = override?.tapToScroll ?: navigation.tapToScroll,
+                customTapZones = override?.customTapZones ?: navigation.customTapZones,
+                tapZoneActions = override?.tapZoneActions ?: navigation.tapZoneActions,
                 autoScroll = override?.autoScroll ?: navigation.autoScroll,
                 autoScrollInterval = override?.autoScrollInterval ?: navigation.autoScrollInterval,
                 autoScrollOffset = override?.autoScrollOffset ?: navigation.autoScrollOffset,
@@ -1861,6 +1880,8 @@ class NovelReaderPreferences(
         val autoScrollEndPauseMs: Long,
         val showAutoScrollFloatingButton: Boolean,
         val prefetchNextChapter: Boolean,
+        val customTapZones: Boolean,
+        val tapZoneActions: String,
     )
 
     private data class AccessibilitySettings(

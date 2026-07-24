@@ -9,6 +9,8 @@ import eu.kanade.tachiyomi.ui.reader.novel.PageReaderProgress
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelBookFlipAnimationSpeed
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundTexture
+import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTapZoneAction
+import eu.kanade.tachiyomi.ui.reader.novel.setting.resolveConfiguredNovelReaderTapAction
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.hypot
@@ -659,6 +661,40 @@ internal fun dispatchReaderTapAction(
             ReaderTapAction.TOGGLE_UI -> onToggleUi()
             ReaderTapAction.BACKWARD -> onBackward()
             ReaderTapAction.FORWARD -> onForward()
+        }
+    }
+}
+
+internal fun dispatchConfiguredReaderTapAction(
+    tapX: Float,
+    tapY: Float,
+    width: Float,
+    height: Float,
+    customTapZonesEnabled: Boolean,
+    tapZoneActions: List<NovelReaderTapZoneAction>,
+    tapToScrollEnabled: Boolean,
+    onToggleUi: () -> Unit,
+    onBackward: () -> Unit,
+    onForward: () -> Unit,
+    onNextChapter: () -> Unit,
+    onPrevChapter: () -> Unit,
+): NovelReaderTapZoneAction {
+    return resolveConfiguredNovelReaderTapAction(
+        tapX = tapX,
+        tapY = tapY,
+        width = width,
+        height = height,
+        customTapZonesEnabled = customTapZonesEnabled,
+        tapZoneActions = tapZoneActions,
+        tapToScrollEnabled = tapToScrollEnabled,
+    ).also { action ->
+        when (action) {
+            NovelReaderTapZoneAction.NONE -> Unit
+            NovelReaderTapZoneAction.TOGGLE_UI -> onToggleUi()
+            NovelReaderTapZoneAction.BACKWARD -> onBackward()
+            NovelReaderTapZoneAction.FORWARD -> onForward()
+            NovelReaderTapZoneAction.NEXT_CHAPTER -> onNextChapter()
+            NovelReaderTapZoneAction.PREV_CHAPTER -> onPrevChapter()
         }
     }
 }
