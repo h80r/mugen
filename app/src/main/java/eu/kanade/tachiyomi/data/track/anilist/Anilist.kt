@@ -321,6 +321,10 @@ class Anilist(id: Long) :
         return api.search(query)
     }
 
+    override suspend fun searchNovel(query: String): List<MangaTrackSearch> {
+        return api.search(query, isNovel = true)
+    }
+
     override suspend fun searchAnime(query: String): List<AnimeTrackSearch> {
         return api.searchAnime(query)
     }

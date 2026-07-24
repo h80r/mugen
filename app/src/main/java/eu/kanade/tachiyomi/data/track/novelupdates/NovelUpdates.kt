@@ -374,7 +374,7 @@ class NovelUpdates(id: Long) : BaseTracker(id, "NovelUpdates"), MangaTracker {
         saveCredentials(username, password)
     }
 
-    override suspend fun setRemoteMangaStatus(track: MangaTrack, status: Long) {
+    override suspend fun setRemoteMangaStatus(track: MangaTrack, status: Long, isNovelEntry: Boolean) {
         track.status = status
         if (track.status == getCompletionStatus() && track.total_chapters != 0L) {
             track.last_chapter_read = track.total_chapters.toDouble()
@@ -382,7 +382,7 @@ class NovelUpdates(id: Long) : BaseTracker(id, "NovelUpdates"), MangaTracker {
         updateRemoteNovel(track)
     }
 
-    override suspend fun setRemoteLastChapterRead(track: MangaTrack, chapterNumber: Int) {
+    override suspend fun setRemoteLastChapterRead(track: MangaTrack, chapterNumber: Int, isNovelEntry: Boolean) {
         if (track.last_chapter_read == 0.0 &&
             track.last_chapter_read < chapterNumber &&
             track.status != getRereadingStatus()
@@ -399,22 +399,22 @@ class NovelUpdates(id: Long) : BaseTracker(id, "NovelUpdates"), MangaTracker {
         updateRemoteNovel(track)
     }
 
-    override suspend fun setRemoteScore(track: MangaTrack, scoreString: String) {
+    override suspend fun setRemoteScore(track: MangaTrack, scoreString: String, isNovelEntry: Boolean) {
         track.score = indexToScore(getScoreList().indexOf(scoreString))
         updateRemoteNovel(track)
     }
 
-    override suspend fun setRemoteStartDate(track: MangaTrack, epochMillis: Long) {
+    override suspend fun setRemoteStartDate(track: MangaTrack, epochMillis: Long, isNovelEntry: Boolean) {
         track.started_reading_date = epochMillis
         updateRemoteNovel(track)
     }
 
-    override suspend fun setRemoteFinishDate(track: MangaTrack, epochMillis: Long) {
+    override suspend fun setRemoteFinishDate(track: MangaTrack, epochMillis: Long, isNovelEntry: Boolean) {
         track.finished_reading_date = epochMillis
         updateRemoteNovel(track)
     }
 
-    override suspend fun setRemotePrivate(track: MangaTrack, private: Boolean) {
+    override suspend fun setRemotePrivate(track: MangaTrack, private: Boolean, isNovelEntry: Boolean) {
         track.private = private
         updateRemoteNovel(track)
     }

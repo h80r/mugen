@@ -125,9 +125,10 @@ class ShikimoriApi(
         }
     }
 
-    suspend fun search(search: String): List<MangaTrackSearch> {
+    suspend fun search(search: String, isNovel: Boolean = false): List<MangaTrackSearch> {
         return withIOContext {
-            val url = "$API_URL/mangas".toUri().buildUpon()
+            val endpoint = if (isNovel) "ranobe" else "mangas"
+            val url = "$API_URL/$endpoint".toUri().buildUpon()
                 .appendQueryParameter("order", "popularity")
                 .appendQueryParameter("search", search)
                 .appendQueryParameter("limit", "20")

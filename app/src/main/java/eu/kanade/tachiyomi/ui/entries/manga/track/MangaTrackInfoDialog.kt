@@ -123,6 +123,7 @@ data class MangaTrackInfoDialogHomeScreen(
                     TrackStatusSelectorScreen(
                         track = it.track!!,
                         serviceId = it.tracker.id,
+                        isNovelEntry = isNovelEntry,
                     ),
                 )
             },
@@ -131,6 +132,7 @@ data class MangaTrackInfoDialogHomeScreen(
                     TrackChapterSelectorScreen(
                         track = it.track!!,
                         serviceId = it.tracker.id,
+                        isNovelEntry = isNovelEntry,
                     ),
                 )
             },
@@ -139,6 +141,7 @@ data class MangaTrackInfoDialogHomeScreen(
                     TrackScoreSelectorScreen(
                         track = it.track!!,
                         serviceId = it.tracker.id,
+                        isNovelEntry = isNovelEntry,
                     ),
                 )
             },
@@ -148,6 +151,7 @@ data class MangaTrackInfoDialogHomeScreen(
                         track = it.track!!,
                         serviceId = it.tracker.id,
                         start = true,
+                        isNovelEntry = isNovelEntry,
                     ),
                 )
             },
@@ -157,6 +161,7 @@ data class MangaTrackInfoDialogHomeScreen(
                         track = it.track!!,
                         serviceId = it.tracker.id,
                         start = false,
+                        isNovelEntry = isNovelEntry,
                     ),
                 )
             },
@@ -284,7 +289,8 @@ data class MangaTrackInfoDialogHomeScreen(
 
         fun togglePrivate(item: MangaTrackItem) {
             screenModelScope.launchNonCancellable {
-                (item.tracker as? MangaTracker)?.setRemotePrivate(item.track!!.toDbTrack(), !item.track.private)
+                (item.tracker as? MangaTracker)
+                    ?.setRemotePrivate(item.track!!.toDbTrack(), !item.track.private, isNovelEntry)
             }
         }
 
@@ -292,6 +298,7 @@ data class MangaTrackInfoDialogHomeScreen(
             val trackerManager = Injekt.get<TrackerManager>()
             val visibleTrackers = if (isNovelEntry) {
                 trackerManager.novelTrackers
+                    .filter { it.isLoggedIn || trackerManager.isNovelOnlyTracker(it.id) }
             } else {
                 trackerManager.loggedInMangaTrackers()
             }
@@ -306,6 +313,7 @@ data class MangaTrackInfoDialogHomeScreen(
         private fun List<NovelTrack>.mapNovelToTrackItem(): List<MangaTrackItem> {
             val trackerManager = Injekt.get<TrackerManager>()
             return trackerManager.novelTrackers
+                .filter { it.isLoggedIn || trackerManager.isNovelOnlyTracker(it.id) }
                 .map { service -> MangaTrackItem(find { it.trackerId == service.id }?.toMangaTrack(), service) }
         }
 
@@ -327,6 +335,7 @@ internal fun selectTrackersForEntry(
 private data class TrackStatusSelectorScreen(
     private val track: DbMangaTrack,
     private val serviceId: Long,
+    private val isNovelEntry: Boolean = false,
 ) : Screen() {
 
     @Composable
@@ -336,6 +345,7 @@ private data class TrackStatusSelectorScreen(
             Model(
                 track = track,
                 tracker = Injekt.get<TrackerManager>().get(serviceId)!!,
+                isNovelEntry = isNovelEntry,
             )
         }
         val state by screenModel.state.collectAsStateWithLifecycle()
@@ -354,6 +364,7 @@ private data class TrackStatusSelectorScreen(
     private class Model(
         private val track: DbMangaTrack,
         private val tracker: Tracker,
+        private val isNovelEntry: Boolean,
     ) : StateScreenModel<Model.State>(State(track.status)) {
 
         fun getSelections(): Map<Long, StringResource?> {
@@ -368,7 +379,7 @@ private data class TrackStatusSelectorScreen(
 
         fun setStatus() {
             screenModelScope.launchNonCancellable {
-                tracker.mangaService.setRemoteMangaStatus(track.toDbTrack(), state.value.selection)
+                tracker.mangaService.setRemoteMangaStatus(track.toDbTrack(), state.value.selection, isNovelEntry)
             }
         }
 
@@ -382,6 +393,7 @@ private data class TrackStatusSelectorScreen(
 private data class TrackChapterSelectorScreen(
     private val track: DbMangaTrack,
     private val serviceId: Long,
+    private val isNovelEntry: Boolean = false,
 ) : Screen() {
 
     @Composable
@@ -391,6 +403,7 @@ private data class TrackChapterSelectorScreen(
             Model(
                 track = track,
                 tracker = Injekt.get<TrackerManager>().get(serviceId)!!,
+                isNovelEntry = isNovelEntry,
             )
         }
         val state by screenModel.state.collectAsStateWithLifecycle()
@@ -411,6 +424,7 @@ private data class TrackChapterSelectorScreen(
     private class Model(
         private val track: DbMangaTrack,
         private val tracker: Tracker,
+        private val isNovelEntry: Boolean,
     ) : StateScreenModel<Model.State>(State(track.lastChapterRead.toInt())) {
 
         fun getRange(): Iterable<Int> {
@@ -431,6 +445,7 @@ private data class TrackChapterSelectorScreen(
                 tracker.mangaService.setRemoteLastChapterRead(
                     track.toDbTrack(),
                     state.value.selection,
+                    isNovelEntry,
                 )
             }
         }
@@ -445,6 +460,7 @@ private data class TrackChapterSelectorScreen(
 private data class TrackScoreSelectorScreen(
     private val track: DbMangaTrack,
     private val serviceId: Long,
+    private val isNovelEntry: Boolean = false,
 ) : Screen() {
 
     @Composable
@@ -454,6 +470,7 @@ private data class TrackScoreSelectorScreen(
             Model(
                 track = track,
                 tracker = Injekt.get<TrackerManager>().get(serviceId)!!,
+                isNovelEntry = isNovelEntry,
             )
         }
         val state by screenModel.state.collectAsStateWithLifecycle()
@@ -473,6 +490,7 @@ private data class TrackScoreSelectorScreen(
     private class Model(
         private val track: DbMangaTrack,
         private val tracker: Tracker,
+        private val isNovelEntry: Boolean,
     ) : StateScreenModel<Model.State>(State(tracker.mangaService.displayScore(track))) {
 
         fun getSelections(): ImmutableList<String> {
@@ -485,7 +503,7 @@ private data class TrackScoreSelectorScreen(
 
         fun setScore() {
             screenModelScope.launchNonCancellable {
-                tracker.mangaService.setRemoteScore(track.toDbTrack(), state.value.selection)
+                tracker.mangaService.setRemoteScore(track.toDbTrack(), state.value.selection, isNovelEntry)
             }
         }
 
@@ -500,6 +518,7 @@ private data class TrackDateSelectorScreen(
     private val track: DbMangaTrack,
     private val serviceId: Long,
     private val start: Boolean,
+    private val isNovelEntry: Boolean = false,
 ) : Screen() {
 
     @Transient
@@ -567,6 +586,7 @@ private data class TrackDateSelectorScreen(
                 track = track,
                 tracker = Injekt.get<TrackerManager>().get(serviceId)!!,
                 start = start,
+                isNovelEntry = isNovelEntry,
             )
         }
 
@@ -596,6 +616,7 @@ private data class TrackDateSelectorScreen(
         private val track: DbMangaTrack,
         private val tracker: Tracker,
         private val start: Boolean,
+        private val isNovelEntry: Boolean,
     ) : ScreenModel {
 
         // In UTC
@@ -615,15 +636,15 @@ private data class TrackDateSelectorScreen(
                 millis.convertEpochMillisZone(ZoneOffset.UTC, ZoneOffset.systemDefault())
             screenModelScope.launchNonCancellable {
                 if (start) {
-                    tracker.mangaService.setRemoteStartDate(track.toDbTrack(), localMillis)
+                    tracker.mangaService.setRemoteStartDate(track.toDbTrack(), localMillis, isNovelEntry)
                 } else {
-                    tracker.mangaService.setRemoteFinishDate(track.toDbTrack(), localMillis)
+                    tracker.mangaService.setRemoteFinishDate(track.toDbTrack(), localMillis, isNovelEntry)
                 }
             }
         }
 
         fun confirmRemoveDate(navigator: Navigator) {
-            navigator.push(TrackDateRemoverScreen(track, tracker.id, start))
+            navigator.push(TrackDateRemoverScreen(track, tracker.id, start, isNovelEntry))
         }
     }
 }
@@ -632,6 +653,7 @@ private data class TrackDateRemoverScreen(
     private val track: DbMangaTrack,
     private val serviceId: Long,
     private val start: Boolean,
+    private val isNovelEntry: Boolean = false,
 ) : Screen() {
 
     @Composable
@@ -642,6 +664,7 @@ private data class TrackDateRemoverScreen(
                 track = track,
                 tracker = Injekt.get<TrackerManager>().get(serviceId)!!,
                 start = start,
+                isNovelEntry = isNovelEntry,
             )
         }
         AlertDialogContent(
@@ -700,6 +723,7 @@ private data class TrackDateRemoverScreen(
         private val track: DbMangaTrack,
         private val tracker: Tracker,
         private val start: Boolean,
+        private val isNovelEntry: Boolean,
     ) : ScreenModel {
 
         fun getName() = tracker.name
@@ -707,9 +731,9 @@ private data class TrackDateRemoverScreen(
         fun removeDate() {
             screenModelScope.launchNonCancellable {
                 if (start) {
-                    tracker.mangaService.setRemoteStartDate(track.toDbTrack(), 0)
+                    tracker.mangaService.setRemoteStartDate(track.toDbTrack(), 0, isNovelEntry)
                 } else {
-                    tracker.mangaService.setRemoteFinishDate(track.toDbTrack(), 0)
+                    tracker.mangaService.setRemoteFinishDate(track.toDbTrack(), 0, isNovelEntry)
                 }
             }
         }
@@ -782,7 +806,11 @@ data class TrackServiceSearchScreen(
 
                 val result = withIOContext {
                     try {
-                        val results = tracker.mangaService.searchManga(query)
+                        val results = if (isNovelEntry) {
+                            tracker.mangaService.searchNovel(query)
+                        } else {
+                            tracker.mangaService.searchManga(query)
+                        }
                         Result.success(results)
                     } catch (e: Throwable) {
                         Result.failure(e)
