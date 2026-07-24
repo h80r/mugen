@@ -546,6 +546,12 @@
     <string name="nav_zone_right">Справа</string>
     <string name="nav_zone_next">Следующая</string>
     <string name="nav_zone_prev">Предыдущая</string>
+    <string name="nav_zone_none">Ничего</string>
+    <string name="grid_nav">Своя сетка 3×3</string>
+    <string name="pref_custom_tap_zones">Раскладка зон касания</string>
+    <string name="custom_tap_zones_hint">Нажмите на зону, чтобы сменить действие</string>
+    <string name="pref_zoom_dual_taps">Зум двумя пальцами</string>
+    <string name="pref_zoom_dual_taps_summary">Разрешить масштабирование страницы жестом сведения двух пальцев</string>
     <string name="pref_show_navigation_mode_summary">Ненадолго показать при начале чтения</string>
     <string name="pref_show_navigation_mode">Наложение зон касания</string>
     <string name="pref_dns_over_https">DNS по HTTPS (DoH)</string>

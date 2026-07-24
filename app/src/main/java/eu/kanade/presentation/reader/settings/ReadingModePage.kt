@@ -153,6 +153,8 @@ private fun TapZonesSection(
     onSelect: (Int) -> Unit,
     invertMode: ReaderPreferences.TappingInvertMode,
     onSelectInvertMode: (ReaderPreferences.TappingInvertMode) -> Unit,
+    customZones: String,
+    onCustomZonesChange: (String) -> Unit,
 ) {
     AuroraGlassSection(title = stringResource(MR.strings.pref_viewer_nav)) {
         AuroraChipFlow {
@@ -163,6 +165,14 @@ private fun TapZonesSection(
                     label = stringResource(it),
                 )
             }
+        }
+
+        if (selected == 6) {
+            ReaderTapZonesEditor(
+                serializedActions = customZones,
+                onSerializedActionsChange = onCustomZonesChange,
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
 
         if (selected != 5) {
@@ -184,11 +194,14 @@ private fun TapZonesSection(
 private fun ColumnScope.PagerViewerSettings(screenModel: ReaderSettingsScreenModel) {
     val navigationModePager by screenModel.preferences.navigationModePager().collectAsStateWithLifecycle()
     val pagerNavInverted by screenModel.preferences.pagerNavInverted().collectAsStateWithLifecycle()
+    val customTapZonesPager by screenModel.preferences.customTapZoneActions().collectAsStateWithLifecycle()
     TapZonesSection(
         selected = navigationModePager,
         onSelect = screenModel.preferences.navigationModePager()::set,
         invertMode = pagerNavInverted,
         onSelectInvertMode = screenModel.preferences.pagerNavInverted()::set,
+        customZones = customTapZonesPager,
+        onCustomZonesChange = screenModel.preferences.customTapZoneActions()::set,
     )
 
     // Section: scaling.
@@ -223,6 +236,10 @@ private fun ColumnScope.PagerViewerSettings(screenModel: ReaderSettingsScreenMod
         AuroraToggleRow(
             label = stringResource(MR.strings.pref_crop_borders),
             pref = screenModel.preferences.cropBorders(),
+        )
+        AuroraToggleRow(
+            label = stringResource(MR.strings.pref_zoom_dual_taps),
+            pref = screenModel.preferences.enablePinchToZoom(),
         )
         AuroraToggleRow(
             label = stringResource(MR.strings.pref_landscape_zoom),
@@ -261,11 +278,14 @@ private fun ColumnScope.WebtoonViewerSettings(screenModel: ReaderSettingsScreenM
 
     val navigationModeWebtoon by screenModel.preferences.navigationModeWebtoon().collectAsStateWithLifecycle()
     val webtoonNavInverted by screenModel.preferences.webtoonNavInverted().collectAsStateWithLifecycle()
+    val customTapZonesWebtoon by screenModel.preferences.customTapZoneActions().collectAsStateWithLifecycle()
     TapZonesSection(
         selected = navigationModeWebtoon,
         onSelect = screenModel.preferences.navigationModeWebtoon()::set,
         invertMode = webtoonNavInverted,
         onSelectInvertMode = screenModel.preferences.webtoonNavInverted()::set,
+        customZones = customTapZonesWebtoon,
+        onCustomZonesChange = screenModel.preferences.customTapZoneActions()::set,
     )
 
     // Section: webtoon layout and toggles.
@@ -285,6 +305,10 @@ private fun ColumnScope.WebtoonViewerSettings(screenModel: ReaderSettingsScreenM
         AuroraToggleRow(
             label = stringResource(MR.strings.pref_crop_borders),
             pref = screenModel.preferences.cropBordersWebtoon(),
+        )
+        AuroraToggleRow(
+            label = stringResource(MR.strings.pref_zoom_dual_taps),
+            pref = screenModel.preferences.enablePinchToZoom(),
         )
         AuroraToggleRow(
             label = stringResource(MR.strings.pref_webtoon_smart_fit),

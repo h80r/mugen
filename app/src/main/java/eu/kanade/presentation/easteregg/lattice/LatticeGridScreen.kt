@@ -811,7 +811,10 @@ private fun LatticeBoardCanvas(
                 drawPath(
                     plate,
                     brush = Brush.radialGradient(
-                        listOf(LatticeColors.Signal.copy(alpha = 0.10f * unified), LatticeColors.Signal.copy(alpha = 0f)),
+                        listOf(
+                            LatticeColors.Signal.copy(alpha = 0.10f * unified),
+                            LatticeColors.Signal.copy(alpha = 0f),
+                        ),
                         center = Offset(cx, cy),
                         radius = pr,
                     ),
@@ -842,7 +845,12 @@ private fun LatticeBoardCanvas(
             val pd = center(board.port.q + DIRS[board.port.dir][0], board.port.r + DIRS[board.port.dir][1]) - pc
             val portAlpha = 1f - 0.7f * unified
             drawCircle(LatticeColors.Service.copy(alpha = portAlpha), radius = s * 0.16f, center = pc + pd * 0.5f)
-            drawCircle(LatticeColors.Service.copy(alpha = 0.35f * portAlpha), radius = s * 0.28f, center = pc + pd * 0.5f)
+            drawCircle(
+                LatticeColors.Service.copy(alpha = 0.35f * portAlpha),
+                radius = s * 0.28f,
+                center =
+                pc + pd * 0.5f,
+            )
         }
     }
 }

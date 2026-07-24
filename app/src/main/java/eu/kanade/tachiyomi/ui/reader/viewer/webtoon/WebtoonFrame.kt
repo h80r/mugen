@@ -39,6 +39,8 @@ class WebtoonFrame(context: Context) : FrameLayout(context) {
             recycler?.zoomOutDisabled = value
         }
 
+    var enablePinchToZoom = true
+
     /**
      * Recycler view added in this frame.
      */
@@ -55,7 +57,9 @@ class WebtoonFrame(context: Context) : FrameLayout(context) {
      * Dispatches a touch event to the detectors.
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        scaleDetector.onTouchEvent(ev)
+        if (enablePinchToZoom) {
+            scaleDetector.onTouchEvent(ev)
+        }
         flingDetector.onTouchEvent(ev)
 
         // Get the bounding box of the recyclerview and translate any motion events to be within it.

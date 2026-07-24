@@ -588,6 +588,12 @@
     <string name="nav_zone_next">Next</string>
     <string name="nav_zone_left">Left</string>
     <string name="nav_zone_right">Right</string>
+    <string name="nav_zone_none">None</string>
+    <string name="grid_nav">Custom grid</string>
+    <string name="pref_custom_tap_zones">Tap zone layout</string>
+    <string name="custom_tap_zones_hint">Tap a zone to cycle its action</string>
+    <string name="pref_zoom_dual_taps">Pinch to zoom (two fingers)</string>
+    <string name="pref_zoom_dual_taps_summary">Allow zooming pages with a two-finger pinch gesture</string>
     <string name="left_to_right_viewer">Paged (left to right)</string>
     <string name="right_to_left_viewer">Paged (right to left)</string>
     <string name="vertical_viewer">Paged (vertical)</string>

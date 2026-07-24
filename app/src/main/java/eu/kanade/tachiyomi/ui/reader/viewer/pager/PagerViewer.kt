@@ -147,6 +147,7 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
                 NavigationRegion.LEFT -> {
                     moveLeft()
                 }
+                NavigationRegion.NONE -> Unit
             }
         }
         pager.longTapListener = f@{

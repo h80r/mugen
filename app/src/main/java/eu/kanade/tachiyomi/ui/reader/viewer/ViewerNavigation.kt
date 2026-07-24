@@ -31,6 +31,10 @@ abstract class ViewerNavigation {
             MR.strings.nav_zone_right,
             Color.argb(0xCC, 0xA6, 0xCF, 0xD5),
         )
+        data object NONE : NavigationRegion(
+            MR.strings.nav_zone_none,
+            Color.argb(0xCC, 0x5A, 0x5A, 0x5A),
+        )
     }
 
     data class Region(

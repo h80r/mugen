@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.ViewerConfig
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.DisabledNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.EdgeNavigation
+import eu.kanade.tachiyomi.ui.reader.viewer.navigation.GridNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.KindlishNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.LNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.RightAndLeftNavigation
@@ -48,6 +49,9 @@ class PagerConfig(
     var landscapeZoom = false
         private set
 
+    var enablePinchToZoom = true
+        private set
+
     var shiftDoublePages = false
         private set
 
@@ -75,6 +79,9 @@ class PagerConfig(
 
         readerPreferences.landscapeZoom()
             .register({ landscapeZoom = it }, { imagePropertyChangedListener?.invoke() })
+
+        readerPreferences.enablePinchToZoom()
+            .register({ enablePinchToZoom = it }, { imagePropertyChangedListener?.invoke() })
 
         readerPreferences.navigationModePager()
             .register({ navigationMode = it }, { updateNavigation(navigationMode) })
@@ -160,6 +167,7 @@ class PagerConfig(
             3 -> EdgeNavigation()
             4 -> RightAndLeftNavigation()
             5 -> DisabledNavigation()
+            6 -> GridNavigation(customTapZoneActions)
             else -> defaultNavigation()
         }
         navigationModeChangedListener?.invoke()
