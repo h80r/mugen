@@ -4,6 +4,8 @@ import eu.kanade.tachiyomi.util.lang.Hash
 import logcat.LogPriority
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.extensionstore.anime.repository.AnimeExtensionStoreRepository
+import mihon.domain.extensionstore.model.toExtensionStoreBaseUrl
+import mihon.domain.extensionstore.model.toLegacyExtensionRepoUrl
 import mihon.domain.extensionstore.toExtensionRepo
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.util.system.logcat
@@ -39,8 +41,8 @@ class CreateAnimeExtensionRepo(
     }
 
     private fun normalizeForceLocalIndexUrl(indexUrl: String): String {
-        return if (indexUrl.endsWith("/index.min.json")) {
-            indexUrl.replace("/index.min.json", "/repo.json")
+        return if (indexUrl.trimEnd('/').endsWith("/index.min.json", ignoreCase = true)) {
+            indexUrl.toLegacyExtensionRepoUrl()
         } else {
             indexUrl
         }
@@ -77,7 +79,7 @@ class CreateAnimeExtensionRepo(
         val matching = stores.find { it.signingKey == fingerprint }
         if (matching != null) {
             val newRepo = ExtensionRepo(
-                baseUrl = indexUrl.removeSuffix("/index.min.json").removeSuffix("/repo.json"),
+                baseUrl = indexUrl.toExtensionStoreBaseUrl(),
                 name = displayName?.takeIf { it.isNotBlank() } ?: extractRepoName(indexUrl),
                 shortName = null,
                 website = indexUrl,

@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.withTimeout
+import tachiyomi.core.common.source.IncompatibleExtensionException
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.domain.entries.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.entries.manga.model.Manga
@@ -85,6 +86,10 @@ abstract class SourcePagingSource(
                     }
                 }
             }
+        } catch (e: LinkageError) {
+            // An extension compiled against different app APIs: contain it as a load error for
+            // this source instead of letting the LinkageError kill the process.
+            LoadResult.Error(IncompatibleExtensionException(e))
         } catch (e: Exception) {
             LoadResult.Error(e)
         }

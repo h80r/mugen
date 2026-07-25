@@ -6,6 +6,7 @@ import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.extensionstore.anime.repository.AnimeExtensionStoreRepository
 import mihon.domain.extensionstore.manga.repository.MangaExtensionStoreRepository
 import mihon.domain.extensionstore.model.ExtensionStore
+import mihon.domain.extensionstore.model.toExtensionStoreBaseUrl
 import mihon.domain.extensionstore.novel.repository.NovelExtensionStoreRepository
 import mihon.domain.extensionstore.toLegacyExtensionStore
 import tachiyomi.core.common.util.lang.withIOContext
@@ -68,7 +69,7 @@ class ExtensionRepoToStoreMigration : Migration {
             novelHandler.awaitList { db ->
                 db.novel_extension_reposQueries.findAll { baseUrl, name, shortName, website, fingerprint ->
                     ExtensionStore(
-                        indexUrl = baseUrl,
+                        indexUrl = baseUrl.toExtensionStoreBaseUrl(),
                         name = name,
                         badgeLabel = shortName ?: name,
                         signingKey = fingerprint,

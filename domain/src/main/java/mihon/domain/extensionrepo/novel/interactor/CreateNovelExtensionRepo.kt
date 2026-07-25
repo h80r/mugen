@@ -5,6 +5,7 @@ import logcat.LogPriority
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.extensionstore.model.ExtensionStore
 import mihon.domain.extensionstore.model.legacyBaseUrl
+import mihon.domain.extensionstore.model.toExtensionStoreBaseUrl
 import mihon.domain.extensionstore.novel.repository.NovelExtensionStoreRepository
 import mihon.domain.extensionstore.toExtensionRepo
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -30,7 +31,7 @@ class CreateNovelExtensionRepo(
                     applyDisplayName(normalizedUrl, displayName)
                     Result.Success
                 } else if (forceLocalInsert) {
-                    val baseUrl = normalizedUrl.removeSuffix(indexSuffix).removeSuffix("/repo.json")
+                    val baseUrl = normalizedUrl.toExtensionStoreBaseUrl()
                     insertPluginStyleStore(baseUrl, displayName)
                     Result.Success
                 } else {
@@ -130,7 +131,7 @@ class CreateNovelExtensionRepo(
         val matching = stores.find { it.signingKey == fingerprint }
         if (matching != null) {
             val newRepo = ExtensionRepo(
-                baseUrl = baseUrlHint.removeSuffix(indexSuffix).removeSuffix("/repo.json"),
+                baseUrl = baseUrlHint.toExtensionStoreBaseUrl(),
                 name = displayName?.takeIf { it.isNotBlank() } ?: extractRepoName(baseUrlHint),
                 shortName = null,
                 website = baseUrlHint,

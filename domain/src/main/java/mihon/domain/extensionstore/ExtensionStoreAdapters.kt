@@ -3,6 +3,7 @@ package mihon.domain.extensionstore
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.extensionstore.model.ExtensionStore
 import mihon.domain.extensionstore.model.legacyBaseUrl
+import mihon.domain.extensionstore.model.toLegacyExtensionRepoUrl
 
 fun ExtensionStore.toExtensionRepo(): ExtensionRepo {
     return ExtensionRepo(
@@ -17,7 +18,7 @@ fun ExtensionStore.toExtensionRepo(): ExtensionRepo {
 
 fun ExtensionRepo.toLegacyExtensionStore(): ExtensionStore {
     return ExtensionStore(
-        indexUrl = "$baseUrl/repo.json",
+        indexUrl = baseUrl.toLegacyExtensionRepoUrl(),
         name = name,
         badgeLabel = shortName ?: name,
         signingKey = signingKeyFingerprint,

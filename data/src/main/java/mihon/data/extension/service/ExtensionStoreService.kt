@@ -15,6 +15,10 @@ import mihon.data.extension.model.NetworkLegacyExtension
 import mihon.data.extension.model.NetworkLegacyExtensionRepo
 import mihon.data.extension.model.toAvailableExtensionData
 import mihon.domain.extensionstore.model.ExtensionStore
+import mihon.domain.extensionstore.model.isExtensionStoreIndexUrl
+import mihon.domain.extensionstore.model.toExtensionStoreBaseUrl
+import mihon.domain.extensionstore.model.toLegacyExtensionIndexUrl
+import mihon.domain.extensionstore.model.toLegacyExtensionRepoUrl
 import okhttp3.OkHttpClient
 import okio.BufferedSource
 import okio.buffer
@@ -57,10 +61,10 @@ class ExtensionStoreService(
             val indexV2 = (networkStore as? NetworkLegacyExtensionRepo)?.indexV2
             when {
                 networkStore == null -> {
-                    if (!indexUrl.endsWith("/index.min.json")) {
+                    if (!indexUrl.isExtensionStoreIndexUrl()) {
                         throw IllegalArgumentException("Provided legacy store url is not valid")
                     }
-                    fetchLegacyRepoDetails(indexUrl.removeSuffix("/index.min.json"))
+                    fetchLegacyRepoDetails(indexUrl.toExtensionStoreBaseUrl())
                 }
                 indexV2 != null -> fetch(indexV2)
                 else -> Result.success(networkStore.toExtensionStore(indexUrl))
@@ -81,7 +85,7 @@ class ExtensionStoreService(
      * failing, since the extension index itself is known to be reachable at this point.
      */
     private suspend fun fetchLegacyRepoDetails(baseUrl: String): Result<ExtensionStore> {
-        val repoUrl = "$baseUrl/repo.json"
+        val repoUrl = baseUrl.toLegacyExtensionRepoUrl()
         return try {
             val networkStore = withDecodedBody(repoUrl) { source ->
                 when (source.peek().readByte()) {
@@ -113,7 +117,7 @@ class ExtensionStoreService(
     }
 
     private fun placeholderLegacyStore(repoUrl: String): ExtensionStore {
-        val baseUrl = repoUrl.removeSuffix("/repo.json")
+        val baseUrl = repoUrl.toExtensionStoreBaseUrl()
         val name = extractStoreName(baseUrl)
         return ExtensionStore(
             indexUrl = repoUrl,
@@ -165,8 +169,8 @@ class ExtensionStoreService(
                     extensionList.toAvailableExtensionData(store)
                 }
             } else {
-                val storeBaseUrl = store.indexUrl.removeSuffix("/repo.json")
-                withDecodedBody("$storeBaseUrl/index.min.json") { source ->
+                val storeBaseUrl = store.indexUrl.toExtensionStoreBaseUrl()
+                withDecodedBody(storeBaseUrl.toLegacyExtensionIndexUrl()) { source ->
                     json.decodeFromBufferedSource<List<NetworkLegacyExtension>>(source)
                         .mapNotNull { it.toAvailableExtensionData(store, storeBaseUrl) }
                 }

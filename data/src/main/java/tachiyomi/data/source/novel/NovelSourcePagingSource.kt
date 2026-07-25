@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.novelsource.model.NovelFilterList
 import eu.kanade.tachiyomi.novelsource.model.NovelsPage
 import eu.kanade.tachiyomi.novelsource.model.SNovel
 import kotlinx.coroutines.withTimeout
+import tachiyomi.core.common.source.IncompatibleExtensionException
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.domain.entries.novel.interactor.NetworkToLocalNovel
 import tachiyomi.domain.entries.novel.model.Novel
@@ -90,6 +91,10 @@ abstract class NovelSourcePagingSource(
                     }
                 }
             }
+        } catch (e: LinkageError) {
+            // An extension compiled against different app APIs: contain it as a load error for
+            // this source instead of letting the LinkageError kill the process.
+            LoadResult.Error(IncompatibleExtensionException(e))
         } catch (e: Exception) {
             LoadResult.Error(e)
         }
