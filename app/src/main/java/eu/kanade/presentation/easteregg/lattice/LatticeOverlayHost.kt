@@ -3,17 +3,16 @@ package eu.kanade.presentation.easteregg.lattice
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -101,24 +100,61 @@ fun LatticeOverlayHost() {
     }
 }
 
+/**
+ * Diegetic HUD inscription: a type-on monospace line at the top of the frame with a
+ * brief chromatic glitch burst — a system whisper, not a floating snackbar chip.
+ */
 @Composable
 private fun LatticeTerminalFlash(text: String) {
+    val reduced = rememberLatticeReducedMotion()
+    var shown by remember(text) { mutableIntStateOf(if (reduced) text.length else 0) }
+    LaunchedEffect(text, reduced) {
+        if (!reduced) {
+            shown = 0
+            while (shown < text.length) {
+                delay(22)
+                shown++
+            }
+        }
+    }
+    val time by rememberLatticeTimeSeconds(active = !reduced)
+    val body = text.take(shown)
+    val display = if (shown < text.length) body + "\u258C" else body
+    // Deterministic glitch burst roughly every 1.4s; silent the rest of the time.
+    val burst = (time * 0.7f) % 1f
+    val glitch = if (!reduced && burst < 0.07f) 1f - burst / 0.07f else 0f
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(bottom = 96.dp),
-        contentAlignment = Alignment.BottomCenter,
+            .padding(top = 72.dp),
+        contentAlignment = Alignment.TopCenter,
     ) {
-        Text(
-            text = text,
-            color = LatticeColors.Signal,
-            fontFamily = FontFamily.Monospace,
-            fontSize = 12.sp,
-            letterSpacing = 2.sp,
-            modifier = Modifier
-                .background(LatticeColors.Void.copy(alpha = 0.88f), RoundedCornerShape(4.dp))
-                .border(1.dp, LatticeColors.SignalDim, RoundedCornerShape(4.dp))
-                .padding(horizontal = 14.dp, vertical = 7.dp),
-        )
+        Box {
+            if (glitch > 0f) {
+                Text(
+                    text = display,
+                    color = LatticeColors.TextPrimary.copy(alpha = 0.4f * glitch),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    letterSpacing = 2.sp,
+                    modifier = Modifier.offset(x = (2 + 3 * glitch).dp),
+                )
+                Text(
+                    text = display,
+                    color = LatticeColors.Desync.copy(alpha = 0.35f * glitch),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    letterSpacing = 2.sp,
+                    modifier = Modifier.offset(x = (-2 - 3 * glitch).dp),
+                )
+            }
+            Text(
+                text = display,
+                color = LatticeColors.Signal,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                letterSpacing = 2.sp,
+            )
+        }
     }
 }

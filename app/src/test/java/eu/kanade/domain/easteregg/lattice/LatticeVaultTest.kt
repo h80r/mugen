@@ -41,7 +41,7 @@ class LatticeVaultTest {
     @Test
     fun productionStageBOpensWithKnownTopology() {
         val topology =
-            "topology/v1|-1,0:5;-1,1:0;0,-1:4;0,1:2;1,-1:0;2,-1:3;2,0:0"
+            "topology/v1|-1,0:5;-1,1:0;0,-1:4;0,1:1;1,-1:3;1,0:0"
         val raw = LatticeVault.tryOpen(topology, LatticeVaultData.STAGE_B)
         assertEquals(true, raw != null)
         val json = raw!!.decodeToString()

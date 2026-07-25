@@ -2795,8 +2795,15 @@
     <string name="lattice_breach_line1">SHELL DETACHED</string>
     <string name="lattice_breach_line2">ROUTE THE SIGNAL FROM PORT TO CORE</string>
     <string name="lattice_routing_line1">ROUTING MODE</string>
+    <string name="lattice_track_hint">CLOSE THE RING THROUGH EVERY NODE</string>
+    <string name="lattice_track_closed_title">TRACK CLOSED</string>
+    <string name="lattice_track_closed_sub">CORE ONLINE · LIGHT-CYCLE ON CONTOUR</string>
+    <string name="lattice_track_nodes">NODES// %1$d/%2$d</string>
+    <string name="lattice_track_ring_open">RING// OPEN</string>
+    <string name="lattice_track_ring_closed">RING// CLOSED</string>
     <string name="lattice_board_a11y">Signal routing board</string>
     <string name="lattice_synthesis_commit">SYNTHESIZE</string>
+    <string name="lattice_commit_hint">HOLD TO SYNTHESIZE</string>
     <string name="lattice_core_online">CORE ONLINE</string>
     <string name="lattice_synthesis_line1">TOPOLOGY CONFIRMED</string>
     <string name="lattice_synthesis_line2">SYNTHESIS COMPLETE. ARCHITECT IDENTIFIED.</string>
@@ -2805,6 +2812,7 @@
     <string name="lattice_circuit_locked">CIRCUIT LOCKED · SYNTHESIZING</string>
     <string name="lattice_synth_failed">SYNTHESIS FAILED · ADJUST TOPOLOGY</string>
     <string name="lattice_accept">ACCEPT</string>
+    <string name="lattice_accept_sealed">IDENTITY SEALED</string>
     <string name="lattice_residual">THE LATTICE REMEMBERS YOU, ARCHITECT.</string>
     <string name="lattice_overlay_close">Close</string>
     <string name="lattice_rewards_kicker">— ARCHITECT CLEARANCE —</string>

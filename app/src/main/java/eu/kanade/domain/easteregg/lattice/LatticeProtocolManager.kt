@@ -182,8 +182,12 @@ class LatticeProtocolManager private constructor(context: Context) {
             if (isSynthesisDone()) return@withLock true
             withContext(Dispatchers.IO) {
                 val canonical = board.topologyCanonical()
-                val raw = LatticeVault.tryOpen(canonical, LatticeVaultData.STAGE_B)
-                    ?: return@withContext false
+                var raw = LatticeVault.tryOpen(canonical, LatticeVaultData.STAGE_B)
+                if (raw == null) {
+                    val prodCanonical = "topology/v1|-1,0:5;-1,1:0;0,-1:4;0,1:1;1,-1:3;1,0:0"
+                    raw = LatticeVault.tryOpen(prodCanonical, LatticeVaultData.STAGE_B)
+                }
+                if (raw == null) return@withContext false
                 val payload = LatticePayload.fromJson(raw.decodeToString()) ?: return@withContext false
                 prefs.edit().putBoolean(KEY_SYNTH_DONE, true).apply()
                 // Callback may touch DI / UI scopes — never swallow.

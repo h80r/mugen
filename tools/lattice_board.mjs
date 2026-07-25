@@ -5,6 +5,7 @@ export const SEGMENTS = {
   CURVE: { connectors: [0, 2], symmetry: 6 },
   ELBOW: { connectors: [0, 1], symmetry: 6 },
   TEE: { connectors: [0, 2, 4], symmetry: 2 },
+  FORK: { connectors: [0, 1, 2], symmetry: 6 },
 };
 const key = (q, r) => `${q},${r}`;
 const mod6 = (x) => ((x % 6) + 6) % 6;

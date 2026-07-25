@@ -6,32 +6,34 @@ package eu.kanade.domain.easteregg.lattice
  * open-key derivation (scenario source of truth stays gitignored).
  */
 internal object LatticeVaultData {
-    const val VERSION = 611746306
+    const val VERSION = 555346607
 
     /** Opaque frame fragment for Stage A canonical (not a player-facing secret). */
-    const val FRAME = "7f3a9c1e2b84d0f6"
+    const val FRAME = "c4e19ab7d2f5083e"
 
     /** Latch thresholds for carriers in order: anime, manga, novel. */
     val THRESHOLDS = intArrayOf(1, 2, 3)
 
     val STAGE_A = LatticeStage(
-        salt = "s6dDQY5TbpNFP/Nd0pVOZA==",
-        iv = "WvtfoGM7Cayv7s0w",
-        check = "sSYWN/mvBn5nKq58Rp9Nkvz8vqjBJYyteiOyd2WR3Ck=",
-        data = "DDGHMTGqHmElkXeC9fcwVpVaGcE3Xq6aDRvA5lClpF/tHtT8zFkCTT4cYsVoPSTZOZvf4zqor3vf5k7KzAMJ6xPOh" +
-            "kKgONlphJ/7/kt3NCsDCJqjQW119GdOp8Ftc/hN6ZpJW3mR5YcP/+SPJaoFEkXfEaWHPsDEyCfFj2KcRJ30QNJi02reYJIrraxvAWLD" +
-            "H2gcJOkIi7xi6yi8MTmikU4PsHL9vHSiVQx8G02qlQ5UL0ibCVewkf1jcN8RUu/V6IL0xkxpXckUmolsHfq6RmYpUVwuW1ndf75hPy7I" +
-            "pSiyPN3r4hL5tuGxrzdJB5KEOO+8Wj+zGl6kHsIIZm1u/rVVkDHkw29IJXX8oeRPKHGM6m1VUMvnBe7ZlhkkIttOZb8P7Ee1X3CbVkI" +
-            "nvZjOCtiGG1w9VeK0XnIe/AAsX45XXm7WPHdFz1I6OdCovmzKgQzC3rxC6BCxQKTir+XohUsdY+p9syFUUsMq4gbMpsDZ3frxuggTp" +
-            "JCkof2iFoXXbs8=",
+        salt = "8NBsorOhdZ11in7IzqBHnA==",
+        iv = "x6i/Fo/AZP4Ckwwt",
+        check = "F1E1cVe4lENeGbKPuk2BruOqQD6wLMPDuYzuL2tmvXc=",
+        data = "oMad3WBh7JMb8GRM13ZKp3NI1m/QroSRiJ7q6Tn9JbcxHS9cWcg8VrsUPIHugtPcbvVce41e6" +
+            "KaLrB40FehX4I2EOP0z3esWiA1g8s+/zC4DkB8JwR4uSBmmn2steSyP5uG41s39fFK5pY0KfT" +
+            "aFcTNroyebWHt8/hoenGuiE+HWPkqGPS/UbmpMjsS65YLK5A8ycZa5/DihWIevm9RGjRmjyMS" +
+            "gf+/Ug8jI7av7vCamdlnGuNF9yOEBe4poOUSL9YJ1sdDratZnfrm58GhlDYH1CZSKm38E+mTu" +
+            "Oiye3OZHzjnAKlc0ZItqw2k9E2Xq8rjR9PIHxlLgPJqy0WsguylOz9C+q927rLYsrM1noAvnp" +
+            "QHJoUvCnukE+mzUxfWEUzR7UpgKyahAKqz5ZGoW3Yu/T6X00hLTBlrsmG+Yd3gZ6g0y7frlX8" +
+            "d1VEB6YOVTpng=",
     )
 
     val STAGE_B = LatticeStage(
-        salt = "2pbsQSyyL29OdqNXScKPCA==",
-        iv = "VzCAjYBE4M01F/Y7",
-        check = "8XUVMMtHTtHIP3DloEE1gIRzw73uxgPzspscWQL4L/w=",
-        data = "1JakhVQUfqM89rrhDZMpyLHDWcjyWYZNBqADfpNBs+7d7E2kO1tO7QQIPgF81i0O2Ms3YVL4uqjh60Had8uNn5ka0rmHPxBoLhVwV" +
-            "uTp4FRg6z+7XrPxeIK8y74L921YZL6GF6ud/wi74HQBhJGpkVhwZc8ORMiSeDS+SXJCncJiV00L38dIpaWHIEewn80pBUwA/gv8dlh" +
-            "K/JauNPCijkp/DLAHByxCMJe6WMin",
+        salt = "2z2XnlZyVLhUjy+evIVtgA==",
+        iv = "ZVJgtdTgnzq+yWkG",
+        check = "gmn5Tso6HsPi57NT3nBbU9k225fbHHRYAR6ElMZ1Ejk=",
+        data = "56jLt2ETSuZAXtCSGDD0JE5obGdkKKwimfZSQj5XVbV+iDzYZtvntoZ6OGSCCSo8xk8iy1" +
+            "DzTp6L8G72kYHmrnrpPgDw5dosJsSxQYZfYHItZ+my31vmTDPmVDHWQPYtMM9PtN3bF1eS+RU" +
+            "WpnGZ8FONjIjpVYFHal33vl3oSCx0z4Gd/1JDW6J/n5RE95Xwmthbl9WALrKFt2vwiukMDWMf" +
+            "RVayjZUArbOxilHe",
     )
 }

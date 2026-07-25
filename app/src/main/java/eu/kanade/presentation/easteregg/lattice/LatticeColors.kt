@@ -12,4 +12,17 @@ object LatticeColors {
     val Service = Color(0xFFFFB84D)
     val Alert = Color(0xFFFF3B4E)
     val GridLine = Color(0x1A5FE9FF)
+
+    /** Cold desync violet: failed-topology reject (never a cartoon red alarm). */
+    val Desync = Color(0xFFB84BFF)
+    val DesyncDim = Color(0x66B84BFF)
+
+    /** Etched micro-circuit lines on glass-black plates. */
+    val Etch = Color(0xFF16283C)
+
+    // Stage 3.5: obsidian glass fill for the routing track plates.
+    val Obsidian = Color(0xFF060A10)
+
+    /** Prototype HTML bright cyan (#7FF3FF) used for lit plate rims and bridges. */
+    val SignalBright = Color(0xFF7FF3FF)
 }

@@ -1,6 +1,7 @@
 package eu.kanade.presentation.easteregg.lattice
 
 import android.provider.Settings
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -45,4 +46,15 @@ fun latticePulse(periodMs: Int = 2400): State<Float> {
         ),
         label = "latticePulseValue",
     )
+}
+
+/**
+ * Easing bible - one timing language for the whole Grid:
+ * [MechanicalSnap] for tiles and locks (overshoot past the detent, settle back),
+ * [LightDecay] for light energy (fast attack, long falloff),
+ * energy travel along traces stays strictly linear.
+ */
+object LatticeEasing {
+    val MechanicalSnap = CubicBezierEasing(0.34f, 1.30f, 0.64f, 1f)
+    val LightDecay = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
 }

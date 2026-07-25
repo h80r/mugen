@@ -2814,8 +2814,15 @@
     <string name="lattice_breach_line1">ОБОЛОЧКА СНЯТА</string>
     <string name="lattice_breach_line2">ПРОВЕДИ СИГНАЛ ОТ ПОРТА К ЯДРУ</string>
     <string name="lattice_routing_line1">РЕЖИМ ТРАССИРОВКИ</string>
+    <string name="lattice_track_hint">ЗАМКНИ ТРАССУ ЧЕРЕЗ ВСЕ УЗЛЫ</string>
+    <string name="lattice_track_closed_title">ТРАССА ЗАМКНУТА</string>
+    <string name="lattice_track_closed_sub">ЯДРО ОНЛАЙН · СВЕТ-ЦИКЛ НА КОНТУРЕ</string>
+    <string name="lattice_track_nodes">УЗЛЫ// %1$d/%2$d</string>
+    <string name="lattice_track_ring_open">КОНТУР// РАЗОМКНУТ</string>
+    <string name="lattice_track_ring_closed">КОНТУР// ЗАМКНУТ</string>
     <string name="lattice_board_a11y">Плата маршрутизации сигнала</string>
     <string name="lattice_synthesis_commit">СИНТЕЗ</string>
+    <string name="lattice_commit_hint">УДЕРЖИВАЙ ДЛЯ СИНТЕЗА</string>
     <string name="lattice_core_online">ЯДРО АКТИВНО</string>
     <string name="lattice_synthesis_line1">ТОПОЛОГИЯ ПОДТВЕРЖДЕНА</string>
     <string name="lattice_synthesis_line2">СИНТЕЗ ЗАВЕРШЁН. АРХИТЕКТОР ОПОЗНАН.</string>
@@ -2824,6 +2831,7 @@
     <string name="lattice_circuit_locked">КОНТУР ЗАМКНУТ · СИНТЕЗ</string>
     <string name="lattice_synth_failed">СБОЙ СИНТЕЗА · ПОДСТРОЙ ТОПОЛОГИЮ</string>
     <string name="lattice_accept">ПРИНЯТЬ</string>
+    <string name="lattice_accept_sealed">ЛИЧНОСТЬ ЗАПЕЧАТАНА</string>
     <string name="lattice_residual">КАРКАС ПОМНИТ ТЕБЯ, АРХИТЕКТОР.</string>
     <string name="lattice_overlay_close">Закрыть</string>
     <string name="lattice_rewards_kicker">— ДОПУСК АРХИТЕКТОРА —</string>

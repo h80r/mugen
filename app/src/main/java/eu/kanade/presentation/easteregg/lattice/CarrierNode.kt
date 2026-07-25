@@ -1,5 +1,8 @@
 package eu.kanade.presentation.easteregg.lattice
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -8,12 +11,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -23,6 +30,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import eu.kanade.domain.easteregg.lattice.LatticeCarrier
 import eu.kanade.domain.easteregg.lattice.LatticeProtocolManager
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.i18n.stringResource
 import kotlin.math.PI
@@ -47,9 +56,13 @@ fun LatticeCarrierSlot(carrier: LatticeCarrier) {
     val haptics = LocalHapticFeedback.current
     val a11y = stringResource(AYMR.strings.lattice_carrier_node_a11y)
     val reduced = rememberLatticeReducedMotion()
+    val scope = rememberCoroutineScope()
     // Slow orbital phase (~0.25 Hz) — not a strobe
     val phase by latticePulse(periodMs = 4000)
     val particles = remember(carrier) { EtherParticle.seed(carrier.ordinal, count = 40) }
+    // Hold-to-latch: the dormant terminal charges while held; a full ring latches the carrier.
+    val charge = remember { Animatable(0f) }
+    val snap = remember { Animatable(0f) }
 
     Box(
         modifier = Modifier
@@ -57,10 +70,31 @@ fun LatticeCarrierSlot(carrier: LatticeCarrier) {
             .semantics { contentDescription = a11y }
             .pointerInput(carrier) {
                 detectTapGestures(
-                    onLongPress = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        manager.onCarrierHold(carrier)
-                        visible = carrier in manager.visibleCarriers()
+                    onPress = {
+                        var fired = false
+                        val job = scope.launch {
+                            if (reduced) {
+                                delay(650)
+                                charge.snapTo(1f)
+                            } else {
+                                charge.animateTo(1f, tween(650, easing = LinearEasing))
+                            }
+                            fired = true
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            manager.onCarrierHold(carrier)
+                            // Light-cycle snap: one sharp ring flash instead of a toast.
+                            if (!reduced) {
+                                snap.snapTo(1f)
+                                snap.animateTo(0f, tween(340, easing = LinearEasing))
+                            }
+                            visible = carrier in manager.visibleCarriers()
+                            charge.snapTo(0f)
+                        }
+                        tryAwaitRelease()
+                        if (!fired) {
+                            job.cancel()
+                            scope.launch { charge.animateTo(0f, tween(160, easing = LinearEasing)) }
+                        }
                     },
                 )
             },
@@ -70,6 +104,8 @@ fun LatticeCarrierSlot(carrier: LatticeCarrier) {
             val c = center
             val maxR = size.minDimension * 0.48f
             val p = if (reduced) 0.35f else phase
+            val chargeT = charge.value
+            val snapT = snap.value
 
             // Soft ambient halo (keeps node readable on dark chrome)
             drawCircle(
@@ -87,7 +123,7 @@ fun LatticeCarrierSlot(carrier: LatticeCarrier) {
 
             // Particles: spiral inward (ether noise sucked into the node)
             particles.forEach { particle ->
-                val spin = p * 2f * PI.toFloat() * particle.speed + particle.phase
+                val spin = p * 2f * PI.toFloat() * particle.speed * (1f + 2.5f * chargeT) + particle.phase
                 // radius breathes inward: outer ring → core
                 val inhale = if (reduced) {
                     particle.orbit
@@ -132,6 +168,40 @@ fun LatticeCarrierSlot(carrier: LatticeCarrier) {
                 radius = maxR * 0.11f * corePulse,
                 center = c,
             )
+
+            // Charge ring: an amber arc closes the circle, tipping into cyan near the latch.
+            if (chargeT > 0.01f) {
+                drawArc(
+                    color = LatticeColors.Service.copy(alpha = 0.85f),
+                    startAngle = -90f,
+                    sweepAngle = 360f * chargeT,
+                    useCenter = false,
+                    topLeft = Offset(c.x - maxR, c.y - maxR),
+                    size = Size(maxR * 2f, maxR * 2f),
+                    style = Stroke(width = 2.5f, cap = StrokeCap.Round),
+                )
+                if (chargeT > 0.6f) {
+                    val tip = (chargeT - 0.6f) / 0.4f
+                    drawArc(
+                        color = LatticeColors.Signal.copy(alpha = 0.9f * tip),
+                        startAngle = -90f + 360f * chargeT - 40f * tip,
+                        sweepAngle = 40f * tip,
+                        useCenter = false,
+                        topLeft = Offset(c.x - maxR, c.y - maxR),
+                        size = Size(maxR * 2f, maxR * 2f),
+                        style = Stroke(width = 2.5f, cap = StrokeCap.Round),
+                    )
+                }
+            }
+            // Light-cycle snap on latch: one sharp expanding ring, then silence.
+            if (snapT > 0.01f) {
+                drawCircle(
+                    color = LatticeColors.Signal.copy(alpha = 0.9f * snapT),
+                    radius = maxR * (1.05f + 0.85f * (1f - snapT)),
+                    center = c,
+                    style = Stroke(width = 1.5f + 2.5f * snapT),
+                )
+            }
         }
     }
 }
