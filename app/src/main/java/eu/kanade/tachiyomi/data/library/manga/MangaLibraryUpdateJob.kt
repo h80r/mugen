@@ -478,13 +478,21 @@ class MangaLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
     private suspend fun updateManga(manga: Manga, fetchWindow: Pair<Long, Long>): List<Chapter> {
         val source = sourceManager.getOrStub(manga.source)
 
-        // Update manga metadata if needed
-        if (libraryPreferences.autoUpdateMetadata().get()) {
-            val networkManga = source.getMangaDetails(manga.toSManga())
-            updateManga.awaitUpdateFromSource(manga, networkManga, manualFetch = false, coverCache)
+        // Go through the combined update API: for a 1.4/1.5 extension its default implementation
+        // still calls getMangaDetails/getChapterList, while a 1.6 extension can answer both from a
+        // single request instead of failing on the legacy entry points it no longer implements.
+        val fetchDetails = libraryPreferences.autoUpdateMetadata().get()
+        val update = source.getMangaUpdate(
+            manga = manga.toSManga(),
+            chapters = emptyList(),
+            fetchDetails = fetchDetails,
+            fetchChapters = true,
+        )
+        if (fetchDetails) {
+            updateManga.awaitUpdateFromSource(manga, update.manga, manualFetch = false, coverCache)
         }
 
-        val chapters = source.getChapterList(manga.toSManga())
+        val chapters = update.chapters
 
         // Get manga from database to account for if it was removed during the update and
         // to get latest data so it doesn't get overwritten later on

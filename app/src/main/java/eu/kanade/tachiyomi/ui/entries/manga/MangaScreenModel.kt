@@ -683,7 +683,14 @@ class MangaScreenModel(
         val state = successState ?: return
         try {
             withIOContext {
-                val networkManga = state.source.getMangaDetails(state.manga.toSManga())
+                // Combined API: unchanged for 1.4/1.5 extensions (its default calls
+                // getMangaDetails), and works for 1.6 extensions that only implement this one.
+                val networkManga = state.source.getMangaUpdate(
+                    manga = state.manga.toSManga(),
+                    chapters = emptyList(),
+                    fetchDetails = true,
+                    fetchChapters = false,
+                ).manga
                 val sourceRating = networkManga.rating.takeIf { it > 0f }
                 debugLog(
                     "fetchMangaFromSource: source=${state.source.name} title=${networkManga.safeTitle().previewForLog()} rating=${networkManga.rating} desc=${networkManga.description.previewForLog()}",
