@@ -63,6 +63,7 @@ import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.MangaSource
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import eu.kanade.tachiyomi.ui.entries.mergeNewItemIds
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
@@ -544,8 +545,13 @@ class MangaScreenModel(
 
             val fetchFromSourceTasks = if (screenModelScope.isActive) {
                 listOf(
-                    async { if (needRefreshInfo) fetchMangaFromSource() },
-                    async { if (needRefreshChapter) fetchChaptersFromSource() },
+                    async {
+                        when {
+                            needRefreshInfo && needRefreshChapter -> fetchMangaAndChaptersFromSource()
+                            needRefreshInfo -> fetchMangaFromSource()
+                            needRefreshChapter -> fetchChaptersFromSource()
+                        }
+                    },
                 )
             } else {
                 emptyList()
@@ -677,15 +683,44 @@ class MangaScreenModel(
     // Manga info - start
 
     /**
+     * Fetches details and chapters in a single source call.
+     *
+     * A 1.6 source answers both from one request and rejects concurrent getMangaUpdate calls for the
+     * same entry, so the two halves must not be requested in parallel. For 1.4/1.5 sources the
+     * default bridge still issues the same two requests it always did.
+     */
+    private suspend fun fetchMangaAndChaptersFromSource(manualFetch: Boolean = false) {
+        val state = successState ?: return
+        val update = try {
+            withIOContext {
+                state.source.getMangaUpdate(
+                    manga = state.manga.toSManga(),
+                    chapters = emptyList(),
+                    fetchDetails = true,
+                    fetchChapters = true,
+                )
+            }
+        } catch (e: Throwable) {
+            handleSourceFetchError(state, e)
+            return
+        }
+        fetchMangaFromSource(manualFetch, prefetched = update)
+        fetchChaptersFromSource(manualFetch, prefetched = update)
+    }
+
+    /**
      * Fetch manga information from source.
      */
-    private suspend fun fetchMangaFromSource(manualFetch: Boolean = false) {
+    private suspend fun fetchMangaFromSource(
+        manualFetch: Boolean = false,
+        prefetched: SMangaUpdate? = null,
+    ) {
         val state = successState ?: return
         try {
             withIOContext {
                 // Combined API: unchanged for 1.4/1.5 extensions (its default calls
                 // getMangaDetails), and works for 1.6 extensions that only implement this one.
-                val networkManga = state.source.getMangaUpdate(
+                val networkManga = prefetched?.manga ?: state.source.getMangaUpdate(
                     manga = state.manga.toSManga(),
                     chapters = emptyList(),
                     fetchDetails = true,
@@ -703,29 +738,34 @@ class MangaScreenModel(
                 )
             }
         } catch (e: Throwable) {
-            // Ignore early hints "errors" that aren't handled by OkHttp
-            if (e is HttpException && e.code == 103) return
+            handleSourceFetchError(state, e)
+        }
+    }
 
-            val formattedMessage = e.formattedMessage(context)
-            if (isAuthenticationError(e, formattedMessage)) {
-                updateSuccessState {
-                    it.copy(
-                        dialog = Dialog.AuthRequiredDialog(
-                            errorMessage = formattedMessage.ifBlank { e.message ?: "Authentication failed" },
-                            sourceId = state.source.id,
-                            sourceName = state.source.name,
-                            isConfigurable = state.source is ConfigurableSource,
-                            source = state.source,
-                        ),
-                    )
-                }
-                return
-            }
+    /** Shared failure handling for the source fetches: auth prompt, or a snackbar with the reason. */
+    private fun handleSourceFetchError(state: State.Success, e: Throwable) {
+        // Ignore early hints "errors" that aren't handled by OkHttp
+        if (e is HttpException && e.code == 103) return
 
-            logcat(LogPriority.ERROR, e)
-            screenModelScope.launch {
-                snackbarHostState.showSnackbar(message = formattedMessage)
+        val formattedMessage = e.formattedMessage(context)
+        if (isAuthenticationError(e, formattedMessage)) {
+            updateSuccessState {
+                it.copy(
+                    dialog = Dialog.AuthRequiredDialog(
+                        errorMessage = formattedMessage.ifBlank { e.message ?: "Authentication failed" },
+                        sourceId = state.source.id,
+                        sourceName = state.source.name,
+                        isConfigurable = state.source is ConfigurableSource,
+                        source = state.source,
+                    ),
+                )
             }
+            return
+        }
+
+        logcat(LogPriority.ERROR, e)
+        screenModelScope.launch {
+            snackbarHostState.showSnackbar(message = formattedMessage)
         }
     }
 
@@ -1118,14 +1158,17 @@ class MangaScreenModel(
     /**
      * Requests an updated list of chapters from the source.
      */
-    private suspend fun fetchChaptersFromSource(manualFetch: Boolean = false) {
+    private suspend fun fetchChaptersFromSource(
+        manualFetch: Boolean = false,
+        prefetched: SMangaUpdate? = null,
+    ) {
         val state = successState ?: return
         try {
             withIOContext {
                 val getStart = System.currentTimeMillis()
                 // Combined API: unchanged for 1.4/1.5 extensions, and the only entry point a
                 // 1.6 extension implements - calling getChapterList there throws.
-                val sourceChapters = state.source.getMangaUpdate(
+                val sourceChapters = prefetched?.chapters ?: state.source.getMangaUpdate(
                     manga = state.manga.toSManga(),
                     chapters = emptyList(),
                     fetchDetails = false,

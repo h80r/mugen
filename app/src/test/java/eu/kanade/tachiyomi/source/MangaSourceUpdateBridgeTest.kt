@@ -114,4 +114,47 @@ class MangaSourceUpdateBridgeTest {
             )
         }
     }
+
+    @Test
+    fun `a source may reject concurrent updates for the same entry`() = runTest {
+        // KeiSource (the 1.6 base class) does exactly this, so the host must ask for both halves in
+        // one call rather than firing details and chapters in parallel.
+        val source = SingleFlightSource()
+
+        val update = source.getMangaUpdate(manga, emptyList(), fetchDetails = true, fetchChapters = true)
+
+        update.chapters.size shouldBe 1
+        source.inFlightViolations shouldBe 0
+    }
+
+    /** Mirrors KeiSource's guard: overlapping calls for one manga are a programming error. */
+    private class SingleFlightSource : LegacySource() {
+        var inFlightViolations = 0
+        private val inFlight = mutableSetOf<String>()
+
+        override suspend fun getMangaUpdate(
+            manga: SManga,
+            chapters: List<SChapter>,
+            fetchDetails: Boolean,
+            fetchChapters: Boolean,
+        ): SMangaUpdate {
+            if (!inFlight.add(manga.url)) {
+                inFlightViolations++
+                error("getMangaUpdate must not be called concurrently for same manga")
+            }
+            try {
+                return SMangaUpdate(
+                    manga = manga,
+                    chapters = listOf(
+                        SChapter.create().apply {
+                            url = "/single/1"
+                            name = "Single"
+                        },
+                    ),
+                )
+            } finally {
+                inFlight.remove(manga.url)
+            }
+        }
+    }
 }
