@@ -53,7 +53,8 @@ class AddNovelTracksTest {
         AddNovelTracks(insertTrack, sync, getNovelChapters).bind(tracker, item, novelId)
 
         coVerify(exactly = 1) { tracker.bind(item, true) }
-        coVerify(exactly = 1) { tracker.setRemoteLastChapterRead(match { it.manga_id == novelId }, 2) }
+        // Novel entries pass isNovelEntry = true since novel tracking landed.
+        coVerify(exactly = 1) { tracker.setRemoteLastChapterRead(match { it.manga_id == novelId }, 2, true) }
         coVerify(atLeast = 1) { insertTrack.await(match { it.novelId == novelId && it.trackerId == 11L }) }
     }
 

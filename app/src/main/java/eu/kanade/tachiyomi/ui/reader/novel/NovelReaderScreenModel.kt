@@ -3008,16 +3008,10 @@ class NovelReaderScreenModel(
         novelDictionaryJob?.cancel()
         novelDictionaryJob = null
         selectedTextTranslationSelection = selection
-        selectedTextTranslationUiState = if (selection == null) {
-            NovelSelectedTextTranslationUiState.Idle
-        } else {
-            NovelSelectedTextTranslationUiState.Idle
-        }
-        novelDictionaryUiState = if (selection == null) {
-            NovelDictionaryUiState.Idle
-        } else {
-            NovelDictionaryUiState.Idle
-        }
+        // Selecting text no longer shows an intermediate card: the selection toolbar carries an
+        // explicit trigger action, so the state stays Idle until that action starts its own work.
+        selectedTextTranslationUiState = NovelSelectedTextTranslationUiState.Idle
+        novelDictionaryUiState = NovelDictionaryUiState.Idle
         refreshSelectedTextTranslationUi()
 
         if (selection != null) {

@@ -11,6 +11,7 @@ import coil3.size.Scale
 import coil3.size.Size
 import eu.kanade.tachiyomi.data.cache.NovelCoverCache
 import eu.kanade.tachiyomi.source.novel.NovelPluginImagePayload
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import okhttp3.Call
@@ -60,6 +61,8 @@ class NovelCoverFetcherTest {
         runTest {
             val context = mockk<android.content.Context>(relaxed = true)
             val imageLoader = mockk<ImageLoader>(relaxed = true)
+            // Covers are read from the Coil disk cache first now; force a miss so the resolver runs.
+            every { imageLoader.diskCache } returns null
             val data = NovelCover(
                 novelId = 5L,
                 sourceId = 101L,

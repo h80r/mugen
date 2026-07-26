@@ -3,6 +3,8 @@ package eu.kanade.tachiyomi.ui.reader.novel
 import android.app.Application
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.items.novelchapter.interactor.SyncNovelChaptersWithSource
+import eu.kanade.domain.source.novel.interactor.GetNovelIncognitoState
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.model.AutoTrackState
 import eu.kanade.domain.track.novel.interactor.TrackNovelChapter
 import eu.kanade.domain.track.service.TrackPreferences
@@ -12,6 +14,7 @@ import eu.kanade.tachiyomi.data.translation.TranslationProgressUpdate
 import eu.kanade.tachiyomi.data.translation.TranslationQueueItem
 import eu.kanade.tachiyomi.data.translation.TranslationQueueManager
 import eu.kanade.tachiyomi.data.translation.TranslationStatus
+import eu.kanade.tachiyomi.extension.novel.NovelExtensionManager
 import eu.kanade.tachiyomi.extension.novel.repo.NovelPluginPackage
 import eu.kanade.tachiyomi.extension.novel.repo.NovelPluginRepoEntry
 import eu.kanade.tachiyomi.extension.novel.repo.NovelPluginStorage
@@ -19,6 +22,7 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.novelsource.NovelSource
 import eu.kanade.tachiyomi.novelsource.model.SNovelChapter
 import eu.kanade.tachiyomi.source.novel.NovelWebUrlSource
+import eu.kanade.tachiyomi.test.PersistingPreferenceStore
 import eu.kanade.tachiyomi.ui.reader.novel.SelectedTextAction
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
@@ -51,6 +55,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.runBlocking
@@ -2861,6 +2866,46 @@ class NovelReaderScreenModelTest {
             testTranslationQueueManager.activeTranslation
         } returns MutableStateFlow<TranslationQueueItem?>(null)
         Injekt.addSingleton(fullType<TranslationQueueManager>(), testTranslationQueueManager)
+
+        runCatching { Injekt.get<NovelReaderPreferences>() }
+            .getOrElse {
+                Injekt.addSingleton(
+                    fullType<NovelReaderPreferences>(),
+                    NovelReaderPreferences(PersistingPreferenceStore()),
+                )
+            }
+
+        runCatching { Injekt.get<GetNovelIncognitoState>() }
+            .getOrElse {
+                // Registered in DomainModule for the app; unit tests never run that module. Build the
+                // real interactor so incognito preferences behave exactly as they do in production.
+                val basePreferences = runCatching { Injekt.get<BasePreferences>() }
+                    .getOrElse {
+                        // ReactivePreferenceStore, not InMemoryPreferenceStore: the latter hands out a
+                        // fresh preference per lookup, so a set() in a test would be invisible here.
+                        BasePreferences(mockk(relaxed = true), PersistingPreferenceStore())
+                            .also { Injekt.addSingleton(fullType<BasePreferences>(), it) }
+                    }
+                val sourcePreferences = runCatching { Injekt.get<SourcePreferences>() }
+                    .getOrElse {
+                        SourcePreferences(PersistingPreferenceStore())
+                            .also { Injekt.addSingleton(fullType<SourcePreferences>(), it) }
+                    }
+                val extensionManager = runCatching { Injekt.get<NovelExtensionManager>() }
+                    .getOrElse {
+                        mockk<NovelExtensionManager>(relaxed = true).also { manager ->
+                            every { manager.getPluginId(any()) } returns null
+                            every { manager.getPluginIdAsFlow(any()) } returns flowOf(null)
+                            every { manager.isNsfwForSource(any()) } returns false
+                            every { manager.isNsfwForSourceAsFlow(any()) } returns flowOf(false)
+                            Injekt.addSingleton(fullType<NovelExtensionManager>(), manager)
+                        }
+                    }
+                Injekt.addSingleton(
+                    fullType<GetNovelIncognitoState>(),
+                    GetNovelIncognitoState(basePreferences, sourcePreferences, extensionManager),
+                )
+            }
 
         runCatching { Injekt.get<TrackPreferences>() }
             .getOrElse {

@@ -6,6 +6,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.entries.metadata.FetchEntryMetadataFromTracker
 import eu.kanade.domain.entries.novel.interactor.GetNovelExcludedScanlators
 import eu.kanade.domain.entries.novel.interactor.NovelRatingFetcher
 import eu.kanade.domain.entries.novel.interactor.SetNovelExcludedScanlators
@@ -49,6 +50,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
@@ -122,6 +124,14 @@ class NovelScreenModelTest {
             runCatching { Injekt.get<TrackNovelChapter>() }
                 .getOrElse {
                     Injekt.addSingleton(fullType<TrackNovelChapter>(), mockk<TrackNovelChapter>(relaxed = true))
+                }
+            runCatching { Injekt.get<FetchEntryMetadataFromTracker>() }
+                .getOrElse {
+                    // Registered in AppModule for the app; unit tests never run that module.
+                    Injekt.addSingleton(
+                        fullType<FetchEntryMetadataFromTracker>(),
+                        mockk<FetchEntryMetadataFromTracker>(relaxed = true),
+                    )
                 }
             runCatching { Injekt.get<RefreshNovelTracks>() }
                 .getOrElse {
@@ -401,7 +411,11 @@ class NovelScreenModelTest {
                     json = Json { encodeDefaults = true },
                 ),
                 downloadCache = null,
-            )
+                // Without this the model falls back to Injekt, where another test class may have
+                // left a relaxed NovelDownloadCache mock whose changes flow completes immediately -
+                // the collector then throws in the background and lands in the next runTest.
+                downloadCacheChanges = MutableSharedFlow(replay = 1, extraBufferCapacity = 1),
+            ).also(::trackScreenModel)
 
             try {
                 withTimeout(5_000) {
@@ -1616,7 +1630,25 @@ class NovelScreenModelTest {
             suggestionCoordinator = mockk<SuggestionCoordinator>(relaxed = true),
             sourcePreferences = sourcePreferences,
             activityDataRepository = activityDataRepository,
-        )
+        ).also(::trackScreenModel)
+    }
+
+    private val activeScreenModels = mutableListOf<NovelScreenModel>()
+
+    /**
+     * Screen models keep collecting in their own scope after a test ends. An undisposed one whose
+     * collector throws surfaces as "uncaught exceptions before the test started" in whichever class
+     * runs next, so every model built here is disposed in teardown.
+     */
+    private fun trackScreenModel(model: NovelScreenModel): NovelScreenModel {
+        activeScreenModels += model
+        return model
+    }
+
+    @AfterEach
+    fun disposeScreenModels() {
+        activeScreenModels.forEach { runCatching { it.onDispose() } }
+        activeScreenModels.clear()
     }
 
     private suspend fun awaitResumeScreenModel(screenModel: NovelScreenModel) {

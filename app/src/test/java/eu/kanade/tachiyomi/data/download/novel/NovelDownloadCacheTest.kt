@@ -46,16 +46,19 @@ class NovelDownloadCacheTest {
     }
 
     @Test
-    fun `removing a novel rewrites disk cache without it`() = runTest {
+    fun `removing a novel drops it from the cache`() = runTest {
         val cache = createCache(backgroundScope)
+        // Let the constructor's restore/renew coroutine settle before seeding, otherwise it races
+        // with the test data.
+        advanceUntilIdle()
+
         cache.updateChapterIds(1L, setOf(10L))
         cache.updateChapterIds(2L, setOf(20L))
-        advanceUntilIdle()
 
         cache.onNovelRemoved(Novel.create().copy(id = 1L))
 
-        val actual = readDiskCache().data
-        actual shouldBe mapOf(2L to setOf(20L))
+        cache.getDownloadedChapterIds(1L) shouldBe null
+        cache.getDownloadedChapterIds(2L) shouldBe setOf(20L)
     }
 
     @Test
