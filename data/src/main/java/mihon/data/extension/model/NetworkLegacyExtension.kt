@@ -31,7 +31,7 @@ data class NetworkLegacyExtension(
         // One malformed entry must not fail the whole store index (see service mapNotNull).
         val libVersion = version.substringBeforeLast('.').toDoubleOrNull() ?: return null
         return AvailableExtensionData(
-            name = name.substringAfter("Tachiyomi: "),
+            name = name.stripLegacyExtensionNamePrefix(),
             pkgName = pkg,
             apkUrl = "$storeBaseUrl/apk/$apk",
             iconUrl = "$storeBaseUrl/icon/$pkg.png",
@@ -62,4 +62,13 @@ data class NetworkLegacyExtension(
             store = store,
         )
     }
+}
+
+/**
+ * Legacy `index.min.json` entries carry a host prefix in their name: `Tachiyomi: ` for manga repos
+ * and `Aniyomi: ` for anime ones. Both have to go, otherwise the whole anime catalogue sorts under
+ * the same letter and each extension renames itself once installed (the installed side strips it).
+ */
+internal fun String.stripLegacyExtensionNamePrefix(): String {
+    return substringAfter("Tachiyomi: ").substringAfter("Aniyomi: ")
 }
