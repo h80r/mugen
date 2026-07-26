@@ -13,6 +13,7 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.canReplacePrivateExtension
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
 import eu.kanade.tachiyomi.extension.manga.model.MangaLoadResult
+import eu.kanade.tachiyomi.extension.matchesExtensionFeature
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.MangaSource
 import eu.kanade.tachiyomi.source.SourceFactory
@@ -93,7 +94,11 @@ internal object MangaExtensionLoader {
             if (file.isFile && file.extension == PRIVATE_EXTENSION_EXTENSION) {
                 val pkgName = file.nameWithoutExtension
                 if (pkgName.matches(Regex("^[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)+$"))) {
-                    if (!pkgName.contains(".anime")) {
+                    // Classify by the manifest feature, not by the file name: manga extensions such
+                    // as ...extension.fr.animesama contain ".anime" and were moved into the anime
+                    // directory, where nothing ever loads them again.
+                    val archiveInfo = context.packageManager.getPackageArchiveInfo(file.absolutePath, PACKAGE_FLAGS)
+                    if (matchesExtensionFeature(archiveInfo, EXTENSION_FEATURE) == true) {
                         targetDir.mkdirs()
                         val targetFile = File(targetDir, file.name)
                         file.renameTo(targetFile)
