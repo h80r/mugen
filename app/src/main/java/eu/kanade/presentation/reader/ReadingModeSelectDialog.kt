@@ -1,30 +1,30 @@
 package eu.kanade.presentation.reader
 
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.entries.manga.model.readingMode
-import eu.kanade.presentation.components.AdaptiveSheet
+import eu.kanade.presentation.reader.components.AuroraReaderSheet
 import eu.kanade.presentation.reader.components.ModeSelectionDialog
-import eu.kanade.presentation.theme.TachiyomiPreviewTheme
+import eu.kanade.presentation.reader.settings.AuroraGlassSection
+import eu.kanade.presentation.reader.settings.AuroraModeCard
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import tachiyomi.i18n.MR
-import tachiyomi.presentation.core.components.SettingsIconGrid
-import tachiyomi.presentation.core.components.material.IconToggleButton
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.util.collectAsStateWithLifecycle
 
 private val ReadingModesWithoutDefault = ReadingMode.entries - ReadingMode.DEFAULT
 
@@ -35,15 +35,22 @@ fun ReadingModeSelectDialog(
     onChange: (StringResource) -> Unit,
 ) {
     val manga by screenModel.mangaFlow.collectAsStateWithLifecycle()
-    val readingMode = remember(manga) {
-        ReadingMode.fromPreference(
-            manga?.readingMode?.toInt(),
-        )
+    val defaultReadingMode by screenModel.preferences.defaultReadingMode().collectAsStateWithLifecycle()
+    val storedReadingMode = remember(manga) {
+        ReadingMode.fromPreference(manga?.readingMode?.toInt())
+    }
+    // Highlight the mode the viewer really runs on (series flags, auto-detected webtoon or the
+    // global default) — the manga stays on DEFAULT for most entries, which would otherwise leave
+    // every tile unselected.
+    val readingMode = remember(storedReadingMode, defaultReadingMode) {
+        screenModel.resolvedReadingMode().takeIf { it != ReadingMode.DEFAULT }
+            ?: ReadingMode.fromPreference(defaultReadingMode)
     }
 
-    AdaptiveSheet(onDismissRequest = onDismissRequest) {
+    AuroraReaderSheet(onDismissRequest = onDismissRequest) {
         DialogContent(
             readingMode = readingMode,
+            hasSeriesOverride = storedReadingMode != ReadingMode.DEFAULT,
             onChangeReadingMode = {
                 screenModel.onChangeReadingMode(it)
                 onChange(it.stringRes)
@@ -56,45 +63,36 @@ fun ReadingModeSelectDialog(
 @Composable
 private fun DialogContent(
     readingMode: ReadingMode,
+    hasSeriesOverride: Boolean,
     onChangeReadingMode: (ReadingMode) -> Unit,
 ) {
     var selected by remember { mutableStateOf(readingMode) }
 
     ModeSelectionDialog(
-        onUseDefault = { onChangeReadingMode(ReadingMode.DEFAULT) }.takeIf { readingMode != ReadingMode.DEFAULT },
+        onUseDefault = { onChangeReadingMode(ReadingMode.DEFAULT) }.takeIf { hasSeriesOverride },
         onApply = { onChangeReadingMode(selected) },
     ) {
-        SettingsIconGrid(MR.strings.pref_category_reading_mode) {
-            items(ReadingModesWithoutDefault) { mode ->
-                IconToggleButton(
-                    checked = mode == selected,
-                    onCheckedChange = {
-                        selected = (mode)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    imageVector = ImageVector.vectorResource(mode.iconRes),
-                    title = stringResource(mode.stringRes),
-                )
-            }
-        }
-    }
-}
-
-@PreviewLightDark
-@Composable
-private fun DialogContentPreview() {
-    TachiyomiPreviewTheme {
-        Surface {
-            Column {
-                DialogContent(
-                    readingMode = ReadingMode.DEFAULT,
-                    onChangeReadingMode = {},
-                )
-
-                DialogContent(
-                    readingMode = ReadingMode.LEFT_TO_RIGHT,
-                    onChangeReadingMode = {},
-                )
+        AuroraGlassSection(title = stringResource(MR.strings.pref_category_reading_mode)) {
+            ReadingModesWithoutDefault.chunked(2).forEach { rowModes ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    rowModes.forEach { mode ->
+                        AuroraModeCard(
+                            selected = mode == selected,
+                            onClick = { selected = mode },
+                            label = stringResource(mode.stringRes),
+                            painter = painterResource(mode.iconRes),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (rowModes.size == 1) {
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
             }
         }
     }

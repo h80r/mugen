@@ -4,7 +4,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,8 +33,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import eu.kanade.presentation.components.AdaptiveSheet
 import eu.kanade.presentation.entries.components.DotSeparatorText
+import eu.kanade.presentation.reader.components.AuroraReaderSheet
 import eu.kanade.presentation.theme.AuroraTheme
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -69,18 +68,18 @@ fun ReaderChapterListSheet(
         }
     }
 
-    AdaptiveSheet(onDismissRequest = onDismissRequest) {
+    AuroraReaderSheet(onDismissRequest = onDismissRequest) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.62f)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
                 text = stringResource(MR.strings.chapters),
                 style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = AuroraTheme.colors.textPrimary,
             )
 
             if (items.isEmpty()) {
@@ -127,21 +126,22 @@ private fun ReaderChapterListRow(
     onDownloadClick: (Long) -> Unit,
 ) {
     val appHaptics = LocalAppHaptics.current
-    val colors = MaterialTheme.colorScheme
+    val aurora = AuroraTheme.colors
     val shape = RoundedCornerShape(14.dp)
-    val containerColor = if (item.isCurrent) {
-        colors.primary.copy(alpha = if (isSystemInDarkTheme()) 0.14f else 0.10f)
-    } else {
-        Color.Transparent
+    // Glass rows: translucent frost like the quick settings cards, accent wash for the open chapter.
+    val containerColor = when {
+        item.isCurrent -> aurora.accent.copy(alpha = if (aurora.isDark) 0.16f else 0.12f)
+        aurora.isDark -> Color.White.copy(alpha = 0.07f)
+        else -> Color.Black.copy(alpha = 0.05f)
     }
-    val containerBorder = if (item.isCurrent) {
-        BorderStroke(
-            width = 1.dp,
-            color = colors.primary.copy(alpha = 0.28f),
-        )
-    } else {
-        null
-    }
+    val containerBorder = BorderStroke(
+        width = 1.dp,
+        color = when {
+            item.isCurrent -> aurora.accent.copy(alpha = 0.55f)
+            aurora.isDark -> Color.White.copy(alpha = 0.10f)
+            else -> Color.Black.copy(alpha = 0.06f)
+        },
+    )
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -166,9 +166,9 @@ private fun ReaderChapterListRow(
                     .clip(CircleShape)
                     .background(
                         if (item.isCurrent) {
-                            AuroraTheme.colors.accent
+                            aurora.accent
                         } else {
-                            colors.onSurfaceVariant.copy(alpha = 0.55f)
+                            aurora.textSecondary.copy(alpha = 0.55f)
                         },
                     ),
             )
@@ -179,7 +179,7 @@ private fun ReaderChapterListRow(
                 Text(
                     text = item.title,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = colors.onSurface,
+                    color = aurora.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -194,7 +194,7 @@ private fun ReaderChapterListRow(
                             Text(
                                 text = item.dateText.orEmpty(),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = colors.onSurfaceVariant,
+                                color = aurora.textSecondary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -206,7 +206,7 @@ private fun ReaderChapterListRow(
                             Text(
                                 text = item.scanlator.orEmpty(),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = colors.onSurfaceVariant,
+                                color = aurora.textSecondary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
