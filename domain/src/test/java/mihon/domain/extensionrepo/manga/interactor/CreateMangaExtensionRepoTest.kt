@@ -31,9 +31,7 @@ class CreateMangaExtensionRepoTest {
 
         result shouldBe CreateMangaExtensionRepo.Result.Success
         coVerify {
-            repository.upsertStore(
-                insertedStore.copy(name = "Custom store", badgeLabel = "Custom store"),
-            )
+            repository.setCustomName(insertedStore.indexUrl, "Custom store")
         }
     }
 
@@ -80,9 +78,7 @@ class CreateMangaExtensionRepoTest {
         interactor.await("https://example.org/repo/index.min.json", "Custom store")
 
         coVerify {
-            repository.upsertStore(
-                insertedStore.copy(name = "Custom store", badgeLabel = "Custom store"),
-            )
+            repository.setCustomName(insertedStore.indexUrl, "Custom store")
         }
     }
 

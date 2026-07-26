@@ -8,8 +8,8 @@ import mihon.domain.extensionstore.model.toLegacyExtensionRepoUrl
 fun ExtensionStore.toExtensionRepo(): ExtensionRepo {
     return ExtensionRepo(
         baseUrl = legacyBaseUrl(),
-        name = name,
-        shortName = badgeLabel.takeIf { it != name },
+        name = displayName,
+        shortName = (customName ?: badgeLabel).takeIf { it != displayName },
         website = contact.website,
         signingKeyFingerprint = signingKey,
         discord = contact.discord,

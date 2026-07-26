@@ -8,7 +8,12 @@ data class ExtensionStore(
     val contact: Contact,
     val isLegacy: Boolean,
     val extensionListUrl: String?,
+    /** Name the user gave this store; survives metadata refreshes, unlike [name]. */
+    val customName: String? = null,
 ) {
+
+    /** What the UI should show: the user's name when there is one, the remote name otherwise. */
+    val displayName: String get() = customName ?: name
     data class Contact(
         val website: String,
         val discord: String?,

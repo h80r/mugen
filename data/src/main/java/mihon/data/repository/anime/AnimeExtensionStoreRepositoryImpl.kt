@@ -92,6 +92,10 @@ class AnimeExtensionStoreRepositoryImpl(
         upsert(store)
     }
 
+    override suspend fun setCustomName(indexUrl: String, customName: String?) {
+        handler.await { db -> db.extension_storeQueries.setCustomName(customName, indexUrl) }
+    }
+
     override suspend fun getAll(): List<ExtensionStore> {
         migrateLegacyIfNeeded()
         return handler.awaitList { db -> db.extension_storeQueries.getAll(::extensionStoreMapper) }

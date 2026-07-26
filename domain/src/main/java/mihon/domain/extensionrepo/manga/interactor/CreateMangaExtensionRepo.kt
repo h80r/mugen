@@ -54,7 +54,7 @@ class CreateMangaExtensionRepo(
         // pasted url will not match; compare the suffix-stripped bases instead.
         val base = indexUrl.toExtensionStoreBaseUrl().trimEnd('/')
         val store = repository.getAll().find { it.legacyBaseUrl().trimEnd('/') == base } ?: return
-        repository.upsertStore(store.copy(name = displayName, badgeLabel = displayName))
+        repository.setCustomName(store.indexUrl, displayName.takeIf { it != store.name })
     }
 
     private fun extractRepoName(url: String): String {

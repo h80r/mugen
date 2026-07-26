@@ -12,6 +12,12 @@ interface ExtensionStoreRepository {
 
     suspend fun upsertStore(store: ExtensionStore)
 
+    /**
+     * Stores the name the user gave this store. Kept out of [upsertStore] so a metadata refresh,
+     * which overwrites every remote field, cannot silently revert a rename.
+     */
+    suspend fun setCustomName(indexUrl: String, customName: String?)
+
     suspend fun getAll(): List<ExtensionStore>
 
     fun getAllAsFlow(): Flow<List<ExtensionStore>>
