@@ -35,6 +35,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupCustomButtons
 import eu.kanade.tachiyomi.data.backup.models.BackupExtension
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
+import eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupNovel
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
@@ -249,9 +250,9 @@ class BackupCreator(
                     options,
                     includeNovelType,
                 ),
-                backupAnimeExtensionStore = animeExtensionStoreBackupCreator(),
-                backupMangaExtensionStore = mangaExtensionStoreBackupCreator(),
-                backupNovelExtensionStore = novelExtensionStoreBackupCreator(),
+                backupAnimeExtensionStore = backupAnimeExtensionStores(options, includeAnimeType),
+                backupMangaExtensionStore = backupMangaExtensionStores(options, includeMangaType),
+                backupNovelExtensionStore = backupNovelExtensionStores(options, includeNovelType),
                 backupAchievements = if (options.sisterAppCompatible) emptyList() else achievementData.achievements,
                 backupUserProfile = if (options.sisterAppCompatible) null else achievementData.userProfile,
                 backupActivityLog = if (options.sisterAppCompatible) emptyList() else achievementData.activityLog,
@@ -388,6 +389,33 @@ class BackupCreator(
         return novelExtensionRepoBackupCreator()
     }
 
+    private suspend fun backupAnimeExtensionStores(
+        options: BackupOptions,
+        includeType: Boolean,
+    ): List<BackupExtensionStore> {
+        if (!shouldBackupExtensionStores(options, includeType)) return emptyList()
+
+        return animeExtensionStoreBackupCreator()
+    }
+
+    private suspend fun backupMangaExtensionStores(
+        options: BackupOptions,
+        includeType: Boolean,
+    ): List<BackupExtensionStore> {
+        if (!shouldBackupExtensionStores(options, includeType)) return emptyList()
+
+        return mangaExtensionStoreBackupCreator()
+    }
+
+    private suspend fun backupNovelExtensionStores(
+        options: BackupOptions,
+        includeType: Boolean,
+    ): List<BackupExtensionStore> {
+        if (!shouldBackupExtensionStores(options, includeType)) return emptyList()
+
+        return novelExtensionStoreBackupCreator()
+    }
+
     private suspend fun backupCustomButtons(options: BackupOptions): List<BackupCustomButtons> {
         if (!options.customButton) return emptyList()
 
@@ -447,4 +475,13 @@ class BackupCreator(
             return "${BuildConfig.APPLICATION_ID}_$date.tachibk"
         }
     }
+}
+
+/**
+ * Extension stores follow the same toggle as the legacy extension repos: they are the same rows in
+ * a different shape, so exporting them while the user unchecked the option would leak the very data
+ * they excluded - and re-insert it on the next restore.
+ */
+internal fun shouldBackupExtensionStores(options: BackupOptions, includeType: Boolean): Boolean {
+    return options.extensionRepoSettings && includeType
 }
