@@ -90,7 +90,8 @@ class MangaExtensionsScreenModel(
                                         it.baseUrl.contains(
                                             input,
                                             ignoreCase = true,
-                                        )
+                                        ) ||
+                                            it.getHomeUrl().contains(input, ignoreCase = true)
                                     } else {
                                         false
                                     }

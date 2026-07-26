@@ -61,6 +61,12 @@ internal object MangaExtensionLoader {
     const val LIB_VERSION_MIN = 1.4
     const val LIB_VERSION_MAX = 1.6
 
+    /**
+     * Accepted extensions-lib generations. Every published manga extension is still on 1.4 - the
+     * keiyoushi build plugin whitelists exactly that value - so 1.5/1.6 are headroom, not something
+     * in use. The 1.6-only combined update API (getMangaUpdate) is deliberately NOT routed here:
+     * no extension implements it, and the library update path would gain nothing but risk.
+     */
     val SUPPORTED_LIB_VERSIONS = listOf(1.4, 1.5, 1.6)
 
     @Suppress("DEPRECATION")

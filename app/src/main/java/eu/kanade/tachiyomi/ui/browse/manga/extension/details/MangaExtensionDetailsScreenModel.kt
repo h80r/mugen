@@ -110,7 +110,9 @@ class MangaExtensionDetailsScreenModel(
 
         val urls = extension.sources
             .filterIsInstance<HttpSource>()
-            .mapNotNull { it.baseUrl.takeUnless { url -> url.isEmpty() } }
+            .flatMap { listOf(it.baseUrl, it.getHomeUrl()) }
+            .filter { it.isNotEmpty() }
+            .distinct()
             .distinct()
 
         val cleared = urls.sumOf {
