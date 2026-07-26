@@ -7,10 +7,12 @@ import kotlinx.coroutines.supervisorScope
 import logcat.LogPriority
 import mihon.data.extension.repository.extensionStoreMapper
 import mihon.data.extension.service.ExtensionStoreService
+import mihon.data.repository.LegacyExtensionStorePortGuard
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.extensionstore.manga.repository.MangaExtensionStoreRepository
 import mihon.domain.extensionstore.model.ExtensionStore
 import mihon.domain.extensionstore.toLegacyExtensionStore
+import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.Database
 import tachiyomi.data.handlers.manga.MangaDatabaseHandler
@@ -18,7 +20,10 @@ import tachiyomi.data.handlers.manga.MangaDatabaseHandler
 class MangaExtensionStoreRepositoryImpl(
     private val handler: MangaDatabaseHandler,
     private val service: ExtensionStoreService,
+    preferenceStore: PreferenceStore,
 ) : MangaExtensionStoreRepository {
+    private val legacyPortGuard = LegacyExtensionStorePortGuard(preferenceStore, LEGACY_PORT_KEY)
+
     override suspend fun insert(indexUrl: String): Result<Unit> {
         return service.fetch(indexUrl).mapCatching { upsert(it) }
     }
@@ -88,44 +93,37 @@ class MangaExtensionStoreRepositoryImpl(
     }
 
     override suspend fun getAll(): List<ExtensionStore> {
+        migrateLegacyIfNeeded()
         return handler.awaitList { db -> db.extension_storeQueries.getAll(::extensionStoreMapper) }
     }
 
     /**
-     * One-time port from legacy extension_repos if this store table is empty.
-     * Called from extension code paths (which are deferred after first frame).
-     * Uses cheap count + volatile to avoid repeated work.
+     * One-time port from legacy extension_repos. Reachable from [getAll] because extension loading
+     * resolves trusted fingerprints through it, and that can happen before the app migrator runs.
      */
     override suspend fun ensureLegacyMigrated() {
         migrateLegacyIfNeeded()
     }
 
-    @Volatile
-    private var legacyMigrationChecked = false
-
     private suspend fun migrateLegacyIfNeeded() {
-        if (legacyMigrationChecked) return
-
-        val count = handler.awaitOneOrNull { db -> db.extension_storeQueries.getCount() } ?: 0L
-        if (count > 0L) {
-            legacyMigrationChecked = true
-            return
-        }
-
-        handler.awaitList { db ->
-            db.extension_reposQueries.findAll { baseUrl, name, shortName, website, fingerprint ->
-                ExtensionRepo(
-                    baseUrl = baseUrl,
-                    name = name,
-                    shortName = shortName,
-                    website = website,
-                    signingKeyFingerprint = fingerprint,
-                )
-            }
-        }.forEach { repo ->
-            upsertStore(repo.toLegacyExtensionStore())
-        }
-        legacyMigrationChecked = true
+        legacyPortGuard.runOnce(
+            storeCount = { handler.awaitOneOrNull { db -> db.extension_storeQueries.getCount() } ?: 0L },
+            port = {
+                handler.awaitList { db ->
+                    db.extension_reposQueries.findAll { baseUrl, name, shortName, website, fingerprint ->
+                        ExtensionRepo(
+                            baseUrl = baseUrl,
+                            name = name,
+                            shortName = shortName,
+                            website = website,
+                            signingKeyFingerprint = fingerprint,
+                        )
+                    }
+                }.forEach { repo ->
+                    upsertStore(repo.toLegacyExtensionStore())
+                }
+            },
+        )
     }
 
     override fun getAllAsFlow(): Flow<List<ExtensionStore>> {
@@ -140,5 +138,9 @@ class MangaExtensionStoreRepositoryImpl(
 
     override suspend fun remove(indexUrl: String) {
         handler.await { db -> db.extension_storeQueries.delete(indexUrl) }
+    }
+
+    private companion object {
+        const val LEGACY_PORT_KEY = "manga_extension_repo_ported_to_store"
     }
 }

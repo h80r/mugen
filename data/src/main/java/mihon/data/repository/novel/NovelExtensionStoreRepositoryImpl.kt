@@ -7,8 +7,10 @@ import kotlinx.coroutines.supervisorScope
 import logcat.LogPriority
 import mihon.data.extension.repository.extensionStoreMapper
 import mihon.data.extension.service.ExtensionStoreService
+import mihon.data.repository.LegacyExtensionStorePortGuard
 import mihon.domain.extensionstore.model.ExtensionStore
 import mihon.domain.extensionstore.novel.repository.NovelExtensionStoreRepository
+import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.handlers.novel.NovelDatabaseHandler
 import tachiyomi.novel.data.NovelDatabase
@@ -16,7 +18,11 @@ import tachiyomi.novel.data.NovelDatabase
 class NovelExtensionStoreRepositoryImpl(
     private val handler: NovelDatabaseHandler,
     private val service: ExtensionStoreService,
+    preferenceStore: PreferenceStore,
 ) : NovelExtensionStoreRepository {
+
+    private val legacyPortGuard = LegacyExtensionStorePortGuard(preferenceStore, LEGACY_PORT_KEY)
+
     override suspend fun insert(indexUrl: String): Result<Unit> {
         return service.fetch(indexUrl).mapCatching { upsert(it) }
     }
@@ -87,49 +93,43 @@ class NovelExtensionStoreRepositoryImpl(
     }
 
     override suspend fun getAll(): List<ExtensionStore> {
+        migrateLegacyIfNeeded()
         return handler.awaitList { db -> db.extension_storeQueries.getAll(::extensionStoreMapper) }
     }
 
     /**
-     * One-time port from legacy novel_extension_repos if this store table is empty.
-     * Called from extension code paths (which are deferred after first frame).
-     * Uses cheap count + volatile to avoid repeated work.
+     * One-time port from legacy novel_extension_repos. Reachable from [getAll] because extension
+     * loading resolves trusted fingerprints through it, and that can happen before the app migrator
+     * runs.
      */
     override suspend fun ensureLegacyMigrated() {
         migrateLegacyIfNeeded()
     }
 
-    @Volatile
-    private var legacyMigrationChecked = false
-
     private suspend fun migrateLegacyIfNeeded() {
-        if (legacyMigrationChecked) return
-
-        val count = handler.awaitOneOrNull { db -> db.extension_storeQueries.getCount() } ?: 0L
-        if (count > 0L) {
-            legacyMigrationChecked = true
-            return
-        }
-
-        handler.awaitList { db ->
-            db.novel_extension_reposQueries.findAll { baseUrl, name, shortName, website, fingerprint ->
-                ExtensionStore(
-                    indexUrl = baseUrl,
-                    name = name,
-                    badgeLabel = shortName ?: name,
-                    signingKey = fingerprint,
-                    contact = ExtensionStore.Contact(
-                        website = website,
-                        discord = null,
-                    ),
-                    isLegacy = true,
-                    extensionListUrl = null,
-                )
-            }
-        }.forEach { store ->
-            upsertStore(store)
-        }
-        legacyMigrationChecked = true
+        legacyPortGuard.runOnce(
+            storeCount = { handler.awaitOneOrNull { db -> db.extension_storeQueries.getCount() } ?: 0L },
+            port = {
+                handler.awaitList { db ->
+                    db.novel_extension_reposQueries.findAll { baseUrl, name, shortName, website, fingerprint ->
+                        ExtensionStore(
+                            indexUrl = baseUrl,
+                            name = name,
+                            badgeLabel = shortName ?: name,
+                            signingKey = fingerprint,
+                            contact = ExtensionStore.Contact(
+                                website = website,
+                                discord = null,
+                            ),
+                            isLegacy = true,
+                            extensionListUrl = null,
+                        )
+                    }
+                }.forEach { store ->
+                    upsertStore(store)
+                }
+            },
+        )
     }
 
     override fun getAllAsFlow(): Flow<List<ExtensionStore>> {
@@ -144,5 +144,9 @@ class NovelExtensionStoreRepositoryImpl(
 
     override suspend fun remove(indexUrl: String) {
         handler.await { db -> db.extension_storeQueries.delete(indexUrl) }
+    }
+
+    private companion object {
+        const val LEGACY_PORT_KEY = "novel_extension_repo_ported_to_store"
     }
 }

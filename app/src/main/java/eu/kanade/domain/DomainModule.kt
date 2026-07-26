@@ -682,7 +682,7 @@ class DomainModule : InjektModule {
         addSingletonFactory<ExtensionStoreFetcher> { ExtensionStoreFetcher(get<ExtensionStoreService>()) }
 
         addSingletonFactory<AnimeExtensionStoreRepository> {
-            AnimeExtensionStoreRepositoryImpl(get<AnimeDatabaseHandler>(), get<ExtensionStoreService>())
+            AnimeExtensionStoreRepositoryImpl(get<AnimeDatabaseHandler>(), get<ExtensionStoreService>(), get())
         }
         addFactory<GetAnimeExtensionRepo> { GetAnimeExtensionRepo(get()) }
         addFactory<GetAnimeExtensionRepoCount> { GetAnimeExtensionRepoCount(get()) }
@@ -694,7 +694,7 @@ class DomainModule : InjektModule {
         addFactory { GetAnimeIncognitoState(get(), get(), get()) }
 
         addSingletonFactory<MangaExtensionStoreRepository> {
-            MangaExtensionStoreRepositoryImpl(get<MangaDatabaseHandler>(), get<ExtensionStoreService>())
+            MangaExtensionStoreRepositoryImpl(get<MangaDatabaseHandler>(), get<ExtensionStoreService>(), get())
         }
         addFactory<GetMangaExtensionRepo> { GetMangaExtensionRepo(get()) }
         addFactory<GetMangaExtensionRepoCount> { GetMangaExtensionRepoCount(get()) }
@@ -706,7 +706,7 @@ class DomainModule : InjektModule {
         addFactory { GetMangaIncognitoState(get(), get(), get()) }
 
         addSingletonFactory<NovelExtensionStoreRepository> {
-            NovelExtensionStoreRepositoryImpl(get<NovelDatabaseHandler>(), get<ExtensionStoreService>())
+            NovelExtensionStoreRepositoryImpl(get<NovelDatabaseHandler>(), get<ExtensionStoreService>(), get())
         }
         addFactory<GetNovelExtensionRepo> { GetNovelExtensionRepo(get()) }
         addFactory<GetNovelExtensionRepoCount> { GetNovelExtensionRepoCount(get()) }

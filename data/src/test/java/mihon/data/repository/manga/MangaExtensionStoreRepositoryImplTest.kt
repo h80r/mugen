@@ -19,6 +19,7 @@ import okio.buffer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.MangaUpdateStrategyColumnAdapter
 import tachiyomi.data.MemoColumnAdapter
@@ -59,7 +60,7 @@ class MangaExtensionStoreRepositoryImplTest {
             transactionDispatcher = Dispatchers.Default,
         )
         service = ExtensionStoreService(OkHttpClient(), Json { ignoreUnknownKeys = true }, ProtoBuf)
-        repository = MangaExtensionStoreRepositoryImpl(handler, service)
+        repository = MangaExtensionStoreRepositoryImpl(handler, service, InMemoryPreferenceStore())
     }
 
     @AfterEach
