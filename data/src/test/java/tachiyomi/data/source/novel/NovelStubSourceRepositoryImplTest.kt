@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.MangaUpdateStrategyColumnAdapter
+import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.handlers.novel.AndroidNovelDatabaseHandler
 import tachiyomi.novel.data.NovelDatabase
@@ -28,10 +29,12 @@ class NovelStubSourceRepositoryImplTest {
         NovelDatabase.Schema.create(driver)
         database = NovelDatabase(
             driver = driver,
+            novel_chaptersAdapter = datanovel.Novel_chapters.Adapter(memoAdapter = MemoColumnAdapter),
             novel_historyAdapter = Novel_history.Adapter(
                 last_readAdapter = DateColumnAdapter,
             ),
             novelsAdapter = Novels.Adapter(
+                memoAdapter = MemoColumnAdapter,
                 genreAdapter = StringListColumnAdapter,
                 update_strategyAdapter = MangaUpdateStrategyColumnAdapter,
                 custom_genreAdapter = StringListColumnAdapter,

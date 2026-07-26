@@ -4,15 +4,26 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 import tachiyomi.novel.data.NovelDatabase
+import java.io.File
 
 class NovelDatabaseMigrationTest {
 
     @Test
-    fun `schema version increments for narrowed novel triggers`() {
-        NovelDatabase.Schema.version shouldBe 18L
+    fun `schema version stays ahead of the highest migration`() {
+        // SqlDelight derives the schema version from the migrations, so pinning a literal breaks on
+        // every new .sqm; assert the invariant instead.
+        val highestMigration = File("src/main/sqldelightnovel/migrations")
+            .listFiles { file -> file.extension == "sqm" }
+            .orEmpty()
+            .mapNotNull { it.nameWithoutExtension.toLongOrNull() }
+            .maxOrNull()
+
+        highestMigration shouldNotBe null
+        NovelDatabase.Schema.version shouldBe highestMigration!! + 1
     }
 
     @Test

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.MangaUpdateStrategyColumnAdapter
+import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.handlers.manga.AndroidMangaDatabaseHandler
 import tachiyomi.domain.source.model.FeedListingType
@@ -34,10 +35,12 @@ class FeedSavedSearchRepositoryImplTest {
         MangaDb.Schema.create(driver)
         database = MangaDb(
             driver = driver,
+            chaptersAdapter = data.Chapters.Adapter(memoAdapter = MemoColumnAdapter),
             historyAdapter = History.Adapter(
                 last_readAdapter = DateColumnAdapter,
             ),
             mangasAdapter = Mangas.Adapter(
+                memoAdapter = MemoColumnAdapter,
                 genreAdapter = StringListColumnAdapter,
                 update_strategyAdapter = MangaUpdateStrategyColumnAdapter,
                 custom_genreAdapter = StringListColumnAdapter,
