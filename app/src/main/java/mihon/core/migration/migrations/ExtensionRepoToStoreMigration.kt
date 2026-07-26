@@ -21,9 +21,8 @@ class ExtensionRepoToStoreMigration : Migration {
      * Ports user-added extension repos (from pre-refactor ExtensionRepo tables)
      * into the new unified ExtensionStore tables (one per media DB).
      * Version 187f so it only runs on version upgrades (not constantly on every launch).
-     * For users who were already on high versionCode when the refactor landed (skipped the old 139f),
-     * the port happens on-demand when they open the extension store screens
-     * (via Get*ExtensionRepo.getAll() which calls ensureLegacyMigrated()).
+     * Users who skipped this version bump are covered by the on-demand port inside
+     * ExtensionStoreRepository.getAll(), which every trust check and store screen goes through.
      */
     override suspend fun invoke(migrationContext: MigrationContext): Boolean = withIOContext {
         val mangaHandler = migrationContext.get<MangaDatabaseHandler>() ?: return@withIOContext false
