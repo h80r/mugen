@@ -156,6 +156,10 @@ class LibraryPreferences(
 
     fun categoryNumberOfItems() = preferenceStore.getBoolean("display_number_of_items", false)
 
+    fun categoryFullNumberOfItems() = preferenceStore.getBoolean("display_full_number_of_items", false)
+
+    fun categoryGroupedNumberOfItems() = preferenceStore.getBoolean("display_grouped_number_of_items", false)
+
     fun categorizedDisplaySettings() = preferenceStore.getBoolean("categorized_display", false)
 
     fun hideHiddenCategoriesSettings() = preferenceStore.getBoolean("hidden_categories", false)

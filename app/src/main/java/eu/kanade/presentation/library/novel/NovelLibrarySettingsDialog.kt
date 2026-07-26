@@ -280,6 +280,21 @@ private fun ColumnScope.DisplayPage(
         label = stringResource(MR.strings.action_display_show_number_of_items),
         pref = libraryPreferences.categoryNumberOfItems(),
     )
+    AuroraCheckboxItem(
+        label = stringResource(AYMR.strings.action_display_full_number_of_items),
+        pref = libraryPreferences.categoryFullNumberOfItems(),
+        description = stringResource(AYMR.strings.action_display_full_number_of_items_summary),
+    )
+    val showFullNumberOfItems by libraryPreferences
+        .categoryFullNumberOfItems()
+        .collectAsStateWithLifecycle()
+    if (showFullNumberOfItems) {
+        AuroraCheckboxItem(
+            label = stringResource(AYMR.strings.action_display_grouped_number_of_items),
+            pref = libraryPreferences.categoryGroupedNumberOfItems(),
+            description = stringResource(AYMR.strings.action_display_grouped_number_of_items_summary),
+        )
+    }
 }
 
 internal fun novelLibrarySortOptions(): List<Pair<StringResource, NovelLibrarySort.Type>> {

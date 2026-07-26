@@ -67,6 +67,10 @@
     <string name="pref_disable_home_header_scroll_hide_summary">Оставлять шапку с приветствием всегда видимой и не скрывать её при прокрутке.</string>
     <string name="pref_aurora_library_swipe_switches_categories">Свайп переключает категории</string>
     <string name="pref_aurora_library_swipe_switches_categories_summary">Горизонтальные свайпы в библиотеке переключают категории вместо разделов (аниме/манга/ранобэ).</string>
+    <string name="action_display_full_number_of_items">Отображение полного числа в категориях библиотеки</string>
+    <string name="action_display_full_number_of_items_summary">Отображает количество полностью: вместо 99+ → 123.</string>
+    <string name="action_display_grouped_number_of_items">Отображение классов чисел</string>
+    <string name="action_display_grouped_number_of_items_summary">Дополнительное разделение числа, например 1234 → 1 234.</string>
     <string name="label_player_settings">Настройки проигрывателя</string>
     <string name="action_search_player_settings">Поиск по настройкам проигрывателя</string>
     <string name="pref_player_internal">Внутренний проигрыватель</string>
