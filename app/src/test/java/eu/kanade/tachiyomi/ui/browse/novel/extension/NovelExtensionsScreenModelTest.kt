@@ -43,6 +43,7 @@ class NovelExtensionsScreenModelTest {
     private val basePreferences: BasePreferences = mockk(relaxed = true)
     private val application: Application = mockk(relaxed = true)
     private val enabledLanguages = MutableStateFlow(setOf("en"))
+    private val showNsfwSources = MutableStateFlow(true)
     private val activeScreenModels = mutableListOf<NovelExtensionsScreenModel>()
 
     @BeforeEach
@@ -51,6 +52,9 @@ class NovelExtensionsScreenModelTest {
         val enabledLanguagesPreference = mockk<Preference<Set<String>>>()
         every { enabledLanguagesPreference.changes() } returns enabledLanguages
         every { sourcePreferences.enabledLanguages() } returns enabledLanguagesPreference
+        val showNsfwPreference = mockk<Preference<Boolean>>()
+        every { showNsfwPreference.changes() } returns showNsfwSources
+        every { sourcePreferences.showNsfwSource() } returns showNsfwPreference
     }
 
     private fun createScreenModel(
@@ -185,6 +189,31 @@ class NovelExtensionsScreenModelTest {
             delay(SEARCH_DEBOUNCE_MILLIS + 50)
 
             screenModel.state.value.items.any { it.plugin.id == "id-1" } shouldBe true
+        }
+    }
+
+    @Test
+    fun `nsfw plugins are hidden while show nsfw sources is off`() {
+        runBlocking {
+            showNsfwSources.value = false
+            val safe = pluginAvailable("id-safe", 1)
+            val adult = pluginAvailable("id-adult", 1).copy(isNsfw = true)
+
+            val screenModel = createScreenModel(
+                FakeNovelExtensionManager(
+                    installed = emptyList(),
+                    available = listOf(safe, adult),
+                    updates = emptyList(),
+                ),
+            )
+
+            withTimeout(1_000) {
+                while (screenModel.state.value.isLoading) {
+                    yield()
+                }
+            }
+
+            screenModel.state.value.items.map { it.plugin.id } shouldBe listOf("id-safe")
         }
     }
 
