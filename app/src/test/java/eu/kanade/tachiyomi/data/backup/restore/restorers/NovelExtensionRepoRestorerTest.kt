@@ -200,4 +200,48 @@ class NovelExtensionRepoRestorerTest {
             driver.close()
         }
     }
+
+    @Test
+    fun `a second store without a signing key still restores`() {
+        runTest {
+            Class.forName("org.sqlite.JDBC")
+            val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+            val database = createTestNovelDatabase(driver)
+            val handler = FakeNovelDatabaseHandler(database)
+            val storeRepository =
+                mockk<mihon.domain.extensionstore.novel.repository.NovelExtensionStoreRepository>(relaxed = true)
+
+            // Every store whose repo.json was unreachable carries this same placeholder key.
+            val keyless = mihon.domain.extensionstore.model.ExtensionStore(
+                indexUrl = "https://first.example/plugins.min.json",
+                name = "First",
+                badgeLabel = "First",
+                signingKey = "NO_SIGNING_KEY",
+                contact = mihon.domain.extensionstore.model.ExtensionStore.Contact(
+                    website = "https://first.example",
+                    discord = null,
+                ),
+                isLegacy = true,
+                extensionListUrl = null,
+            )
+            coEvery { storeRepository.getAll() } returns listOf(keyless)
+
+            NovelExtensionStoreRestorer(handler, storeRepository)(
+                eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore(
+                    indexUrl = "https://second.example/plugins.min.json",
+                    name = "Second",
+                    badgeLabel = "Second",
+                    signingKey = "NO_SIGNING_KEY",
+                    contactWebsite = "https://second.example",
+                    contactDiscord = null,
+                    isLegacy = true,
+                    extensionListUrl = null,
+                ),
+            )
+
+            database.extension_storeQueries.getAll().executeAsList().map { it.index_url } shouldBe
+                listOf("https://second.example/plugins.min.json")
+            driver.close()
+        }
+    }
 }

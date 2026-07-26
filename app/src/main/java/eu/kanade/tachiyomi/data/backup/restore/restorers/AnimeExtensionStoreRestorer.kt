@@ -16,9 +16,17 @@ class AnimeExtensionStoreRestorer(
     ) {
         val dbStores = animeStoreRepository.getAll()
         val existingByIndex = dbStores.associateBy { it.indexUrl }
-        val existingByKey = dbStores.associateBy { it.signingKey }
+        // Placeholder keys are shared by every store without a reachable repo.json, so they are
+        // not an identity: only real fingerprints may block a restore.
+        val existingByKey = dbStores
+            .filterNot { isPlaceholderSigningKey(it.signingKey) }
+            .associateBy { it.signingKey }
         val indexExists = existingByIndex[backupStore.indexUrl]
-        val keyExists = existingByKey[backupStore.signingKey]
+        val keyExists = if (isPlaceholderSigningKey(backupStore.signingKey)) {
+            null
+        } else {
+            existingByKey[backupStore.signingKey]
+        }
         if (indexExists != null && indexExists.signingKey == backupStore.signingKey) {
             // Already present, e.g. the same backup restored twice: nothing to do.
             return
