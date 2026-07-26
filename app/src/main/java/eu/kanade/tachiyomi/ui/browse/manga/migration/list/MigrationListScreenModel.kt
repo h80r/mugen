@@ -96,7 +96,12 @@ class MigrationListScreenModel(
         manga: Manga,
     ): ChapterInfo {
         return try {
-            source.getChapterList(manga.toSManga()).let { chapters ->
+            source.getMangaUpdate(
+                manga = manga.toSManga(),
+                chapters = emptyList(),
+                fetchDetails = false,
+                fetchChapters = true,
+            ).chapters.let { chapters ->
                 ChapterInfo(
                     latestChapter = chapters.maxOfOrNull { it.chapter_number.toDouble() },
                     chapterCount = chapters.size,

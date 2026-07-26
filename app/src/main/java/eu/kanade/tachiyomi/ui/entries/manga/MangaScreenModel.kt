@@ -1123,7 +1123,14 @@ class MangaScreenModel(
         try {
             withIOContext {
                 val getStart = System.currentTimeMillis()
-                val sourceChapters = state.source.getChapterList(state.manga.toSManga())
+                // Combined API: unchanged for 1.4/1.5 extensions, and the only entry point a
+                // 1.6 extension implements - calling getChapterList there throws.
+                val sourceChapters = state.source.getMangaUpdate(
+                    manga = state.manga.toSManga(),
+                    chapters = emptyList(),
+                    fetchDetails = false,
+                    fetchChapters = true,
+                ).chapters
                 val getMs = System.currentTimeMillis() - getStart
                 logcat(LogPriority.DEBUG) {
                     "TADAMI_PERF_MANGA_TITLE getChapterList-done id=${state.manga.id} count=${sourceChapters.size} took=${getMs}ms"

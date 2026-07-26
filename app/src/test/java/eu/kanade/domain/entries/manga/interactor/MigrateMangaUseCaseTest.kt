@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.source.MangaSource
 import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -64,9 +65,14 @@ class MigrateMangaUseCaseTest {
 
         every { sourceManager.get(any()) } returns source
         every { trackerManager.trackers } returns emptyList()
-        coEvery { source.getChapterList(any()) } returns listOf(
-            sChapter(1.0f),
-        )
+        coEvery { source.getMangaUpdate(any(), any(), any(), any()) } answers {
+            SMangaUpdate(
+                firstArg(),
+                listOf(
+                    sChapter(1.0f),
+                ),
+            )
+        }
         coEvery { syncChaptersWithSource.await(any(), any(), any()) } returns emptyList()
         coEvery { getChaptersByMangaId.await(oldManga.id) } returns listOf(
             chapter(1L, oldManga.id, 1.0, read = true),
@@ -129,9 +135,14 @@ class MigrateMangaUseCaseTest {
 
         every { sourceManager.get(any()) } returns source
         every { trackerManager.trackers } returns emptyList()
-        coEvery { source.getChapterList(any()) } returns listOf(
-            sChapter(1.0f),
-        )
+        coEvery { source.getMangaUpdate(any(), any(), any(), any()) } answers {
+            SMangaUpdate(
+                firstArg(),
+                listOf(
+                    sChapter(1.0f),
+                ),
+            )
+        }
         coEvery { syncChaptersWithSource.await(any(), any(), any()) } returns emptyList()
         coEvery { getChaptersByMangaId.await(oldManga.id) } returns listOf(
             chapter(1L, oldManga.id, 1.0, read = true),
@@ -201,7 +212,9 @@ class MigrateMangaUseCaseTest {
 
         every { sourceManager.get(any()) } returns source
         every { trackerManager.trackers } returns emptyList()
-        coEvery { source.getChapterList(any()) } returns listOf(sChapter(1.0f), sChapter(2.0f))
+        coEvery { source.getMangaUpdate(any(), any(), any(), any()) } answers {
+            SMangaUpdate(firstArg(), listOf(sChapter(1.0f), sChapter(2.0f)))
+        }
         coEvery { syncChaptersWithSource.await(any(), any(), any()) } returns emptyList()
         coEvery { getChaptersByMangaId.await(oldManga.id) } returns listOf(
             chapter(1L, oldManga.id, 1.0, read = true, lastPageRead = 12L),
@@ -272,7 +285,9 @@ class MigrateMangaUseCaseTest {
 
         every { sourceManager.get(any()) } returns source
         every { trackerManager.trackers } returns emptyList()
-        coEvery { source.getChapterList(any()) } returns emptyList()
+        coEvery { source.getMangaUpdate(any(), any(), any(), any()) } answers {
+            SMangaUpdate(firstArg(), emptyList())
+        }
         coEvery { syncChaptersWithSource.await(any(), any(), any()) } returns emptyList()
         coEvery { updateManga.await(capture(updateSlot)) } returns true
 
@@ -321,9 +336,14 @@ class MigrateMangaUseCaseTest {
 
         every { sourceManager.get(any()) } returns source
         every { trackerManager.trackers } returns emptyList()
-        coEvery { source.getChapterList(any()) } returns listOf(
-            sChapter(2.0f),
-        )
+        coEvery { source.getMangaUpdate(any(), any(), any(), any()) } answers {
+            SMangaUpdate(
+                firstArg(),
+                listOf(
+                    sChapter(2.0f),
+                ),
+            )
+        }
         coEvery { syncChaptersWithSource.await(any(), any(), any()) } returns emptyList()
         coEvery { getChaptersByMangaId.await(oldManga.id) } returns listOf(
             chapter(1L, oldManga.id, 1.0, read = true),
@@ -383,7 +403,9 @@ class MigrateMangaUseCaseTest {
         every { sourceManager.get(any()) } returns source
         every { trackerManager.trackers } returns emptyList()
         coEvery { networkToLocalManga.await(networkNewManga) } returns localNewManga
-        coEvery { source.getChapterList(any()) } returns emptyList()
+        coEvery { source.getMangaUpdate(any(), any(), any(), any()) } answers {
+            SMangaUpdate(firstArg(), emptyList())
+        }
         coEvery { syncChaptersWithSource.await(any(), localNewManga, source) } returns emptyList()
         coEvery { updateManga.await(capture(updateSlot)) } returns true
 
