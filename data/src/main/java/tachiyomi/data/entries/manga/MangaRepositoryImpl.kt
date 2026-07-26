@@ -178,6 +178,10 @@ class MangaRepositoryImpl(
                         version = updated.version,
                         isSyncing = 0,
                     )
+                    // Separate statement: coalesce() drops the column adapter type.
+                    updated.memo?.let { memo ->
+                        db.mangasQueries.updateMemo(memo = memo, mangaId = updated.id)
+                    }
                     updated
                 } else if (autoFavorite && !local.favorite) {
                     val updated = local.copy(favorite = true, dateAdded = System.currentTimeMillis())
@@ -208,6 +212,10 @@ class MangaRepositoryImpl(
                         version = updated.version,
                         isSyncing = 0,
                     )
+                    // Separate statement: coalesce() drops the column adapter type.
+                    updated.memo?.let { memo ->
+                        db.mangasQueries.updateMemo(memo = memo, mangaId = updated.id)
+                    }
                     updated
                 } else {
                     val newThumbnailUrl = if (local.thumbnailUrl.isNullOrBlank()) {

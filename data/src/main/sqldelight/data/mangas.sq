@@ -196,6 +196,11 @@ UPDATE mangas SET
     rating = coalesce(:rating, rating)
 WHERE _id = :mangaId;
 
+updateMemo:
+UPDATE mangas
+SET memo = :memo
+WHERE _id = :mangaId;
+
 updateMetadata:
 UPDATE mangas SET
     custom_title = :customTitle,

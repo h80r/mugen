@@ -45,6 +45,8 @@ fun Manga.toSManga(): SManga = SManga.create().also {
     it.rating = rating.normalizeRating()
     it.thumbnail_url = thumbnailUrl
     it.initialized = initialized
+    // Source-owned context: 1.6 extensions read e.g. a rotating slug back out of this.
+    it.memo = memo
 }
 
 fun Manga.copyFrom(other: SManga): Manga {
@@ -68,6 +70,8 @@ fun Manga.copyFrom(other: SManga): Manga {
         status = other.status.toLong(),
         updateStrategy = other.update_strategy,
         initialized = other.initialized && initialized,
+        // Keep what we stored when the source sends nothing back.
+        memo = other.memo.takeIf { it.isNotEmpty() } ?: memo,
     )
 }
 
@@ -85,6 +89,7 @@ fun SManga.toDomainManga(sourceId: Long): Manga {
         updateStrategy = update_strategy,
         initialized = initialized,
         source = sourceId,
+        memo = memo,
     )
 }
 

@@ -146,6 +146,7 @@ class StatsReadCountSqlTest {
             dateFetch = 0L,
             dateUpload = 0L,
             version = 0L,
+            memo = kotlinx.serialization.json.JsonObject(emptyMap()),
         )
     }
 

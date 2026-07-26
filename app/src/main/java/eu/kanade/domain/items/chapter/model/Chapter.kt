@@ -13,6 +13,9 @@ fun Chapter.toSChapter(): SChapter {
         it.date_upload = dateUpload
         it.chapter_number = chapterNumber.toFloat()
         it.scanlator = scanlator
+        // Source-owned context: 1.6 extensions store things like a rotating slug here and fail the
+        // request when it comes back empty.
+        it.memo = memo
     }
 }
 
@@ -23,6 +26,8 @@ fun Chapter.copyFromSChapter(sChapter: SChapter): Chapter {
         dateUpload = sChapter.date_upload,
         chapterNumber = sChapter.chapter_number.toDouble(),
         scanlator = sChapter.scanlator?.ifBlank { null }?.trim(),
+        // Keep whatever we already stored when the source sends nothing.
+        memo = sChapter.memo.takeIf { it.isNotEmpty() } ?: memo,
     )
 }
 

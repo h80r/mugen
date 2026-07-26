@@ -128,6 +128,9 @@ class UpdateManga(
                 description = remoteManga.description,
                 genre = remoteManga.getGenres(),
                 rating = mergedRating.takeIf { it >= 0f },
+                // 1.6 sources hand back context here (e.g. a rotating slug) and expect to get it
+                // back on the next call; dropping it makes later requests fail.
+                memo = remoteManga.memo.takeIf { it.isNotEmpty() },
                 thumbnailUrl = thumbnailUrl,
                 status = remoteManga.status.toLong(),
                 updateStrategy = remoteManga.update_strategy,

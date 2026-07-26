@@ -7,11 +7,14 @@ import eu.kanade.domain.entries.manga.model.toDomainManga
 import eu.kanade.domain.entries.manga.model.toSManga
 import eu.kanade.domain.items.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.tachiyomi.source.MangaSource
+import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.ResolvableSource
 import eu.kanade.tachiyomi.source.online.UriType
 import kotlinx.coroutines.flow.update
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.entries.manga.interactor.GetMangaByUrlAndSourceId
 import tachiyomi.domain.entries.manga.interactor.NetworkToLocalManga
@@ -39,7 +42,7 @@ class DeepLinkMangaScreenModel(
 
             val manga = source?.getManga(query)?.let {
                 getMangaFromSManga(it, source.id)
-            }
+            } ?: resolveThroughSearch(query)
 
             val chapter = if (source?.getUriType(query) == UriType.Chapter && manga != null) {
                 source.getChapter(query)?.let { getChapterFromSChapter(it, manga, source) }
@@ -59,6 +62,28 @@ class DeepLinkMangaScreenModel(
                 }
             }
         }
+    }
+
+    /**
+     * Resolves a url through the regular search entry point.
+     *
+     * Sources built on the 1.6 base class do not implement [ResolvableSource]; instead their
+     * getSearchManga hands a url-shaped query to getMangaByUrl, so passing the link as the query is
+     * how a deep link reaches them. Only sources whose base url matches the link's host are tried.
+     */
+    private suspend fun resolveThroughSearch(query: String): Manga? {
+        val url = query.toHttpUrlOrNull() ?: return null
+        val candidates = sourceManager.getCatalogueSources()
+            .filterIsInstance<HttpSource>()
+            .filter { it.baseUrl.toHttpUrlOrNull()?.host == url.host }
+
+        for (candidate in candidates) {
+            val sManga = runCatching {
+                candidate.getSearchManga(page = 1, query = query, filters = FilterList()).mangas.firstOrNull()
+            }.getOrNull() ?: continue
+            return getMangaFromSManga(sManga, candidate.id)
+        }
+        return null
     }
 
     private suspend fun getChapterFromSChapter(sChapter: SChapter, manga: Manga, source: MangaSource): Chapter? {
