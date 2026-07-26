@@ -3,6 +3,7 @@ package tachiyomi.data.source.novel
 import eu.kanade.tachiyomi.novelsource.NovelCatalogueSource
 import eu.kanade.tachiyomi.novelsource.NovelSource
 import eu.kanade.tachiyomi.novelsource.model.NovelFilterList
+import eu.kanade.tachiyomi.novelsource.online.NovelHttpSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -31,8 +32,12 @@ class NovelSourceRepositoryImpl(
 
     override fun getOnlineNovelSources(): Flow<List<DomainSource>> {
         return sourceManager.catalogueSources.map { sources ->
+            // catalogueSources is already List<NovelCatalogueSource>, so the old filterIsInstance was
+            // a no-op that let the local source and the omni resolver into the Sources filter -
+            // disabling the local one there hides every imported EPUB from Browse. Filter on the
+            // transport type instead, the way the manga repository does with HttpSource.
             sources
-                .filterIsInstance<NovelCatalogueSource>()
+                .filterIsInstance<NovelHttpSource>()
                 .map(::mapSourceToDomainSource)
         }
     }
