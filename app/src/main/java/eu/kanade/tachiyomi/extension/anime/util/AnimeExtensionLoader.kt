@@ -15,6 +15,7 @@ import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.AnimeSourceFactory
 import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
 import eu.kanade.tachiyomi.extension.anime.model.AnimeLoadResult
+import eu.kanade.tachiyomi.extension.canReplacePrivateExtension
 import eu.kanade.tachiyomi.util.lang.Hash
 import eu.kanade.tachiyomi.util.storage.copyAndSetReadOnlyTo
 import eu.kanade.tachiyomi.util.system.ChildFirstPathClassLoader
@@ -129,14 +130,17 @@ internal object AnimeExtensionLoader {
                 return false
             }
 
-            if (!extensionSignatures.containsAll(getSignatures(currentExtension)!!)) {
-                // The same extension can be re-published by another store with a new
-                // signing key. Allow replacing the private copy instead of failing the
-                // update: trust is re-evaluated at load time, so an unknown key will
-                // surface as Untrusted (with a prompt) rather than a silent dead end.
-                logcat(LogPriority.WARN) {
-                    "Extension signature changed, replacing private extension (trust is re-checked on load)."
-                }
+            // Cross-store re-publication is handled by the reinstall path (uninstall first), so a
+            // signature change here means the replacement is not from the installed publisher.
+            if (!canReplacePrivateExtension(
+                    installedVersionCode = PackageInfoCompat.getLongVersionCode(currentExtension),
+                    newVersionCode = PackageInfoCompat.getLongVersionCode(extension),
+                    installedSignatures = getSignatures(currentExtension).orEmpty(),
+                    newSignatures = extensionSignatures,
+                )
+            ) {
+                logcat(LogPriority.ERROR) { "Installed extension signature is not matched." }
+                return false
             }
         }
 

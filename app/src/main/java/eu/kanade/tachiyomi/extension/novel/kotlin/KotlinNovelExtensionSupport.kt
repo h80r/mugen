@@ -19,6 +19,7 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.novel.interactor.TrustNovelExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.InstallStep
+import eu.kanade.tachiyomi.extension.canReplacePrivateExtension
 import eu.kanade.tachiyomi.extension.installer.ApkExtensionKind
 import eu.kanade.tachiyomi.extension.installer.ApkInstallRequest
 import eu.kanade.tachiyomi.extension.installer.ExtensionApkFileStore
@@ -223,6 +224,25 @@ object KotlinNovelExtensionLoader {
         }
 
         val target = File(privateExtensionDir, "$pkgName.$PRIVATE_EXTENSION_EXTENSION")
+        // A private extension is loaded without the system verifying anything, so the signature is
+        // what ties an update to the publisher of the installed copy. Cross-store re-publication
+        // goes through uninstall + install, where no installed copy is left to replace.
+        val installedInfo = target.takeIf { it.exists() }
+            ?.let { pkgManager.getPackageArchiveInfo(it.absolutePath, PACKAGE_FLAGS) }
+        if (installedInfo != null &&
+            !canReplacePrivateExtension(
+                installedVersionCode = PackageInfoCompat.getLongVersionCode(installedInfo),
+                newVersionCode = PackageInfoCompat.getLongVersionCode(archiveInfo),
+                installedSignatures = getSignatures(installedInfo).orEmpty(),
+                newSignatures = getSignatures(archiveInfo).orEmpty(),
+            )
+        ) {
+            logcat(LogPriority.ERROR) {
+                "Refusing to replace private Kotlin novel extension $pkgName: " +
+                    "signature mismatch or version downgrade."
+            }
+            return false
+        }
         val part = File(privateExtensionDir, "$pkgName.$PRIVATE_EXTENSION_EXTENSION.part")
         return try {
             part.delete()
