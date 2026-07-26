@@ -158,4 +158,46 @@ class NovelExtensionRepoRestorerTest {
             driver.close()
         }
     }
+
+    @Test
+    fun `restoring the same store twice is a no-op instead of an error`() {
+        runTest {
+            Class.forName("org.sqlite.JDBC")
+            val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+            val database = createTestNovelDatabase(driver)
+            val handler = FakeNovelDatabaseHandler(database)
+            val storeRepository =
+                mockk<mihon.domain.extensionstore.novel.repository.NovelExtensionStoreRepository>(relaxed = true)
+
+            val existing = mihon.domain.extensionstore.model.ExtensionStore(
+                indexUrl = "https://novel.example/store.json",
+                name = "Novel Example",
+                badgeLabel = "NE",
+                signingKey = "DEF123",
+                contact = mihon.domain.extensionstore.model.ExtensionStore.Contact(
+                    website = "https://novel.example",
+                    discord = null,
+                ),
+                isLegacy = false,
+                extensionListUrl = null,
+            )
+            coEvery { storeRepository.getAll() } returns listOf(existing)
+
+            NovelExtensionStoreRestorer(handler, storeRepository)(
+                eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore(
+                    indexUrl = existing.indexUrl,
+                    name = existing.name,
+                    badgeLabel = existing.badgeLabel,
+                    signingKey = existing.signingKey,
+                    contactWebsite = existing.contact.website,
+                    contactDiscord = existing.contact.discord,
+                    isLegacy = existing.isLegacy,
+                    extensionListUrl = existing.extensionListUrl,
+                ),
+            )
+
+            database.extension_storeQueries.getAll().executeAsList() shouldBe emptyList()
+            driver.close()
+        }
+    }
 }

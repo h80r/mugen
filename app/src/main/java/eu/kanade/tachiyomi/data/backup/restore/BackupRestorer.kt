@@ -121,6 +121,27 @@ class BackupRestorer(
         val shouldRestoreAnimeCategories = options.categories && (includeAllCategories || options.restoreAnime)
         val shouldRestoreNovelCategories = options.categories && (includeAllCategories || options.restoreNovel)
 
+        // Stores are written to both the store fields and the legacy repo fields so an older build
+        // can still read them; replaying both would insert every store twice.
+        val animeExtensionStoreBackups = if (options.restoreAnime) backup.backupAnimeExtensionStore else emptyList()
+        val mangaExtensionStoreBackups = if (options.restoreManga) backup.backupMangaExtensionStore else emptyList()
+        val novelExtensionStoreBackups = if (options.restoreNovel) backup.backupNovelExtensionStore else emptyList()
+        val animeExtensionRepoBackups = if (options.restoreAnime) {
+            legacyExtensionRepoBackupsToRestore(backup.backupAnimeExtensionRepo, animeExtensionStoreBackups)
+        } else {
+            emptyList()
+        }
+        val mangaExtensionRepoBackups = if (options.restoreManga) {
+            legacyExtensionRepoBackupsToRestore(backup.backupMangaExtensionRepo, mangaExtensionStoreBackups)
+        } else {
+            emptyList()
+        }
+        val novelExtensionRepoBackups = if (options.restoreNovel) {
+            legacyExtensionRepoBackupsToRestore(backup.backupNovelExtensionRepo, novelExtensionStoreBackups)
+        } else {
+            emptyList()
+        }
+
         if (options.libraryEntries) {
             if (options.restoreManga) restoreAmount += backup.backupManga.size
             if (options.restoreAnime) restoreAmount += backup.backupAnime.size
@@ -137,18 +158,9 @@ class BackupRestorer(
             restoreAmount += 1
         }
         if (options.extensionRepoSettings) {
-            if (options.restoreAnime) {
-                restoreAmount +=
-                    backup.backupAnimeExtensionRepo.size + backup.backupAnimeExtensionStore.size
-            }
-            if (options.restoreManga) {
-                restoreAmount +=
-                    backup.backupMangaExtensionRepo.size + backup.backupMangaExtensionStore.size
-            }
-            if (options.restoreNovel) {
-                restoreAmount +=
-                    backup.backupNovelExtensionRepo.size + backup.backupNovelExtensionStore.size
-            }
+            restoreAmount += animeExtensionRepoBackups.size + animeExtensionStoreBackups.size
+            restoreAmount += mangaExtensionRepoBackups.size + mangaExtensionStoreBackups.size
+            restoreAmount += novelExtensionRepoBackups.size + novelExtensionStoreBackups.size
         }
         if (options.customButtons) {
             restoreAmount += 1
@@ -214,15 +226,15 @@ class BackupRestorer(
                 }
             }
             if (options.extensionRepoSettings) {
-                restoreExtensionRepos(
-                    if (options.restoreAnime) backup.backupAnimeExtensionRepo else emptyList(),
-                    if (options.restoreManga) backup.backupMangaExtensionRepo else emptyList(),
-                    if (options.restoreNovel) backup.backupNovelExtensionRepo else emptyList(),
-                )
                 restoreExtensionStores(
-                    if (options.restoreAnime) backup.backupAnimeExtensionStore else emptyList(),
-                    if (options.restoreManga) backup.backupMangaExtensionStore else emptyList(),
-                    if (options.restoreNovel) backup.backupNovelExtensionStore else emptyList(),
+                    animeExtensionStoreBackups,
+                    mangaExtensionStoreBackups,
+                    novelExtensionStoreBackups,
+                )
+                restoreExtensionRepos(
+                    animeExtensionRepoBackups,
+                    mangaExtensionRepoBackups,
+                    novelExtensionRepoBackups,
                 )
             }
             if (options.customButtons) {
@@ -615,4 +627,18 @@ class BackupRestorer(
         }
         return File("")
     }
+}
+
+/**
+ * Which legacy repo entries of a backup still have to be replayed.
+ *
+ * A backup carries the same stores twice: under the store fields, and under the legacy repo fields
+ * so an older build can still read them. Replaying both inserts every store a second time under a
+ * fabricated `<base>/repo.json` index url, and makes both restorers report a signing-key clash.
+ */
+internal fun legacyExtensionRepoBackupsToRestore(
+    repoBackups: List<BackupExtensionRepos>,
+    storeBackups: List<BackupExtensionStore>,
+): List<BackupExtensionRepos> {
+    return if (storeBackups.isEmpty()) repoBackups else emptyList()
 }

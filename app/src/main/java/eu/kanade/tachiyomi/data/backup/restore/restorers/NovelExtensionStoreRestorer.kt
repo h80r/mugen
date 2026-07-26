@@ -19,7 +19,11 @@ class NovelExtensionStoreRestorer(
         val existingByKey = dbStores.associateBy { it.signingKey }
         val indexExists = existingByIndex[backupStore.indexUrl]
         val keyExists = existingByKey[backupStore.signingKey]
-        if (indexExists != null && indexExists.signingKey != backupStore.signingKey) {
+        if (indexExists != null && indexExists.signingKey == backupStore.signingKey) {
+            // Already present, e.g. the same backup restored twice: nothing to do.
+            return
+        }
+        if (indexExists != null) {
             error("Already Exists with different signing key")
         } else if (keyExists != null) {
             error("${keyExists.name} has the same signing key")

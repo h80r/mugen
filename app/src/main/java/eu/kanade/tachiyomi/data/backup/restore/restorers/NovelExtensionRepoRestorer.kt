@@ -20,7 +20,11 @@ class NovelExtensionRepoRestorer(
         val existingReposByUrl = dbRepos.associateBy { it.baseUrl }
         val urlExists = existingReposByUrl[backupRepo.baseUrl]
         val shaExists = existingReposBySHA[backupRepo.signingKeyFingerprint]
-        if (urlExists != null && urlExists.signingKeyFingerprint != backupRepo.signingKeyFingerprint) {
+        if (urlExists != null && urlExists.signingKeyFingerprint == backupRepo.signingKeyFingerprint) {
+            // Already present, e.g. the same backup restored twice: nothing to do.
+            return
+        }
+        if (urlExists != null) {
             error("Already Exists with different signing key fingerprint")
         } else if (shaExists != null) {
             error("${shaExists.name} has the same signing key fingerprint")
