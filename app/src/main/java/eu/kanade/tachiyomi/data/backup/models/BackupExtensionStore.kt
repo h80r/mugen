@@ -4,6 +4,15 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.protobuf.ProtoNumber
 import mihon.domain.extensionstore.model.ExtensionStore
 
+/**
+ * Fork-local backup shape, read and written only at Backup fields 650-652.
+ *
+ * Despite the shared name it is NOT wire-compatible with mihon's BackupExtensionStore: mihon aligned
+ * its numbering with the old BackupExtensionRepos (4 = website, 5 = fingerprint) so that a
+ * pre-migration field-106 payload still decodes, while ours uses 4 = signingKey, 5 = contactWebsite.
+ * Pointing this class at field 106 would therefore swap signing keys with websites - map a separate
+ * mihon-shaped model instead.
+ */
 @Serializable
 class BackupExtensionStore(
     @ProtoNumber(1) var indexUrl: String,
