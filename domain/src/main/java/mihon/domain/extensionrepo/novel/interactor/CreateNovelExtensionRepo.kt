@@ -35,7 +35,12 @@ class CreateNovelExtensionRepo(
                     insertPluginStyleStore(baseUrl, displayName)
                     Result.Success
                 } else {
-                    handleInsertionError(normalizedUrl, displayName, baseUrlHint = normalizedUrl)
+                    handleInsertionError(
+                        indexUrl = normalizedUrl,
+                        displayName = displayName,
+                        baseUrlHint = normalizedUrl,
+                        failure = insertResult.exceptionOrNull(),
+                    )
                 }
             }
             pluginsSuffixes.any { normalizedUrl.endsWith(it) } -> {
@@ -55,7 +60,12 @@ class CreateNovelExtensionRepo(
                     )
                     Result.Success
                 } else {
-                    handleInsertionError(normalizedUrl, displayName, baseUrlHint = normalizedUrl)
+                    handleInsertionError(
+                        indexUrl = normalizedUrl,
+                        displayName = displayName,
+                        baseUrlHint = normalizedUrl,
+                        failure = insertResult.exceptionOrNull(),
+                    )
                 }
             }
         }
@@ -125,6 +135,7 @@ class CreateNovelExtensionRepo(
         indexUrl: String,
         displayName: String?,
         baseUrlHint: String,
+        failure: Throwable?,
     ): Result {
         val stores = repository.getAll()
         if (stores.any { it.indexUrl == indexUrl }) {
@@ -142,8 +153,10 @@ class CreateNovelExtensionRepo(
             )
             return Result.DuplicateFingerprint(matching.toExtensionRepo(), newRepo)
         }
-        logcat(LogPriority.WARN) { "Failed to add novel extension store $indexUrl" }
-        return Result.InvalidUrl
+        logcat(LogPriority.WARN, failure) { "Failed to add novel extension store $indexUrl" }
+        // A DNS failure, a non-2xx response or a malformed index is not a bad url; telling the user
+        // the url is invalid sends them to fix something that is not broken.
+        return if (failure != null) Result.Error else Result.InvalidUrl
     }
 
     sealed interface Result {

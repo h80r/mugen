@@ -38,7 +38,7 @@ class CreateMangaExtensionRepo(
             return Result.Success
         }
 
-        return handleInsertionError(formattedIndexUrl, displayName)
+        return handleInsertionError(formattedIndexUrl, displayName, insertResult.exceptionOrNull())
     }
 
     private fun normalizeForceLocalIndexUrl(indexUrl: String): String {
@@ -74,7 +74,11 @@ class CreateMangaExtensionRepo(
         }
     }
 
-    private suspend fun handleInsertionError(indexUrl: String, displayName: String?): Result {
+    private suspend fun handleInsertionError(
+        indexUrl: String,
+        displayName: String?,
+        failure: Throwable?,
+    ): Result {
         val stores = repository.getAll()
         if (stores.any { it.indexUrl == indexUrl }) {
             return Result.RepoAlreadyExists
@@ -91,8 +95,10 @@ class CreateMangaExtensionRepo(
             )
             return Result.DuplicateFingerprint(matching.toExtensionRepo(), newRepo)
         }
-        logcat(LogPriority.WARN) { "Failed to add manga extension store $indexUrl" }
-        return Result.InvalidUrl
+        logcat(LogPriority.WARN, failure) { "Failed to add manga extension store $indexUrl" }
+        // A DNS failure, a non-2xx response or a malformed index is not a bad url; telling the user
+        // the url is invalid sends them to fix something that is not broken.
+        return if (failure != null) Result.Error else Result.InvalidUrl
     }
 
     sealed interface Result {

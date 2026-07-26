@@ -85,4 +85,18 @@ class CreateMangaExtensionRepoTest {
             )
         }
     }
+
+    @Test
+    fun `a network failure is reported as an error, not as an invalid url`() = runTest {
+        val repository = mockk<MangaExtensionStoreRepository>(relaxed = true)
+        coEvery { repository.insert("https://example.org/repo/index.min.json") } returns Result.failure(
+            java.io.IOException("offline"),
+        )
+        coEvery { repository.getAll() } returns emptyList()
+        val interactor = CreateMangaExtensionRepo(repository)
+
+        val result = interactor.await("https://example.org/repo/index.min.json")
+
+        result shouldBe CreateMangaExtensionRepo.Result.Error
+    }
 }
