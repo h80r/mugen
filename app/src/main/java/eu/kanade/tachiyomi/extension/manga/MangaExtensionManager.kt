@@ -294,10 +294,17 @@ class MangaExtensionManager(
      *
      * @param extension The extension to be installed.
      */
-    fun installExtension(extension: MangaExtension.Available): Flow<InstallStep> {
+    fun installExtension(
+        extension: MangaExtension.Available,
+        isUpdateForPrivatelyInstalled: Boolean = false,
+    ): Flow<InstallStep> {
         val installableExtension = extension.copy(pkgName = extension.pkgName.toInstalledMangaExtensionPkgName())
         pendingInstallRepos[installableExtension.pkgName] = InstalledRepo(extension.repoUrl, extension.repoName)
-        return installer.downloadAndInstall(api.getApkUrl(extension), installableExtension)
+        return installer.downloadAndInstall(
+            url = api.getApkUrl(extension),
+            extension = installableExtension,
+            isUpdateForPrivatelyInstalled = isUpdateForPrivatelyInstalled,
+        )
     }
 
     /**
@@ -311,7 +318,9 @@ class MangaExtensionManager(
         val variants = availableExtensionsStateFlow.value.filter { it.pkgName == extension.pkgName }
         val availableExt = selectMangaRegularUpdate(extension.withInferredRepo(variants), variants)
             ?: return emptyFlow()
-        return installExtension(availableExt)
+        // A privately installed extension has no system package: installing its update through
+        // PackageInstaller/Shizuku would add a second, system copy next to the private one.
+        return installExtension(availableExt, isUpdateForPrivatelyInstalled = !extension.isShared)
     }
 
     fun replaceExtensionFromRepo(
