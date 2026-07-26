@@ -2620,6 +2620,7 @@
     <string name="anixart_import_matched_query">Matched by: %1$s</string>
     <string name="anixart_import_matched_source">Source: %1$s</string>
     <string name="anixart_import_matching_report">Auto %1$d · Review %2$d · Not found %3$d</string>
+    <string name="anixart_import_duplicates_report">Merged into an entry another row already matched: %1$d</string>
     <string name="anixart_import_background_started">Import continues in the background. You will get a notification when it finishes.</string>
     <string name="anixart_import_tracker_report">Shikimori synced %1$d, skipped %2$d, failed %3$d</string>
 

@@ -7,8 +7,11 @@ import eu.kanade.tachiyomi.data.anixart.AnixartImportJob
 import eu.kanade.tachiyomi.data.anixart.AnixartSourceSearcher
 import eu.kanade.tachiyomi.data.anixart.AnixartTrackerSync
 import eu.kanade.tachiyomi.data.anixart.ImportAnixartEntries
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.anixart.AnixartCsvParser
 import tachiyomi.data.anixart.AnixartImportPlanner
 import tachiyomi.data.anixart.AnixartMatcher
@@ -16,6 +19,7 @@ import tachiyomi.data.anixart.AnixartMatchingCoordinator
 import tachiyomi.data.anixart.AnixartRow
 import tachiyomi.data.anixart.AnixartSourceHints
 import tachiyomi.data.anixart.AnixartStatus
+import tachiyomi.data.anixart.ImportCollisionResolver
 import tachiyomi.data.anixart.MediaImportMatchingEngine
 import tachiyomi.domain.category.anime.interactor.GetAnimeCategories
 import tachiyomi.domain.category.model.Category
@@ -93,6 +97,8 @@ class AnixartImportScreenModel(
             val matchingReport: AnixartMatchingCoordinator.MatchingReport,
             val trackerReport: AnixartTrackerSync.Report?,
             val backgroundJob: Boolean,
+            /** Rows that resolved onto an entry another row already claimed. */
+            val duplicatesMerged: Int = 0,
         ) : State
     }
 
@@ -145,6 +151,14 @@ class AnixartImportScreenModel(
                     )
                 }
             } catch (e: AnixartCsvParser.InvalidAnixartCsvException) {
+                mutableState.update { State.Error(ErrorKind.INVALID) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A truncated/re-saved export (stray blank lines, odd encoding, revoked
+                // content-uri permission) used to throw out of screenModelScope and take
+                // the whole app down. Show the error screen instead.
+                logcat(LogPriority.ERROR, e) { "Anixart import could not read the CSV" }
                 mutableState.update { State.Error(ErrorKind.INVALID) }
             }
         }
@@ -232,7 +246,7 @@ class AnixartImportScreenModel(
                 },
             )
 
-            val items = results.map { row ->
+            val matched = results.map { row ->
                 ReviewItem(
                     row = row.row,
                     result = row.result,
@@ -242,10 +256,13 @@ class AnixartImportScreenModel(
                     matchedSourceName = row.matchedSourceName,
                 )
             }
+            // Without this pass two rows can point at one catalogue entry, the planner
+            // collapses them, and the user sees "found 100 / added 86" with no clue why.
+            val items = resolveCollisions(matched, sourceNames)
             mutableState.update {
                 State.Review(
                     items = items,
-                    matchingReport = matchingReport,
+                    matchingReport = reportOf(items, matchingReport),
                     statusCategoryIds = statusCategoryIds,
                     favoriteCategoryId = favoriteCategoryId,
                     syncToShikimori = syncToShikimori,
@@ -254,6 +271,61 @@ class AnixartImportScreenModel(
                 )
             }
         }
+    }
+
+    /**
+     * Stops two different rows from claiming the same catalogue entry: the better
+     * scoring row keeps it, the loser falls back to its next free candidate or becomes
+     * unmatched so it stays visible in the review list and can be searched by hand.
+     */
+    private fun resolveCollisions(
+        items: List<ReviewItem>,
+        sourceNames: Map<Long, String>,
+    ): List<ReviewItem> {
+        if (items.size < 2) return items
+        val (resolutions, _) = ImportCollisionResolver.resolve(
+            items.mapIndexed { index, item ->
+                ImportCollisionResolver.Row(
+                    index = index,
+                    identity = ImportCollisionResolver.identityOf(item.row.candidateTitles()),
+                    ranked = item.result.ranked,
+                    selectedId = item.selectedId,
+                    enabled = item.enabled,
+                )
+            },
+        )
+        return items.mapIndexed { index, item ->
+            val resolution = resolutions[index]
+            if (resolution.selectedId == item.selectedId && resolution.enabled == item.enabled) {
+                return@mapIndexed item
+            }
+            val candidate = item.result.ranked
+                .firstOrNull { it.candidate.id == resolution.selectedId }?.candidate
+            item.copy(
+                selectedId = resolution.selectedId,
+                enabled = resolution.enabled,
+                matchedSourceName = candidate?.sourceId?.let { sourceNames[it] },
+            )
+        }
+    }
+
+    /** Counts what will actually be imported instead of the raw pre-collision scores. */
+    private fun reportOf(
+        items: List<ReviewItem>,
+        fallback: AnixartMatchingCoordinator.MatchingReport,
+    ): AnixartMatchingCoordinator.MatchingReport {
+        if (items.isEmpty()) return fallback
+        var auto = 0
+        var needsReview = 0
+        var noMatch = 0
+        for (item in items) {
+            when {
+                item.selectedId == null -> noMatch++
+                item.result.confidence == AnixartMatcher.Confidence.AUTO -> auto++
+                else -> needsReview++
+            }
+        }
+        return AnixartMatchingCoordinator.MatchingReport(items.size, auto, needsReview, noMatch)
     }
 
     fun setSelection(rowIndex: Int, candidateId: Long?) {
@@ -373,6 +445,7 @@ class AnixartImportScreenModel(
                     matchingReport = review.matchingReport,
                     trackerReport = null,
                     backgroundJob = true,
+                    duplicatesMerged = plan.mergedDuplicates,
                 )
             }
             return
@@ -389,7 +462,13 @@ class AnixartImportScreenModel(
                 null
             }
             mutableState.update {
-                State.Done(report, review.matchingReport, trackerReport, backgroundJob = false)
+                State.Done(
+                    report = report,
+                    matchingReport = review.matchingReport,
+                    trackerReport = trackerReport,
+                    backgroundJob = false,
+                    duplicatesMerged = plan.mergedDuplicates,
+                )
             }
         }
     }

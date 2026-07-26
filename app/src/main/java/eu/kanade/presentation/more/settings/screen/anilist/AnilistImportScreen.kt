@@ -209,6 +209,16 @@ class AnilistImportScreen : ParentScreen() {
                                         color = colors.textSecondary,
                                         modifier = Modifier.padding(top = 4.dp),
                                     )
+                                    if (s.duplicatesMerged > 0) {
+                                        Text(
+                                            text = stringResource(
+                                                AYMR.strings.anixart_import_duplicates_report,
+                                                s.duplicatesMerged,
+                                            ),
+                                            color = colors.textSecondary,
+                                            modifier = Modifier.padding(top = 4.dp),
+                                        )
+                                    }
                                 }
                                 Spacer(modifier = Modifier.height(16.dp))
                                 AuroraPrimaryButton(

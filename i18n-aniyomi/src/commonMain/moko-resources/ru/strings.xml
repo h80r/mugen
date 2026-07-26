@@ -2643,6 +2643,7 @@
     <string name="anixart_import_matched_query">Найдено по запросу: %1$s</string>
     <string name="anixart_import_matched_source">Источник: %1$s</string>
     <string name="anixart_import_matching_report">Авто %1$d · Проверка %2$d · Не найдено %3$d</string>
+    <string name="anixart_import_duplicates_report">Объединено с уже совпавшей записью: %1$d</string>
     <string name="anixart_import_background_started">Импорт продолжается в фоне. По завершении придёт уведомление.</string>
     <string name="anixart_import_tracker_report">Shikimori: синхр. %1$d, пропущено %2$d, ошибок %3$d</string>
 
