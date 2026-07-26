@@ -43,6 +43,8 @@ class NovelExtensionStoreScreenModelTest {
         Dispatchers.setMain(Dispatchers.Unconfined)
         every { application.getSharedPreferences("novel_extension_repo_prefs", 0) } returns migrationPrefs
         every { migrationPrefs.getBoolean(CreateNovelExtensionRepo.MIGRATION_DONE_KEY, false) } returns true
+        // The screen model calls getAll() first to trigger the legacy store port.
+        coEvery { getExtensionRepo.getAll() } returns emptyList()
     }
 
     @AfterEach

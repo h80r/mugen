@@ -49,9 +49,13 @@ class NovelExtensionStoreScreenModel(
             getExtensionRepo.getAll() // trigger legacy port for stores
             getExtensionRepo.subscribeAll()
                 .collectLatest { repos ->
-                    mutableState.update {
+                    mutableState.update { current ->
                         RepoScreenState.Success(
                             repos = repos.toImmutableSet(),
+                            // Carry over a dialog requested while still loading (deep link) or one
+                            // the user has open, instead of dropping it on every list update.
+                            dialog = consumePendingDialog()
+                                ?: (current as? RepoScreenState.Success)?.dialog,
                         )
                     }
                 }
@@ -155,10 +159,24 @@ class NovelExtensionStoreScreenModel(
             }
     }
 
+    @Volatile
+    private var pendingDialog: RepoDialog? = null
+
+    private fun consumePendingDialog(): RepoDialog? {
+        val dialog = pendingDialog
+        pendingDialog = null
+        return dialog
+    }
+
     fun showDialog(dialog: RepoDialog) {
         mutableState.update {
             when (it) {
-                RepoScreenState.Loading -> it
+                // Deep links (tachiyomi://add-repo and friends) reach the screen on the first frame,
+                // before the repo list has loaded; remember the request instead of dropping it.
+                RepoScreenState.Loading -> {
+                    pendingDialog = dialog
+                    it
+                }
                 is RepoScreenState.Success -> it.copy(dialog = dialog)
             }
         }

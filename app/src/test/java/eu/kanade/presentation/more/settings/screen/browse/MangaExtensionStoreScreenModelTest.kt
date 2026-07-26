@@ -8,6 +8,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
@@ -37,6 +38,8 @@ class MangaExtensionStoreScreenModelTest {
     @BeforeEach
     fun setup() {
         Dispatchers.setMain(Dispatchers.Unconfined)
+        // The screen model calls getAll() first to trigger the legacy store port.
+        coEvery { getExtensionRepo.getAll() } returns emptyList()
     }
 
     @AfterEach
@@ -156,5 +159,40 @@ class MangaExtensionStoreScreenModelTest {
             website = "https://example.org",
             signingKeyFingerprint = "fingerprint",
         )
+    }
+
+    @Test
+    fun `a dialog requested while still loading is applied once the repos arrive`() {
+        runBlocking {
+            // Deep links (tachiyomi://add-repo) hit the screen on the first frame, before the list.
+            val repos = MutableSharedFlow<List<ExtensionRepo>>()
+            every { getExtensionRepo.subscribeAll() } returns repos
+
+            val screenModel = MangaExtensionStoreScreenModel(
+                getExtensionRepo = getExtensionRepo,
+                createExtensionRepo = createExtensionRepo,
+                deleteExtensionRepo = deleteExtensionRepo,
+                replaceExtensionRepo = replaceExtensionRepo,
+                updateExtensionRepo = updateExtensionRepo,
+                extensionManager = extensionManager,
+            ).also(activeScreenModels::add)
+
+            screenModel.showDialog(RepoDialog.Confirm("https://example.org/index.min.json"))
+            withTimeout(1_000) {
+                while (repos.subscriptionCount.value == 0) {
+                    yield()
+                }
+            }
+            repos.emit(listOf(repo()))
+
+            withTimeout(1_000) {
+                while (screenModel.state.value !is RepoScreenState.Success) {
+                    yield()
+                }
+            }
+
+            val state = screenModel.state.value as RepoScreenState.Success
+            state.dialog.shouldBeInstanceOf<RepoDialog.Confirm>()
+        }
     }
 }
