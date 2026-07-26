@@ -66,7 +66,10 @@ data class BackupInspection(
                 hasAchievements = backup.backupAchievements.isNotEmpty() || backup.backupStats != null,
                 hasExtensionRepos = backup.backupMangaExtensionRepo.isNotEmpty() ||
                     backup.backupAnimeExtensionRepo.isNotEmpty() ||
-                    backup.backupNovelExtensionRepo.isNotEmpty(),
+                    backup.backupNovelExtensionRepo.isNotEmpty() ||
+                    backup.backupMangaExtensionStore.isNotEmpty() ||
+                    backup.backupAnimeExtensionStore.isNotEmpty() ||
+                    backup.backupNovelExtensionStore.isNotEmpty(),
             )
         }
     }

@@ -19,7 +19,7 @@ class ExtensionUpdateNotifier(
 
     fun promptUpdates(names: List<String>, anime: Boolean = false) {
         context.notify(
-            Notifications.ID_UPDATES_TO_EXTS,
+            notificationId(anime),
             Notifications.CHANNEL_EXTENSIONS_UPDATE,
         ) {
             setContentTitle(
@@ -44,7 +44,15 @@ class ExtensionUpdateNotifier(
         }
     }
 
-    fun dismiss() {
-        context.cancelNotification(Notifications.ID_UPDATES_TO_EXTS)
+    fun dismiss(anime: Boolean = false) {
+        context.cancelNotification(notificationId(anime))
+    }
+
+    /**
+     * Anime and manga post their own notification: a shared id meant each media type dismissed the
+     * other's pending update prompt.
+     */
+    private fun notificationId(anime: Boolean): Int {
+        return if (anime) Notifications.ID_UPDATES_TO_ANIME_EXTS else Notifications.ID_UPDATES_TO_EXTS
     }
 }

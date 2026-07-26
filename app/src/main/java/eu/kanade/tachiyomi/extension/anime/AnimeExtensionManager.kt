@@ -597,7 +597,7 @@ class AnimeExtensionManager(
         val pendingUpdateCount = installedExtensionsMapFlow.value.values.count { it.hasUpdate }
         preferences.animeExtensionUpdatesCount().set(pendingUpdateCount)
         if (pendingUpdateCount == 0) {
-            ExtensionUpdateNotifier(context).dismiss()
+            ExtensionUpdateNotifier(context).dismiss(anime = true)
         }
     }
 
