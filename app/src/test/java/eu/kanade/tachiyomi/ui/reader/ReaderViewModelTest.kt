@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.reader
 import eu.kanade.tachiyomi.data.database.models.manga.ChapterImpl
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.flowOf
@@ -114,6 +115,69 @@ class ReaderViewModelTest {
     fun `preload buffer is 3 for normal reading speed on unmetered connections`() {
         calculatePreloadBufferSize(averageSpeedSeconds = 5.0, isMetered = false) shouldBe 3
         calculatePreloadBufferSize(averageSpeedSeconds = 14.0, isMetered = false) shouldBe 3
+    }
+
+    @Test
+    fun `reading mode without series override goes to the global default and rebuilds the viewer`() {
+        val target = resolveReadingModeApplyTarget(
+            readingMode = ReadingMode.WEBTOON,
+            isSeriesOverrideEnabled = false,
+            isAutoWebtoonModeActive = false,
+        )
+
+        target shouldBe ReadingModeApplyTarget.GlobalDefault
+        // Manga flags stay on DEFAULT, so state.manga never changes and the activity would keep
+        // the old viewer until the reader is reopened.
+        target.requiresViewerRebuild shouldBe true
+    }
+
+    @Test
+    fun `reading mode with series override writes manga flags`() {
+        val target = resolveReadingModeApplyTarget(
+            readingMode = ReadingMode.WEBTOON,
+            isSeriesOverrideEnabled = true,
+            isAutoWebtoonModeActive = false,
+        )
+
+        target shouldBe ReadingModeApplyTarget.SeriesFlags
+        // The manga flag write already re-emits state.manga, which rebuilds the viewer.
+        target.requiresViewerRebuild shouldBe false
+    }
+
+    @Test
+    fun `manual reading mode beats auto-detected webtoon on the series itself`() {
+        val target = resolveReadingModeApplyTarget(
+            readingMode = ReadingMode.LEFT_TO_RIGHT,
+            isSeriesOverrideEnabled = false,
+            isAutoWebtoonModeActive = true,
+        )
+
+        // Writing the global default would leave auto-detect winning for this entry (its flags stay
+        // DEFAULT) and would change every other series instead.
+        target shouldBe ReadingModeApplyTarget.SeriesFlags
+        target.requiresViewerRebuild shouldBe false
+    }
+
+    @Test
+    fun `reverting to default always writes manga flags`() {
+        resolveReadingModeApplyTarget(
+            readingMode = ReadingMode.DEFAULT,
+            isSeriesOverrideEnabled = false,
+            isAutoWebtoonModeActive = false,
+        ) shouldBe ReadingModeApplyTarget.SeriesFlags
+
+        resolveReadingModeApplyTarget(
+            readingMode = ReadingMode.DEFAULT,
+            isSeriesOverrideEnabled = true,
+            isAutoWebtoonModeActive = false,
+        ) shouldBe ReadingModeApplyTarget.SeriesFlags
+
+        // Clearing the override is what re-enables auto-detect for this entry.
+        resolveReadingModeApplyTarget(
+            readingMode = ReadingMode.DEFAULT,
+            isSeriesOverrideEnabled = true,
+            isAutoWebtoonModeActive = true,
+        ) shouldBe ReadingModeApplyTarget.SeriesFlags
     }
 
     private fun readerChapter(

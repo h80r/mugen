@@ -44,12 +44,13 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
         storedReadingMode != ReadingMode.DEFAULT || storedOrientation != ReaderOrientation.DEFAULT
     }
 
-    // Active values shown in the grids: series flags, or global defaults when not overridden.
+    // Active values shown in the grids: series flags, auto-detected webtoon, or global defaults.
     val readingMode = remember(manga, defaultReadingMode, seriesOverrideEnabled) {
         if (seriesOverrideEnabled && storedReadingMode != ReadingMode.DEFAULT) {
             storedReadingMode
         } else {
-            ReadingMode.fromPreference(defaultReadingMode)
+            screenModel.resolvedReadingMode().takeIf { it != ReadingMode.DEFAULT }
+                ?: ReadingMode.fromPreference(defaultReadingMode)
         }
     }
     val orientation = remember(manga, defaultOrientation, seriesOverrideEnabled) {
