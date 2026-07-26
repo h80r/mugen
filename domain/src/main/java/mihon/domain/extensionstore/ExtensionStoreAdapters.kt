@@ -13,6 +13,7 @@ fun ExtensionStore.toExtensionRepo(): ExtensionRepo {
         website = contact.website,
         signingKeyFingerprint = signingKey,
         discord = contact.discord,
+        indexUrl = indexUrl,
     )
 }
 

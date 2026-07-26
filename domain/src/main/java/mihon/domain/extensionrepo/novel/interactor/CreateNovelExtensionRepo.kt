@@ -97,7 +97,10 @@ class CreateNovelExtensionRepo(
 
     private suspend fun applyDisplayName(indexUrl: String, displayName: String?) {
         if (displayName.isNullOrBlank()) return
-        val store = repository.getAll().find { it.indexUrl == indexUrl } ?: return
+        // insert() persists the canonical url (e.g. .../index.min.json becomes .../repo.json), so the
+        // pasted url will not match; compare the suffix-stripped bases instead.
+        val base = indexUrl.toExtensionStoreBaseUrl().trimEnd('/')
+        val store = repository.getAll().find { it.legacyBaseUrl().trimEnd('/') == base } ?: return
         repository.upsertStore(store.copy(name = displayName, badgeLabel = displayName))
     }
 

@@ -59,4 +59,30 @@ class CreateMangaExtensionRepoTest {
             )
         }
     }
+
+    @Test
+    fun `display name survives the url being canonicalized on insert`() = runTest {
+        val repository = mockk<MangaExtensionStoreRepository>(relaxed = true)
+        // insert() persists the canonical repo.json url, not the index.min.json the user pasted.
+        val insertedStore = ExtensionStore(
+            indexUrl = "https://example.org/repo/repo.json",
+            name = "Remote store",
+            badgeLabel = "remote",
+            signingKey = "fingerprint",
+            contact = ExtensionStore.Contact(website = "https://example.org", discord = null),
+            isLegacy = true,
+            extensionListUrl = null,
+        )
+        coEvery { repository.insert("https://example.org/repo/index.min.json") } returns Result.success(Unit)
+        coEvery { repository.getAll() } returns listOf(insertedStore)
+        val interactor = CreateMangaExtensionRepo(repository)
+
+        interactor.await("https://example.org/repo/index.min.json", "Custom store")
+
+        coVerify {
+            repository.upsertStore(
+                insertedStore.copy(name = "Custom store", badgeLabel = "Custom store"),
+            )
+        }
+    }
 }
