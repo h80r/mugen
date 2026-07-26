@@ -28,11 +28,12 @@ internal class MangaExtensionApi(
 ) {
 
     private val lastExtCheck: Preference<Long> by lazy {
-        preferenceStore.getLong("last_ext_check", 0)
+        // Per media type: a shared key let whichever check ran first burn the other's 24h budget.
+        preferenceStore.getLong(Preference.appStateKey("last_manga_ext_check"), 0)
     }
 
     suspend fun checkForUpdatesIfDue(context: Context): List<MangaExtension.Installed>? {
-        return checkForUpdates(context, fromAvailableExtensionList = true)
+        return checkForUpdates(context, fromAvailableExtensionList = false)
     }
 
     /**
@@ -64,7 +65,7 @@ internal class MangaExtensionApi(
         fromAvailableExtensionList: Boolean = false,
     ): List<MangaExtension.Installed>? {
         val nowMs = timeProvider()
-        if (fromAvailableExtensionList &&
+        if (!fromAvailableExtensionList &&
             nowMs < lastExtCheck.get() + 1.days.inWholeMilliseconds
         ) {
             return null
@@ -72,12 +73,13 @@ internal class MangaExtensionApi(
 
         updateExtensionRepo.awaitAll()
 
+        // Only the fetching branch may stamp the timestamp: the in-memory list is empty until an
+        // extensions screen fills it, so stamping there suppressed the real check for a day.
         val extensions = if (fromAvailableExtensionList) {
             extensionManager.availableExtensionsFlow.value
         } else {
-            findExtensions().extensions
+            findExtensions().extensions.also { lastExtCheck.set(nowMs) }
         }
-        lastExtCheck.set(nowMs)
 
         val extensionVariantsByPkgName = extensions.groupBy { it.pkgName }
 

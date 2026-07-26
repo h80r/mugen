@@ -172,4 +172,22 @@ class AnimeExtensionApiTest {
             store = store,
         )
     }
+
+    @Test
+    fun `last check timestamp is stored under an anime specific app state key`() {
+        // Sharing one key with the manga check meant whichever ran first starved the other.
+        runTest {
+            nowMs = 1_000_000L
+            every { lastCheckPreference.get() } returns nowMs
+
+            api.checkForUpdatesIfDue(context)
+
+            verify {
+                preferenceStore.getLong(
+                    match<String> { it.contains("anime") && it.contains("last") },
+                    any(),
+                )
+            }
+        }
+    }
 }

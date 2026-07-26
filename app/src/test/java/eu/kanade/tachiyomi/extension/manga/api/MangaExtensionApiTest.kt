@@ -129,6 +129,54 @@ class MangaExtensionApiTest {
     }
 
     @Test
+    fun `due check fetches the stores instead of reading the empty in-memory list`() {
+        runTest {
+            nowMs = 200_000_000L
+            every { lastCheckPreference.get() } returns 0L
+            val storeRepository = mockk<MangaExtensionStoreRepository>()
+            val storeFetcher = mockk<ExtensionStoreFetcher>()
+            val store = legacyStore(baseUrl = "https://alpha.example", badgeLabel = "Alpha Store")
+            coEvery { storeRepository.getAll() } returns listOf(store)
+            coEvery { storeFetcher.fetchExtensions(any()) } returns ExtensionStoreFetchResult(
+                extensions = listOf(availableExtension(store, versionCode = 20)),
+                failedStores = emptyList(),
+            )
+
+            val api = MangaExtensionApi(
+                preferenceStore = preferenceStore,
+                storeRepository = storeRepository,
+                storeFetcher = storeFetcher,
+                updateExtensionRepo = updateExtensionRepo,
+                extensionManager = mangaExtensionManager,
+                timeProvider = { nowMs },
+            )
+
+            api.checkForUpdatesIfDue(context)
+
+            // The in-memory available list is empty until an extensions screen fills it, so the
+            // startup check has to fetch or it can never find an update.
+            coVerify(exactly = 1) { storeFetcher.fetchExtensions(any()) }
+        }
+    }
+
+    @Test
+    fun `last check timestamp is stored under a manga specific app state key`() {
+        runTest {
+            nowMs = 1_000_000L
+            every { lastCheckPreference.get() } returns nowMs
+
+            api.checkForUpdatesIfDue(context)
+
+            verify {
+                preferenceStore.getLong(
+                    match<String> { it.contains("manga") && it.contains("last") },
+                    any(),
+                )
+            }
+        }
+    }
+
+    @Test
     fun `precision issues with float values are correctly rounded and matched`() {
         val rawLibVersion = 1.4000000357627869
         val roundedLibVersion = kotlin.math.round(rawLibVersion * 100.0) / 100.0
