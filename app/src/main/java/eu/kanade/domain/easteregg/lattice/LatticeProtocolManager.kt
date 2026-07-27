@@ -158,6 +158,12 @@ class LatticeProtocolManager private constructor(context: Context) {
     fun canOpenGrid(): Boolean =
         LatticeConfig.ENABLED && latchedCarrierCount() == LatticeCarrier.entries.size
 
+    /**
+     * Entry point shown on the "More" screen: only until the rewards are granted.
+     * Afterwards the permanent way in is the Achievements screen.
+     */
+    fun shouldShowMoreEntry(): Boolean = canOpenGrid() && !isSynthesisDone()
+
     /** Есть непогашенный долг на автооткрытие Каркаса. */
     fun isBreachPending(): Boolean =
         canOpenGrid() && !isSynthesisDone() && prefs.getBoolean(KEY_BREACH_PENDING, false)

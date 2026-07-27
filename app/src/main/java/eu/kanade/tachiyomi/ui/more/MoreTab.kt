@@ -88,7 +88,9 @@ data object MoreTab : Tab {
         val latticeManager = remember {
             eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app)
         }
-        val latticeGridAvailable = latticeManager.canOpenGrid()
+        // Disappears again once the rewards are granted: from then on the grid is reachable
+        // from the Achievements screen instead.
+        val latticeGridAvailable = latticeManager.shouldShowMoreEntry()
 
         if (theme.isAuroraStyle) {
             val downloadedOnly by screenModel.downloadedOnlyFlow.collectAsStateWithLifecycle()
