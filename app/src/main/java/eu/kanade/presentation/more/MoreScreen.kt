@@ -8,6 +8,7 @@ import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.GetApp
+import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.QueryStats
@@ -61,6 +62,8 @@ fun MoreScreen(
     onClickDebugResetAuroraHeart: () -> Unit,
     onClickDebugResetLatticeResonance: () -> Unit,
     onClickDebugForceLatticeBreach: () -> Unit,
+    latticeGridAvailable: Boolean,
+    onClickOpenLatticeGrid: () -> Unit,
 ) {
     TutorialScreenEntry(TipAnchor.MORE_TAB)
     Scaffold { contentPadding ->
@@ -200,6 +203,18 @@ fun MoreScreen(
                     icon = Icons.Outlined.Info,
                     onPreferenceClick = onClickAbout,
                 )
+            }
+            // Safety net for the Frame resonance easter egg: once every carrier is latched
+            // the Grid must always be reachable by hand, even if an auto-open was missed.
+            if (latticeGridAvailable) {
+                item {
+                    TextPreferenceWidget(
+                        title = stringResource(AYMR.strings.lattice_open_manual),
+                        subtitle = stringResource(AYMR.strings.lattice_open_manual_summary),
+                        icon = Icons.Outlined.Hub,
+                        onPreferenceClick = onClickOpenLatticeGrid,
+                    )
+                }
             }
             if (BuildConfig.DEBUG) {
                 item {

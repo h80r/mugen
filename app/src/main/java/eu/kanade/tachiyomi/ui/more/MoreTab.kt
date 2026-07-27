@@ -6,6 +6,7 @@ import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.rememberScreenModel
@@ -81,6 +82,14 @@ data object MoreTab : Tab {
         val theme by uiPreferences.appTheme().preferenceCollectAsState()
         val navStyle = currentNavigationStyle()
 
+        // Manual entry point for the Frame resonance Grid (read on every recomposition so
+        // it appears as soon as the third carrier latches).
+        val app = remember { Injekt.get<android.app.Application>() }
+        val latticeManager = remember {
+            eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app)
+        }
+        val latticeGridAvailable = latticeManager.canOpenGrid()
+
         if (theme.isAuroraStyle) {
             val downloadedOnly by screenModel.downloadedOnlyFlow.collectAsStateWithLifecycle()
             val incognitoMode by screenModel.incognitoModeFlow.collectAsStateWithLifecycle()
@@ -135,6 +144,10 @@ data object MoreTab : Tab {
                 onLibraryUpdateErrorsClick = { navigator.push(LibraryUpdateErrorScreen()) },
                 onAchievementsClick = { navigator.push(AchievementScreenVoyager) },
                 onTreasuryClick = { navigator.push(SettingsTreasuryScreen) },
+                latticeGridAvailable = latticeGridAvailable,
+                onOpenLatticeGridClick = {
+                    screenModel.screenModelScope.launchIO { latticeManager.requestBreach() }
+                },
             )
         } else {
             MoreScreen(
@@ -185,6 +198,10 @@ data object MoreTab : Tab {
                         val app = Injekt.get<android.app.Application>()
                         eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app).debugForceBreach()
                     }
+                },
+                latticeGridAvailable = latticeGridAvailable,
+                onClickOpenLatticeGrid = {
+                    screenModel.screenModelScope.launchIO { latticeManager.requestBreach() }
                 },
             )
         }

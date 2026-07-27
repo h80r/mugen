@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Book
+import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.ReportProblem
@@ -95,6 +96,8 @@ fun MoreScreenAurora(
     onAchievementsClick: () -> Unit,
     onTreasuryClick: () -> Unit,
     onHelpClick: () -> Unit,
+    latticeGridAvailable: Boolean,
+    onOpenLatticeGridClick: () -> Unit,
 ) {
     val colors = AuroraTheme.colors
     val hostScaffoldContentPadding = LocalHostScaffoldContentPadding.current
@@ -252,6 +255,18 @@ fun MoreScreenAurora(
                     onClick = onAboutClick,
                     darkRimLightEnabled = darkRimLightEnabled,
                 )
+
+                // Safety net for the Frame resonance easter egg: once every carrier is
+                // latched the Grid must always be reachable by hand.
+                if (latticeGridAvailable) {
+                    AuroraSettingItem(
+                        title = stringResource(AYMR.strings.lattice_open_manual),
+                        subtitle = stringResource(AYMR.strings.lattice_open_manual_summary),
+                        icon = Icons.Outlined.Hub,
+                        onClick = onOpenLatticeGridClick,
+                        darkRimLightEnabled = darkRimLightEnabled,
+                    )
+                }
 
                 if (BuildConfig.DEBUG) {
                     AuroraSettingItem(

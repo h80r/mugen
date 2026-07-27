@@ -67,13 +67,10 @@ class LatticeProtocolManager private constructor(context: Context) {
             LatticeSignalBus.emitWhisper(WHISPER_LINE)
         }
 
-        if (!isSynthesisDone() &&
-            latchedCarrierCount() == LatticeCarrier.entries.size &&
-            isPermeableStart(count)
-        ) {
-            scope.launch {
-                if (openBoard() != null) LatticeSignalBus.emitBreach()
-            }
+        // Все несущие захвачены, но Каркас не собран — перевзводим прорыв на КАЖДОМ старте,
+        // без лотереи isPermeableStart: иначе цикл мог зависнуть навсегда.
+        if (!isSynthesisDone() && latchedCarrierCount() == LatticeCarrier.entries.size) {
+            armBreach()
         }
     }
 
@@ -141,10 +138,44 @@ class LatticeProtocolManager private constructor(context: Context) {
 
     private suspend fun maybeBreach() {
         if (latchedCarrierCount() < LatticeCarrier.entries.size) return
+        // Долг «Каркас обязан открыться» переживает смерть процесса: сигнал в шине терялся,
+        // если оверлей в этот момент не был на экране (читалка/плеер поверх MainActivity).
+        prefs.edit().putBoolean(KEY_BREACH_PENDING, true).apply()
         val now = System.currentTimeMillis()
         if (now - lastAttemptAt < ATTEMPT_COOLDOWN_MS) return
         lastAttemptAt = now
-        if (openBoard() != null) LatticeSignalBus.emitBreach()
+        requestBreach()
+    }
+
+    /** Взвести прорыв: пометить долг и сразу попытаться открыть Каркас. */
+    fun armBreach() {
+        if (!LatticeConfig.ENABLED || isSynthesisDone()) return
+        prefs.edit().putBoolean(KEY_BREACH_PENDING, true).apply()
+        scope.launch { requestBreach() }
+    }
+
+    /** Каркас доступен вручную: все несущие захвачены. */
+    fun canOpenGrid(): Boolean =
+        LatticeConfig.ENABLED && latchedCarrierCount() == LatticeCarrier.entries.size
+
+    /** Есть непогашенный долг на автооткрытие Каркаса. */
+    fun isBreachPending(): Boolean =
+        canOpenGrid() && !isSynthesisDone() && prefs.getBoolean(KEY_BREACH_PENDING, false)
+
+    /** Долг погашен — Каркас реально показали пользователю. */
+    fun markBreachOpened() {
+        prefs.edit().putBoolean(KEY_BREACH_PENDING, false).apply()
+    }
+
+    /**
+     * Ручной или повторный вход в Каркас (пункт «Открыть Каркас» в «Ещё»).
+     * @return true, если плата открылась и сигнал ушёл в шину.
+     */
+    suspend fun requestBreach(): Boolean {
+        if (!canOpenGrid()) return false
+        val opened = openBoard() != null
+        if (opened) LatticeSignalBus.emitBreach()
+        return opened
     }
 
     suspend fun openBoard(): LatticeBoard? {
@@ -213,11 +244,12 @@ class LatticeProtocolManager private constructor(context: Context) {
             .remove(KEY_TOPOLOGY)
             .remove(KEY_SYNTH_DONE)
             .remove(KEY_RESIDUAL_SHOWN)
+            .putBoolean(KEY_BREACH_PENDING, true)
             .apply()
         cachedBoard = null
         lastAttemptAt = 0L
         scope.launch {
-            if (openBoard() != null) LatticeSignalBus.emitBreach()
+            requestBreach()
         }
     }
 
@@ -244,8 +276,9 @@ class LatticeProtocolManager private constructor(context: Context) {
         private const val KEY_RESIDUAL_SHOWN = "pipeline_residual_shown"
         private const val KEY_START_COUNT = "pipeline_start_count"
         private const val KEY_WHISPER_SHOWN = "pipeline_whisper_shown"
+        private const val KEY_BREACH_PENDING = "pipeline_breach_pending"
 
-        private const val MIN_STARTS = 5
+        private const val MIN_STARTS = 20
         private const val ATTEMPT_COOLDOWN_MS = 2000L
         private const val HOLD_COOLDOWN_MS = 400L
         private const val WHISPER_LINE = "FRAME DRIFT DETECTED"

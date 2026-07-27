@@ -2839,6 +2839,8 @@
     <string name="lattice_accept_sealed">ЛИЧНОСТЬ ЗАПЕЧАТАНА</string>
     <string name="lattice_residual">КАРКАС ПОМНИТ ТЕБЯ, АРХИТЕКТОР.</string>
     <string name="lattice_overlay_close">Закрыть</string>
+    <string name="lattice_open_manual">Открыть Каркас</string>
+    <string name="lattice_open_manual_summary">Вернуться к сетке резонанса Каркаса</string>
     <string name="lattice_rewards_kicker">— ДОПУСК АРХИТЕКТОРА —</string>
     <string name="lattice_rewards_title">ХРАНИЛИЩЕ НАГРАД</string>
     <string name="lattice_rewards_subtitle">Грид выдаёт два артефакта поверхности. Только превью — включение в Сокровищнице.</string>
@@ -2853,6 +2855,5 @@
     <string name="achievement_lattice_resonance_desc">Оболочка снята. Сигнал дошёл до ядра. Архитектор опознан.</string>
     <string name="achievement_lattice_resonance_hint_vague">Что-то дрейфует под оболочкой рендера…</string>
 </resources>
-
 
 

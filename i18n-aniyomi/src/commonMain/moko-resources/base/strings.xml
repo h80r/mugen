@@ -2820,6 +2820,8 @@
     <string name="lattice_accept_sealed">IDENTITY SEALED</string>
     <string name="lattice_residual">THE LATTICE REMEMBERS YOU, ARCHITECT.</string>
     <string name="lattice_overlay_close">Close</string>
+    <string name="lattice_open_manual">Open the Lattice</string>
+    <string name="lattice_open_manual_summary">Return to the frame resonance grid</string>
     <string name="lattice_rewards_kicker">— ARCHITECT CLEARANCE —</string>
     <string name="lattice_rewards_title">REWARD VAULT</string>
     <string name="lattice_rewards_subtitle">The Grid grants two surface-layer artifacts. Preview only — equip them in the Treasury.</string>

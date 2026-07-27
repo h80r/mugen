@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,6 +42,14 @@ fun LatticeOverlayHost() {
     val whisper by LatticeSignalBus.whisper.collectAsState()
 
     var showGrid by remember { mutableStateOf(false) }
+    // Self-healing auto-open. The breach signal alone was not enough: it could be emitted
+    // (and consumed) while the reader/player sat on top of MainActivity, or while the
+    // activity was being recreated, so the Grid never appeared and the easter egg became
+    // permanently unreachable. The manager now persists a "breach pending" debt, so the
+    // Grid opens as soon as this host is composed again.
+    LaunchedEffect(Unit) {
+        if (manager.isBreachPending()) showGrid = true
+    }
     LaunchedEffect(breach) {
         if (breach) {
             LatticeSignalBus.consumeBreach()
@@ -61,10 +70,20 @@ fun LatticeOverlayHost() {
         }
     }
 
+    // The whisper is a sticky StateFlow, so consuming it inside an effect keyed on it
+    // flips the key back to null and cancels that very coroutine. Previously the cancel
+    // happened during delay(3200), so flashText was never reset and the whisper line
+    // stayed on screen for the whole activity lifetime. Split the consume from the timed
+    // flash (same pattern as latchTick) so the banner always clears.
+    var whisperTick by remember { mutableLongStateOf(0L) }
     LaunchedEffect(whisper) {
-        val line = whisper
-        if (line != null) {
+        if (whisper != null) {
+            whisperTick = System.currentTimeMillis()
             LatticeSignalBus.consumeWhisper()
+        }
+    }
+    LaunchedEffect(whisperTick) {
+        if (whisperTick != 0L) {
             flashText = whisperLabel
             delay(3200)
             if (flashText == whisperLabel) flashText = null
@@ -93,6 +112,9 @@ fun LatticeOverlayHost() {
         LatticeGridScreen(
             onClose = {
                 showGrid = false
+                // Debt paid: the Grid was actually shown. Manual re-entry stays available
+                // through More -> "Open the Lattice".
+                manager.markBreachOpened()
                 // Re-arm residual flash after a successful unlock cinematic.
                 residual = manager.shouldShowResidual()
             },
