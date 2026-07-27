@@ -11,6 +11,7 @@ import okhttp3.Gzip
 import okhttp3.OkHttpClient
 import okhttp3.brotli.Brotli
 import okhttp3.logging.HttpLoggingInterceptor
+import okhttp3.zstd.Zstd
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -56,7 +57,7 @@ class NetworkHelper(
             // OkHttp 5 + KeiSource (extensions-lib 1.6): compression is an *application*
             // interceptor. Network-level IgnoreGzipInterceptor/BrotliInterceptor are rejected
             // by KeiSource with "must not be present in default client" (e.g. 3Hentai).
-            .addInterceptor(CompressionInterceptor(Brotli, Gzip))
+            .addInterceptor(CompressionInterceptor(Zstd, Brotli, Gzip))
 
         if (isDebug && preferences.verboseLogging().get()) {
             val httpLoggingInterceptor = HttpLoggingInterceptor().apply {

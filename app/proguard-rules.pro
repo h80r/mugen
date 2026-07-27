@@ -245,3 +245,13 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 -dontwarn xyz.secozzi.torrserver.**
+
+# Zstd content-encoding (okhttp-zstd -> com.squareup.zstd:zstd-*).
+# Extensions build their own OkHttp client with the zstd decompressor and resolve
+# com.squareup.zstd.okio.OkioZstd through the host app classloader
+# (ChildFirstPathClassLoader -> app parent). The app itself never references these
+# classes, so R8 shrank them out of the shipped APK and extension calls crashed with
+# NoClassDefFoundError: com/squareup/zstd/okio/OkioZstd (e.g. AsuraScans).
+-keep class com.squareup.zstd.** { *; }
+-keep class okhttp3.zstd.** { *; }
+-dontwarn com.squareup.zstd.**
