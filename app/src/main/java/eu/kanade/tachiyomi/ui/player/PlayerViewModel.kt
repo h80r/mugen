@@ -499,7 +499,7 @@ class PlayerViewModel @JvmOverloads constructor(
     private var trackLoadingJob: Job? = null
     fun loadTracks() {
         trackLoadingJob?.cancel()
-        trackLoadingJob = viewModelScope.launch {
+        trackLoadingJob = viewModelScope.launchIO {
             val possibleTrackTypes = listOf("audio", "sub")
             val subTracks = mutableListOf<VideoTrack>()
             val audioTracks = mutableListOf(
@@ -518,13 +518,15 @@ class PlayerViewModel @JvmOverloads constructor(
                 }
             } catch (e: NullPointerException) {
                 logcat(LogPriority.ERROR) { "Couldn't load tracks, probably cause mpv was destroyed" }
-                return@launch
+                return@launchIO
             }
             _subtitleTracks.update { subTracks }
             _audioTracks.update { audioTracks }
 
             if (!isLoadingTracks.value) {
-                onFinishLoadingTracks()
+                withUIContext {
+                    onFinishLoadingTracks()
+                }
             }
         }
     }
@@ -561,20 +563,22 @@ class PlayerViewModel @JvmOverloads constructor(
     )
 
     fun loadChapters() {
-        val chapters = mutableListOf<IndexedSegment>()
-        val count = MPVLib.getPropertyInt("chapter-list/count")!!
-        for (i in 0 until count) {
-            val title = MPVLib.getPropertyString("chapter-list/$i/title")
-            val time = MPVLib.getPropertyInt("chapter-list/$i/time")!!
-            chapters.add(
-                IndexedSegment(
-                    name = title,
-                    start = time.toFloat(),
-                    index = 0,
-                ),
-            )
+        viewModelScope.launchIO {
+            val chapters = mutableListOf<IndexedSegment>()
+            val count = MPVLib.getPropertyInt("chapter-list/count") ?: 0
+            for (i in 0 until count) {
+                val title = MPVLib.getPropertyString("chapter-list/$i/title")
+                val time = MPVLib.getPropertyInt("chapter-list/$i/time") ?: 0
+                chapters.add(
+                    IndexedSegment(
+                        name = title,
+                        start = time.toFloat(),
+                        index = 0,
+                    ),
+                )
+            }
+            updateChapters(chapters.sortedBy { it.start })
         }
-        updateChapters(chapters.sortedBy { it.start })
     }
 
     fun updateChapters(chapters: List<IndexedSegment>) {

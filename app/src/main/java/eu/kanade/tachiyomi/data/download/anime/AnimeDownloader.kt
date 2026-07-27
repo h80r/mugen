@@ -163,6 +163,11 @@ class AnimeDownloader(
      */
     fun stop(reason: String? = null) {
         cancelDownloaderJob()
+        // IMPORTANT: interrupted downloads must end in a terminal state (ERROR) here.
+        // Putting them back in QUEUE makes areAllAnimeDownloadsFinished() never return true,
+        // so stop() -> requeue -> start() -> stop() spins forever and keeps cancelling and
+        // re-enqueueing the worker. Resumable parking belongs to pause()/pauseForNetwork(),
+        // which do not cancel the unique work.
         queueState.value
             .filter { it.status == AnimeDownload.State.DOWNLOADING }
             .forEach {
@@ -241,7 +246,7 @@ class AnimeDownloader(
                             it.status.value <= AnimeDownload.State.DOWNLOADING.value
                         } // Ignore completed downloads, leave them in the queue
                         .groupBy { it.source }
-                        .toList().take(3) // Concurrently download from 5 different sources
+                        .toList().take(MAX_CONCURRENT_SOURCES) // Concurrently download from N sources
                         .map { (_, downloads) -> downloads.first() }
                     emit(activeDownloads)
 
@@ -289,8 +294,17 @@ class AnimeDownloader(
         } catch (e: Throwable) {
             if (e is CancellationException) throw e
             logcat(LogPriority.ERROR, e)
-            notifier.onError(e.message)
-            stop()
+            // Only fail this episode. Previously a single failure called stop(), which cancelled
+            // the WorkManager job and killed every other in-flight download.
+            download.status = AnimeDownload.State.ERROR
+            download.currentSpeedBytesPerSecond = 0L
+            notifier.onError(
+                e.message,
+                download.episode.name,
+                download.anime.title,
+                download.anime.id,
+            )
+            if (areAllAnimeDownloadsFinished()) stop()
         }
     }
 
@@ -358,7 +372,9 @@ class AnimeDownloader(
                         ),
                     )
                 }
-                AnimeDownloadJob.start(context)
+                // Adding episodes to the queue must never cancel the worker that is currently
+                // downloading, otherwise the running episode restarts from 0%.
+                AnimeDownloadJob.start(context, keepExistingWork = isRunning)
             }
         }
     }
@@ -385,6 +401,9 @@ class AnimeDownloader(
 
         val episodeDirname = provider.getEpisodeDirName(download.episode.name, download.episode.scanlator)
         val tmpDir = animeDir.createDirectory(episodeDirname + TMP_DIR_SUFFIX)!!
+        // Keep the media scanner out of the partial download directory, otherwise it keeps trying
+        // to index the growing/short-lived .tmp file and floods the log with NoSuchFileException.
+        DiskUtil.createNoMediaFile(tmpDir, context)
 
         try {
             if (download.video == null) {
@@ -482,7 +501,7 @@ class AnimeDownloader(
                     if (preferences.useExternalDownloader().get() == download.changeDownloader) {
                         progressJob = scope.launch {
                             while (download.status == AnimeDownload.State.DOWNLOADING) {
-                                delay(50)
+                                delay(PROGRESS_NOTIFICATION_INTERVAL_MS)
                                 notifier.onProgressChange(download)
                             }
                         }
@@ -504,8 +523,10 @@ class AnimeDownloader(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             video.status = Video.State.ERROR
-            notifier.onError(e.message, download.episode.name, download.anime.title, download.anime.id)
             progressJob?.cancel()
+            // Propagate so downloadEpisode() marks the download as failed instead of silently
+            // continuing and then failing the opaque "Unable to finalize download" check.
+            throw e
         }
     }
 
@@ -521,11 +542,15 @@ class AnimeDownloader(
         tmpDir: UniFile,
         filename: String,
     ): UniFile {
+        // A retry always restarts the episode from 0% (the partial .tmp file is deleted below and
+        // HLS streams cannot be resumed), so retrying is only worth it for transient failures.
+        // Corrupt input fails at the exact same position every time, so retrying it just loops.
+        var tolerantMode = false
         return flow {
             tmpDir.findFile("$filename.tmp")?.delete()
             val videoFile = tmpDir.createFile("$filename.tmp")!!
             try {
-                ffmpegDownload(download, tmpDir, videoFile, filename)
+                ffmpegDownload(download, tmpDir, videoFile, filename, tolerant = tolerantMode)
             } catch (e: Exception) {
                 videoFile.delete()
                 throw e
@@ -533,13 +558,42 @@ class AnimeDownloader(
 
             emit(videoFile)
         }
-            // Retry 3 times, waiting 2, 4 and 8 seconds between attempts.
-            .retryWhen { _, attempt ->
-                if (attempt < 3) {
-                    delay((2L shl attempt.toInt()) * 1000)
-                    true
-                } else {
-                    false
+            .retryWhen { cause, attempt ->
+                if (cause is CancellationException) {
+                    return@retryWhen false
+                }
+                download.currentSpeedBytesPerSecond = 0L
+
+                val isCorruptInput = (cause as? FFmpegException)?.returnCode == AVERROR_INVALID_DATA
+                when {
+                    // Corrupt/garbage input: give it exactly one more pass with error tolerance
+                    // enabled, then give up instead of restarting from 0% over and over.
+                    isCorruptInput && !tolerantMode -> {
+                        logcat(LogPriority.WARN, cause) {
+                            "Corrupt input for ${download.episode.name}, retrying once while skipping bad packets"
+                        }
+                        tolerantMode = true
+                        delay(1000)
+                        true
+                    }
+                    isCorruptInput -> {
+                        logcat(LogPriority.ERROR, cause) {
+                            "Corrupt input for ${download.episode.name} persists, not restarting again"
+                        }
+                        false
+                    }
+                    attempt >= DOWNLOAD_MAX_RETRIES -> false
+                    else -> {
+                        val backoffMs = minOf(
+                            (2L shl attempt.toInt()) * 1000L,
+                            DOWNLOAD_MAX_BACKOFF_MS,
+                        )
+                        logcat(LogPriority.WARN, cause) {
+                            "Download attempt ${attempt + 1} failed, retrying in ${backoffMs}ms"
+                        }
+                        delay(backoffMs)
+                        true
+                    }
                 }
             }
             .flowOn(Dispatchers.IO)
@@ -552,6 +606,7 @@ class AnimeDownloader(
         tmpDir: UniFile,
         videoFile: UniFile,
         filename: String,
+        tolerant: Boolean = false,
     ) {
         val video = download.video!!
 
@@ -562,8 +617,10 @@ class AnimeDownloader(
             "${it.first}: ${it.second}\r\n"
         }
 
-        FFmpegKitConfig.setLogRedirectionStrategy(LogRedirectionStrategy.ALWAYS_PRINT_LOGS)
-        val ffmpegOptions = getFFmpegOptions(video, headerOptions, ffmpegFilename())
+        // Only our (de-duplicated) callback should write ffmpeg output to logcat, otherwise
+        // ffmpeg-kit prints every single line itself and the throttling above has no effect.
+        FFmpegKitConfig.setLogRedirectionStrategy(LogRedirectionStrategy.NEVER_PRINT_LOGS)
+        val ffmpegOptions = getFFmpegOptions(video, headerOptions, ffmpegFilename(), tolerant)
         val ffprobeCommand = { file: String, ffprobeHeaders: String? ->
             FFmpegKitConfig.parseArguments(
                 "${ffprobeHeaders?.plus(" ") ?: ""}-v quiet -show_entries " +
@@ -575,10 +632,25 @@ class AnimeDownloader(
         var lastStatBytes = 0L
         var lastStatTimestampMs = 0L
 
+        // ffmpeg can emit the same warning many times per second (reconnects, HLS reloads, ...).
+        // Printing each one floods logcat, so collapse consecutive duplicates into a counter.
+        var lastLogMessage: String? = null
+        var repeatedLogCount = 0
         val logCallback = LogCallback { log ->
             if (log.level <= Level.AV_LOG_WARNING) {
-                log.message?.let {
-                    logcat(LogPriority.ERROR) { it }
+                val message = log.message
+                if (message != null) {
+                    if (message == lastLogMessage) {
+                        repeatedLogCount++
+                    } else {
+                        if (repeatedLogCount > 0) {
+                            val skipped = repeatedLogCount
+                            logcat(LogPriority.WARN) { "(previous ffmpeg message repeated $skipped more times)" }
+                        }
+                        lastLogMessage = message
+                        repeatedLogCount = 0
+                        logcat(LogPriority.WARN) { message }
+                    }
                 }
             }
         }
@@ -611,7 +683,15 @@ class AnimeDownloader(
             }
         }
 
-        duration = getDuration(ffprobeCommand(video.videoUrl, headerOptions))?.toLong() ?: 0L
+        // A failing ffprobe only means we cannot show a percentage; it must never abort the
+        // download itself (common for HLS playlists and streams without a declared duration).
+        duration = try {
+            getDuration(ffprobeCommand(video.videoUrl, headerOptions))?.toLong() ?: 0L
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            logcat(LogPriority.WARN, e) { "Could not probe duration for ${download.episode.name}" }
+            0L
+        }
 
         suspendCancellableCoroutine { continuation ->
             val session = FFmpegKit.executeWithArgumentsAsync(
@@ -623,7 +703,17 @@ class AnimeDownloader(
                         }
                         continuation.resume(it)
                     } else {
-                        continuation.resumeWithException(Exception("Error in ffmpeg!"))
+                        // Surface the real ffmpeg failure instead of an opaque "Error in ffmpeg!",
+                        // and keep the return code so the retry logic can classify it.
+                        val reason = it.failStackTrace?.takeIf(String::isNotBlank)
+                            ?: it.allLogsAsString?.trim()?.takeLast(FFMPEG_ERROR_LOG_CHARS)
+                            ?: "unknown error"
+                        continuation.resumeWithException(
+                            FFmpegException(
+                                it.returnCode?.value ?: 0,
+                                "ffmpeg failed (${it.returnCode}): $reason",
+                            ),
+                        )
                     }
                 },
                 logCallback,
@@ -635,11 +725,62 @@ class AnimeDownloader(
         }
     }
 
-    private fun getFFmpegOptions(video: Video, headerOptions: String, ffmpegFilename: String): Array<String> {
+    /**
+     * Options that make ffmpeg survive flaky networks instead of aborting the whole download on the
+     * first dropped connection, stalled socket or 5xx answer.
+     */
+    private fun networkResilienceOptions(url: String): String {
+        val options = mutableListOf<String>()
+
+        // Some sources are streamed through the app's own loopback proxy. HTTP reconnect logic is
+        // pointless there (the socket never leaves the device) and only hides real proxy errors.
+        val isLoopback = url.contains("127.0.0.1") || url.contains("localhost")
+        if (!isLoopback) {
+            options += listOf(
+                // Recover from dropped connections and transient server errors.
+                //
+                // WARNING: never add -reconnect_at_eof here. Downloads are finite, so EOF is the
+                // normal end of the stream. With that flag ffmpeg retries the same byte offset
+                // forever with a zero second delay ("Will reconnect at N in 0 second(s),
+                // error=End of file"), which floods the log and means the download never finishes.
+                "-reconnect", "1",
+                "-reconnect_streamed", "1",
+                "-reconnect_on_network_error", "1",
+                // Only retryable statuses. 4xx answers are permanent, so retrying them loops.
+                "-reconnect_on_http_error", "429,5xx",
+                "-reconnect_delay_max", "10",
+                // Reuse connections but never hang forever on a dead socket.
+                "-multiple_requests", "1",
+                "-rw_timeout", SOCKET_TIMEOUT_MICROS.toString(),
+            )
+        }
+
+        if (url.contains(".m3u8", ignoreCase = true)) {
+            options += listOf(
+                // Keep reloading the playlist rather than giving up mid-episode.
+                "-max_reload",
+                "1000",
+                "-m3u8_hold_counters",
+                "10",
+                // Segments are frequently disguised (.jpeg, .png, ...) by the source.
+                "-allowed_extensions",
+                "ALL",
+            )
+        }
+        return options.joinToString(" ")
+    }
+
+    private fun getFFmpegOptions(
+        video: Video,
+        headerOptions: String,
+        ffmpegFilename: String,
+        tolerant: Boolean = false,
+    ): Array<String> {
         fun formatInputs(tracks: List<Track>) = tracks.joinToString(" ", postfix = " ") {
             buildList {
                 if (it.url.startsWith("http")) {
                     add(headerOptions)
+                    networkResilienceOptions(it.url).takeIf(String::isNotBlank)?.let(::add)
                 }
                 add("-i")
                 add("\"${it.url}\"")
@@ -672,6 +813,13 @@ class AnimeDownloader(
         val videoInput = buildList {
             if (video.videoUrl.startsWith("http")) {
                 add(headerOptions)
+                networkResilienceOptions(video.videoUrl).takeIf(String::isNotBlank)?.let(::add)
+            }
+            if (tolerant) {
+                // Second-chance pass: drop corrupt packets instead of aborting the whole download
+                // with AVERROR_INVALIDDATA ("Invalid data found when processing input").
+                add("-err_detect ignore_err")
+                add("-fflags +discardcorrupt")
             }
             add(sourceStreamOptions)
             add("-i")
@@ -679,9 +827,13 @@ class AnimeDownloader(
         }.joinToString(" ")
 
         val command = listOf(
+            // Never block on stdin and keep the log readable.
+            "-nostdin -hide_banner",
             videoInput, subtitleInputs, audioInputs,
             "-map 0:v", audioMaps, "-map 0:a?", subtitleMaps, "-map 0:s? -map 0:t?",
             "-f matroska -c:a copy -c:v copy -c:s copy",
+            // Avoid "Too many packets buffered" aborts on streams with sparse audio/subtitles.
+            "-max_muxing_queue_size 4096",
             subtitleMetadata, audioMetadata, sourceVideoOptions,
             "\"$ffmpegFilename\" -y",
         )
@@ -814,8 +966,13 @@ class AnimeDownloader(
         download: AnimeDownload,
         tmpDir: UniFile,
     ): Boolean {
-        val downloadedVideo = tmpDir.listFiles().orEmpty().filterNot { it.extension == ".tmp" }
-        return downloadedVideo.size == 1
+        // `extension` never contains the leading dot, so the previous `== ".tmp"` check never
+        // matched: unfinished .tmp files were counted as finished downloads (and the real video
+        // file plus a leftover .tmp made a valid download look broken).
+        val downloadedVideo = tmpDir.listFiles().orEmpty()
+            .filterNot { it.isDirectory || it.name.equals(NOMEDIA_FILE, ignoreCase = true) }
+            .filterNot { it.extension.equals("tmp", ignoreCase = true) }
+        return downloadedVideo.size == 1 && downloadedVideo.first().length() > 0L
     }
 
     /**
@@ -833,7 +990,9 @@ class AnimeDownloader(
         dirname: String,
     ) {
         // Ensure that the episode folder has the full video
-        val downloadedVideo = tmpDir.listFiles().orEmpty().filterNot { it.extension == ".tmp" }
+        val downloadedVideo = tmpDir.listFiles().orEmpty()
+            .filterNot { it.isDirectory || it.name.equals(NOMEDIA_FILE, ignoreCase = true) }
+            .filterNot { it.extension.equals("tmp", ignoreCase = true) }
 
         download.status = if (downloadedVideo.size == 1) {
             // Only rename the directory if it's downloaded
@@ -935,11 +1094,40 @@ class AnimeDownloader(
         }
     }
 
+    /** ffmpeg failure carrying the raw return code so retries can tell corrupt input from I/O. */
+    private class FFmpegException(val returnCode: Int, message: String) : Exception(message)
+
     companion object {
         const val TMP_DIR_SUFFIX = "_tmp"
         const val WARNING_NOTIF_TIMEOUT_MS = 30_000L
         const val EPISODES_PER_SOURCE_QUEUE_WARNING_THRESHOLD = 10
         private const val DOWNLOADS_QUEUED_WARNING_THRESHOLD = 20
+
+        /** Number of different sources downloaded from concurrently. */
+        private const val MAX_CONCURRENT_SOURCES = 3
+
+        /** How often the progress notification is refreshed while downloading. */
+        private const val PROGRESS_NOTIFICATION_INTERVAL_MS = 500L
+
+        /**
+         * Retry attempts for transient failures before an episode is marked as failed. Kept low on
+         * purpose: every retry restarts the episode from 0%.
+         */
+        private const val DOWNLOAD_MAX_RETRIES = 3L
+
+        /** ffmpeg's AVERROR_INVALIDDATA: "Invalid data found when processing input". */
+        private const val AVERROR_INVALID_DATA = -1094995529
+
+        /** Upper bound for the exponential retry backoff. */
+        private const val DOWNLOAD_MAX_BACKOFF_MS = 60_000L
+
+        /** Socket read/write timeout handed to ffmpeg, in microseconds (30s). */
+        private const val SOCKET_TIMEOUT_MICROS = 30_000_000L
+
+        /** How much of the ffmpeg log is kept when reporting a failure. */
+        private const val FFMPEG_ERROR_LOG_CHARS = 500
+
+        private const val NOMEDIA_FILE = ".nomedia"
     }
 }
 

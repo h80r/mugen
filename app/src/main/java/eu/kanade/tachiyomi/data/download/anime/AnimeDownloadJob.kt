@@ -23,6 +23,7 @@ import eu.kanade.tachiyomi.util.system.activeNetworkState
 import eu.kanade.tachiyomi.util.system.networkStateFlow
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +32,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.i18n.R
 import uy.kohesive.injekt.Injekt
@@ -79,23 +81,14 @@ class AnimeDownloadJob(context: Context, workerParams: WorkerParameters) : Corou
             waitingForNetwork = downloadManager.queueState.value.isNotEmpty()
         }
 
-        fun handleNetworkStatus(status: DownloadNetworkStatus, allowStart: Boolean) {
-            when (status) {
-                DownloadNetworkStatus.Available -> {
-                    if (waitingForNetwork || allowStart) {
-                        waitingForNetwork = false
-                        downloadManager.downloaderStart()
-                    }
-                }
-                DownloadNetworkStatus.NoNetwork,
-                DownloadNetworkStatus.NoWifi,
-                -> pauseForNetwork(status)
-            }
-        }
-
         val initialNetworkStatus = applicationContext.activeNetworkState()
             .toDownloadNetworkStatus(downloadPreferences.downloadOnlyOverWifi().get())
-        handleNetworkStatus(initialNetworkStatus, allowStart = true)
+        when (initialNetworkStatus) {
+            DownloadNetworkStatus.Available -> downloadManager.downloaderStart()
+            DownloadNetworkStatus.NoNetwork,
+            DownloadNetworkStatus.NoWifi,
+            -> pauseForNetwork(initialNetworkStatus)
+        }
 
         if (!downloadManager.isRunning && !waitingForNetwork) {
             return Result.failure()
@@ -105,6 +98,37 @@ class AnimeDownloadJob(context: Context, workerParams: WorkerParameters) : Corou
 
         try {
             coroutineScope {
+                // Transient connectivity drops (Wi-Fi roaming, data stalls) must not tear down an
+                // in-flight download immediately, otherwise every blip cancels ffmpeg and the
+                // partially downloaded episode is thrown away.
+                var pendingPauseJob: Job? = null
+
+                fun handleNetworkStatus(status: DownloadNetworkStatus) {
+                    when (status) {
+                        DownloadNetworkStatus.Available -> {
+                            pendingPauseJob?.cancel()
+                            pendingPauseJob = null
+                            if (waitingForNetwork) {
+                                waitingForNetwork = false
+                                downloadManager.downloaderStart()
+                            }
+                        }
+                        DownloadNetworkStatus.NoNetwork,
+                        DownloadNetworkStatus.NoWifi,
+                        -> {
+                            if (pendingPauseJob?.isActive == true) return
+                            pendingPauseJob = launch {
+                                delay(NETWORK_LOSS_GRACE_PERIOD)
+                                val currentStatus = applicationContext.activeNetworkState()
+                                    .toDownloadNetworkStatus(downloadPreferences.downloadOnlyOverWifi().get())
+                                if (currentStatus != DownloadNetworkStatus.Available) {
+                                    pauseForNetwork(currentStatus)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 val networkStatusJob = combine(
                     applicationContext.networkStateFlow(),
                     downloadPreferences.downloadOnlyOverWifi().changes(),
@@ -112,26 +136,27 @@ class AnimeDownloadJob(context: Context, workerParams: WorkerParameters) : Corou
                     networkState.toDownloadNetworkStatus(requireWifi)
                 }
                     .distinctUntilChanged()
-                    .onEach { handleNetworkStatus(it, allowStart = false) }
+                    .onEach { handleNetworkStatus(it) }
                     .launchIn(this)
 
                 try {
                     while (
                         !isStopped &&
                         downloadManager.queueState.value.isNotEmpty() &&
-                        (downloadManager.isRunning || waitingForNetwork)
+                        (downloadManager.isRunning || waitingForNetwork || pendingPauseJob?.isActive == true)
                     ) {
                         delay(1.seconds)
                     }
                 } finally {
+                    pendingPauseJob?.cancel()
                     networkStatusJob.cancel()
                 }
             }
         } finally {
             if (downloadManager.isRunning && downloadManager.queueState.value.isNotEmpty()) {
-                val latestNetworkStatus = applicationContext.activeNetworkState()
-                    .toDownloadNetworkStatus(downloadPreferences.downloadOnlyOverWifi().get())
-                pauseForNetwork(latestNetworkStatus)
+                // The worker is going away (system stop / cancellation). Park the queue instead of
+                // leaving items stuck in DOWNLOADING so they can be resumed later.
+                downloadManager.downloaderPause()
             }
         }
 
@@ -141,7 +166,17 @@ class AnimeDownloadJob(context: Context, workerParams: WorkerParameters) : Corou
     companion object {
         private const val TAG = "AnimeDownloader"
 
-        fun start(context: Context) {
+        /** How long connectivity may be unavailable before active downloads are paused. */
+        private val NETWORK_LOSS_GRACE_PERIOD = 20.seconds
+
+        /**
+         * Enqueues the download worker.
+         *
+         * @param keepExistingWork pass true when a download is already actively running in this
+         * process. REPLACE would cancel that running worker, which kills the active ffmpeg session
+         * and restarts the episode from 0%.
+         */
+        fun start(context: Context, keepExistingWork: Boolean = false) {
             val downloadPreferences = Injekt.get<DownloadPreferences>()
             val request = OneTimeWorkRequestBuilder<AnimeDownloadJob>()
                 .setConstraints(getConstraints(downloadPreferences.downloadOnlyOverWifi().get()))
@@ -149,8 +184,12 @@ class AnimeDownloadJob(context: Context, workerParams: WorkerParameters) : Corou
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .addTag(TAG)
                 .build()
+            // REPLACE revives work stuck in ENQUEUED (unsatisfied constraints or OEM throttling),
+            // which KEEP would silently drop, so it stays the default. But REPLACE also cancels a
+            // *running* worker, so use KEEP whenever a download is already in progress.
+            val policy = if (keepExistingWork) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.REPLACE
             WorkManager.getInstance(context)
-                .enqueueUniqueWork(TAG, ExistingWorkPolicy.REPLACE, request)
+                .enqueueUniqueWork(TAG, policy, request)
         }
 
         fun stop(context: Context) {
