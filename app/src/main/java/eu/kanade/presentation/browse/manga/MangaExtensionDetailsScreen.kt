@@ -55,6 +55,7 @@ import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.TrailingWidgetBuffer
+import eu.kanade.presentation.theme.AuroraTheme
 import eu.kanade.tachiyomi.extension.InstallStep
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
 import eu.kanade.tachiyomi.source.ConfigurableSource
@@ -351,11 +352,11 @@ private fun DetailsHeader(
                 Text(
                     text = strippedPkgName,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    color = AuroraTheme.colors.textSecondary,
                 )
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            HorizontalDivider(color = AuroraTheme.colors.textPrimary.copy(alpha = 0.08f))
 
             Row(
                 modifier = Modifier
@@ -465,10 +466,14 @@ private fun InfoText(
         )
 
         Text(
-            text = secondaryText + if (onClick != null) " ⓘ" else "",
+            text = secondaryText,
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            color = if (onClick != null) {
+                AuroraTheme.colors.accent
+            } else {
+                AuroraTheme.colors.textSecondary
+            },
         )
     }
 }
@@ -477,6 +482,7 @@ private fun InfoText(
 private fun InfoDivider() {
     VerticalDivider(
         modifier = Modifier.height(20.dp),
+        color = AuroraTheme.colors.textPrimary.copy(alpha = 0.12f),
     )
 }
 
@@ -489,36 +495,41 @@ private fun SourceSwitchPreference(
 ) {
     val context = LocalContext.current
 
-    TextPreferenceWidget(
-        modifier = modifier,
-        title = if (source.labelAsName) {
-            source.source.toString()
-        } else {
-            LocaleHelper.getSourceDisplayName(source.source.lang, context)
-        },
-        widget = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (source.source is ConfigurableSource) {
-                    IconButton(onClick = { onClickSourcePreferences(source.source.id) }) {
-                        Icon(
-                            imageVector = Icons.Outlined.Settings,
-                            contentDescription = stringResource(MR.strings.label_settings),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                        )
+    ExtensionDetailsGlassCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = MaterialTheme.padding.medium, vertical = 4.dp),
+    ) {
+        TextPreferenceWidget(
+            title = if (source.labelAsName) {
+                source.source.toString()
+            } else {
+                LocaleHelper.getSourceDisplayName(source.source.lang, context)
+            },
+            widget = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (source.source is ConfigurableSource) {
+                        IconButton(onClick = { onClickSourcePreferences(source.source.id) }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Settings,
+                                contentDescription = stringResource(MR.strings.label_settings),
+                                tint = AuroraTheme.colors.textSecondary,
+                            )
+                        }
                     }
-                }
 
-                Switch(
-                    checked = source.enabled,
-                    onCheckedChange = null,
-                    modifier = Modifier.padding(start = TrailingWidgetBuffer),
-                )
-            }
-        },
-        onPreferenceClick = { onClickSource(source.source.id) },
-    )
+                    Switch(
+                        checked = source.enabled,
+                        onCheckedChange = null,
+                        modifier = Modifier.padding(start = TrailingWidgetBuffer),
+                    )
+                }
+            },
+            onPreferenceClick = { onClickSource(source.source.id) },
+        )
+    }
 }
 
 @Composable

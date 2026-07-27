@@ -26,7 +26,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -202,7 +201,7 @@ class MangaExtensionManager(
 
         availableExtensionsStateFlow.value = extensions
         availableExtensionsMapFlow.value = extensions
-            .groupBy { it.pkgName }
+            .groupBy { it.pkgName.toInstalledMangaExtensionPkgName() }
             .mapValues { (_, variants) -> variants.newestByVersion()!! }
         updatedInstalledExtensionsStatuses(extensions, canMarkObsolete = fetched.isComplete)
         setupAvailableExtensionsSourcesDataMap(extensions)
@@ -252,7 +251,8 @@ class MangaExtensionManager(
             return
         }
 
-        val availableExtensionsByPkgName = availableExtensions.groupBy { it.pkgName }
+        val availableExtensionsByPkgName = availableExtensions
+            .groupBy { it.pkgName.toInstalledMangaExtensionPkgName() }
         val installedExtensionsMap = installedExtensionsMapFlow.value.toMutableMap()
         var changed = false
 
@@ -314,13 +314,41 @@ class MangaExtensionManager(
      *
      * @param extension The extension to be updated.
      */
-    fun updateExtension(extension: MangaExtension.Installed): Flow<InstallStep> {
-        val variants = availableExtensionsStateFlow.value.filter { it.pkgName == extension.pkgName }
-        val availableExt = selectMangaRegularUpdate(extension.withInferredRepo(variants), variants)
-            ?: return emptyFlow()
+    fun updateExtension(extension: MangaExtension.Installed): Flow<InstallStep> = flow {
+        // The update banner only relies on the stored hasUpdate flag, while performing the update
+        // needs a matching entry in the in-memory available list. When that list is stale or was
+        // never populated in this process, the action silently did nothing, so refresh the repos
+        // once before giving up.
+        val availableExt = selectAvailableUpdate(extension)
+            ?: run {
+                findAvailableExtensions()
+                selectAvailableUpdate(extension)
+            }
+
+        if (availableExt == null) {
+            emit(InstallStep.Error)
+            return@flow
+        }
+
         // A privately installed extension has no system package: installing its update through
         // PackageInstaller/Shizuku would add a second, system copy next to the private one.
-        return installExtension(availableExt, isUpdateForPrivatelyInstalled = !extension.isShared)
+        installExtension(availableExt, isUpdateForPrivatelyInstalled = !extension.isShared)
+            .collect { emit(it) }
+    }
+
+    private fun selectAvailableUpdate(extension: MangaExtension.Installed): MangaExtension.Available? {
+        val variants = availableVariantsFor(extension.pkgName)
+        return selectMangaRegularUpdate(extension.withInferredRepo(variants), variants)
+    }
+
+    /**
+     * All available builds of an installed package. Repos may publish package names carrying a
+     * numeric suffix that is stripped when installing, so both forms have to be matched.
+     */
+    private fun availableVariantsFor(pkgName: String): List<MangaExtension.Available> {
+        return availableExtensionsStateFlow.value.filter {
+            it.pkgName.toInstalledMangaExtensionPkgName() == pkgName
+        }
     }
 
     fun replaceExtensionFromRepo(
@@ -510,7 +538,7 @@ class MangaExtensionManager(
      * Extension method to set the update field of an installed extension.
      */
     private fun MangaExtension.Installed.withUpdateCheck(): MangaExtension.Installed {
-        val variants = availableExtensionsStateFlow.value.filter { it.pkgName == pkgName }
+        val variants = availableVariantsFor(pkgName)
         if (variants.isEmpty()) {
             return if (updateExists()) copy(hasUpdate = true) else this
         }
