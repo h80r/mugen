@@ -22,6 +22,12 @@ class BasePreferences(
 
     fun extensionInstaller() = ExtensionInstallerPreference(context, preferenceStore)
 
+    /**
+     * Silent background updates are only possible with the private installer, so the toggle is
+     * gated on it in the settings UI.
+     */
+    fun autoUpdateExtensions() = preferenceStore.getBoolean("pref_auto_update_extensions", false)
+
     fun pendingApkInstallPackage() = preferenceStore.getString(
         Preference.appStateKey("pending_apk_install_package"),
         "",

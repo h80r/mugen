@@ -460,6 +460,11 @@
     <string name="ext_installer_dhizuku_stopped">Dhizuku is not running</string>
     <string name="ext_installer_dhizuku_unavailable_dialog">Install and activate Dhizuku as Device Owner to use Dhizuku as extension installer.</string>
     <string name="ext_revoke_trust">Revoke trusted unknown extensions</string>
+    <string name="ext_auto_update_pref">Auto-update extensions</string>
+    <string name="ext_auto_update_pref_summary">Silently install extension updates in the background. Requires the Private installer.</string>
+    <string name="ext_auto_update_security_title">Security notice</string>
+    <string name="ext_auto_update_security_dialog">Extension updates will be downloaded and installed automatically, without asking you each time. Updates are only applied when the new file is signed by the same publisher as the installed extension; anything else is skipped and only reported. Extensions run code inside the app, so only enable this if you trust every store you added.</string>
+    <string name="ext_auto_update_notif_title">Extensions updated</string>
 
     <!-- Extension repos (legacy keys preserved for compat/migration; primary now uses store terminology) -->
     <string name="label_extension_repos">Extension stores</string>

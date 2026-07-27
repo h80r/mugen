@@ -958,6 +958,11 @@
     <string name="manga_interval_expected_update_soon">Скоро</string>
     <string name="theme_nord">Север</string>
     <string name="ext_revoke_trust">Убрать доверие к ненадёжным расширениям</string>
+    <string name="ext_auto_update_pref">Автообновление расширений</string>
+    <string name="ext_auto_update_pref_summary">Обновления расширений будут устанавливаться в фоне без запросов. Требуется установщик «Private».</string>
+    <string name="ext_auto_update_security_title">Предупреждение о безопасности</string>
+    <string name="ext_auto_update_security_dialog">Обновления расширений будут скачиваться и устанавливаться автоматически, без подтверждения каждый раз. Обновление применяется только если новый файл подписан тем же издателем, что и установленное расширение; всё остальное пропускается и попадает только в уведомление. Расширения выполняют код внутри приложения, поэтому включайте эту опцию только если доверяете всем добавленным репозиториям.</string>
+    <string name="ext_auto_update_notif_title">Расширения обновлены</string>
     <string name="action_open_repo">Открыть репозиторий источника</string>
     <string name="pref_webtoon_disable_zoom_out">Отключить уменьшение масштаба</string>
     <string name="pref_save_long_page_position">Сохранять позицию внутри длинных страниц</string>
