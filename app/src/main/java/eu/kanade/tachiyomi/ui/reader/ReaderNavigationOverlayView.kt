@@ -51,15 +51,12 @@ class ReaderNavigationOverlayView(context: Context, attributeSet: AttributeSet) 
     private val textPaint = Paint().apply {
         textAlign = Paint.Align.CENTER
         color = Color.WHITE
-        textSize = 64f
     }
 
     private val textBorderPaint = Paint().apply {
         textAlign = Paint.Align.CENTER
         color = Color.BLACK
-        textSize = 64f
         style = Paint.Style.STROKE
-        strokeWidth = 8f
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -77,14 +74,32 @@ class ReaderNavigationOverlayView(context: Context, attributeSet: AttributeSet) 
             // Don't want scale anymore because it messes with drawText
             // Translate origin to rect start (left, top)
             canvas.withTranslation(x = (width * rect.left), y = (height * rect.top)) {
-                // Calculate center of rect width on screen
-                val x = width * (abs(rect.left - rect.right) / 2)
+                val zoneWidth = width * abs(rect.left - rect.right)
+                val zoneHeight = height * abs(rect.top - rect.bottom)
 
-                // Calculate center of rect height on screen
-                val y = height * (abs(rect.top - rect.bottom) / 2)
+                // Calculate center of rect width & height on screen
+                val x = zoneWidth / 2f
+                val y = zoneHeight / 2f
 
-                drawText(context.stringResource(region.type.nameRes), x, y, textBorderPaint)
-                drawText(context.stringResource(region.type.nameRes), x, y, textPaint)
+                val text = context.stringResource(region.type.nameRes)
+                val density = resources.displayMetrics.density
+                val fontScale = resources.configuration.fontScale
+                val spToPx = fontScale * density
+
+                val baseTextSize = 16f * spToPx
+                val maxAllowedWidth = zoneWidth * 0.85f
+
+                textPaint.textSize = baseTextSize
+                val textWidth = textPaint.measureText(text)
+                if (textWidth > maxAllowedWidth && maxAllowedWidth > 0f) {
+                    val scaledSize = baseTextSize * (maxAllowedWidth / textWidth)
+                    textPaint.textSize = maxOf(scaledSize, 10f * spToPx)
+                }
+                textBorderPaint.textSize = textPaint.textSize
+                textBorderPaint.strokeWidth = (textPaint.textSize / 8f).coerceAtLeast(3f)
+
+                drawText(text, x, y, textBorderPaint)
+                drawText(text, x, y, textPaint)
             }
         }
     }
