@@ -49,6 +49,18 @@ fun Manga.toSManga(): SManga = SManga.create().also {
     it.memo = memo
 }
 
+/**
+ * Request object for the combined update API (extensions-lib 1.6).
+ *
+ * A 1.6 source fills in the object it is handed and may hand it straight back when it only parses
+ * chapters. Seeding the stored cover here would make that echo indistinguishable from a freshly
+ * parsed cover, so it is left empty: a null cover means "no new cover info" and the stored one is
+ * kept, while a cover the source actually parsed is applied as before.
+ */
+fun Manga.toSMangaUpdateRequest(): SManga = toSManga().also {
+    it.thumbnail_url = null
+}
+
 fun Manga.copyFrom(other: SManga): Manga {
     val author = other.author ?: author
     val artist = other.artist ?: artist

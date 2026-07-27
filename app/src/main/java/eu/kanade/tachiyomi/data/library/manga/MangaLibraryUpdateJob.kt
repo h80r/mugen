@@ -14,7 +14,7 @@ import androidx.work.WorkQuery
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import eu.kanade.domain.entries.manga.interactor.UpdateManga
-import eu.kanade.domain.entries.manga.model.toSManga
+import eu.kanade.domain.entries.manga.model.toSMangaUpdateRequest
 import eu.kanade.domain.items.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.track.manga.MapMangaTrackStatusToLibrary
 import eu.kanade.domain.ui.UiPreferences
@@ -483,7 +483,7 @@ class MangaLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
         // single request instead of failing on the legacy entry points it no longer implements.
         val fetchDetails = libraryPreferences.autoUpdateMetadata().get()
         val update = source.getMangaUpdate(
-            manga = manga.toSManga(),
+            manga = manga.toSMangaUpdateRequest(),
             chapters = emptyList(),
             fetchDetails = fetchDetails,
             fetchChapters = true,

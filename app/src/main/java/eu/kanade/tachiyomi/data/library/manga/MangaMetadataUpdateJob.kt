@@ -12,11 +12,9 @@ import androidx.work.WorkInfo
 import androidx.work.WorkQuery
 import androidx.work.WorkerParameters
 import eu.kanade.domain.entries.manga.interactor.UpdateManga
-import eu.kanade.domain.entries.manga.model.copyFrom
-import eu.kanade.domain.entries.manga.model.toSManga
+import eu.kanade.domain.entries.manga.model.toSMangaUpdateRequest
 import eu.kanade.tachiyomi.data.cache.MangaCoverCache
 import eu.kanade.tachiyomi.data.notification.Notifications
-import eu.kanade.tachiyomi.util.prepUpdateCover
 import eu.kanade.tachiyomi.util.system.isRunning
 import eu.kanade.tachiyomi.util.system.workManager
 import kotlinx.coroutines.CancellationException
@@ -31,7 +29,6 @@ import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.entries.manga.interactor.GetLibraryManga
 import tachiyomi.domain.entries.manga.model.Manga
-import tachiyomi.domain.entries.manga.model.toMangaUpdate
 import tachiyomi.domain.library.manga.LibraryManga
 import tachiyomi.domain.source.manga.service.MangaSourceManager
 import uy.kohesive.injekt.Injekt
@@ -119,15 +116,20 @@ class MangaMetadataUpdateJob(private val context: Context, workerParams: WorkerP
                                     val source = sourceManager.get(manga.source) ?: return@withUpdateNotification
                                     try {
                                         val networkManga = source.getMangaUpdate(
-                                            manga = manga.toSManga(),
+                                            manga = manga.toSMangaUpdateRequest(),
                                             chapters = emptyList(),
                                             fetchDetails = true,
                                             fetchChapters = false,
                                         ).manga
-                                        val updatedManga = manga.prepUpdateCover(coverCache, networkManga, true)
-                                            .copyFrom(networkManga)
                                         try {
-                                            updateManga.await(updatedManga.toMangaUpdate())
+                                            // One cover policy everywhere: same shouldUpdateCover and
+                                            // custom-cover rules as the library update path.
+                                            updateManga.awaitUpdateFromSource(
+                                                manga,
+                                                networkManga,
+                                                manualFetch = true,
+                                                coverCache,
+                                            )
                                         } catch (e: Exception) {
                                             logcat(LogPriority.ERROR) { "Manga doesn't exist anymore" }
                                         }

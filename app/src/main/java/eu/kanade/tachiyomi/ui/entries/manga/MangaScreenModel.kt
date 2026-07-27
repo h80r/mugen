@@ -23,6 +23,7 @@ import eu.kanade.domain.entries.manga.interactor.UpdateManga
 import eu.kanade.domain.entries.manga.model.chaptersFiltered
 import eu.kanade.domain.entries.manga.model.effectiveDownloadedFilter
 import eu.kanade.domain.entries.manga.model.toSManga
+import eu.kanade.domain.entries.manga.model.toSMangaUpdateRequest
 import eu.kanade.domain.entries.metadata.FetchEntryMetadataFromTracker
 import eu.kanade.domain.entries.metadata.TrackerMetadataFetchOutcome
 import eu.kanade.domain.items.chapter.interactor.GetAvailableScanlators
@@ -697,7 +698,7 @@ class MangaScreenModel(
             withIOContext {
                 sourceUpdateMutex.withLock {
                     state.source.getMangaUpdate(
-                        manga = state.manga.toSManga(),
+                        manga = state.manga.toSMangaUpdateRequest(),
                         chapters = emptyList(),
                         fetchDetails = true,
                         fetchChapters = true,
@@ -726,7 +727,7 @@ class MangaScreenModel(
                 // getMangaDetails), and works for 1.6 extensions that only implement this one.
                 val networkManga = prefetched?.manga ?: sourceUpdateMutex.withLock {
                     state.source.getMangaUpdate(
-                        manga = state.manga.toSManga(),
+                        manga = state.manga.toSMangaUpdateRequest(),
                         chapters = emptyList(),
                         fetchDetails = true,
                         fetchChapters = false,
