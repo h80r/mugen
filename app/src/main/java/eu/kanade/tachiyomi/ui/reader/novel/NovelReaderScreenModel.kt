@@ -3418,8 +3418,14 @@ class NovelReaderScreenModel(
                     params = params,
                     onLog = { log ->
                         addGoogleLog(log)
+                        // Rebuilding the whole reader state for every diagnostic line floods the
+                        // main thread with recompositions, so only refresh when the progress the
+                        // user can actually see moved.
+                        val progressBefore = googleTranslationProgress
                         updateGoogleProgressFromLog(log)
-                        updateContent(settings)
+                        if (googleTranslationProgress != progressBefore) {
+                            updateContent(settings)
+                        }
                     },
                     onProgress = onProgress@{ phase, percent ->
                         translationPhase = phase

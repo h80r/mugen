@@ -2483,7 +2483,10 @@ fun NovelReaderScreen(
                             if (useRichNativeScroll) {
                                 itemsIndexed(
                                     richScrollBlocks,
-                                    key = { index, block -> "rich-$index-${block.hashCode()}" },
+                                    // Keyed by position, not by content: a content-derived key
+                                    // changes for every block when a translation is applied, which
+                                    // forces the whole list to be disposed and recreated at once.
+                                    key = { index, _ -> "rich-${state.chapter.id}-$index" },
                                 ) { index, block ->
                                     NovelRichNativeScrollItem(
                                         block = block,
@@ -2513,7 +2516,7 @@ fun NovelReaderScreen(
                             } else {
                                 itemsIndexed(
                                     scrollContentBlocks,
-                                    key = { index, block -> "plain-$index-${block.hashCode()}" },
+                                    key = { index, _ -> "plain-${state.chapter.id}-$index" },
                                 ) { index, block ->
                                     when (block) {
                                         is NovelReaderScreenModel.ContentBlock.Text -> {

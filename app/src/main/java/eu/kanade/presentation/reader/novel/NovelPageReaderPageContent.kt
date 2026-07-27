@@ -1118,5 +1118,11 @@ internal fun NovelPageReaderTextBlock(
             }
             textView.setTextColor(blockTextColor.toArgb())
         },
+        // Dropping a focused interop view makes the framework search the hierarchy for a new focus
+        // target, which can re-enter Compose layout while changes are still being applied. Giving
+        // up focus first keeps that removal side-effect free.
+        onRelease = { textView ->
+            textView.clearFocus()
+        },
     )
 }
