@@ -41,12 +41,14 @@ object DownloadQueueUiMapper {
         status: AnimeDownload.State? = null,
         downloadedBytes: Long? = null,
         currentSpeedBytesPerSecond: Long? = null,
+        estimatedTotalBytes: Long? = null,
     ): DownloadQueueUiItem {
         val download = item.download
         val effectiveProgress = progress ?: download.progress
         val effectiveStatus = status ?: download.status
         val effectiveDownloadedBytes = downloadedBytes ?: download.downloadedBytes
         val effectiveCurrentSpeedBytes = currentSpeedBytesPerSecond ?: download.currentSpeedBytesPerSecond
+        val effectiveTotalBytes = estimatedTotalBytes ?: download.estimatedTotalBytes
         val progressLabel = when (effectiveStatus) {
             AnimeDownload.State.DOWNLOADED -> "100%"
             AnimeDownload.State.ERROR -> ""
@@ -54,12 +56,26 @@ object DownloadQueueUiMapper {
         }
         val progressDetailText = buildList {
             if (effectiveDownloadedBytes > 0L) {
-                add(formatBytes(effectiveDownloadedBytes))
+                // The total is an extrapolation for segmented sources, hence the "~" marker. It is
+                // only shown once it is above the bytes already written, otherwise it would look
+                // like the download shrank on the very first statistics callbacks.
+                if (effectiveTotalBytes > effectiveDownloadedBytes) {
+                    add("${formatBytes(effectiveDownloadedBytes)} / ~${formatBytes(effectiveTotalBytes)}")
+                } else {
+                    add(formatBytes(effectiveDownloadedBytes))
+                }
             }
             if (effectiveStatus == AnimeDownload.State.DOWNLOADING && effectiveCurrentSpeedBytes > 0L) {
-                add("${formatBytes(effectiveCurrentSpeedBytes)}/s")
+                val speedAndEta = buildList {
+                    add("${formatBytes(effectiveCurrentSpeedBytes)}/s")
+                    val remainingBytes = effectiveTotalBytes - effectiveDownloadedBytes
+                    if (remainingBytes > 0L) {
+                        add("~${formatEta(remainingBytes / effectiveCurrentSpeedBytes)}")
+                    }
+                }.joinToString(" | ")
+                add(speedAndEta)
             }
-        }.joinToString(" | ")
+        }.joinToString("\n")
         return DownloadQueueUiItem(
             section = DownloadSection.ANIME,
             itemId = download.episode.id.toString(),
@@ -135,6 +151,22 @@ object DownloadQueueUiMapper {
                 NovelQueuedDownloadStatus.FAILED -> DownloadQueueUiModel.QueueStatus.FAILED
             },
         )
+    }
+
+    /**
+     * Formats a duration as a locale-neutral clock value (`4:12`, `1:02:33`) so no new translated
+     * strings are needed for the remaining-time hint.
+     */
+    private fun formatEta(totalSeconds: Long): String {
+        val safeSeconds = totalSeconds.coerceAtLeast(0L)
+        val hours = safeSeconds / 3600
+        val minutes = (safeSeconds % 3600) / 60
+        val seconds = safeSeconds % 60
+        return if (hours > 0) {
+            "%d:%02d:%02d".format(hours, minutes, seconds)
+        } else {
+            "%d:%02d".format(minutes, seconds)
+        }
     }
 
     private fun formatBytes(bytes: Long): String {

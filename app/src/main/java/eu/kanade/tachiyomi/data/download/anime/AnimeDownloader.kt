@@ -495,6 +495,7 @@ class AnimeDownloader(
                     download.status = AnimeDownload.State.DOWNLOADING
                     download.progress = 0
                     download.downloadedBytes = 0L
+                    download.estimatedTotalBytes = 0L
                     download.currentSpeedBytesPerSecond = 0L
 
                     // If videoFile is not existing then download it
@@ -673,11 +674,19 @@ class AnimeDownloader(
 
             if (duration != 0L && outTime > 0) {
                 download.progress = (100 * outTime / duration).toInt()
+
+                // HLS never declares a total size, so extrapolate it from the muxed timeline:
+                // bytes so far scaled by (total duration / processed duration). Costs no extra
+                // network request and converges on the real size as the download progresses.
+                if (bytesDownloaded > 0L) {
+                    download.estimatedTotalBytes = bytesDownloaded * duration / outTime
+                }
+
                 telemetryEmitter.record(
                     section = DownloadSection.ANIME,
                     downloadKey = download.episode.id.toString(),
                     bytesDownloaded = bytesDownloaded,
-                    bytesTotal = 0L,
+                    bytesTotal = download.estimatedTotalBytes,
                     timestampMs = now,
                 )
             }

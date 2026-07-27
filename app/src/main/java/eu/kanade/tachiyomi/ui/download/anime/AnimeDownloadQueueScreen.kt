@@ -78,6 +78,9 @@ fun AnimeDownloadQueueScreen(
                         val currentSpeedState by download.currentSpeedBytesFlow.collectAsStateWithLifecycle(
                             initialValue = download.currentSpeedBytesPerSecond,
                         )
+                        val estimatedTotalBytesState by download.estimatedTotalBytesFlow.collectAsStateWithLifecycle(
+                            initialValue = download.estimatedTotalBytes,
+                        )
 
                         val uiItem = DownloadQueueUiMapper.toUiItem(
                             item = item,
@@ -85,6 +88,7 @@ fun AnimeDownloadQueueScreen(
                             status = statusState,
                             downloadedBytes = downloadedBytesState,
                             currentSpeedBytesPerSecond = currentSpeedState,
+                            estimatedTotalBytes = estimatedTotalBytesState,
                         )
                         DownloadQueueItem(
                             item = uiItem,

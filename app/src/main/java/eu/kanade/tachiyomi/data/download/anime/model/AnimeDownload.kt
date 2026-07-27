@@ -65,6 +65,24 @@ data class AnimeDownload(
             currentSpeedBytesStateFlow.value = value
         }
 
+    @Transient
+    private val estimatedTotalBytesStateFlow = MutableStateFlow(0L)
+
+    @Transient
+    val estimatedTotalBytesFlow = estimatedTotalBytesStateFlow.asStateFlow()
+
+    /**
+     * Best-effort estimate of the final file size in bytes, or 0 when still unknown.
+     *
+     * Segmented (HLS) sources never declare a total length up front, so this is extrapolated from
+     * how much of the timeline ffmpeg has already muxed. It self-corrects as the download advances.
+     */
+    var estimatedTotalBytes: Long
+        get() = estimatedTotalBytesStateFlow.value
+        set(value) {
+            estimatedTotalBytesStateFlow.value = value
+        }
+
     /**
      * Updates the status of the download
      *
