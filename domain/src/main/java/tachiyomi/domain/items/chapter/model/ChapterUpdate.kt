@@ -35,6 +35,8 @@ fun Chapter.toChapterUpdate(): ChapterUpdate {
         chapterNumber,
         scanlator,
         version,
-        memo,
+        // An empty memo never overwrites a stored one: chapters built from scratch elsewhere would
+        // otherwise wipe the context the source gave us.
+        memo.takeIf { it.isNotEmpty() },
     )
 }

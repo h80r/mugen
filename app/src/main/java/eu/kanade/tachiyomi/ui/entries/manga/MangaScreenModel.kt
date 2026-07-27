@@ -84,6 +84,8 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import logcat.LogPriority
 import mihon.domain.items.chapter.interactor.FilterChaptersForDownload
 import tachiyomi.core.common.i18n.stringResource
@@ -602,11 +604,8 @@ class MangaScreenModel(
     fun fetchAllFromSource(manualFetch: Boolean = true) {
         screenModelScope.launch {
             updateSuccessState { it.copy(isRefreshingData = true) }
-            val fetchFromSourceTasks = listOf(
-                async { fetchMangaFromSource(manualFetch) },
-                async { fetchChaptersFromSource(manualFetch) },
-            )
-            fetchFromSourceTasks.awaitAll()
+            // One combined call: a 1.6 source rejects concurrent getMangaUpdate for the same entry.
+            fetchMangaAndChaptersFromSource(manualFetch)
             updateSuccessState { it.copy(isRefreshingData = false) }
             successState?.manga?.id?.let { loadMangaMetadata(it) }
         }
@@ -682,6 +681,9 @@ class MangaScreenModel(
 
     // Manga info - start
 
+    /** Serializes source update calls: 1.6 sources reject concurrent getMangaUpdate per entry. */
+    private val sourceUpdateMutex = Mutex()
+
     /**
      * Fetches details and chapters in a single source call.
      *
@@ -693,12 +695,14 @@ class MangaScreenModel(
         val state = successState ?: return
         val update = try {
             withIOContext {
-                state.source.getMangaUpdate(
-                    manga = state.manga.toSManga(),
-                    chapters = emptyList(),
-                    fetchDetails = true,
-                    fetchChapters = true,
-                )
+                sourceUpdateMutex.withLock {
+                    state.source.getMangaUpdate(
+                        manga = state.manga.toSManga(),
+                        chapters = emptyList(),
+                        fetchDetails = true,
+                        fetchChapters = true,
+                    )
+                }
             }
         } catch (e: Throwable) {
             handleSourceFetchError(state, e)
@@ -720,12 +724,14 @@ class MangaScreenModel(
             withIOContext {
                 // Combined API: unchanged for 1.4/1.5 extensions (its default calls
                 // getMangaDetails), and works for 1.6 extensions that only implement this one.
-                val networkManga = prefetched?.manga ?: state.source.getMangaUpdate(
-                    manga = state.manga.toSManga(),
-                    chapters = emptyList(),
-                    fetchDetails = true,
-                    fetchChapters = false,
-                ).manga
+                val networkManga = prefetched?.manga ?: sourceUpdateMutex.withLock {
+                    state.source.getMangaUpdate(
+                        manga = state.manga.toSManga(),
+                        chapters = emptyList(),
+                        fetchDetails = true,
+                        fetchChapters = false,
+                    ).manga
+                }
                 val sourceRating = networkManga.rating.takeIf { it > 0f }
                 debugLog(
                     "fetchMangaFromSource: source=${state.source.name} title=${networkManga.safeTitle().previewForLog()} rating=${networkManga.rating} desc=${networkManga.description.previewForLog()}",
@@ -1168,12 +1174,14 @@ class MangaScreenModel(
                 val getStart = System.currentTimeMillis()
                 // Combined API: unchanged for 1.4/1.5 extensions, and the only entry point a
                 // 1.6 extension implements - calling getChapterList there throws.
-                val sourceChapters = prefetched?.chapters ?: state.source.getMangaUpdate(
-                    manga = state.manga.toSManga(),
-                    chapters = emptyList(),
-                    fetchDetails = false,
-                    fetchChapters = true,
-                ).chapters
+                val sourceChapters = prefetched?.chapters ?: sourceUpdateMutex.withLock {
+                    state.source.getMangaUpdate(
+                        manga = state.manga.toSManga(),
+                        chapters = emptyList(),
+                        fetchDetails = false,
+                        fetchChapters = true,
+                    ).chapters
+                }
                 val getMs = System.currentTimeMillis() - getStart
                 logcat(LogPriority.DEBUG) {
                     "TADAMI_PERF_MANGA_TITLE getChapterList-done id=${state.manga.id} count=${sourceChapters.size} took=${getMs}ms"
