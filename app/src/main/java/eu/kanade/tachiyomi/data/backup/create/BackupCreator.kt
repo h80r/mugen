@@ -43,6 +43,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import eu.kanade.tachiyomi.data.backup.models.MihonBackup
 import eu.kanade.tachiyomi.data.backup.models.toMihonBackup
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.protobuf.ProtoBuf
 import logcat.LogPriority
 import okio.buffer
@@ -301,6 +302,10 @@ class BackupCreator(
             }
 
             return fileUri.toString()
+        } catch (e: CancellationException) {
+            BackupDiagnosticLog.log(context, "creator_cancelled")
+            file?.delete()
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             BackupDiagnosticLog.logError(context, "creator_failed", e)

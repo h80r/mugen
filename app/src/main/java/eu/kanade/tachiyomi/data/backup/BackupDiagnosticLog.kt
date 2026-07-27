@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.data.backup
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -60,6 +61,10 @@ object BackupDiagnosticLog {
             val result = block()
             log(context, "stage_end", "$stage durationMs=${System.currentTimeMillis() - start}")
             result
+        } catch (e: CancellationException) {
+            // A cancelled worker or scope is a normal stop, not a backup failure.
+            log(context, "stage_cancelled", "$stage durationMs=${System.currentTimeMillis() - start}")
+            throw e
         } catch (e: Throwable) {
             logError(
                 context,

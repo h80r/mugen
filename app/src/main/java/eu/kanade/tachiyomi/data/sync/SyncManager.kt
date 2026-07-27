@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.net.toUri
 import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.tachiyomi.data.backup.BackupDecoder
+import eu.kanade.tachiyomi.data.backup.BackupDiagnosticLog
 import eu.kanade.tachiyomi.data.backup.BackupNotifier
 import eu.kanade.tachiyomi.data.backup.create.BackupCreator
 import eu.kanade.tachiyomi.data.backup.models.Backup
@@ -157,9 +158,16 @@ class SyncManager(
     private suspend fun createLocalBackup(): Backup? {
         val backupFile = context.createFileInCacheDir("cloud_sync_local_${UUID.randomUUID()}.tachibk")
         return try {
+            BackupDiagnosticLog.log(context, "sync_backup_start", "source=cloud_sync")
             val options = syncPreferences.getCloudSyncOptions()
             backupCreator.backup(backupFile.toUri(), options)
-            backupDecoder.decode(backupFile.toUri())
+            backupDecoder.decode(backupFile.toUri()).also {
+                BackupDiagnosticLog.log(context, "sync_backup_end", "source=cloud_sync")
+            }
+        } catch (e: CancellationException) {
+            // Never swallow cancellation: sync must stop instead of reporting a backup error.
+            BackupDiagnosticLog.log(context, "sync_backup_cancelled", "source=cloud_sync")
+            throw e
         } catch (e: Exception) {
             this.logcat(LogPriority.ERROR, e) { "Failed to create local backup for sync" }
             null
