@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -44,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import eu.kanade.domain.ui.model.EpisodeListDensity
 import eu.kanade.presentation.components.relativeDateTimeText
 import eu.kanade.presentation.entries.anime.components.EpisodeDownloadAction
 import eu.kanade.presentation.entries.anime.components.EpisodeDownloadIndicator
@@ -80,9 +82,57 @@ fun AnimeEpisodeCardCompact(
     modifier: Modifier = Modifier,
     showPreviews: Boolean = true,
     showSummaries: Boolean = true,
+    density: EpisodeListDensity = EpisodeListDensity.Comfortable,
 ) {
     val colors = AuroraTheme.colors
     val episode = item.episode
+    val isDense = density == EpisodeListDensity.Dense
+    val isCompact = density == EpisodeListDensity.Compact
+    val showSummaryText = showSummaries && density == EpisodeListDensity.Comfortable
+    val cardCornerRadius = when (density) {
+        EpisodeListDensity.Comfortable -> 20.dp
+        EpisodeListDensity.Compact -> 16.dp
+        EpisodeListDensity.Dense -> 12.dp
+    }
+    val cardOuterVerticalPadding = when (density) {
+        EpisodeListDensity.Comfortable -> 6.dp
+        EpisodeListDensity.Compact -> 4.dp
+        EpisodeListDensity.Dense -> 2.dp
+    }
+    val cardContentVerticalPadding = when (density) {
+        EpisodeListDensity.Comfortable -> 14.dp
+        EpisodeListDensity.Compact -> 10.dp
+        EpisodeListDensity.Dense -> 8.dp
+    }
+    val contentSpacing = when (density) {
+        EpisodeListDensity.Comfortable -> 8.dp
+        EpisodeListDensity.Compact -> 6.dp
+        EpisodeListDensity.Dense -> 4.dp
+    }
+    val rowSpacing = when (density) {
+        EpisodeListDensity.Comfortable -> 12.dp
+        EpisodeListDensity.Compact -> 10.dp
+        EpisodeListDensity.Dense -> 8.dp
+    }
+    val showPreviewImage = showPreviews && !isDense
+    val hasWatchProgress = episode.seen || episode.totalSeconds > 0L
+    val watchProgress = when {
+        episode.seen -> 1f
+        episode.totalSeconds > 0L -> (
+            episode.lastSecondSeen.toFloat() / maxOf(1L, episode.totalSeconds).toFloat()
+            ).coerceIn(0f, 1f)
+        else -> 0f
+    }
+    // Comfortable keeps the full progress row with timestamps. Compact draws a thin strip on the
+    // thumbnail instead, and Dense only shows a small percentage next to the date, so neither of
+    // them grows the height of an episode row.
+    val showProgressRow = hasWatchProgress && when (density) {
+        EpisodeListDensity.Comfortable -> true
+        EpisodeListDensity.Compact -> !showPreviewImage
+        EpisodeListDensity.Dense -> false
+    }
+    val showThumbnailProgress = isCompact && showPreviewImage && hasWatchProgress
+    val showDenseProgressPercent = isDense && !episode.seen && watchProgress > 0f
     val startSwipeAction = auroraAnimeSwipeAction(
         action = episodeSwipeStartAction,
         seen = episode.seen,
@@ -108,24 +158,23 @@ fun AnimeEpisodeCardCompact(
             selected = selected,
             highlighted = isNew && !episode.seen,
             dimmed = episode.seen,
-            cornerRadius = 20.dp,
-            outerVerticalPadding = 6.dp,
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+            cornerRadius = cardCornerRadius,
+            outerVerticalPadding = cardOuterVerticalPadding,
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = cardContentVerticalPadding),
             onClick = onClick,
             onLongClick = onLongClick,
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(contentSpacing),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(rowSpacing),
                 ) {
-                    val showPreviewImage = showPreviews
                     if (showPreviewImage) {
-                        val targetWidth = 112.dp
+                        val targetWidth = if (isCompact) 80.dp else 112.dp
                         val imageData = if (!episode.previewUrl.isNullOrBlank()) {
                             episode.previewUrl
                         } else {
@@ -137,12 +186,32 @@ fun AnimeEpisodeCardCompact(
                                 lastModified = anime.coverLastModified,
                             )
                         }
-                        ItemCover.Thumb(
-                            data = imageData,
+                        Box(
                             modifier = Modifier
                                 .width(targetWidth)
                                 .clip(RoundedCornerShape(8.dp)),
-                        )
+                        ) {
+                            ItemCover.Thumb(
+                                data = imageData,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            if (showThumbnailProgress) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .fillMaxWidth()
+                                        .height(3.dp)
+                                        .background(Color.Black.copy(alpha = 0.45f)),
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(watchProgress)
+                                            .fillMaxHeight()
+                                            .background(colors.accent),
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     // Episode info
@@ -152,17 +221,17 @@ fun AnimeEpisodeCardCompact(
                     ) {
                         Text(
                             text = episode.name,
-                            fontSize = 15.sp,
+                            fontSize = if (isDense) 14.sp else 15.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = colors.textPrimary,
-                            maxLines = 2,
+                            maxLines = if (density == EpisodeListDensity.Comfortable) 2 else 1,
                             overflow = TextOverflow.Ellipsis,
                         )
 
-                        val summaryText = episode.summary.takeIf { !it.isNullOrBlank() && showSummaries }
+                        val summaryText = episode.summary.takeIf { !it.isNullOrBlank() && showSummaryText }
                             ?: episode.scanlator.takeIf {
                                 !it.isNullOrBlank() &&
-                                    showSummaries &&
+                                    showSummaryText &&
                                     it.isLikelyEpisodeDescription()
                             }
                         if (summaryText != null) {
@@ -208,6 +277,20 @@ fun AnimeEpisodeCardCompact(
                                 fontSize = 12.sp,
                                 color = colors.textSecondary,
                             )
+
+                            if (showDenseProgressPercent) {
+                                Text(
+                                    text = "·",
+                                    fontSize = 12.sp,
+                                    color = colors.textSecondary,
+                                )
+                                Text(
+                                    text = "${(watchProgress * 100).toInt().coerceIn(1, 99)}%",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = colors.accent,
+                                )
+                            }
                         }
 
                         Row(
@@ -268,7 +351,7 @@ fun AnimeEpisodeCardCompact(
                 }
 
                 // Progress bar for seen/in-progress episodes (starts under the poster!)
-                if (episode.seen || episode.totalSeconds > 0L) {
+                if (showProgressRow) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -283,23 +366,15 @@ fun AnimeEpisodeCardCompact(
                                 .clip(RoundedCornerShape(50))
                                 .background(colors.divider),
                         ) {
-                            val progress = if (episode.seen) {
-                                1f
-                            } else {
-                                (
-                                    episode.lastSecondSeen.toFloat() /
-                                        maxOf(1L, episode.totalSeconds).toFloat()
-                                    ).coerceIn(0f, 1f)
-                            }
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth(progress)
+                                    .fillMaxWidth(watchProgress)
                                     .height(3.dp)
                                     .background(colors.accent),
                             )
                         }
 
-                        if (episode.totalSeconds > 0L) {
+                        if (episode.totalSeconds > 0L && !isCompact) {
                             val totalDurationText = episode.totalSeconds.milliseconds.toDigitalString()
                             val durationText = if (!episode.seen && episode.lastSecondSeen > 0L) {
                                 val lastSeenDurationText = episode.lastSecondSeen.milliseconds.toDigitalString()

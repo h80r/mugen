@@ -1192,6 +1192,11 @@
     <string name="pref_bottom_nav_appearance">Bottom navigation appearance</string>
     <string name="pref_bottom_nav_classic">Classic</string>
     <string name="pref_bottom_nav_aurora">Aurora</string>
+    <string name="pref_episode_list_density">Episode list density</string>
+    <string name="pref_episode_list_density_summary">Choose how much space each episode takes in the episode list</string>
+    <string name="pref_episode_list_density_comfortable">Comfortable</string>
+    <string name="pref_episode_list_density_compact">Compact</string>
+    <string name="pref_episode_list_density_dense">Dense</string>
     <string name="action_filter_unseen">Unseen</string>
     <string name="action_global_manga_search">Global Manga Search</string>
     <string name="action_global_anime_search">Global Anime Search</string>

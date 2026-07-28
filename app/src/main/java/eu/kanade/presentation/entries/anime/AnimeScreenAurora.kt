@@ -210,6 +210,7 @@ fun AnimeScreenAuroraImpl(
     val entrySuggestionsInOverflow by uiPreferences.entrySuggestionsInOverflow().collectAsState()
     val showSeasonTabs by uiPreferences.showSeasonTabs().collectAsState()
     val alwaysShowFullEpisodeList by uiPreferences.alwaysShowFullEpisodeList().collectAsState()
+    val episodeListDensity by uiPreferences.episodeListDensity().collectAsState()
     val globalSearchQuery = remember(anime.displayTitle) { normalizeAuroraGlobalSearchQuery(anime.displayTitle) }
     val episodes = state.episodeListItems
     val selectedEpisodes = remember(episodes) {
@@ -924,6 +925,7 @@ fun AnimeScreenAuroraImpl(
                                                     episodeSwipeEndAction = episodeSwipeEndAction,
                                                     showPreviews = state.showPreviews,
                                                     showSummaries = state.showSummaries,
+                                                    density = episodeListDensity,
                                                     onClick = {
                                                         when (
                                                             resolveAuroraEpisodeClickAction(
@@ -1290,6 +1292,7 @@ fun AnimeScreenAuroraImpl(
                                             episodeSwipeEndAction = episodeSwipeEndAction,
                                             showPreviews = state.showPreviews,
                                             showSummaries = state.showSummaries,
+                                            density = episodeListDensity,
                                             onClick = {
                                                 when (
                                                     resolveAuroraEpisodeClickAction(

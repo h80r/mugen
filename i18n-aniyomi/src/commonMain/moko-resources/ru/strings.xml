@@ -967,6 +967,11 @@
     <string name="pref_bottom_nav_appearance">Внешний вид нижней навигации</string>
     <string name="pref_bottom_nav_classic">Классическая</string>
     <string name="pref_bottom_nav_aurora">Aurora</string>
+    <string name="pref_episode_list_density">Плотность списка эпизодов</string>
+    <string name="pref_episode_list_density_summary">Выберите, сколько места занимает каждый эпизод в списке</string>
+    <string name="pref_episode_list_density_comfortable">Обычная</string>
+    <string name="pref_episode_list_density_compact">Компактная</string>
+    <string name="pref_episode_list_density_dense">Плотная</string>
     <string name="pref_bottom_nav_style">Компоновка нижней навигации</string>
     <string name="pref_category_motion">Анимация</string>
     <string name="pref_navigation_transition_mode">Режим анимации переходов</string>
@@ -2855,5 +2860,4 @@
     <string name="achievement_lattice_resonance_desc">Оболочка снята. Сигнал дошёл до ядра. Архитектор опознан.</string>
     <string name="achievement_lattice_resonance_hint_vague">Что-то дрейфует под оболочкой рендера…</string>
 </resources>
-
 

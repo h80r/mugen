@@ -25,6 +25,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import eu.kanade.presentation.components.AuroraRadioItem
+import eu.kanade.presentation.more.settings.LocalSettingsUiStyle
+import eu.kanade.presentation.more.settings.SettingsUiStyle
 import eu.kanade.presentation.more.settings.settingsAccentColor
 import eu.kanade.presentation.more.settings.settingsDialogContainerColor
 import eu.kanade.presentation.more.settings.settingsSubtitleColor
@@ -104,34 +107,42 @@ private fun DialogRow(
     textStyle: TextStyle?,
     onSelected: () -> Unit,
 ) {
-    val appHaptics = LocalAppHaptics.current
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .clip(MaterialTheme.shapes.small)
-            .selectable(
-                selected = isSelected,
-                onClick = {
-                    appHaptics.tap()
-                    if (!isSelected) onSelected()
-                },
-            )
-            .fillMaxWidth()
-            .minimumInteractiveComponentSize(),
-    ) {
-        RadioButton(
+    if (LocalSettingsUiStyle.current == SettingsUiStyle.Aurora) {
+        AuroraRadioItem(
+            label = label,
             selected = isSelected,
-            onClick = null,
-            colors = RadioButtonDefaults.colors(
-                selectedColor = accentColor,
-            ),
+            onClick = onSelected,
         )
-        Text(
-            text = label,
-            style = (textStyle ?: MaterialTheme.typography.bodyLarge).merge(),
-            color = settingsTitleColor(),
-            modifier = Modifier.padding(start = 24.dp),
-        )
+    } else {
+        val appHaptics = LocalAppHaptics.current
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clip(MaterialTheme.shapes.small)
+                .selectable(
+                    selected = isSelected,
+                    onClick = {
+                        appHaptics.tap()
+                        if (!isSelected) onSelected()
+                    },
+                )
+                .fillMaxWidth()
+                .minimumInteractiveComponentSize(),
+        ) {
+            RadioButton(
+                selected = isSelected,
+                onClick = null,
+                colors = RadioButtonDefaults.colors(
+                    selectedColor = accentColor,
+                ),
+            )
+            Text(
+                text = label,
+                style = (textStyle ?: MaterialTheme.typography.bodyLarge).merge(),
+                color = settingsTitleColor(),
+                modifier = Modifier.padding(start = 24.dp),
+            )
+        }
     }
 }
