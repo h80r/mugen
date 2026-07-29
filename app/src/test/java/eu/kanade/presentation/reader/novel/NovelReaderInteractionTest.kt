@@ -36,4 +36,26 @@ class NovelReaderInteractionTest {
             pageTurnRendererSupported = false,
         ) shouldBe NovelPageTransitionStyle.SLIDE
     }
+
+    @Test
+    fun `resolveComposePagerTransitionSpec supports BOOK transition style with 3D rotation`() {
+        val spec = resolveComposePagerTransitionSpec(
+            style = NovelPageTransitionStyle.BOOK,
+            pageOffset = 0.5f,
+        )
+        spec.rotationY shouldBe -90f
+        spec.pivotXFraction shouldBe 0f
+        spec.cameraDistance shouldBe 15f
+    }
+
+    @Test
+    fun `resolveComposePagerTransitionSpec supports CURL transition style with 3D curl rotation`() {
+        val spec = resolveComposePagerTransitionSpec(
+            style = NovelPageTransitionStyle.CURL,
+            pageOffset = 0.5f,
+        )
+        spec.rotationY shouldBe -90f
+        spec.pivotXFraction shouldBe 1f
+        spec.cameraDistance shouldBe 15f
+    }
 }

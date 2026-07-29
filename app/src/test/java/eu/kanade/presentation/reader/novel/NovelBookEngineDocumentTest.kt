@@ -25,12 +25,16 @@ class NovelBookEngineDocumentTest {
         html shouldContain "#an-book-viewport {"
         html shouldContain "overflow: hidden;"
         html shouldContain "#an-book-content {"
-        html shouldContain "column-width: 100vw;"
-        html shouldContain "column-fill: auto;"
+        // The column box itself is sized from JS with inline !important styles, because the reader
+        // stylesheet forces width, height and padding and would otherwise win.
+        html shouldContain "column-fill: auto !important;"
+        html shouldContain "applyPagedGeometry"
         html shouldContain "#an-book-content img"
         html shouldContain "object-fit: contain;"
         html shouldContain "break-inside: avoid;"
         html shouldNotContain "body { column-width:"
+        // The paged flow keeps the bare chapter markup its column geometry was tuned against.
+        html shouldNotContain "class=\"an-book-section\""
     }
 
     @Test
@@ -46,9 +50,13 @@ class NovelBookEngineDocumentTest {
 
         html shouldContain "touch-action: none;"
         html shouldContain "window.__anBookEngine = Object.freeze({"
-        html shouldContain "next: function()"
+        html shouldContain "next: function(styleName)"
         html shouldContain "kind: 'end'"
-        html shouldContain "viewport.scrollLeft = targetPage * pageSize();"
+        // Page turns are animated from JS, so the page turn style reaches the actual transform
+        // instead of losing against the inline !important geometry.
+        html shouldContain "const goToPage = function(page, styleName)"
+        html shouldContain "goToPage(targetPage, styleName);"
+        html shouldContain "if (style === 'curl')"
         html shouldNotContain "document.body.scrollLeft"
     }
 
@@ -84,9 +92,13 @@ class NovelBookEngineDocumentTest {
 
         html shouldContain "document.createTreeWalker"
         html shouldContain "const charOffsetAtViewportStart = function()"
-        html shouldContain "const goToCharOffset = function(charOffset)"
+        html shouldContain "goToCharOffset = function(charOffset"
+        // Restoring by fraction is what makes reopening a chapter that was never measured land on
+        // the position the reader actually left.
+        html shouldContain "goToFraction = function(fraction"
         html shouldContain "charOffset: charOffsetAtViewportStart()"
         html shouldContain "goTo: goToCharOffset"
+        html shouldContain "goToFraction: goToFraction"
         html shouldContain "relocate: relocate"
     }
 
@@ -102,8 +114,8 @@ class NovelBookEngineDocumentTest {
         )
 
         html shouldContain "window.__anBookEngine = Object.freeze({"
-        html shouldContain "next: function()"
-        html shouldContain "previous: function()"
+        html shouldContain "next: function(styleName)"
+        html shouldContain "previous: function(styleName)"
         html shouldContain "goTo: goToCharOffset"
         html shouldContain "relocate: relocate"
         html shouldContain "viewport.scrollTop"
@@ -146,5 +158,45 @@ class NovelBookEngineDocumentTest {
         html shouldContain "viewport.addEventListener('scroll'"
         html shouldContain "requestAnimationFrame"
         html shouldContain "onRelocated(27"
+    }
+
+    @Test
+    fun `scrolled document wraps its chapter in a section the renderer can stitch`() {
+        val html = buildNovelBookEngineDocumentHtml(
+            document = NovelBookDocument(
+                sectionIndex = 7,
+                chapterId = 91L,
+                html = "<p>Stitched chapter body</p>",
+            ),
+            flow = NovelBookEngineFlow.SCROLLED,
+        )
+
+        html shouldContain
+            "<section class=\"an-book-section\" data-an-index=\"7\" data-an-chapter=\"91\">"
+        html shouldContain ".an-book-section {"
+        html shouldContain "appendSection: appendSection"
+        html shouldContain "prependSection: prependSection"
+        html shouldContain "removeSection: removeSection"
+    }
+
+    @Test
+    fun `scrolled document asks for the next chapter before the reader reaches the edge`() {
+        val html = buildNovelBookEngineDocumentHtml(
+            document = NovelBookDocument(
+                sectionIndex = 0,
+                chapterId = 1L,
+                html = "<p>Long chapter text</p>",
+            ),
+            flow = NovelBookEngineFlow.SCROLLED,
+        )
+
+        // Stitching is a prefetch request, not an edge event: the neighbouring chapter has to be in
+        // the document before the reader gets there, otherwise the crossing is not seamless.
+        html shouldContain "pushStitchRequests"
+        html shouldContain "stitchForwardRequested"
+        html shouldContain "stitchBackwardRequested"
+        // Every resident chapter reports its real text length, so whole book progress does not stay
+        // on estimated chapter weights.
+        html shouldContain "onSectionMeasured"
     }
 }

@@ -2008,7 +2008,7 @@ fun NovelReaderScreen(
             // The book is one continuous document, so stepping backwards never leaves it and chapter
             // navigation must not kick in. The book view knows whether a step is a page (paginated
             // flow) or a viewport of scroll.
-            bookView?.previous()
+            bookView?.previous(activePageTransitionStyle.name)
             return
         }
         if (showWebView) {
@@ -2058,7 +2058,7 @@ fun NovelReaderScreen(
 
     suspend fun moveForwardByReaderActionWithAnimation(pageAnimationDurationMillis: Int?) {
         if (state.bookMode.isEnabled) {
-            bookView?.next()
+            bookView?.next(activePageTransitionStyle.name)
             return
         }
         if (showWebView) {
@@ -2531,6 +2531,7 @@ fun NovelReaderScreen(
                             } else {
                                 NovelBookEngineFlow.SCROLLED
                             },
+                            transitionStyleName = activePageTransitionStyle.name,
                             loadDocument = loadBookEngineDocument,
                             onLocationChanged = onBookEngineLocationChanged,
                             onSectionMeasured = onBookEngineSectionMeasured,
@@ -4817,212 +4818,93 @@ fun NovelReaderScreen(
                     .padding(16.dp),
             )
 
-            // Settings dialog
-            if (showSettings) {
-                NovelReaderSettingsDialog(
-                    sourceId = state.novel.source,
-                    currentWebViewActive = showWebView,
-                    currentPageReaderActive = usePageReader,
-                    onDismissRequest = { showSettings = false },
-                    onPrepareBook = if (state.bookMode.isEnabled) onPrepareWholeBook else null,
-                )
-            }
-            if (showChapterList) {
-                LaunchedEffect(Unit) {
-                    onOpenBottomSheet()
-                }
-                val currentChapterId = state.chapter.id
-                val chapters = if (state.fullChapterOrderList.isNotEmpty()) {
-                    state.fullChapterOrderList
-                } else {
-                    state.chapterOrderList
-                }
-                val chapterListItems = chapters.map { chapter ->
-                    ReaderChapterListItem(
-                        id = chapter.id,
-                        title = chapter.name,
-                        dateText = chapter.dateUpload.takeIf { it > 0 }?.let {
-                            relativeDateTimeText(it)
-                        },
-                        scanlator = chapter.scanlator?.takeIf { it.isNotBlank() },
-                        isCurrent = chapter.id == currentChapterId,
-                    )
-                }
-                ReaderChapterListSheet(
-                    items = chapterListItems,
-                    onDismissRequest = { showChapterList = false },
-                    onChapterClick = { chapterId ->
-                        if (chapterId == state.chapter.id) {
-                            showChapterList = false
-                        } else {
-                            showChapterList = false
-                            onOpenChapter?.invoke(chapterId)
-                        }
-                    },
-                    onDownloadClick = { chapterId ->
-                        onDownloadChapter?.invoke(chapterId)
-                    },
-                )
-            }
-            if (showTtsBehaviorSettings && ttsPlacement.showFooterEntry) {
-                NovelReaderTtsBehaviorSettingsDialog(
-                    sourceId = state.novel.source,
-                    onDismissRequest = { showTtsBehaviorSettings = false },
-                )
-            }
-            if (showGeminiDialog && state.readerSettings.geminiEnabled) {
-                GeminiTranslationDialog(
-                    readerSettings = state.readerSettings,
-                    isTranslating = state.isGeminiTranslating,
-                    translationProgress = state.geminiTranslationProgress,
-                    isVisible = state.isGeminiTranslationVisible,
-                    hasCache = state.hasGeminiTranslationCache,
-                    logs = state.geminiLogs,
-                    onStart = { requestGeminiTranslationStart() },
-                    onStop = onStopGeminiTranslation,
-                    onToggleVisibility = onToggleGeminiTranslationVisibility,
-                    onClear = onClearGeminiTranslation,
-                    onClearAllCache = onClearAllGeminiTranslationCache,
-                    onAddLog = onAddAiTranslationLog,
-                    onClearLogs = onClearGeminiLogs,
-                    onSetGeminiApiKey = onSetGeminiApiKey,
-                    onSetGeminiModel = onSetGeminiModel,
-                    onSetGeminiBatchSize = onSetGeminiBatchSize,
-                    onSetGeminiConcurrency = onSetGeminiConcurrency,
-                    onSetGeminiRelaxedMode = onSetGeminiRelaxedMode,
-                    onSetGeminiDisableCache = onSetGeminiDisableCache,
-                    onSetGeminiReasoningEffort = onSetGeminiReasoningEffort,
-                    onSetGeminiBudgetTokens = onSetGeminiBudgetTokens,
-                    onSetGeminiTemperature = onSetGeminiTemperature,
-                    onSetGeminiTopP = onSetGeminiTopP,
-                    onSetGeminiTopK = onSetGeminiTopK,
-                    onSetGeminiPromptMode = onSetGeminiPromptMode,
-                    onSetGeminiSourceLang = onSetGeminiSourceLang,
-                    onSetGeminiTargetLang = onSetGeminiTargetLang,
-                    onSetGeminiStylePreset = onSetGeminiStylePreset,
-                    onSetGeminiEnabledPromptModifiers = onSetGeminiEnabledPromptModifiers,
-                    onSetGeminiCustomPromptModifier = onSetGeminiCustomPromptModifier,
-                    onSetGeminiAutoTranslateEnglishSource = onSetGeminiAutoTranslateEnglishSource,
-                    onSetGeminiPrefetchNextChapterTranslation = onSetGeminiPrefetchNextChapterTranslation,
-                    onSetGeminiPrivateUnlocked = onSetGeminiPrivateUnlocked,
-                    onSetGeminiPrivatePythonLikeMode = onSetGeminiPrivatePythonLikeMode,
-                    onSetTranslationProvider = onSetTranslationProvider,
-                    onSetOpenRouterBaseUrl = onSetOpenRouterBaseUrl,
-                    onSetOpenRouterApiKey = onSetOpenRouterApiKey,
-                    onSetOpenRouterModel = onSetOpenRouterModel,
-                    onRefreshOpenRouterModels = onRefreshOpenRouterModels,
-                    onTestOpenRouterConnection = onTestOpenRouterConnection,
-                    onSetDeepSeekBaseUrl = onSetDeepSeekBaseUrl,
-                    onSetDeepSeekApiKey = onSetDeepSeekApiKey,
-                    onSetDeepSeekModel = onSetDeepSeekModel,
-                    onRefreshDeepSeekModels = onRefreshDeepSeekModels,
-                    onTestDeepSeekConnection = onTestDeepSeekConnection,
-                    onSetMistralBaseUrl = onSetMistralBaseUrl,
-                    onSetMistralApiKey = onSetMistralApiKey,
-                    onSetMistralModel = onSetMistralModel,
-                    onRefreshMistralModels = onRefreshMistralModels,
-                    onTestMistralConnection = onTestMistralConnection,
-                    onSetNvidiaBaseUrl = onSetNvidiaBaseUrl,
-                    onSetNvidiaApiKey = onSetNvidiaApiKey,
-                    onSetNvidiaModel = onSetNvidiaModel,
-                    onRefreshNvidiaModels = onRefreshNvidiaModels,
-                    onTestNvidiaConnection = onTestNvidiaConnection,
-                    onSetOllamaCloudBaseUrl = onSetOllamaCloudBaseUrl,
-                    onSetOllamaCloudApiKey = onSetOllamaCloudApiKey,
-                    onSetOllamaCloudModel = onSetOllamaCloudModel,
-                    onRefreshOllamaCloudModels = onRefreshOllamaCloudModels,
-                    onTestOllamaCloudConnection = onTestOllamaCloudConnection,
-                    openRouterModels = state.openRouterModelIds,
-                    isOpenRouterModelsLoading = state.isOpenRouterModelsLoading,
-                    isTestingOpenRouterConnection = state.isTestingOpenRouterConnection,
-                    openRouterApiTestStatus = state.openRouterApiTestStatus,
-                    openRouterApiTestMessage = state.openRouterApiTestMessage,
-                    deepSeekModels = state.deepSeekModelIds,
-                    isDeepSeekModelsLoading = state.isDeepSeekModelsLoading,
-                    isTestingDeepSeekConnection = state.isTestingDeepSeekConnection,
-                    deepSeekApiTestStatus = state.deepSeekApiTestStatus,
-                    deepSeekApiTestMessage = state.deepSeekApiTestMessage,
-                    mistralModels = state.mistralModelIds,
-                    isMistralModelsLoading = state.isMistralModelsLoading,
-                    isTestingMistralConnection = state.isTestingMistralConnection,
-                    mistralApiTestStatus = state.mistralApiTestStatus,
-                    mistralApiTestMessage = state.mistralApiTestMessage,
-                    nvidiaModels = state.nvidiaModelIds,
-                    isNvidiaModelsLoading = state.isNvidiaModelsLoading,
-                    isTestingNvidiaConnection = state.isTestingNvidiaConnection,
-                    nvidiaApiTestStatus = state.nvidiaApiTestStatus,
-                    nvidiaApiTestMessage = state.nvidiaApiTestMessage,
-                    ollamaCloudModels = state.ollamaCloudModelIds,
-                    isOllamaCloudModelsLoading = state.isOllamaCloudModelsLoading,
-                    isTestingOllamaCloudConnection = state.isTestingOllamaCloudConnection,
-                    ollamaCloudApiTestStatus = state.ollamaCloudApiTestStatus,
-                    ollamaCloudApiTestMessage = state.ollamaCloudApiTestMessage,
-                    onDismiss = { showGeminiDialog = false },
-                )
-            }
-            if (showGoogleDialog && state.readerSettings.googleTranslationEnabled) {
-                GoogleTranslationDialog(
-                    readerSettings = state.readerSettings,
-                    isTranslating = state.isGoogleTranslating,
-                    translationProgress = state.googleTranslationProgress,
-                    translationPhase = state.translationPhase,
-                    isVisible = state.isGoogleTranslationVisible,
-                    hasCache = state.hasGoogleTranslationCache,
-                    onStart = { requestGoogleTranslationStart() },
-                    onStop = onStopGoogleTranslation,
-                    onResume = onResumeGoogleTranslation,
-                    onToggleVisibility = onToggleGoogleTranslationVisibility,
-                    onClear = onClearGoogleTranslation,
-                    onSetAutoStart = onSetGoogleTranslationAutoStart,
-                    onSetSourceLang = onSetGoogleTranslationSourceLang,
-                    onSetTargetLang = onSetGoogleTranslationTargetLang,
-                    onDismiss = { showGoogleDialog = false },
-                )
-            }
-            translationSwitchRequest?.let { switchRequest ->
-                val fromLabel = when (switchRequest.from) {
-                    TranslationKind.Gemini -> "Gemini"
-                    TranslationKind.Google -> stringResource(AYMR.strings.novel_reader_google_translate)
-                }
-                val toLabel = when (switchRequest.to) {
-                    TranslationKind.Gemini -> "Gemini"
-                    TranslationKind.Google -> stringResource(AYMR.strings.novel_reader_google_translate)
-                }
-                AlertDialog(
-                    onDismissRequest = { translationSwitchRequest = null },
-                    title = {
-                        Text(
-                            text = stringResource(
-                                AYMR.strings.novel_reader_google_translate_switch_confirm,
-                                toLabel,
-                                fromLabel,
-                            ),
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                when (switchRequest.from) {
-                                    TranslationKind.Gemini -> onClearGeminiTranslation()
-                                    TranslationKind.Google -> onClearGoogleTranslation()
-                                }
-                                translationSwitchRequest = null
-                                when (switchRequest.to) {
-                                    TranslationKind.Gemini -> onStartGeminiTranslation()
-                                    TranslationKind.Google -> onStartGoogleTranslation()
-                                }
-                            },
-                        ) {
-                            Text(text = stringResource(AYMR.strings.novel_reader_ai_translator_switch))
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { translationSwitchRequest = null }) {
-                            Text(text = stringResource(AYMR.strings.novel_reader_ai_translator_cancel))
-                        }
-                    },
-                )
-            }
+            // Dialogs & sheets host
+            NovelReaderDialogHost(
+                showSettings = showSettings,
+                onDismissSettings = { showSettings = false },
+                showChapterList = showChapterList,
+                onDismissChapterList = { showChapterList = false },
+                onOpenBottomSheet = onOpenBottomSheet,
+                onOpenChapter = onOpenChapter,
+                onDownloadChapter = onDownloadChapter,
+                showTtsBehaviorSettings = showTtsBehaviorSettings,
+                onDismissTtsBehaviorSettings = { showTtsBehaviorSettings = false },
+                showGeminiDialog = showGeminiDialog,
+                onDismissGeminiDialog = { showGeminiDialog = false },
+                showGoogleDialog = showGoogleDialog,
+                onDismissGoogleDialog = { showGoogleDialog = false },
+                translationSwitchRequest = translationSwitchRequest,
+                onDismissTranslationSwitchRequest = { translationSwitchRequest = null },
+                state = state,
+                showWebView = showWebView,
+                usePageReader = usePageReader,
+                ttsPlacement = ttsPlacement,
+                requestGeminiTranslationStart = { requestGeminiTranslationStart() },
+                requestGoogleTranslationStart = { requestGoogleTranslationStart() },
+                onPrepareWholeBook = onPrepareWholeBook,
+                onStopGeminiTranslation = onStopGeminiTranslation,
+                onToggleGeminiTranslationVisibility = onToggleGeminiTranslationVisibility,
+                onClearGeminiTranslation = onClearGeminiTranslation,
+                onClearAllGeminiTranslationCache = onClearAllGeminiTranslationCache,
+                onAddAiTranslationLog = onAddAiTranslationLog,
+                onClearGeminiLogs = onClearGeminiLogs,
+                onSetGeminiApiKey = onSetGeminiApiKey,
+                onSetGeminiModel = onSetGeminiModel,
+                onSetGeminiBatchSize = onSetGeminiBatchSize,
+                onSetGeminiConcurrency = onSetGeminiConcurrency,
+                onSetGeminiRelaxedMode = onSetGeminiRelaxedMode,
+                onSetGeminiDisableCache = onSetGeminiDisableCache,
+                onSetGeminiReasoningEffort = onSetGeminiReasoningEffort,
+                onSetGeminiBudgetTokens = onSetGeminiBudgetTokens,
+                onSetGeminiTemperature = onSetGeminiTemperature,
+                onSetGeminiTopP = onSetGeminiTopP,
+                onSetGeminiTopK = onSetGeminiTopK,
+                onSetGeminiPromptMode = onSetGeminiPromptMode,
+                onSetGeminiSourceLang = onSetGeminiSourceLang,
+                onSetGeminiTargetLang = onSetGeminiTargetLang,
+                onSetGeminiStylePreset = onSetGeminiStylePreset,
+                onSetGeminiEnabledPromptModifiers = onSetGeminiEnabledPromptModifiers,
+                onSetGeminiCustomPromptModifier = onSetGeminiCustomPromptModifier,
+                onSetGeminiAutoTranslateEnglishSource = onSetGeminiAutoTranslateEnglishSource,
+                onSetGeminiPrefetchNextChapterTranslation = onSetGeminiPrefetchNextChapterTranslation,
+                onSetGeminiPrivateUnlocked = onSetGeminiPrivateUnlocked,
+                onSetGeminiPrivatePythonLikeMode = onSetGeminiPrivatePythonLikeMode,
+                onSetTranslationProvider = onSetTranslationProvider,
+                onSetOpenRouterBaseUrl = onSetOpenRouterBaseUrl,
+                onSetOpenRouterApiKey = onSetOpenRouterApiKey,
+                onSetOpenRouterModel = onSetOpenRouterModel,
+                onRefreshOpenRouterModels = onRefreshOpenRouterModels,
+                onTestOpenRouterConnection = onTestOpenRouterConnection,
+                onSetDeepSeekBaseUrl = onSetDeepSeekBaseUrl,
+                onSetDeepSeekApiKey = onSetDeepSeekApiKey,
+                onSetDeepSeekModel = onSetDeepSeekModel,
+                onRefreshDeepSeekModels = onRefreshDeepSeekModels,
+                onTestDeepSeekConnection = onTestDeepSeekConnection,
+                onSetMistralBaseUrl = onSetMistralBaseUrl,
+                onSetMistralApiKey = onSetMistralApiKey,
+                onSetMistralModel = onSetMistralModel,
+                onRefreshMistralModels = onRefreshMistralModels,
+                onTestMistralConnection = onTestMistralConnection,
+                onSetNvidiaBaseUrl = onSetNvidiaBaseUrl,
+                onSetNvidiaApiKey = onSetNvidiaApiKey,
+                onSetNvidiaModel = onSetNvidiaModel,
+                onRefreshNvidiaModels = onRefreshNvidiaModels,
+                onTestNvidiaConnection = onTestNvidiaConnection,
+                onSetOllamaCloudBaseUrl = onSetOllamaCloudBaseUrl,
+                onSetOllamaCloudApiKey = onSetOllamaCloudApiKey,
+                onSetOllamaCloudModel = onSetOllamaCloudModel,
+                onRefreshOllamaCloudModels = onRefreshOllamaCloudModels,
+                onTestOllamaCloudConnection = onTestOllamaCloudConnection,
+                onStopGoogleTranslation = onStopGoogleTranslation,
+                onResumeGoogleTranslation = onResumeGoogleTranslation,
+                onToggleGoogleTranslationVisibility = onToggleGoogleTranslationVisibility,
+                onClearGoogleTranslation = onClearGoogleTranslation,
+                onSetGoogleTranslationAutoStart = onSetGoogleTranslationAutoStart,
+                onSetGoogleTranslationSourceLang = onSetGoogleTranslationSourceLang,
+                onSetGoogleTranslationTargetLang = onSetGoogleTranslationTargetLang,
+                onStartGeminiTranslation = onStartGeminiTranslation,
+                onStartGoogleTranslation = onStartGoogleTranslation,
+            )
         }
     }
 }
@@ -5099,6 +4981,300 @@ private fun NovelReaderAutoScrollEndOverlay(
                 }
             }
         }
+    }
+}
+
+
+
+@Composable
+private fun NovelReaderDialogHost(
+    showSettings: Boolean,
+    onDismissSettings: () -> Unit,
+    showChapterList: Boolean,
+    onDismissChapterList: () -> Unit,
+    onOpenBottomSheet: () -> Unit,
+    onOpenChapter: ((Long) -> Unit)?,
+    onDownloadChapter: ((Long) -> Unit)?,
+    showTtsBehaviorSettings: Boolean,
+    onDismissTtsBehaviorSettings: () -> Unit,
+    showGeminiDialog: Boolean,
+    onDismissGeminiDialog: () -> Unit,
+    showGoogleDialog: Boolean,
+    onDismissGoogleDialog: () -> Unit,
+    translationSwitchRequest: TranslationSwitchRequest?,
+    onDismissTranslationSwitchRequest: () -> Unit,
+    state: NovelReaderScreenModel.State.Success,
+    showWebView: Boolean,
+    usePageReader: Boolean,
+    ttsPlacement: NovelReaderTtsSettingsPlacementSnapshot,
+    requestGeminiTranslationStart: () -> Unit,
+    requestGoogleTranslationStart: () -> Unit,
+    onPrepareWholeBook: () -> Unit,
+    onStopGeminiTranslation: () -> Unit,
+    onToggleGeminiTranslationVisibility: () -> Unit,
+    onClearGeminiTranslation: () -> Unit,
+    onClearAllGeminiTranslationCache: () -> Unit,
+    onAddAiTranslationLog: (String) -> Unit,
+    onClearGeminiLogs: () -> Unit,
+    onSetGeminiApiKey: (String) -> Unit,
+    onSetGeminiModel: (String) -> Unit,
+    onSetGeminiBatchSize: (Int) -> Unit,
+    onSetGeminiConcurrency: (Int) -> Unit,
+    onSetGeminiRelaxedMode: (Boolean) -> Unit,
+    onSetGeminiDisableCache: (Boolean) -> Unit,
+    onSetGeminiReasoningEffort: (String) -> Unit,
+    onSetGeminiBudgetTokens: (Int) -> Unit,
+    onSetGeminiTemperature: (Float) -> Unit,
+    onSetGeminiTopP: (Float) -> Unit,
+    onSetGeminiTopK: (Int) -> Unit,
+    onSetGeminiPromptMode: (GeminiPromptMode) -> Unit,
+    onSetGeminiSourceLang: (String) -> Unit,
+    onSetGeminiTargetLang: (String) -> Unit,
+    onSetGeminiStylePreset: (NovelTranslationStylePreset) -> Unit,
+    onSetGeminiEnabledPromptModifiers: (List<String>) -> Unit,
+    onSetGeminiCustomPromptModifier: (String) -> Unit,
+    onSetGeminiAutoTranslateEnglishSource: (Boolean) -> Unit,
+    onSetGeminiPrefetchNextChapterTranslation: (Boolean) -> Unit,
+    onSetGeminiPrivateUnlocked: (Boolean) -> Unit,
+    onSetGeminiPrivatePythonLikeMode: (Boolean) -> Unit,
+    onSetTranslationProvider: (NovelTranslationProvider) -> Unit,
+    onSetOpenRouterBaseUrl: (String) -> Unit,
+    onSetOpenRouterApiKey: (String) -> Unit,
+    onSetOpenRouterModel: (String) -> Unit,
+    onRefreshOpenRouterModels: () -> Unit,
+    onTestOpenRouterConnection: () -> Unit,
+    onSetDeepSeekBaseUrl: (String) -> Unit,
+    onSetDeepSeekApiKey: (String) -> Unit,
+    onSetDeepSeekModel: (String) -> Unit,
+    onRefreshDeepSeekModels: () -> Unit,
+    onTestDeepSeekConnection: () -> Unit,
+    onSetMistralBaseUrl: (String) -> Unit,
+    onSetMistralApiKey: (String) -> Unit,
+    onSetMistralModel: (String) -> Unit,
+    onRefreshMistralModels: () -> Unit,
+    onTestMistralConnection: () -> Unit,
+    onSetNvidiaBaseUrl: (String) -> Unit,
+    onSetNvidiaApiKey: (String) -> Unit,
+    onSetNvidiaModel: (String) -> Unit,
+    onRefreshNvidiaModels: () -> Unit,
+    onTestNvidiaConnection: () -> Unit,
+    onSetOllamaCloudBaseUrl: (String) -> Unit,
+    onSetOllamaCloudApiKey: (String) -> Unit,
+    onSetOllamaCloudModel: (String) -> Unit,
+    onRefreshOllamaCloudModels: () -> Unit,
+    onTestOllamaCloudConnection: () -> Unit,
+    onStopGoogleTranslation: () -> Unit,
+    onResumeGoogleTranslation: () -> Unit,
+    onToggleGoogleTranslationVisibility: () -> Unit,
+    onClearGoogleTranslation: () -> Unit,
+    onSetGoogleTranslationAutoStart: (Boolean) -> Unit,
+    onSetGoogleTranslationSourceLang: (String) -> Unit,
+    onSetGoogleTranslationTargetLang: (String) -> Unit,
+    onStartGeminiTranslation: () -> Unit,
+    onStartGoogleTranslation: () -> Unit,
+) {
+    if (showSettings) {
+        NovelReaderSettingsDialog(
+            sourceId = state.novel.source,
+            currentWebViewActive = showWebView,
+            currentPageReaderActive = usePageReader,
+            onDismissRequest = onDismissSettings,
+            onPrepareBook = if (state.bookMode.isEnabled) onPrepareWholeBook else null,
+        )
+    }
+    if (showChapterList) {
+        LaunchedEffect(Unit) {
+            onOpenBottomSheet()
+        }
+        val currentChapterId = state.chapter.id
+        val chapters = if (state.fullChapterOrderList.isNotEmpty()) {
+            state.fullChapterOrderList
+        } else {
+            state.chapterOrderList
+        }
+        val chapterListItems = chapters.map { chapter ->
+            ReaderChapterListItem(
+                id = chapter.id,
+                title = chapter.name,
+                dateText = chapter.dateUpload.takeIf { it > 0 }?.let {
+                    relativeDateTimeText(it)
+                },
+                scanlator = chapter.scanlator?.takeIf { it.isNotBlank() },
+                isCurrent = chapter.id == currentChapterId,
+            )
+        }
+        ReaderChapterListSheet(
+            items = chapterListItems,
+            onDismissRequest = onDismissChapterList,
+            onChapterClick = { chapterId ->
+                onDismissChapterList()
+                if (chapterId != state.chapter.id) {
+                    onOpenChapter?.invoke(chapterId)
+                }
+            },
+            onDownloadClick = { chapterId ->
+                onDownloadChapter?.invoke(chapterId)
+            },
+        )
+    }
+    if (showTtsBehaviorSettings && ttsPlacement.showFooterEntry) {
+        NovelReaderTtsBehaviorSettingsDialog(
+            sourceId = state.novel.source,
+            onDismissRequest = onDismissTtsBehaviorSettings,
+        )
+    }
+    if (showGeminiDialog && state.readerSettings.geminiEnabled) {
+        GeminiTranslationDialog(
+            readerSettings = state.readerSettings,
+            isTranslating = state.isGeminiTranslating,
+            translationProgress = state.geminiTranslationProgress,
+            isVisible = state.isGeminiTranslationVisible,
+            hasCache = state.hasGeminiTranslationCache,
+            logs = state.geminiLogs,
+            onStart = requestGeminiTranslationStart,
+            onStop = onStopGeminiTranslation,
+            onToggleVisibility = onToggleGeminiTranslationVisibility,
+            onClear = onClearGeminiTranslation,
+            onClearAllCache = onClearAllGeminiTranslationCache,
+            onAddLog = onAddAiTranslationLog,
+            onClearLogs = onClearGeminiLogs,
+            onSetGeminiApiKey = onSetGeminiApiKey,
+            onSetGeminiModel = onSetGeminiModel,
+            onSetGeminiBatchSize = onSetGeminiBatchSize,
+            onSetGeminiConcurrency = onSetGeminiConcurrency,
+            onSetGeminiRelaxedMode = onSetGeminiRelaxedMode,
+            onSetGeminiDisableCache = onSetGeminiDisableCache,
+            onSetGeminiReasoningEffort = onSetGeminiReasoningEffort,
+            onSetGeminiBudgetTokens = onSetGeminiBudgetTokens,
+            onSetGeminiTemperature = onSetGeminiTemperature,
+            onSetGeminiTopP = onSetGeminiTopP,
+            onSetGeminiTopK = onSetGeminiTopK,
+            onSetGeminiPromptMode = onSetGeminiPromptMode,
+            onSetGeminiSourceLang = onSetGeminiSourceLang,
+            onSetGeminiTargetLang = onSetGeminiTargetLang,
+            onSetGeminiStylePreset = onSetGeminiStylePreset,
+            onSetGeminiEnabledPromptModifiers = onSetGeminiEnabledPromptModifiers,
+            onSetGeminiCustomPromptModifier = onSetGeminiCustomPromptModifier,
+            onSetGeminiAutoTranslateEnglishSource = onSetGeminiAutoTranslateEnglishSource,
+            onSetGeminiPrefetchNextChapterTranslation = onSetGeminiPrefetchNextChapterTranslation,
+            onSetGeminiPrivateUnlocked = onSetGeminiPrivateUnlocked,
+            onSetGeminiPrivatePythonLikeMode = onSetGeminiPrivatePythonLikeMode,
+            onSetTranslationProvider = onSetTranslationProvider,
+            onSetOpenRouterBaseUrl = onSetOpenRouterBaseUrl,
+            onSetOpenRouterApiKey = onSetOpenRouterApiKey,
+            onSetOpenRouterModel = onSetOpenRouterModel,
+            onRefreshOpenRouterModels = onRefreshOpenRouterModels,
+            onTestOpenRouterConnection = onTestOpenRouterConnection,
+            onSetDeepSeekBaseUrl = onSetDeepSeekBaseUrl,
+            onSetDeepSeekApiKey = onSetDeepSeekApiKey,
+            onSetDeepSeekModel = onSetDeepSeekModel,
+            onRefreshDeepSeekModels = onRefreshDeepSeekModels,
+            onTestDeepSeekConnection = onTestDeepSeekConnection,
+            onSetMistralBaseUrl = onSetMistralBaseUrl,
+            onSetMistralApiKey = onSetMistralApiKey,
+            onSetMistralModel = onSetMistralModel,
+            onRefreshMistralModels = onRefreshMistralModels,
+            onTestMistralConnection = onTestMistralConnection,
+            onSetNvidiaBaseUrl = onSetNvidiaBaseUrl,
+            onSetNvidiaApiKey = onSetNvidiaApiKey,
+            onSetNvidiaModel = onSetNvidiaModel,
+            onRefreshNvidiaModels = onRefreshNvidiaModels,
+            onTestNvidiaConnection = onTestNvidiaConnection,
+            onSetOllamaCloudBaseUrl = onSetOllamaCloudBaseUrl,
+            onSetOllamaCloudApiKey = onSetOllamaCloudApiKey,
+            onSetOllamaCloudModel = onSetOllamaCloudModel,
+            onRefreshOllamaCloudModels = onRefreshOllamaCloudModels,
+            onTestOllamaCloudConnection = onTestOllamaCloudConnection,
+            openRouterModels = state.openRouterModelIds,
+            isOpenRouterModelsLoading = state.isOpenRouterModelsLoading,
+            isTestingOpenRouterConnection = state.isTestingOpenRouterConnection,
+            openRouterApiTestStatus = state.openRouterApiTestStatus,
+            openRouterApiTestMessage = state.openRouterApiTestMessage,
+            deepSeekModels = state.deepSeekModelIds,
+            isDeepSeekModelsLoading = state.isDeepSeekModelsLoading,
+            isTestingDeepSeekConnection = state.isTestingDeepSeekConnection,
+            deepSeekApiTestStatus = state.deepSeekApiTestStatus,
+            deepSeekApiTestMessage = state.deepSeekApiTestMessage,
+            mistralModels = state.mistralModelIds,
+            isMistralModelsLoading = state.isMistralModelsLoading,
+            isTestingMistralConnection = state.isTestingMistralConnection,
+            mistralApiTestStatus = state.mistralApiTestStatus,
+            mistralApiTestMessage = state.mistralApiTestMessage,
+            nvidiaModels = state.nvidiaModelIds,
+            isNvidiaModelsLoading = state.isNvidiaModelsLoading,
+            isTestingNvidiaConnection = state.isTestingNvidiaConnection,
+            nvidiaApiTestStatus = state.nvidiaApiTestStatus,
+            nvidiaApiTestMessage = state.nvidiaApiTestMessage,
+            ollamaCloudModels = state.ollamaCloudModelIds,
+            isOllamaCloudModelsLoading = state.isOllamaCloudModelsLoading,
+            isTestingOllamaCloudConnection = state.isTestingOllamaCloudConnection,
+            ollamaCloudApiTestStatus = state.ollamaCloudApiTestStatus,
+            ollamaCloudApiTestMessage = state.ollamaCloudApiTestMessage,
+            onDismiss = onDismissGeminiDialog,
+        )
+    }
+    if (showGoogleDialog && state.readerSettings.googleTranslationEnabled) {
+        GoogleTranslationDialog(
+            readerSettings = state.readerSettings,
+            isTranslating = state.isGoogleTranslating,
+            translationProgress = state.googleTranslationProgress,
+            translationPhase = state.translationPhase,
+            isVisible = state.isGoogleTranslationVisible,
+            hasCache = state.hasGoogleTranslationCache,
+            onStart = requestGoogleTranslationStart,
+            onStop = onStopGoogleTranslation,
+            onResume = onResumeGoogleTranslation,
+            onToggleVisibility = onToggleGoogleTranslationVisibility,
+            onClear = onClearGoogleTranslation,
+            onSetAutoStart = onSetGoogleTranslationAutoStart,
+            onSetSourceLang = onSetGoogleTranslationSourceLang,
+            onSetTargetLang = onSetGoogleTranslationTargetLang,
+            onDismiss = onDismissGoogleDialog,
+        )
+    }
+    translationSwitchRequest?.let { switchRequest ->
+        val fromLabel = when (switchRequest.from) {
+            TranslationKind.Gemini -> "Gemini"
+            TranslationKind.Google -> stringResource(AYMR.strings.novel_reader_google_translate)
+        }
+        val toLabel = when (switchRequest.to) {
+            TranslationKind.Gemini -> "Gemini"
+            TranslationKind.Google -> stringResource(AYMR.strings.novel_reader_google_translate)
+        }
+        AlertDialog(
+            onDismissRequest = onDismissTranslationSwitchRequest,
+            title = {
+                Text(
+                    text = stringResource(
+                        AYMR.strings.novel_reader_google_translate_switch_confirm,
+                        toLabel,
+                        fromLabel,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        when (switchRequest.from) {
+                            TranslationKind.Gemini -> onClearGeminiTranslation()
+                            TranslationKind.Google -> onClearGoogleTranslation()
+                        }
+                        onDismissTranslationSwitchRequest()
+                        when (switchRequest.to) {
+                            TranslationKind.Gemini -> onStartGeminiTranslation()
+                            TranslationKind.Google -> onStartGoogleTranslation()
+                        }
+                    },
+                ) {
+                    Text(text = stringResource(AYMR.strings.novel_reader_ai_translator_switch))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissTranslationSwitchRequest) {
+                    Text(text = stringResource(AYMR.strings.novel_reader_ai_translator_cancel))
+                }
+            },
+        )
     }
 }
 

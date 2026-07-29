@@ -132,6 +132,7 @@ internal fun buildBookSectionsCss(): String {
         append("  height: 100vh !important;\n")
         append("  max-height: 100vh !important;\n")
         append("  overflow: hidden !important;\n")
+        append("  background-color: transparent !important;\n")
         append("}\n")
         append("html.$BOOK_PAGINATED_CLASS body {\n")
         append("  width: 100vw !important;\n")
@@ -146,11 +147,40 @@ internal fun buildBookSectionsCss(): String {
         append("  padding-left: 0 !important;\n")
         append("  padding-right: 0 !important;\n")
         append("  margin: 0 !important;\n")
+        append("  background-color: transparent !important;\n")
+        append("  scroll-behavior: smooth !important;\n")
+        append("}\n")
+        append("html.$BOOK_PAGINATED_CLASS body.an-page-flip-active,\n")
+        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-book,\n")
+        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-curl,\n")
+        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-book_flip {\n")
+        append("  animation: anBookPageFlip 0.28s ease-in-out;\n")
+        append("}\n")
+        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-depth {\n")
+        append("  animation: anBookPageDepth 0.28s ease-in-out;\n")
+        append("}\n")
+        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-slide {\n")
+        append("  animation: anBookPageSlide 0.28s ease-in-out;\n")
+        append("}\n")
+        append("@keyframes anBookPageFlip {\n")
+        append("  0% { opacity: 1; transform: scale(1); }\n")
+        append("  50% { opacity: 0.82; transform: scale(0.985); }\n")
+        append("  100% { opacity: 1; transform: scale(1); }\n")
+        append("}\n")
+        append("@keyframes anBookPageDepth {\n")
+        append("  0% { opacity: 1; transform: scale(1); }\n")
+        append("  50% { opacity: 0.85; transform: scale(0.96); }\n")
+        append("  100% { opacity: 1; transform: scale(1); }\n")
+        append("}\n")
+        append("@keyframes anBookPageSlide {\n")
+        append("  0% { opacity: 0.9; }\n")
+        append("  100% { opacity: 1; }\n")
         append("}\n")
         append("html.$BOOK_PAGINATED_CLASS section.$BOOK_SECTION_CLASS {\n")
         append("  box-sizing: border-box !important;\n")
         append("  padding-left: var(--an-reader-padding-left, 16px) !important;\n")
         append("  padding-right: var(--an-reader-padding-right, 16px) !important;\n")
+        append("  background-color: transparent !important;\n")
         append("}\n")
         append("html.$BOOK_PAGINATED_CLASS p {\n")
         append("  break-inside: avoid-column !important;\n")
@@ -377,7 +407,10 @@ internal fun buildBookFlowJavascript(paginated: Boolean): String {
  * Moves one page (paginated flow) or roughly one viewport (scrolled flow) forwards or backwards.
  * [delta] is `1` for the next page and `-1` for the previous one.
  */
-internal fun buildBookPageTurnJavascript(delta: Int): String {
+internal fun buildBookPageTurnJavascript(
+    delta: Int,
+    transitionStyleName: String = "SLIDE",
+): String {
     val step = if (delta >= 0) 1 else -1
     return """
         (function() {
@@ -386,17 +419,46 @@ internal fun buildBookPageTurnJavascript(delta: Int): String {
             const scroller = $BOOK_SCROLLER_JS;
             if (!scroller) return 'no-scroller';
             const step = $step;
+            const style = "${transitionStyleName}";
             if (paginated) {
                 const page = Math.max(1, window.innerWidth || root.clientWidth || 1);
                 const max = Math.max(0, scroller.scrollWidth - page);
                 const current = scroller.scrollLeft;
                 const currentPageIndex = Math.round(current / page);
                 const targetPageIndex = Math.min(Math.floor(max / page), Math.max(0, currentPageIndex + step));
-                scroller.scrollLeft = targetPageIndex * page;
+                const targetPos = targetPageIndex * page;
+                const startPos = current;
+                const distance = targetPos - startPos;
+                if (style === 'INSTANT' || distance === 0) {
+                    scroller.scrollLeft = targetPos;
+                } else {
+                    const animationClass = 'an-page-turn-' + style.toLowerCase();
+                    scroller.classList.add(animationClass);
+                    const startTime = performance.now();
+                    const duration = 260;
+                    function stepAnim(now) {
+                        const elapsed = now - startTime;
+                        const progress = Math.min(1, elapsed / duration);
+                        const ease = 0.5 - Math.cos(progress * Math.PI) / 2;
+                        scroller.scrollLeft = Math.round(startPos + distance * ease);
+                        if (progress < 1) {
+                            requestAnimationFrame(stepAnim);
+                        } else {
+                            scroller.classList.remove(animationClass);
+                            scroller.scrollLeft = targetPos;
+                        }
+                    }
+                    requestAnimationFrame(stepAnim);
+                }
             } else {
                 const viewport = (window.innerHeight || 0) * 0.9;
                 const max = Math.max(0, scroller.scrollHeight - (window.innerHeight || 0));
-                scroller.scrollTop = Math.min(max, Math.max(0, scroller.scrollTop + step * viewport));
+                const targetPos = Math.min(max, Math.max(0, scroller.scrollTop + step * viewport));
+                if (style === 'INSTANT') {
+                    scroller.scrollTop = targetPos;
+                } else {
+                    scroller.scrollTo({ top: targetPos, behavior: 'smooth' });
+                }
             }
             if (typeof window.__anBookRelocate === 'function') {
                 window.__anBookRelocate();

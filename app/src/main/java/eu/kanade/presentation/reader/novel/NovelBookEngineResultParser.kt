@@ -34,7 +34,14 @@ internal fun parseNovelBookPageTurnResult(rawResult: String?): NovelBookPageTurn
         when ((payload["kind"] as? JsonPrimitive)?.content) {
             "moved" -> {
                 val charOffset = (payload["charOffset"] as? JsonPrimitive)?.intOrNull ?: return null
-                NovelBookPageTurnResult.Moved(charOffset.coerceAtLeast(0))
+                // A stitched scrolled document holds several chapters, so the position it reports is
+                // only unambiguous together with the section it belongs to. Single-section documents
+                // omit the field and keep the engine's current section.
+                val sectionIndex = (payload["sectionIndex"] as? JsonPrimitive)?.intOrNull ?: -1
+                NovelBookPageTurnResult.Moved(
+                    charOffset = charOffset.coerceAtLeast(0),
+                    sectionIndex = sectionIndex.coerceAtLeast(-1),
+                )
             }
             "start" -> NovelBookPageTurnResult.StartOfDocument
             "end" -> NovelBookPageTurnResult.EndOfDocument

@@ -44,15 +44,17 @@ import kotlin.math.abs
 /**
  * Isolated whole-book reader surface.
  *
- * Unlike the chapter reader, this owns one renderer document per spine section. Page turns at a
- * document boundary load the adjacent section through [NovelBookEngine], while the location remains
- * a section/text offset shared by the scrolled and paginated layouts.
+ * Unlike the chapter reader, the scrolled flow keeps several spine sections in one renderer document
+ * and stitches the next chapter in before the reader reaches it, so crossing a chapter boundary is a
+ * plain scroll. The paged flow still swaps one document per section. The location stays a
+ * section/text offset shared by both layouts.
  */
 @Composable
 internal fun NovelBookReader(
     spine: NovelBookSpine,
     location: NovelBookLocation,
     flow: NovelBookEngineFlow,
+    transitionStyleName: String = "SLIDE",
     loadDocument: suspend (NovelBookSection) -> NovelBookDocument,
     onLocationChanged: (NovelBookLocation) -> Unit,
     onSectionMeasured: (chapterId: Long, charCount: Int) -> Unit,
@@ -68,6 +70,7 @@ internal fun NovelBookReader(
     val latestSpine = rememberUpdatedState(spine)
     val latestLocation = rememberUpdatedState(location)
     val latestFlow = rememberUpdatedState(flow)
+    val latestTransitionStyleName = rememberUpdatedState(transitionStyleName)
     val latestLoadDocument = rememberUpdatedState(loadDocument)
     val latestOnLocationChanged = rememberUpdatedState(onLocationChanged)
     val latestOnSectionMeasured = rememberUpdatedState(onSectionMeasured)
@@ -91,20 +94,20 @@ internal fun NovelBookReader(
         }
     }
     val engineHolder = remember { arrayOfNulls<NovelBookEngine>(1) }
-    // The renderer is created before the navigation lambda exists, so scroll boundaries reported by
-    // the document are routed through this holder instead of duplicating the navigation logic.
-    val navigateHolder = remember { arrayOfNulls<(Boolean) -> Unit>(1) }
+    // The renderer is created before the stitching lambda exists, so boundary reports from the
+    // document are routed through this holder instead of duplicating the logic.
+    val stitchHolder = remember { arrayOfNulls<(Boolean) -> Unit>(1) }
     val renderer = remember(webView) {
         NovelBookWebViewRenderer(
             webView = webView,
-            onRelocated = { charOffset ->
-                engineHolder[0]?.onRendererRelocated(charOffset)
+            onRelocated = { charOffset, sectionIndex ->
+                engineHolder[0]?.onRendererRelocated(charOffset, sectionIndex)
             },
             onDocumentMeasured = { sectionIndex, chapterId, charCount ->
                 engineHolder[0]?.onRendererMeasured(sectionIndex, chapterId, charCount)
             },
             onScrollBoundary = { forward ->
-                navigateHolder[0]?.invoke(forward)
+                stitchHolder[0]?.invoke(forward)
             },
             readerCss = { latestReaderCss.value },
             resolveResource = { requestUrl -> latestResolveResource.value(requestUrl) },
@@ -214,14 +217,29 @@ internal fun NovelBookReader(
                 failure = null
                 runCatching {
                     operationMutex.withLock {
-                        if (forward) engine.next() else engine.previous()
+                        val style = latestTransitionStyleName.value
+                        if (forward) engine.next(style) else engine.previous(style)
                     }
                 }.onFailure { failure = it }
             }
         }
     }
-    DisposableEffect(webView, navigate) {
-        navigateHolder[0] = navigate
+    // A boundary report asks for the neighbouring chapter to be stitched into the live document, so
+    // the reader scrolls into it instead of watching the document be replaced. A failed stitch is
+    // deliberately silent: the chapter on screen stays perfectly readable.
+    val stitch: (Boolean) -> Unit = remember(engine, coroutineScope, operationMutex) {
+        { forward ->
+            coroutineScope.launch {
+                runCatching {
+                    operationMutex.withLock {
+                        engine.stitch(forward)
+                    }
+                }
+            }
+        }
+    }
+    DisposableEffect(webView, navigate, stitch) {
+        stitchHolder[0] = stitch
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
         var downX = 0f
         var downY = 0f

@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonPrimitive
 import java.io.ByteArrayInputStream
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
@@ -34,7 +35,7 @@ import kotlin.coroutines.resume
  */
 internal class NovelBookWebViewRenderer(
     private val webView: WebView,
-    private val onRelocated: (Int) -> Unit = {},
+    private val onRelocated: (Int, Int) -> Unit = { _, _ -> },
     private val onDocumentMeasured: (Int, Long, Int) -> Unit = { _, _, _ -> },
     private val onScrollBoundary: (Boolean) -> Unit = {},
     private val readerCss: () -> String = { "" },
@@ -93,6 +94,7 @@ internal class NovelBookWebViewRenderer(
         document: NovelBookDocument,
         location: NovelBookLocation,
         flow: NovelBookEngineFlow,
+        restoreFraction: Float?,
     ) {
         val generation = generations.incrementAndGet()
         val ready = CompletableDeferred<NovelBookRendererReady>()
@@ -126,23 +128,42 @@ internal class NovelBookWebViewRenderer(
         )
         if (generation != activeGeneration) return
 
-        val restored = evaluatePageTurn(
-            "window.__anBookEngine && window.__anBookEngine.goTo(${location.charOffset})",
-        )
+        // Restoring by fraction is what makes reopening the book land on the same line: the stored
+        // position was a fraction of an estimated chapter length, and only the document knows the
+        // real one.
+        val restoreScript = if (restoreFraction != null) {
+            "window.__anBookEngine && window.__anBookEngine.goToFraction(${restoreFraction.coerceIn(0f, 1f)})"
+        } else {
+            "window.__anBookEngine && window.__anBookEngine.goTo(${location.charOffset})"
+        }
+        val restored = evaluatePageTurn(restoreScript)
         if (generation != activeGeneration) return
         val moved = restored as? NovelBookPageTurnResult.Moved
             ?: error("Book renderer failed to restore section ${document.sectionIndex}")
-        onRelocated(moved.charOffset)
+        onRelocated(moved.charOffset, document.sectionIndex)
     }
 
-    override suspend fun next(): NovelBookPageTurnResult =
-        evaluatePageTurn("window.__anBookEngine && window.__anBookEngine.next()")
+    override suspend fun next(transitionStyleName: String): NovelBookPageTurnResult =
+        evaluatePageTurn("window.__anBookEngine && window.__anBookEngine.next('${transitionStyleName}')")
 
-    override suspend fun previous(): NovelBookPageTurnResult =
-        evaluatePageTurn("window.__anBookEngine && window.__anBookEngine.previous()")
+    override suspend fun previous(transitionStyleName: String): NovelBookPageTurnResult =
+        evaluatePageTurn("window.__anBookEngine && window.__anBookEngine.previous('${transitionStyleName}')")
 
     override suspend fun relocate(): NovelBookPageTurnResult =
         evaluatePageTurn("window.__anBookEngine && window.__anBookEngine.relocate()")
+
+    /**
+     * Adds a chapter to the live scrolled document instead of replacing it, which is what removes
+     * the jump between chapters: the reader simply keeps scrolling into the next section.
+     */
+    override suspend fun appendSection(document: NovelBookDocument): Boolean =
+        evaluateSectionMutation("appendSection", document)
+
+    override suspend fun prependSection(document: NovelBookDocument): Boolean =
+        evaluateSectionMutation("prependSection", document)
+
+    override suspend fun removeSection(sectionIndex: Int): Boolean =
+        evaluateBoolean("window.__anBookEngine && window.__anBookEngine.removeSection($sectionIndex)")
 
     suspend fun close() {
         activeGeneration = generations.incrementAndGet()
@@ -170,7 +191,7 @@ internal class NovelBookWebViewRenderer(
                 if (disposeGeneration == activeGeneration) {
                     val moved = parseNovelBookPageTurnResult(rawResult) as? NovelBookPageTurnResult.Moved
                     if (moved != null) {
-                        onRelocated(moved.charOffset)
+                        onRelocated(moved.charOffset, moved.sectionIndex)
                     }
                 }
                 activeGeneration = generations.incrementAndGet()
@@ -181,20 +202,35 @@ internal class NovelBookWebViewRenderer(
         }
     }
 
-    private suspend fun evaluatePageTurn(script: String): NovelBookPageTurnResult {
-        val rawResult = withTimeout(operationTimeoutMillis) {
-            withContext(Dispatchers.Main.immediate) {
-                suspendCancellableCoroutine<String?> { continuation ->
-                    webView.evaluateJavascript(script) { result ->
-                        if (continuation.isActive) {
-                            continuation.resume(result)
-                        }
+    private suspend fun evaluatePageTurn(script: String): NovelBookPageTurnResult =
+        parseNovelBookPageTurnResult(evaluateRaw(script))
+            ?: error("Book renderer returned an invalid navigation result")
+
+    /** Ships a prepared chapter into the live document as a JSON-encoded string literal. */
+    private suspend fun evaluateSectionMutation(
+        method: String,
+        document: NovelBookDocument,
+    ): Boolean {
+        val html = JsonPrimitive(document.html).toString()
+        return evaluateBoolean(
+            "window.__anBookEngine && window.__anBookEngine.$method(" +
+                "${document.sectionIndex}, ${document.chapterId}, $html)",
+        )
+    }
+
+    private suspend fun evaluateBoolean(script: String): Boolean =
+        evaluateRaw(script)?.trim()?.trim('"') == "true"
+
+    private suspend fun evaluateRaw(script: String): String? = withTimeout(operationTimeoutMillis) {
+        withContext(Dispatchers.Main.immediate) {
+            suspendCancellableCoroutine<String?> { continuation ->
+                webView.evaluateJavascript(script) { result ->
+                    if (continuation.isActive) {
+                        continuation.resume(result)
                     }
                 }
             }
         }
-        return parseNovelBookPageTurnResult(rawResult)
-            ?: error("Book renderer returned an invalid navigation result")
     }
 
     private inner class NativeBridge {
@@ -211,7 +247,26 @@ internal class NovelBookWebViewRenderer(
             val moved = parseNovelBookPageTurnResult(payload) as? NovelBookPageTurnResult.Moved ?: return
             webView.post {
                 if (generation == activeGeneration) {
-                    onRelocated(moved.charOffset)
+                    onRelocated(moved.charOffset, moved.sectionIndex)
+                }
+            }
+        }
+
+        /**
+         * Real text length of a section the stitched document holds. Every resident chapter reports,
+         * not only the one on screen, so whole-book progress runs on measured lengths.
+         */
+        @JavascriptInterface
+        fun onSectionMeasured(
+            generation: Long,
+            sectionIndex: Int,
+            chapterId: Long,
+            charCount: Int,
+        ) {
+            if (generation != activeGeneration || charCount <= 0) return
+            webView.post {
+                if (generation == activeGeneration) {
+                    onDocumentMeasured(sectionIndex, chapterId, charCount)
                 }
             }
         }

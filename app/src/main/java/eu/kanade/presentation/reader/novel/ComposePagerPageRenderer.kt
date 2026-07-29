@@ -61,6 +61,48 @@ internal fun resolveComposePagerTransitionSpec(
             scale = (1f - (clampedAbsOffset * 0.08f)).coerceIn(0.92f, 1f),
             translationXFraction = (-pageOffset * 0.12f).coerceIn(-0.12f, 0.12f),
         )
+        NovelPageTransitionStyle.BOOK -> {
+            if (pageOffset > 0f && pageOffset <= 1f) {
+                ComposePagerTransitionSpec(
+                    rotationY = -180f * pageOffset,
+                    pivotXFraction = 0f,
+                    cameraDistance = 15f,
+                    cancelPagerMotion = true,
+                    shadowAlpha = (abs(0.5f - pageOffset) * -0.6f + 0.3f).coerceIn(0f, 0.3f),
+                    zIndex = 1f - pageOffset,
+                )
+            } else if (pageOffset <= 0f && pageOffset >= -1f) {
+                ComposePagerTransitionSpec(
+                    cancelPagerMotion = true,
+                    zIndex = 0f,
+                )
+            } else {
+                ComposePagerTransitionSpec(
+                    hideOffscreenPages = true,
+                )
+            }
+        }
+        NovelPageTransitionStyle.CURL -> {
+            if (pageOffset > 0f && pageOffset <= 1f) {
+                ComposePagerTransitionSpec(
+                    rotationY = -180f * pageOffset,
+                    pivotXFraction = 1f,
+                    cameraDistance = 15f,
+                    cancelPagerMotion = true,
+                    shadowAlpha = (abs(0.5f - pageOffset) * -0.6f + 0.3f).coerceIn(0f, 0.3f),
+                    zIndex = 1f - pageOffset,
+                )
+            } else if (pageOffset <= 0f && pageOffset >= -1f) {
+                ComposePagerTransitionSpec(
+                    cancelPagerMotion = true,
+                    zIndex = 0f,
+                )
+            } else {
+                ComposePagerTransitionSpec(
+                    hideOffscreenPages = true,
+                )
+            }
+        }
         NovelPageTransitionStyle.BOOK_FLIP -> {
             if (pageOffset > 0f && pageOffset <= 1f) {
                 // Page rotating (around left edge)

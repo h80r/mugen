@@ -75,10 +75,10 @@ internal interface NovelBookView {
     fun goTo(location: NovelBookViewLocation)
 
     /** Steps forward: one page in paginated flow, roughly one viewport in scrolled flow. */
-    fun next()
+    fun next(transitionStyleName: String = "SLIDE")
 
     /** Steps backward. */
-    fun previous()
+    fun previous(transitionStyleName: String = "SLIDE")
 
     /** Switches between scrolled and paginated flow, keeping the reading position. */
     fun setFlow(flow: NovelBookFlow)
@@ -99,9 +99,11 @@ internal class WebViewNovelBookView(private val view: WebView) : NovelBookView {
         )
     }
 
-    override fun next() = evaluate(buildBookPageTurnJavascript(delta = 1))
+    override fun next(transitionStyleName: String) =
+        evaluate(buildBookPageTurnJavascript(delta = 1, transitionStyleName = transitionStyleName))
 
-    override fun previous() = evaluate(buildBookPageTurnJavascript(delta = -1))
+    override fun previous(transitionStyleName: String) =
+        evaluate(buildBookPageTurnJavascript(delta = -1, transitionStyleName = transitionStyleName))
 
     override fun setFlow(flow: NovelBookFlow) =
         evaluate(buildBookFlowJavascript(paginated = flow == NovelBookFlow.PAGINATED))
