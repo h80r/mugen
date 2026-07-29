@@ -91,6 +91,12 @@ internal fun NovelBookReader(
             isHorizontalScrollBarEnabled = false
             isVerticalScrollBarEnabled = false
             overScrollMode = WebView.OVER_SCROLL_NEVER
+            settings.allowFileAccess = true
+            settings.allowContentAccess = true
+            @Suppress("DEPRECATION")
+            settings.allowFileAccessFromFileURLs = true
+            @Suppress("DEPRECATION")
+            settings.allowUniversalAccessFromFileURLs = true
         }
     }
     val engineHolder = remember { arrayOfNulls<NovelBookEngine>(1) }
@@ -192,8 +198,8 @@ internal fun NovelBookReader(
         }.onFailure { failure = it }
         loading = false
     }
-    LaunchedEffect(location.sectionIndex, opened) {
-        if (!opened || engine.location.sectionIndex == location.sectionIndex) return@LaunchedEffect
+    LaunchedEffect(location, opened) {
+        if (!opened || engine.location == location) return@LaunchedEffect
         loading = true
         failure = null
         runCatching {

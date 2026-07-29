@@ -703,6 +703,20 @@ class NovelReaderScreenModel(
         )
     }
 
+    internal fun seekBookModeToProgress(fraction: Float) {
+        if (!bookModeRuntime.isActive) return
+        val artifact = artifactSource
+        val location = if (artifact != null) {
+            val charOffset = (fraction.coerceIn(0f, 1f) * artifact.totalChars).toInt()
+            artifact.locationOf(charOffset)
+        } else {
+            val totalSections = bookModeRuntime.uiState().sectionCount
+            val sectionIndex = (fraction.coerceIn(0f, 1f) * (totalSections - 1).coerceAtLeast(0)).toInt()
+            NovelBookLocation(sectionIndex = sectionIndex, charOffset = 0)
+        }
+        onBookEngineLocationChanged(location)
+    }
+
     private fun scheduleBookEnginePrefetch(sectionIndex: Int) {
         if (!bookModeRuntime.isActive || sectionIndex == lastBookEnginePrefetchSectionIndex) return
         lastBookEnginePrefetchSectionIndex = sectionIndex
@@ -811,9 +825,15 @@ class NovelReaderScreenModel(
     private fun persistBookModeProgress(sectionFraction: Float) {
         persistBookArtifactProgress()
         val encodedProgress = bookModeRuntime.encodedProgress() ?: return
-        val sectionPercent = (sectionFraction * 100f).toInt().coerceIn(0, 100)
+        val artifact = artifactSource
+        val globalPercent = if (artifact != null) {
+            val charOffset = artifact.charOffsetOf(bookModeRuntime.location)
+            (artifact.progressOf(charOffset) * 100f).toInt().coerceIn(0, 100)
+        } else {
+            (sectionFraction * 100f).toInt().coerceIn(0, 100)
+        }
         updateReadingProgress(
-            currentIndex = sectionPercent,
+            currentIndex = globalPercent,
             totalItems = 100,
             persistedProgress = encodedProgress,
         )

@@ -235,6 +235,7 @@ class NovelReaderScreen(
                         }
                     },
                     onReadingProgress = screenModel::updateReadingProgress,
+                    onSeekBookModeProgress = screenModel::seekBookModeToProgress,
                     onToggleBookmark = screenModel::toggleChapterBookmark,
                     onOpenDictionaryHistory = { navigator.push(NovelDictionaryHistoryScreen()) },
                     onStartGeminiTranslation = screenModel::startGeminiTranslation,

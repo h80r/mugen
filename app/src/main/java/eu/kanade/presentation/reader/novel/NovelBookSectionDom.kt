@@ -150,31 +150,45 @@ internal fun buildBookSectionsCss(): String {
         append("  background-color: transparent !important;\n")
         append("  scroll-behavior: smooth !important;\n")
         append("}\n")
-        append("html.$BOOK_PAGINATED_CLASS body.an-page-flip-active,\n")
-        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-book,\n")
-        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-curl,\n")
-        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-book_flip {\n")
-        append("  animation: anBookPageFlip 0.28s ease-in-out;\n")
+        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-slide-next {\n")
+        append("  animation: anBookPageSlideNext 0.24s cubic-bezier(0.25, 1, 0.5, 1);\n")
+        append("}\n")
+        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-slide-prev {\n")
+        append("  animation: anBookPageSlidePrev 0.24s cubic-bezier(0.25, 1, 0.5, 1);\n")
         append("}\n")
         append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-depth {\n")
-        append("  animation: anBookPageDepth 0.28s ease-in-out;\n")
+        append("  animation: anBookPageDepth 0.26s cubic-bezier(0.25, 1, 0.5, 1);\n")
         append("}\n")
-        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-slide {\n")
-        append("  animation: anBookPageSlide 0.28s ease-in-out;\n")
+        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-curl,\n")
+        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-bend {\n")
+        append("  animation: anBookPageCurl 0.28s cubic-bezier(0.25, 1, 0.5, 1);\n")
+        append("  transform-origin: right center !important;\n")
         append("}\n")
-        append("@keyframes anBookPageFlip {\n")
-        append("  0% { opacity: 1; transform: scale(1); }\n")
-        append("  50% { opacity: 0.82; transform: scale(0.985); }\n")
-        append("  100% { opacity: 1; transform: scale(1); }\n")
+        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-book_flip,\n")
+        append("html.$BOOK_PAGINATED_CLASS body.an-page-turn-book {\n")
+        append("  animation: anBookPageBookFlip 0.30s cubic-bezier(0.25, 1, 0.5, 1);\n")
+        append("  transform-origin: left center !important;\n")
+        append("}\n")
+        append("@keyframes anBookPageSlideNext {\n")
+        append("  0% { transform: translateX(100%); }\n")
+        append("  100% { transform: translateX(0); }\n")
+        append("}\n")
+        append("@keyframes anBookPageSlidePrev {\n")
+        append("  0% { transform: translateX(-100%); }\n")
+        append("  100% { transform: translateX(0); }\n")
         append("}\n")
         append("@keyframes anBookPageDepth {\n")
-        append("  0% { opacity: 1; transform: scale(1); }\n")
-        append("  50% { opacity: 0.85; transform: scale(0.96); }\n")
-        append("  100% { opacity: 1; transform: scale(1); }\n")
+        append("  0% { transform: scale(0.92); opacity: 0.65; }\n")
+        append("  100% { transform: scale(1); opacity: 1; }\n")
         append("}\n")
-        append("@keyframes anBookPageSlide {\n")
-        append("  0% { opacity: 0.9; }\n")
-        append("  100% { opacity: 1; }\n")
+        append("@keyframes anBookPageCurl {\n")
+        append("  0% { transform: perspective(1200px) rotateY(-180deg); opacity: 0.5; }\n")
+        append("  100% { transform: perspective(1200px) rotateY(0deg); opacity: 1; }\n")
+        append("}\n")
+        append("@keyframes anBookPageBookFlip {\n")
+        append("  0% { transform: perspective(1200px) rotateY(-180deg); opacity: 0.3; }\n")
+        append("  50% { opacity: 0.7; }\n")
+        append("  100% { transform: perspective(1200px) rotateY(0deg); opacity: 1; }\n")
         append("}\n")
         append("html.$BOOK_PAGINATED_CLASS section.$BOOK_SECTION_CLASS {\n")
         append("  box-sizing: border-box !important;\n")
@@ -432,10 +446,14 @@ internal fun buildBookPageTurnJavascript(
                 if (style === 'INSTANT' || distance === 0) {
                     scroller.scrollLeft = targetPos;
                 } else {
-                    const animationClass = 'an-page-turn-' + style.toLowerCase();
-                    scroller.classList.add(animationClass);
+                    let animationClass = 'an-page-turn-' + style.toLowerCase();
+                    if (style === 'SLIDE') {
+                        animationClass += step > 0 ? '-next' : '-prev';
+                    }
+                    const targetBody = document.body;
+                    if (targetBody) targetBody.classList.add(animationClass);
                     const startTime = performance.now();
-                    const duration = 260;
+                    const duration = (style === 'BOOK_FLIP' || style === 'BOOK') ? 300 : 260;
                     function stepAnim(now) {
                         const elapsed = now - startTime;
                         const progress = Math.min(1, elapsed / duration);
@@ -444,7 +462,7 @@ internal fun buildBookPageTurnJavascript(
                         if (progress < 1) {
                             requestAnimationFrame(stepAnim);
                         } else {
-                            scroller.classList.remove(animationClass);
+                            if (targetBody) targetBody.classList.remove(animationClass);
                             scroller.scrollLeft = targetPos;
                         }
                     }

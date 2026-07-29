@@ -605,13 +605,76 @@ class NovelScreen(
             )
         }
 
+        val bookBuildProgress = successState.bookBuildProgress
+        if (bookBuildProgress != null) {
+            val colors = eu.kanade.presentation.theme.AuroraTheme.colors
+            val cardBg: androidx.compose.ui.graphics.Color = colors.cardBackground
+            val accentColor: androidx.compose.ui.graphics.Color = colors.accent
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = {},
+            ) {
+                androidx.compose.material3.Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = cardBg,
+                    tonalElevation = 6.dp,
+                    shadowElevation = 12.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = stringResource(AYMR.strings.novel_book_building),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.textPrimary,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val phaseText = when (bookBuildProgress.phase) {
+                            eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.DOWNLOADING ->
+                                stringResource(AYMR.strings.novel_book_downloading_chapters)
+                            eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.MERGING ->
+                                stringResource(AYMR.strings.novel_book_building)
+                        }
+                        Text(
+                            text = "$phaseText  ${bookBuildProgress.done}/${bookBuildProgress.total}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.textSecondary,
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        androidx.compose.material3.LinearProgressIndicator(
+                            progress = { bookBuildProgress.fraction },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp),
+                            color = accentColor,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "${(bookBuildProgress.fraction * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = accentColor,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+        }
+
         val bookMissingChapterCount = successState.bookMissingChapterCount
         if (bookMissingChapterCount != null) {
+            val colors = eu.kanade.presentation.theme.AuroraTheme.colors
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = screenModel::dismissBookMissingPrompt,
+                containerColor = colors.cardBackground,
+                shape = RoundedCornerShape(24.dp),
                 title = {
                     androidx.compose.material3.Text(
                         text = stringResource(AYMR.strings.novel_book_missing_downloads_title),
+                        color = colors.textPrimary,
                     )
                 },
                 text = {
@@ -620,6 +683,7 @@ class NovelScreen(
                             AYMR.strings.novel_book_missing_downloads_body,
                             bookMissingChapterCount,
                         ),
+                        color = colors.textSecondary,
                     )
                 },
                 confirmButton = {
@@ -631,6 +695,7 @@ class NovelScreen(
                     ) {
                         androidx.compose.material3.Text(
                             text = stringResource(AYMR.strings.novel_book_missing_downloads_download),
+                            color = colors.accent,
                         )
                     }
                 },
@@ -643,6 +708,7 @@ class NovelScreen(
                     ) {
                         androidx.compose.material3.Text(
                             text = stringResource(AYMR.strings.novel_book_missing_downloads_partial),
+                            color = colors.textSecondary,
                         )
                     }
                 },

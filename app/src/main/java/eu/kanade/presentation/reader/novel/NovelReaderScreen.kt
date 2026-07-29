@@ -346,6 +346,7 @@ fun NovelReaderScreen(
     rawState: NovelReaderScreenModel.State.Success,
     onBack: () -> Unit,
     onReadingProgress: (currentIndex: Int, totalItems: Int, persistedProgress: Long?) -> Unit,
+    onSeekBookModeProgress: (Float) -> Unit = {},
     onToggleBookmark: () -> Unit = {},
     onOpenDictionaryHistory: (() -> Unit)? = null,
     onStartGeminiTranslation: () -> Unit = {},
@@ -3963,6 +3964,7 @@ fun NovelReaderScreen(
                     textListState.canScrollForward,
                     seekbarItemsCount,
                     readingProgressPercent,
+                    state.bookMode.isEnabled,
                 ) {
                     derivedStateOf {
                         resolveReaderVerticalSeekbarValue(
@@ -3978,10 +3980,13 @@ fun NovelReaderScreen(
                             pageTurnHasPreviousChapter = composePagerHasPreviousChapter,
                             seekbarItemsCount = seekbarItemsCount,
                             readingProgressPercent = readingProgressPercent,
+                            bookModeEnabled = state.bookMode.isEnabled,
                         )
                     }
                 }
-                val (pageRailTopLabel, pageRailBottomLabel) = if (usePageReader) {
+                val (pageRailTopLabel, pageRailBottomLabel) = if (state.bookMode.isEnabled) {
+                    "${readingProgressPercent.coerceIn(0, 100)}%" to "100%"
+                } else if (usePageReader) {
                     resolveReaderPageRailLabels(
                         pageIndex = pageReaderProgressPageIndex,
                         pageCount = pageReaderItemsCount,
@@ -3992,7 +3997,9 @@ fun NovelReaderScreen(
                         showScrollPercentage = state.readerSettings.showScrollPercentage,
                     )
                 }
-                val pageSeekbarTickFractions = if (usePageReader) {
+                val pageSeekbarTickFractions = if (state.bookMode.isEnabled) {
+                    emptyList()
+                } else if (usePageReader) {
                     resolveReaderVerticalSeekbarTickFractions(pageReaderItemsCount)
                 } else {
                     emptyList()
@@ -4001,7 +4008,16 @@ fun NovelReaderScreen(
                     modifier = Modifier
                         .align(androidx.compose.ui.Alignment.CenterEnd)
                         .padding(end = MaterialTheme.padding.small)
-                        .size(width = if (usePageReader) 40.dp else 30.dp, height = 270.dp),
+                        .size(
+                            width = if (usePageReader &&
+                                !state.bookMode.isEnabled
+                            ) {
+                                40.dp
+                            } else {
+                                30.dp
+                            },
+                            height = 270.dp,
+                        ),
                     horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
                 ) {
                     if (state.readerSettings.geminiEnabled) {
@@ -4031,7 +4047,8 @@ fun NovelReaderScreen(
                             state.isGeminiTranslating -> MaterialTheme.colorScheme.onErrorContainer
                             hasTranslationResult && state.isGeminiTranslationVisible ->
                                 MaterialTheme.colorScheme.onTertiaryContainer
-                            hasTranslationResult -> MaterialTheme.colorScheme.onSecondaryContainer
+                            hasTranslationResult ->
+                                MaterialTheme.colorScheme.onSecondaryContainer
                             else -> MaterialTheme.colorScheme.onPrimaryContainer
                         }
 
@@ -4168,7 +4185,9 @@ fun NovelReaderScreen(
                         bottomLabel = pageRailBottomLabel,
                         tickFractions = pageSeekbarTickFractions,
                         onProgressChange = { value ->
-                            if (showWebView) {
+                            if (state.bookMode.isEnabled) {
+                                onSeekBookModeProgress(value)
+                            } else if (showWebView) {
                                 val targetPercent = (value * 100f).roundToInt().coerceIn(0, 100)
                                 webProgressPercent = targetPercent
                                 val webView = webViewInstance

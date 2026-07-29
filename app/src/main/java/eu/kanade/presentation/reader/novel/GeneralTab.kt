@@ -137,41 +137,12 @@ fun GeneralTab(
             // The global "Book" reading mode is gone: a title is read as a book only when its book
             // artifact was compiled from the title screen, so these rows follow that state instead.
             if (bookModeActive) {
-                NovelGlassHint(stringResource(AYMR.strings.novel_reader_reading_mode_summary))
                 AuroraToggleRow(
                     label = stringResource(AYMR.strings.novel_reader_book_mode_show_chapter_headings),
                     subtitle = stringResource(AYMR.strings.novel_reader_book_mode_show_chapter_headings_summary),
                     checked = bookModeHeadings,
                     onClick = { bookModeHeadingsPref.set(!bookModeHeadings) },
                 )
-                if (onPrepareBook != null) {
-                    // The plain preference row read like a label, so the action is a real button now
-                    // and it reports how many chapters are already prepared.
-                    NovelGlassHint(stringResource(AYMR.strings.novel_reader_book_mode_prepare_book_summary))
-                    val prepareLabel = stringResource(AYMR.strings.novel_reader_book_mode_prepare_book)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        AuroraMiniOption(
-                            selected = prepareBookInProgress,
-                            onClick = {
-                                // The sheet stays open: this row is the only place the run reports to.
-                                if (!prepareBookInProgress) {
-                                    onPrepareBook()
-                                }
-                            },
-                            label = if (totalChapterCount > 0) {
-                                prepareLabel + "  " + preparedChapterCount + "/" + totalChapterCount
-                            } else {
-                                prepareLabel
-                            },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
             }
             AuroraFieldLabel(stringResource(AYMR.strings.novel_reader_page_mode))
             Row(

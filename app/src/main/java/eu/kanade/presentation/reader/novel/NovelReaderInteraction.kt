@@ -608,14 +608,13 @@ internal fun resolveReaderVerticalSeekbarValue(
     pageTurnHasPreviousChapter: Boolean = composePagerHasPreviousChapter,
     seekbarItemsCount: Int,
     readingProgressPercent: Int,
+    bookModeEnabled: Boolean = false,
 ): Float {
     return when {
-        showWebView -> webProgressPercent.coerceIn(0, 100) / 100f
-        !usePageReader -> {
-            // For long paragraphs/index-based lists, index ratio can lag behind.
-            // Use effective reading progress so thumb reaches the real chapter end.
+        bookModeEnabled || !usePageReader -> {
             readingProgressPercent.coerceIn(0, 100) / 100f
         }
+        showWebView -> webProgressPercent.coerceIn(0, 100) / 100f
         else -> {
             val max = (seekbarItemsCount - 1).coerceAtLeast(1)
             val current = resolvePageReaderCurrentPage(

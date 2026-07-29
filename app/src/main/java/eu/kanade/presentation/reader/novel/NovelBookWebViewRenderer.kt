@@ -76,6 +76,24 @@ internal class NovelBookWebViewRenderer(
             ): WebResourceResponse? {
                 val requestUrl = request?.url?.toString().orEmpty()
                 resolveResource(requestUrl)?.let { return it }
+                if (requestUrl.startsWith("file://")) {
+                    runCatching {
+                        val file = java.io.File(java.net.URI.create(requestUrl))
+                        if (file.exists() && file.isFile) {
+                            val mimeType = when (file.extension.lowercase()) {
+                                "png" -> "image/png"
+                                "jpg", "jpeg" -> "image/jpeg"
+                                "gif" -> "image/gif"
+                                "webp" -> "image/webp"
+                                "svg" -> "image/svg+xml"
+                                "css" -> "text/css"
+                                "js" -> "application/javascript"
+                                else -> "application/octet-stream"
+                            }
+                            return WebResourceResponse(mimeType, null, file.inputStream())
+                        }
+                    }
+                }
                 if (!NovelPluginImage.isSupported(requestUrl)) {
                     return super.shouldInterceptRequest(view, request)
                 }
