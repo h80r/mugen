@@ -333,7 +333,13 @@ internal fun shouldStartInWebView(
     pageReaderEnabled: Boolean,
     contentBlocksCount: Int,
     richContentUnsupportedFeaturesDetected: Boolean,
+    bookModeEnabled: Boolean = false,
 ): Boolean {
+    // Book mode renders through the book engine (NovelBookReader), which owns its own WebView for
+    // both the scrolled and the paged flow, so the legacy reader WebView must stay off. In book
+    // mode that WebView is fed an empty document, and the book renderer is composed only in the
+    // !showWebView branch: letting the paged flow switch it on is what produced a blank screen.
+    if (bookModeEnabled) return false
     if (contentBlocksCount <= 0) return true
     if (pageReaderEnabled) return false
     if (richNativeRendererExperimentalEnabled && richContentUnsupportedFeaturesDetected) return true
@@ -347,6 +353,7 @@ internal fun syncShowWebViewWithReaderSettings(
     pageReaderEnabled: Boolean,
     contentBlocksCount: Int,
     richContentUnsupportedFeaturesDetected: Boolean,
+    bookModeEnabled: Boolean = false,
 ): Boolean {
     val expectedShowWebView = shouldStartInWebView(
         preferWebViewRenderer = preferWebViewRenderer,
@@ -354,6 +361,7 @@ internal fun syncShowWebViewWithReaderSettings(
         pageReaderEnabled = pageReaderEnabled,
         contentBlocksCount = contentBlocksCount,
         richContentUnsupportedFeaturesDetected = richContentUnsupportedFeaturesDetected,
+        bookModeEnabled = bookModeEnabled,
     )
     return if (currentShowWebView == expectedShowWebView) {
         currentShowWebView

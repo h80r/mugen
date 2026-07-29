@@ -120,6 +120,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderColorTheme
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTheme
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTypographyPreset
+import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReadingMode
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTranslationProvider
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTtsHighlightMode
 import eu.kanade.tachiyomi.ui.reader.novel.setting.TextAlign
@@ -1061,6 +1062,9 @@ object SettingsNovelReaderScreen : SearchableSettings {
         val cacheReadChapters by cacheReadChaptersPref.collectAsState()
         val cacheReadChaptersUnlimitedPref = prefs.cacheReadChaptersUnlimited()
         val cacheReadChaptersUnlimited by cacheReadChaptersUnlimitedPref.collectAsState()
+        val readingModePref = prefs.readingMode()
+        val readingMode by readingModePref.collectAsState()
+        val bookModePrepareAheadPref = prefs.bookModePrepareAhead()
         val chapterCacheRefreshTick = remember { mutableIntStateOf(0) }
         val chapterCacheStats by produceState(
             initialValue = NovelReaderChapterDiskCacheStore.stats(),
@@ -1414,6 +1418,44 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     subtitle = stringResource(AYMR.strings.novel_reader_cache_read_chapters_summary),
                 ),
             )
+            add(
+                Preference.PreferenceItem.ListPreference(
+                    preference = readingModePref,
+                    entries = persistentMapOf(
+                        NovelReadingMode.CHAPTERS to
+                            stringResource(AYMR.strings.novel_reader_reading_mode_chapters),
+                        NovelReadingMode.BOOK to
+                            stringResource(AYMR.strings.novel_reader_reading_mode_book),
+                    ),
+                    title = stringResource(AYMR.strings.novel_reader_reading_mode),
+                ),
+            )
+            if (readingMode == NovelReadingMode.BOOK) {
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = prefs.bookModeShowChapterHeadings(),
+                        title = stringResource(
+                            AYMR.strings.novel_reader_book_mode_show_chapter_headings,
+                        ),
+                        subtitle = stringResource(
+                            AYMR.strings.novel_reader_book_mode_show_chapter_headings_summary,
+                        ),
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.ListPreference(
+                        preference = bookModePrepareAheadPref,
+                        entries = persistentMapOf(
+                            1 to "1",
+                            2 to "2",
+                            3 to "3",
+                            5 to "5",
+                            10 to "10",
+                        ),
+                        title = stringResource(AYMR.strings.novel_reader_book_mode_prepare_ahead),
+                    ),
+                )
+            }
         }
 
         return Preference.PreferenceGroup(

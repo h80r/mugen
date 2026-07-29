@@ -91,10 +91,12 @@ internal fun resolveRendererSettingsAvailability(
     pageReaderEnabled: Boolean,
     showWebView: Boolean,
     bionicReadingEnabled: Boolean,
+    bookModeEnabled: Boolean = false,
 ): RendererSettingsAvailability {
     val preferWebViewReason = if (pageReaderEnabled) RendererSettingDisableReason.PAGE_MODE else null
     val richNativeReason = when {
-        showWebView -> RendererSettingDisableReason.WEBVIEW_ACTIVE
+        bookModeEnabled -> RendererSettingDisableReason.WEBVIEW_ACTIVE
+        showWebView && !bookModeEnabled -> RendererSettingDisableReason.WEBVIEW_ACTIVE
         bionicReadingEnabled -> RendererSettingDisableReason.BIONIC_READING
         else -> null
     }

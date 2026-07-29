@@ -2597,6 +2597,17 @@ class NovelReaderUiVisibilityTest {
         assertFalse(webViewState.richNativeEnabled)
         assertTrue(webViewState.richNativeReason == RendererSettingDisableReason.WEBVIEW_ACTIVE)
 
+        val bookModeState = resolveRendererSettingsAvailability(
+            pageReaderEnabled = false,
+            showWebView = false,
+            bionicReadingEnabled = false,
+            bookModeEnabled = true,
+        )
+        assertTrue(bookModeState.preferWebViewEnabled)
+        assertTrue(bookModeState.preferWebViewReason == null)
+        assertFalse(bookModeState.richNativeEnabled)
+        assertTrue(bookModeState.richNativeReason == RendererSettingDisableReason.WEBVIEW_ACTIVE)
+
         val bionicState = resolveRendererSettingsAvailability(
             pageReaderEnabled = false,
             showWebView = false,

@@ -638,6 +638,15 @@ class NovelReaderPreferences(
 
     fun cacheReadChaptersUnlimited() = preferenceStore.getBoolean("novel_reader_cache_read_chapters_unlimited", false)
 
+    // Book mode (continuous whole-novel reading)
+    fun readingMode() = preferenceStore.getEnum("novel_reader_reading_mode", NovelReadingMode.CHAPTERS)
+
+    fun bookModeShowChapterHeadings() =
+        preferenceStore.getBoolean("novel_reader_book_mode_show_chapter_headings", true)
+
+    fun bookModePrepareAhead() =
+        preferenceStore.getInt("novel_reader_book_mode_prepare_ahead", DEFAULT_BOOK_MODE_PREPARE_AHEAD)
+
     // Accessibility
     fun fullScreenMode() = preferenceStore.getBoolean("novel_reader_fullscreen", true)
 
@@ -1976,6 +1985,7 @@ class NovelReaderPreferences(
         const val DEFAULT_AUTO_SCROLL_INTERVAL = 10
         const val DEFAULT_AUTO_SCROLL_OFFSET = 0
         const val DEFAULT_BACKGROUND_PRESET_ID = "linen_paper"
+        const val DEFAULT_BOOK_MODE_PREPARE_AHEAD = 3
 
         private val overrideSerializer = MapSerializer(
             Long.serializer(),

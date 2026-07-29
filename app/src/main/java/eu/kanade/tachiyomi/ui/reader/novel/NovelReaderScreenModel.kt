@@ -37,6 +37,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderOverride
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTheme
+import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReadingMode
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTranslationProvider
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTranslationStylePreset
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTtsHighlightMode
@@ -363,6 +364,460 @@ class NovelReaderScreenModel(
         },
     )
     private val application = Injekt.get<Application>()
+
+    /**
+     * Book mode runtime. It is created eagerly but stays inert until [startBookMode] builds a spine,
+     * so the chapter-by-chapter reader behaves exactly as before while the setting is off.
+     */
+    private val bookModeRuntime = NovelBookModeRuntime(
+        loadRawSection = { sectionChapterId ->
+            val snapshot = ttsChapterRepository.loadChapterSnapshot(sectionChapterId)
+            NovelBookRawSection(
+                chapterId = sectionChapterId,
+                chapterName = snapshot.chapter.name,
+                rawHtml = snapshot.rawHtml,
+                chapterWebUrl = snapshot.chapterWebUrl,
+            )
+        },
+        normalizeHtml = { rawHtml, chapterName ->
+            withContext(Dispatchers.Default) {
+                val withHeading = prependChapterHeadingIfMissing(
+                    rawHtml = rawHtml.normalizeStructuredChapterPayload(),
+                    chapterName = chapterName,
+                )
+                val sanitized = sanitizeChapterHtmlForReader(withHeading)
+                if (sanitized.isBlank()) withHeading else sanitized
+            }
+        },
+        showChapterHeadings = { novelReaderPreferences.bookModeShowChapterHeadings().get() },
+        prepareAhead = { novelReaderPreferences.bookModePrepareAhead().get() },
+    )
+
+    /** Pending book-mode DOM work, consumed and acknowledged by the reader UI. */
+    private val bookModeCommandQueue = NovelBookUiCommandQueue()
+
+    internal val bookModeCommands: kotlinx.coroutines.flow.StateFlow<List<NovelBookUiCommand>> =
+        bookModeCommandQueue.commands
+
+    internal val bookEngineSpine: NovelBookSpine
+        get() = bookModeRuntime.engineSpine
+
+    internal val bookEngineLocation: NovelBookLocation
+        get() = bookModeRuntime.location
+
+    internal suspend fun loadBookEngineDocument(section: NovelBookSection): NovelBookDocument {
+        val document = bookModeRuntime.loadEngineDocument(section)
+        scheduleBookEnginePrefetch(section.index)
+        return document
+    }
+
+    private var bookEnginePrefetchJob: kotlinx.coroutines.Job? = null
+
+    private var lastBookEnginePrefetchSectionIndex = -1
+
+    private var bookModeSyncJob: kotlinx.coroutines.Job? = null
+
+    /** Set while a sync round runs, to request exactly one more round with the latest position. */
+    private var bookModeSyncPending = false
+
+    private var bookModeProgressJob: kotlinx.coroutines.Job? = null
+
+    private var lastPersistedBookModeSectionIndex = -1
+
+    /** Chapters this book-mode session already reported as read, to avoid duplicate write-through. */
+    private val bookModeMarkedReadChapterIds = mutableSetOf<Long>()
+
+    private var lastBookModeFailureLogAtMs = 0L
+
+    /** Idle delay before a book-mode position is written through the progress pipeline. */
+    private val bookModeProgressDebounceMs = 1_500L
+
+    /** Minimum gap between book-mode failure logs, so a failing source cannot flood logcat. */
+    private val bookModeFailureLogThrottleMs = 5_000L
+
+    /**
+     * Gate for book-mode trace logging. Book mode logged only failures before, so a device run could
+     * not be diagnosed; traces are emitted on append/prune only, never from the scroll path.
+     */
+    private val bookModeTraceLoggingEnabled = true
+
+    /** True when the reader should present the whole novel as one continuous document. */
+    private fun isBookModeEnabled(): Boolean =
+        novelReaderPreferences.readingMode().get() == NovelReadingMode.BOOK
+
+    /** Watches the reading-mode preference so book mode can be switched on without a reload. */
+    private var readingModeJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Applies reading-mode switches while the reader is open.
+     *
+     * Book mode used to be evaluated only while a chapter was being loaded, so turning it on from the
+     * settings screen or the quick settings sheet changed nothing until the reader was reopened - the
+     * setting simply looked broken. The reader now starts and stops the book runtime live, and the
+     * renderer follows because it is derived from the book state.
+     */
+    private fun observeReadingModeChanges(loadedChapter: NovelChapter) {
+        readingModeJob?.cancel()
+        readingModeJob = screenModelScope.launch {
+            novelReaderPreferences.readingMode().changes()
+                .distinctUntilChanged()
+                .collect {
+                    val shouldBeActive = isBookModeEnabled()
+                    if (shouldBeActive == bookModeRuntime.isActive) return@collect
+                    if (shouldBeActive) {
+                        maybeStartBookMode(currentChapter ?: loadedChapter)
+                    } else {
+                        bookEnginePrefetchJob?.cancel()
+                        lastBookEnginePrefetchSectionIndex = -1
+                        bookModeRuntime.stop()
+                        bookModeCommandQueue.clear()
+                    }
+                    refreshBookModeState()
+                }
+        }
+    }
+
+    /**
+     * Starts book mode for the currently loaded chapter, or keeps the runtime inert when the reader
+     * is in the classic chapter-by-chapter mode.
+     */
+    private fun maybeStartBookMode(chapter: NovelChapter) {
+        if (!isBookModeEnabled()) {
+            if (bookModeRuntime.isActive) {
+                bookEnginePrefetchJob?.cancel()
+                lastBookEnginePrefetchSectionIndex = -1
+                bookModeRuntime.stop()
+            }
+            return
+        }
+        val chapters = fullChapterOrderList.ifEmpty { chapterOrderList }
+        if (chapters.isEmpty()) return
+        bookModeRuntime.start(
+            chapters = chapters,
+            resumeProgress = chapter.lastPageRead,
+            resumeChapterId = chapter.id,
+        )
+        bookEnginePrefetchJob?.cancel()
+        lastBookEnginePrefetchSectionIndex = -1
+        bookModeCommandQueue.clear()
+        val resumeState = bookModeRuntime.uiState()
+        logcat(LogPriority.INFO) {
+            "Book mode started: sections=${resumeState.sectionCount}, " +
+                "resumeSection=${resumeState.currentSectionIndex}, " +
+                "resumeFraction=${resumeState.currentSectionFraction}, chapterId=${chapter.id}"
+        }
+    }
+
+    /**
+     * Rebuilds the whole book document after the reader (re)loaded it.
+     *
+     * The reader document is loaded asynchronously, so every piece of DOM work that book mode had
+     * already executed - the spine skeleton, the appended sections, the paginated flow class and the
+     * relocate listeners - was thrown away when the fresh document committed. The commands had been
+     * acknowledged by then, so nothing was ever re-sent: the document stayed almost empty, the
+     * paginated flow class was never present (which is why paging did nothing and the document just
+     * panned horizontally), and no relocate event ever arrived, so progress was neither advanced nor
+     * persisted. The reader now calls this once per loaded document.
+     */
+    internal fun onBookModeDocumentReady() {
+        if (!bookModeRuntime.isActive) return
+        bookModeCommandQueue.clear()
+        bookModeRuntime.forgetRenderedSections()
+        val current = bookModeRuntime.uiState()
+        bookModeCommandQueue.enqueueSeed(
+            sections = (0 until current.sectionCount).mapNotNull { sectionIndex ->
+                bookModeRuntime.chapterIdOfSection(sectionIndex)?.let { chapterId ->
+                    SeedSection(sectionIndex = sectionIndex, chapterId = chapterId)
+                }
+            },
+        )
+        bookModeCommandQueue.enqueueScrollTo(
+            sectionIndex = current.currentSectionIndex,
+            sectionFraction = current.currentSectionFraction,
+        )
+        logcat(LogPriority.INFO) {
+            "Book mode document ready: reseed sections=${current.sectionCount}, " +
+                "section=${current.currentSectionIndex}, fraction=${current.currentSectionFraction}"
+        }
+        scheduleBookModeSync()
+    }
+
+    /**
+     * Runs book-mode rounds strictly one at a time: a round queues the sections to append/prune for
+     * the current position and prepares the sections around it.
+     *
+     * Callers that arrive while a round is running only mark the runtime dirty, and the running job
+     * replans once before finishing. The previous version rescheduled itself from `prepareSection`,
+     * which spawned nested jobs and turned into an endless plan -> prepare -> plan storm (the source
+     * of the scroll jank and the logcat flood).
+     */
+    private fun scheduleBookModeSync() {
+        if (!bookModeRuntime.isActive) return
+        if (bookModeSyncJob?.isActive == true) {
+            bookModeSyncPending = true
+            return
+        }
+        bookModeSyncJob = screenModelScope.launch {
+            do {
+                val replan = runBookModeSyncRound()
+            } while (replan && bookModeRuntime.isActive)
+            refreshBookModeState()
+        }
+    }
+
+    /**
+     * One planning round. Returns true when a section finished preparing during the round, so the
+     * window should be recomputed immediately; a failed preparation never asks for a replan, which
+     * keeps a broken chapter from looping forever.
+     */
+    private suspend fun runBookModeSyncRound(): Boolean {
+        bookModeSyncPending = false
+        runCatching {
+            bookModeRuntime.sync(
+                renderSection = { section, html ->
+                    bookModeCommandQueue.enqueueAppend(sectionIndex = section.index, html = html)
+                    logBookModeTrace { "append section=${section.index} chars=${html.length}" }
+                },
+                releaseSection = { section ->
+                    bookModeCommandQueue.enqueuePrune(sectionIndex = section.index)
+                    logBookModeTrace { "prune section=${section.index}" }
+                },
+                prepareSection = { section ->
+                    val prepared = withContext(Dispatchers.IO) {
+                        runCatching { bookModeRuntime.prepareChapter(section.chapterId) }
+                            .onFailure { error ->
+                                logBookModeFailure("prepare section ${section.chapterId}", error)
+                            }
+                            .isSuccess
+                    }
+                    if (prepared) {
+                        bookModeSyncPending = true
+                    }
+                },
+            )
+        }.onFailure { error ->
+            logBookModeFailure("sync sections", error)
+        }
+        refreshBookModeState()
+        return bookModeSyncPending
+    }
+
+    /** Throttled book-mode logging: repeated failures collapse into one entry per few seconds. */
+    private fun logBookModeFailure(what: String, error: Throwable) {
+        val now = System.currentTimeMillis()
+        if (now - lastBookModeFailureLogAtMs < bookModeFailureLogThrottleMs) return
+        lastBookModeFailureLogAtMs = now
+        logcat(LogPriority.WARN, error) { "Book mode failed to $what" }
+    }
+
+    /**
+     * Debug-only book-mode trace. Book mode used to log nothing but failures, so a device run could
+     * not be diagnosed at all; these lines stay out of release builds and out of the hot scroll path.
+     */
+    private inline fun logBookModeTrace(message: () -> String) {
+        if (!bookModeTraceLoggingEnabled) return
+        logcat(LogPriority.DEBUG) { "Book mode: ${message()}" }
+    }
+
+    private fun refreshBookModeState() {
+        val successState = mutableState.value as? State.Success ?: return
+        mutableState.value = successState.copy(bookMode = bookModeRuntime.uiState())
+    }
+
+    /** Reports the reader position inside the book after a scroll update from the WebView. */
+    internal fun onBookModeScroll(sectionIndex: Int, sectionFraction: Float) {
+        if (!bookModeRuntime.isActive) return
+        bookModeRuntime.moveTo(sectionIndex = sectionIndex, sectionFraction = sectionFraction)
+        scheduleBookModeSync()
+        refreshBookModeState()
+        if (sectionIndex != lastPersistedBookModeSectionIndex) {
+            markBookModeCrossedChaptersRead()
+        }
+        scheduleBookModeProgressPersistence(sectionIndex = sectionIndex, sectionFraction = sectionFraction)
+    }
+
+    /** Receives the dedicated renderer's exact section/text location without touching the legacy DOM sync. */
+    internal fun onBookEngineLocationChanged(location: NovelBookLocation) {
+        if (!bookModeRuntime.isActive) return
+        bookModeRuntime.moveTo(location)
+        refreshBookModeState()
+        val currentLocation = bookModeRuntime.location
+        scheduleBookEnginePrefetch(currentLocation.sectionIndex)
+        if (currentLocation.sectionIndex != lastPersistedBookModeSectionIndex) {
+            markBookModeCrossedChaptersRead()
+        }
+        scheduleBookModeProgressPersistence(
+            sectionIndex = currentLocation.sectionIndex,
+            sectionFraction = bookModeRuntime.uiState().currentSectionFraction,
+        )
+    }
+
+    private fun scheduleBookEnginePrefetch(sectionIndex: Int) {
+        if (!bookModeRuntime.isActive || sectionIndex == lastBookEnginePrefetchSectionIndex) return
+        lastBookEnginePrefetchSectionIndex = sectionIndex
+        bookEnginePrefetchJob?.cancel()
+        bookEnginePrefetchJob = screenModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { bookModeRuntime.prefetchAround(sectionIndex) }
+            }
+            result.onFailure { error ->
+                logBookModeFailure("prefetch around section $sectionIndex", error)
+            }
+            refreshBookModeState()
+        }
+    }
+
+    /** Replaces a section estimate with the dedicated renderer's stabilized DOM text length. */
+    internal fun onBookEngineSectionMeasured(chapterId: Long, charCount: Int) {
+        if (!bookModeRuntime.isActive || charCount <= 0) return
+        bookModeRuntime.measureSection(chapterId = chapterId, charCount = charCount)
+        refreshBookModeState()
+    }
+
+    /**
+     * Marks chapters the reader scrolled past as read.
+     *
+     * In book mode the reader never leaves a chapter, so the classic per-chapter read threshold only
+     * ever fires for the section being read. The spine's read-marking policy decides which crossed
+     * sections count as read, and those chapters go through the normal persistence pipeline, so
+     * history, achievements and tracking behave exactly like in the chapter-by-chapter reader.
+     */
+    private fun markBookModeCrossedChaptersRead() {
+        if (!bookModeRuntime.isActive) return
+        val alreadyRead = buildSet {
+            addAll(bookModeMarkedReadChapterIds)
+            chapterOrderList.forEach { if (it.read) add(it.id) }
+        }
+        val crossedChapterIds = bookModeRuntime.chaptersToMarkRead(alreadyRead)
+        if (crossedChapterIds.isEmpty()) return
+        val activeChapterId = currentChapter?.id
+        crossedChapterIds.forEach { chapterId ->
+            // The section being read keeps using the regular progress path, which owns its read state.
+            if (chapterId == activeChapterId) return@forEach
+            val chapter = chapterOrderList.firstOrNull { it.id == chapterId }
+                ?: fullChapterOrderList.firstOrNull { it.id == chapterId }
+                ?: return@forEach
+            bookModeMarkedReadChapterIds += chapterId
+            val becameRead = !chapter.read
+            val chapterIndex = chapterOrderList.indexOfFirst { it.id == chapterId }
+            if (chapterIndex >= 0 && !chapterOrderList[chapterIndex].read) {
+                chapterOrderList[chapterIndex] = chapterOrderList[chapterIndex].copy(read = true)
+            }
+            enqueueProgressPersistence(
+                PendingProgressPersistence(
+                    chapterId = chapter.id,
+                    novelId = chapter.novelId,
+                    chapterNumber = chapter.chapterNumber.toInt(),
+                    read = true,
+                    lastPageRead = chapter.lastPageRead,
+                    emitReadEvent = becameRead,
+                    emitNovelCompleted = becameRead && chapterOrderList.all { it.read },
+                    sessionReadDurationMs = 0L,
+                ),
+            )
+        }
+    }
+
+    /**
+     * Writes the position through the progress pipeline at most once per idle window, and right away
+     * when the reader crosses into another section. Persisting on every position update kept the
+     * database and the history writer busy for the whole reading session.
+     */
+    private fun scheduleBookModeProgressPersistence(sectionIndex: Int, sectionFraction: Float) {
+        bookModeProgressJob?.cancel()
+        if (sectionIndex != lastPersistedBookModeSectionIndex) {
+            lastPersistedBookModeSectionIndex = sectionIndex
+            persistBookModeProgress(sectionFraction)
+            return
+        }
+        bookModeProgressJob = screenModelScope.launch {
+            kotlinx.coroutines.delay(bookModeProgressDebounceMs)
+            persistBookModeProgress(sectionFraction)
+        }
+    }
+
+    /**
+     * Persists the reading position as a book location so the reader can resume anywhere in the
+     * novel. The section fraction is reused as the in-chapter percentage, which keeps the existing
+     * read threshold and history behaviour untouched.
+     */
+    private fun persistBookModeProgress(sectionFraction: Float) {
+        val encodedProgress = bookModeRuntime.encodedProgress() ?: return
+        val sectionPercent = (sectionFraction * 100f).toInt().coerceIn(0, 100)
+        updateReadingProgress(
+            currentIndex = sectionPercent,
+            totalItems = 100,
+            persistedProgress = encodedProgress,
+        )
+    }
+
+    /**
+     * Records the pixel height the renderer measured for a section.
+     *
+     * The value used to be written into the section's text weight, which rescaled the whole book on
+     * every re-measure and made progress jump. Section weights now come from the prepared section
+     * text, and heights are kept in their own field for anchoring and placeholder sizing.
+     */
+    internal fun onBookModeSectionMeasured(chapterId: Long, heightPx: Int) {
+        if (!bookModeRuntime.isActive) return
+        bookModeRuntime.measureSectionLayoutHeight(chapterId = chapterId, heightPx = heightPx)
+    }
+
+    /**
+     * Jumps to a chapter without leaving the continuous document.
+     * Returns true when book mode handled the jump, so the caller must not reload the screen.
+     */
+    internal fun onBookModeChapterSelected(chapterId: Long): Boolean {
+        if (!bookModeRuntime.moveToChapter(chapterId)) return false
+        refreshBookModeState()
+        return true
+    }
+
+    internal fun onBookModeCommandsExecuted(commandIds: List<Long>) {
+        bookModeCommandQueue.ack(commandIds)
+    }
+
+    /**
+     * Retries a section that failed to load, e.g. after a network drop.
+     *
+     * A broken chapter never asks the planner for a replan, so the book would otherwise keep showing
+     * the failed placeholder until the reader left and came back. The retry goes through the loader,
+     * and a success triggers one sync round that renders the section in place.
+     */
+    internal fun onBookModeRetrySection(sectionIndex: Int) {
+        if (!bookModeRuntime.isActive) return
+        val chapterId = bookModeRuntime.chapterIdOfSection(sectionIndex) ?: return
+        screenModelScope.launch {
+            val retried = withContext(Dispatchers.IO) {
+                runCatching { bookModeRuntime.retryChapter(chapterId) }
+                    .onFailure { error -> logBookModeFailure("retry section $chapterId", error) }
+                    .isSuccess
+            }
+            if (retried) {
+                scheduleBookModeSync()
+            }
+            refreshBookModeState()
+        }
+    }
+
+    /**
+     * Prepares every chapter of the book, so the whole novel can be read offline without waiting for
+     * the sliding window. Sections are prepared one by one to stay friendly to source rate limits.
+     */
+    internal fun prepareWholeBook() {
+        if (!bookModeRuntime.isActive) return
+        val chapters = fullChapterOrderList.ifEmpty { chapterOrderList }
+        if (chapters.isEmpty()) return
+        screenModelScope.launch(Dispatchers.IO) {
+            chapters.forEach { chapter ->
+                runCatching { bookModeRuntime.prepareChapter(chapter.id) }
+                    .onFailure { error ->
+                        logBookModeFailure("prepare chapter ${chapter.id}", error)
+                    }
+                refreshBookModeState()
+            }
+        }
+    }
     private val ttsChapterModelBuilder = NovelTtsChapterModelBuilder(NovelTtsWordTokenizer)
     private val ttsHighlightEstimator = NovelTtsHighlightEstimator()
     private val ttsEngineRegistry = NovelTtsEngineRegistry(AndroidNovelTtsEngineInfoSource(application))
@@ -610,6 +1065,8 @@ class NovelReaderScreenModel(
         mutableState.value = State.Loading(initialSettings)
         if (contentModel == null) return setError("Chapter content is empty")
         chapterReadStartTimeMs = System.currentTimeMillis()
+        maybeStartBookMode(chapter)
+        observeReadingModeChanges(chapter)
         restoreGeminiTranslationFromCache(
             chapterId = chapter.id,
             settings = initialSettings,
@@ -673,6 +1130,17 @@ class NovelReaderScreenModel(
             fullChapterOrderList = loadChapterOrderList(novel.id)
             val successState = mutableState.value as? State.Success ?: return@launch
             mutableState.value = successState.copy(fullChapterOrderList = fullChapterOrderList)
+            // Book mode builds its spine from the full chapter list. When the reader opened before
+            // that list was available, the spine only covered the loaded window, so the resume
+            // position mapped to the wrong section and everything above it was missing from the
+            // document. Rebuild the spine (and reseed the skeleton) once the real list arrives.
+            if (bookModeRuntime.isActive && fullChapterOrderList.isNotEmpty()) {
+                val chapter = currentChapter
+                if (chapter != null && bookModeRuntime.uiState().sectionCount != fullChapterOrderList.size) {
+                    maybeStartBookMode(chapter)
+                    refreshBookModeState()
+                }
+            }
         }
     }
 
@@ -1109,6 +1577,7 @@ class NovelReaderScreenModel(
                 ollamaCloudApiTestStatus = ollamaCloudApiTestStatus,
                 ollamaCloudApiTestMessage = ollamaCloudApiTestMessage,
             ),
+            bookMode = bookModeRuntime.uiState(),
         )
     }
     private suspend fun refreshTtsEngines() {
@@ -2285,6 +2754,22 @@ class NovelReaderScreenModel(
         progressPersistenceJob?.cancel()
         pendingProgressPersistenceByChapterId.clear()
         progressPersistenceScheduled = false
+        bookModeSyncJob?.cancel()
+        bookModeSyncJob = null
+        // Flush the debounced book-mode position before the jobs die: leaving the reader mid-section
+        // would otherwise lose up to one debounce window of reading progress, and chapters the reader
+        // scrolled past would never be marked read.
+        if (bookModeRuntime.isActive) {
+            markBookModeCrossedChaptersRead()
+            persistBookModeProgress(bookModeRuntime.uiState().currentSectionFraction)
+        }
+        bookModeProgressJob?.cancel()
+        bookModeProgressJob = null
+        bookModeSyncPending = false
+        lastPersistedBookModeSectionIndex = -1
+        bookModeMarkedReadChapterIds.clear()
+        bookModeRuntime.stop()
+        bookModeCommandQueue.clear()
         ttsWordProgressJob?.cancel()
         incognitoObservationJob?.cancel()
         NovelReaderIncognitoState.set(false)
@@ -4373,6 +4858,7 @@ class NovelReaderScreenModel(
             val googleTranslation: ReaderGoogleState = ReaderGoogleState(),
             val ttsUiState: NovelReaderTtsUiState = NovelReaderTtsUiState(),
             val aiProviders: ReaderAiProvidersState = ReaderAiProvidersState(),
+            val bookMode: ReaderBookModeState = ReaderBookModeState(),
         ) : State {
             val textBlocks: List<String>
                 get() = contentBlocks
@@ -4433,6 +4919,29 @@ class NovelReaderScreenModel(
             val lastSavedWebProgressPercent: Int = 0,
             val lastSavedPageReaderProgress: PageReaderProgress? = null,
         )
+
+        /**
+         * Book-mode (whole-novel continuous reading) UI state.
+         *
+         * Only primitives and index lists are exposed here: the spine, the section store and the
+         * render coordinator stay inside the screen model. When [isEnabled] is false the reader
+         * behaves exactly like the classic per-chapter reader.
+         */
+        data class ReaderBookModeState(
+            val isEnabled: Boolean = false,
+            val sectionCount: Int = 0,
+            val currentSectionIndex: Int = 0,
+            val currentSectionFraction: Float = 0f,
+            val bookProgressFraction: Float = 0f,
+            val renderedSectionIndices: List<Int> = emptyList(),
+            val preparingSectionIndices: List<Int> = emptyList(),
+            val failedSectionIndices: List<Int> = emptyList(),
+            val showChapterHeadings: Boolean = true,
+        ) {
+            val isReady: Boolean get() = isEnabled && sectionCount > 0
+
+            val isPreparing: Boolean get() = preparingSectionIndices.isNotEmpty()
+        }
 
         data class ReaderGeminiState(
             val isGeminiTranslating: Boolean = false,

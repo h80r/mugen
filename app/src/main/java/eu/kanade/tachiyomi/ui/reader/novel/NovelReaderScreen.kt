@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -320,6 +321,18 @@ class NovelReaderScreen(
                     onRetryNovelDictionary = screenModel::retryNovelDictionary,
                     onDismissNovelDictionary = screenModel::dismissNovelDictionary,
                     onPlaySelectedTextPronunciation = screenModel::playSelectedTextPronunciation,
+                    bookEngineSpine = screenModel.bookEngineSpine,
+                    bookEngineLocation = screenModel.bookEngineLocation,
+                    loadBookEngineDocument = screenModel::loadBookEngineDocument,
+                    onBookEngineLocationChanged = screenModel::onBookEngineLocationChanged,
+                    onBookEngineSectionMeasured = screenModel::onBookEngineSectionMeasured,
+                    bookModeCommands = screenModel.bookModeCommands.collectAsState().value,
+                    onBookModeCommandsExecuted = screenModel::onBookModeCommandsExecuted,
+                    onBookModeScroll = screenModel::onBookModeScroll,
+                    onBookModeSectionMeasured = screenModel::onBookModeSectionMeasured,
+                    onBookModeRetrySection = screenModel::onBookModeRetrySection,
+                    onBookModeDocumentReady = screenModel::onBookModeDocumentReady,
+                    onPrepareWholeBook = screenModel::prepareWholeBook,
                     onPrepareAutoScrollHandoff = screenModel::prepareAutoScrollHandoff,
                     onConsumeAutoScrollHandoff = screenModel::consumeAutoScrollHandoffIfMatches,
                     onCancelAutoScrollHandoff = screenModel::cancelAutoScrollHandoff,
@@ -357,6 +370,13 @@ class NovelReaderScreen(
                         }
                     },
                     onOpenChapter = { chapterId ->
+                        // In book mode the whole novel is one continuous document, so jumping to a
+                        // chapter only moves the reading position instead of reloading the screen.
+                        if (successState.bookMode.isEnabled &&
+                            screenModel.onBookModeChapterSelected(chapterId)
+                        ) {
+                            return@NovelReaderScreen
+                        }
                         coroutineScope.launch {
                             screenModel.persistCurrentChapterExitState()
                             NovelReaderSystemUiSession.markInternalChapterReplace()

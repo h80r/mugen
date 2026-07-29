@@ -2194,6 +2194,16 @@
     <string name="novel_reader_cache_read_chapters_summary">Сохранять открытые главы во временный сжатый кэш для быстрого повторного открытия (размер ограничен автоматически)</string>
     <string name="novel_reader_cache_read_chapters_unlimited">Безлимитный кэш глав</string>
     <string name="novel_reader_cache_read_chapters_unlimited_summary">Отключить ограничения по размеру и количеству глав в кэше (может занять много места)</string>
+    <string name="novel_reader_reading_mode">Режим чтения</string>
+    <string name="novel_reader_reading_mode_chapters">По главам</string>
+    <string name="novel_reader_reading_mode_book">Книга</string>
+    <string name="novel_reader_reading_mode_summary">В режиме «Книга» текст остаётся одним непрерывным документом, а соседние главы подгружаются на ходу, без отдельной загрузки каждой главы</string>
+    <string name="novel_reader_book_mode_show_chapter_headings">Показывать названия глав в режиме книги</string>
+    <string name="novel_reader_book_mode_show_chapter_headings_summary">На границе глав всегда есть тонкий разделитель; названия можно скрыть для непрерывного чтения</string>
+    <string name="novel_reader_book_mode_prepare_ahead">Готовить главы заранее</string>
+    <string name="novel_reader_book_mode_prepare_ahead_summary">Сколько следующих глав подготавливать в фоне, чтобы чтение не прерывалось загрузкой</string>
+    <string name="novel_reader_book_mode_prepare_book">Подготовить книгу</string>
+    <string name="novel_reader_book_mode_prepare_book_summary">Скачать и подготовить остальные главы, чтобы читать книгу целиком без сети</string>
     <string name="novel_reader_chapter_cache_size">Размер кэша глав</string>
     <string name="novel_reader_chapter_cache_size_summary_limited">%1$s • %2$s записей • лимит %3$s / %4$s глав</string>
     <string name="novel_reader_chapter_cache_size_summary_unlimited">%1$s • %2$s записей • без лимита</string>
@@ -2859,5 +2869,6 @@
     <string name="achievement_lattice_resonance_title">Резонанс Каркаса</string>
     <string name="achievement_lattice_resonance_desc">Оболочка снята. Сигнал дошёл до ядра. Архитектор опознан.</string>
     <string name="achievement_lattice_resonance_hint_vague">Что-то дрейфует под оболочкой рендера…</string>
+    <string name="novel_reader_book_mode_section_failed">Не удалось загрузить эту главу</string>
+    <string name="novel_reader_book_mode_section_retry">Повторить</string>
 </resources>
-

@@ -30,8 +30,10 @@ import eu.kanade.presentation.reader.settings.AuroraToggleRow
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderOverride
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReadingMode
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.util.collectAsState
 import kotlin.math.roundToInt
 
 @Composable
@@ -43,6 +45,7 @@ fun GeneralTab(
     overrideEnabled: Boolean,
     preferences: NovelReaderPreferences,
     onDismissRequest: () -> Unit,
+    onPrepareBook: (() -> Unit)? = null,
 ) {
     fun <T> update(
         value: T,
@@ -60,17 +63,6 @@ fun GeneralTab(
         }
     }
 
-    val rendererAvailability = remember(
-        currentPageReaderActive,
-        currentWebViewActive,
-        settings.bionicReading,
-    ) {
-        resolveRendererSettingsAvailability(
-            pageReaderEnabled = currentPageReaderActive,
-            showWebView = currentWebViewActive,
-            bionicReadingEnabled = settings.bionicReading,
-        )
-    }
     val pageTransitionEntries = novelPageTransitionStyleEntries()
     val pageTurnSpeedEntries = novelPageTurnSpeedEntries()
     val pageTurnIntensityEntries = novelPageTurnIntensityEntries()
@@ -83,6 +75,23 @@ fun GeneralTab(
     var pageTurnTuningExpanded by rememberSaveable(settings.pageReader, settings.pageTransitionStyle) {
         mutableStateOf(false)
     }
+    val readingModePref = preferences.readingMode()
+    val readingMode by readingModePref.collectAsState()
+    val rendererAvailability = remember(
+        currentPageReaderActive,
+        currentWebViewActive,
+        settings.bionicReading,
+        readingMode,
+    ) {
+        resolveRendererSettingsAvailability(
+            pageReaderEnabled = currentPageReaderActive,
+            showWebView = currentWebViewActive,
+            bionicReadingEnabled = settings.bionicReading,
+            bookModeEnabled = readingMode == NovelReadingMode.BOOK,
+        )
+    }
+    val bookModeHeadingsPref = preferences.bookModeShowChapterHeadings()
+    val bookModeHeadings by bookModeHeadingsPref.collectAsState()
 
     @Composable
     fun rendererSubtitle(
@@ -124,6 +133,53 @@ fun GeneralTab(
         }
 
         AuroraGlassSection(title = stringResource(AYMR.strings.novel_reader_section_reading_behavior)) {
+            AuroraFieldLabel(stringResource(AYMR.strings.novel_reader_reading_mode))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AuroraMiniOption(
+                    selected = readingMode == NovelReadingMode.CHAPTERS,
+                    onClick = {
+                        if (readingMode != NovelReadingMode.CHAPTERS) {
+                            readingModePref.set(NovelReadingMode.CHAPTERS)
+                        }
+                    },
+                    label = stringResource(AYMR.strings.novel_reader_reading_mode_chapters),
+                    modifier = Modifier.weight(1f),
+                )
+                AuroraMiniOption(
+                    selected = readingMode == NovelReadingMode.BOOK,
+                    onClick = {
+                        if (readingMode != NovelReadingMode.BOOK) {
+                            readingModePref.set(NovelReadingMode.BOOK)
+                        }
+                    },
+                    label = stringResource(AYMR.strings.novel_reader_reading_mode_book),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (readingMode == NovelReadingMode.BOOK) {
+                NovelGlassHint(stringResource(AYMR.strings.novel_reader_reading_mode_summary))
+                AuroraToggleRow(
+                    label = stringResource(AYMR.strings.novel_reader_book_mode_show_chapter_headings),
+                    subtitle = stringResource(AYMR.strings.novel_reader_book_mode_show_chapter_headings_summary),
+                    checked = bookModeHeadings,
+                    onClick = { bookModeHeadingsPref.set(!bookModeHeadings) },
+                )
+                if (onPrepareBook != null) {
+                    TextPreferenceWidget(
+                        title = stringResource(AYMR.strings.novel_reader_book_mode_prepare_book),
+                        subtitle = stringResource(AYMR.strings.novel_reader_book_mode_prepare_book_summary),
+                        onPreferenceClick = {
+                            onPrepareBook()
+                            onDismissRequest()
+                        },
+                    )
+                }
+            }
             AuroraFieldLabel(stringResource(AYMR.strings.novel_reader_page_mode))
             Row(
                 modifier = Modifier

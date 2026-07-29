@@ -146,6 +146,12 @@ import eu.kanade.tachiyomi.data.coil.NovelReaderRefererImage
 import eu.kanade.tachiyomi.source.novel.NovelPluginImage
 import eu.kanade.tachiyomi.source.novel.NovelPluginImageResolver
 import eu.kanade.tachiyomi.source.novel.NovelSiteSource
+import eu.kanade.tachiyomi.ui.reader.novel.NovelBookDocument
+import eu.kanade.tachiyomi.ui.reader.novel.NovelBookEngineFlow
+import eu.kanade.tachiyomi.ui.reader.novel.NovelBookLocation
+import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSection
+import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSpine
+import eu.kanade.tachiyomi.ui.reader.novel.NovelBookUiCommand
 import eu.kanade.tachiyomi.ui.reader.novel.NovelReaderScreenModel
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRenderer
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection
@@ -436,6 +442,18 @@ fun NovelReaderScreen(
     onRetryNovelDictionary: () -> Unit = onLookupSelectedTextDefinition,
     onDismissNovelDictionary: () -> Unit = {},
     onPlaySelectedTextPronunciation: (String) -> Unit = {},
+    bookEngineSpine: NovelBookSpine = NovelBookSpine.EMPTY,
+    bookEngineLocation: NovelBookLocation = NovelBookLocation.START,
+    loadBookEngineDocument: (suspend (NovelBookSection) -> NovelBookDocument)? = null,
+    onBookEngineLocationChanged: (NovelBookLocation) -> Unit = {},
+    onBookEngineSectionMeasured: (chapterId: Long, charCount: Int) -> Unit = { _, _ -> },
+    bookModeCommands: List<NovelBookUiCommand> = emptyList(),
+    onBookModeCommandsExecuted: (List<Long>) -> Unit = {},
+    onBookModeScroll: (sectionIndex: Int, sectionFraction: Float) -> Unit = { _, _ -> },
+    onBookModeSectionMeasured: (chapterId: Long, charCount: Int) -> Unit = { _, _ -> },
+    onBookModeRetrySection: (sectionIndex: Int) -> Unit = {},
+    onBookModeDocumentReady: () -> Unit = {},
+    onPrepareWholeBook: () -> Unit = {},
 ) {
     val sanitizedSettings = remember(rawState.readerSettings) {
         rawState.readerSettings.copy(
@@ -501,6 +519,7 @@ fun NovelReaderScreen(
         state.chapter.id,
         state.readerSettings.preferWebViewRenderer,
         state.contentBlocks.size,
+        state.bookMode.isEnabled,
     ) {
         mutableStateOf(
             shouldStartInWebView(
@@ -509,6 +528,7 @@ fun NovelReaderScreen(
                 pageReaderEnabled = state.readerSettings.pageReader,
                 contentBlocksCount = state.contentBlocks.size,
                 richContentUnsupportedFeaturesDetected = state.richContentUnsupportedFeaturesDetected,
+                bookModeEnabled = state.bookMode.isEnabled,
             ),
         )
     }
@@ -525,6 +545,7 @@ fun NovelReaderScreen(
         state.readerSettings.pageReader,
         state.contentBlocks.size,
         state.richContentUnsupportedFeaturesDetected,
+        state.bookMode.isEnabled,
     ) {
         showWebView = syncShowWebViewWithReaderSettings(
             currentShowWebView = showWebView,
@@ -533,6 +554,7 @@ fun NovelReaderScreen(
             pageReaderEnabled = state.readerSettings.pageReader,
             contentBlocksCount = state.contentBlocks.size,
             richContentUnsupportedFeaturesDetected = state.richContentUnsupportedFeaturesDetected,
+            bookModeEnabled = state.bookMode.isEnabled,
         )
     }
     val readerPreferences = remember { Injekt.get<NovelReaderPreferences>() }
@@ -659,6 +681,11 @@ fun NovelReaderScreen(
         persistedProgress: Long?,
         flashDisplay: Boolean = false,
     ) {
+        // Book mode keeps progress in its own domain (spine section + fraction, persisted as an
+        // encoded book location). The classic per-chapter reporters (web scroll listener, paginated
+        // and native readers) stay wired up for the normal reader, so ignore them while book mode is
+        // active instead of letting a per-chapter percentage overwrite the book location.
+        if (state.bookMode.isEnabled) return
         if (flashDisplay && flashOnPageChange && eInkProfile.isEnabled && hasReportedReadingProgress) {
             displayRefreshHost.flash()
         }
@@ -1244,11 +1271,16 @@ fun NovelReaderScreen(
         richContentUnsupportedFeaturesDetected = state.richContentUnsupportedFeaturesDetected,
     )
     val nativeScrollItemsCount = if (useRichNativeScroll) richScrollBlocks.size else scrollContentBlocks.size
+    // Book mode streams the whole novel into one document, so the per-chapter content blocks stay
+    // empty and readiness has to come from the book session instead. Otherwise auto-scroll and the
+    // reader chrome wait forever for a chapter payload that book mode never loads.
     val autoScrollContentReady = when {
+        state.bookMode.isEnabled -> webViewPageReadyForAutoScroll && state.bookMode.isReady
         showWebView -> webViewPageReadyForAutoScroll && scrollContentBlocks.isNotEmpty()
         else -> scrollContentBlocks.isNotEmpty() || richScrollBlocks.isNotEmpty()
     }
     val autoScrollHasRenderableItems = when {
+        state.bookMode.isEnabled -> webViewInstance != null && state.bookMode.sectionCount > 0
         showWebView -> webViewInstance != null
         usePageReader -> pageReaderItemsCount > 0
         else -> nativeScrollItemsCount > 0
@@ -1306,6 +1338,186 @@ fun NovelReaderScreen(
                 }
             },
         )
+    }
+    // Book mode: run the queued DOM work against the live document, then acknowledge it so the
+    // screen model can queue the next window. Commands stay pending while the WebView is missing.
+    // The reader document is loaded asynchronously and can be replaced, which wipes every seeded
+    // placeholder, appended section, flow class and relocate listener. This counter tracks the loaded
+    // document so all of that work is (re)applied against the document that is actually on screen.
+    var bookModeDocumentGeneration by remember(state.novel.id) { mutableStateOf(0) }
+    LaunchedEffect(bookModeCommands, webViewInstance) {
+        if (bookModeCommands.isEmpty()) return@LaunchedEffect
+        val view = webViewInstance ?: return@LaunchedEffect
+        if (!view.settings.javaScriptEnabled) return@LaunchedEffect
+        val executedCommandIds = mutableListOf<Long>()
+        for (command in bookModeCommands) {
+            val script = when (command) {
+                is NovelBookUiCommand.Append -> buildAppendBookSectionJavascript(
+                    sectionIndex = command.sectionIndex,
+                    sectionHtml = command.html,
+                    keepScrollAnchored = command.keepScrollAnchored,
+                )
+                is NovelBookUiCommand.Prune -> buildPruneBookSectionJavascript(
+                    sectionIndex = command.sectionIndex,
+                )
+                is NovelBookUiCommand.ScrollTo -> buildScrollToBookSectionJavascript(
+                    sectionIndex = command.sectionIndex,
+                    sectionFraction = command.sectionFraction,
+                )
+                // Seed the full spine as collapsed placeholders before any other DOM work, so a
+                // resume in the middle of the book still produces a document that can be scrolled
+                // back to the first chapter instead of starting at the resume section.
+                is NovelBookUiCommand.Seed -> buildBookSkeletonJavascript(
+                    sections = command.sections.map { seed ->
+                        NovelBookSkeletonSection(
+                            sectionIndex = seed.sectionIndex,
+                            chapterId = seed.chapterId,
+                        )
+                    },
+                )
+            }
+            suspendCancellableCoroutine<Unit> { continuation ->
+                view.post {
+                    view.evaluateJavascript(script) {
+                        if (continuation.isActive) {
+                            continuation.resume(Unit)
+                        }
+                    }
+                }
+            }
+            executedCommandIds += command.id
+        }
+        if (executedCommandIds.isNotEmpty()) {
+            onBookModeCommandsExecuted(executedCommandIds)
+            view.post {
+                view.revealReaderDocumentAndWebView(shouldHideWebViewUntilReveal)
+            }
+        }
+    }
+    // Book mode: the document PUSHES its reading position to the reader (relocate events), coalesced to
+    // at most one per animation frame. The previous version polled the document every 400 ms forever,
+    // which kept the JS thread and the progress-persistence pipeline permanently busy: that is what
+    // produced the scroll jank, the endless logcat spam and the unresponsive reader chrome.
+    val bookModeRelocateHandler: (NovelBookDocumentMetrics) -> Unit = remember {
+        { metrics ->
+            // Heights are layout information only; book progress stays in the spine's text domain.
+            metrics.measuredSections().forEach { section ->
+                onBookModeSectionMeasured(section.chapterId, section.heightPx)
+            }
+            metrics.currentSection()?.let { current ->
+                onBookModeScroll(current.index, metrics.fractionInside(current))
+            }
+        }
+    }
+    LaunchedEffect(state.bookMode.isEnabled, webViewInstance, bookModeDocumentGeneration) {
+        if (!state.bookMode.isEnabled) return@LaunchedEffect
+        val view = webViewInstance ?: return@LaunchedEffect
+        if (!view.settings.javaScriptEnabled) return@LaunchedEffect
+        view.post {
+            view.registerBookRelocateBridge(bookModeRelocateHandler)
+            view.installBookRelocateBridgeScript()
+        }
+    }
+    // A freshly loaded document is empty, so the book has to be put back into it: skeleton, resident
+    // sections and reading position.
+    LaunchedEffect(state.bookMode.isEnabled, bookModeDocumentGeneration) {
+        if (!state.bookMode.isEnabled) return@LaunchedEffect
+        if (bookModeDocumentGeneration <= 0) return@LaunchedEffect
+        onBookModeDocumentReady()
+        webViewInstance?.post {
+            webViewInstance?.revealReaderDocumentAndWebView(shouldHideWebViewUntilReveal)
+        }
+    }
+    // Book mode is renderer independent: the reader settings pick the book renderer, and the WebView
+    // adapter only has to switch the document's flow. "Pages" therefore works in book mode too, over
+    // the same spine, sections and progress as the scrolled flow.
+    val bookRenderer = remember(
+        state.readerSettings.pageReader,
+        state.readerSettings.richNativeRendererExperimental,
+        state.readerSettings.bionicReading,
+        state.richContentUnsupportedFeaturesDetected,
+    ) {
+        resolveNovelBookRenderer(
+            pageReaderEnabled = state.readerSettings.pageReader,
+            richNativeRendererExperimentalEnabled = state.readerSettings.richNativeRendererExperimental,
+            bionicReadingEnabled = state.readerSettings.bionicReading,
+            richContentUnsupportedFeaturesDetected = state.richContentUnsupportedFeaturesDetected,
+        )
+    }
+    val bookView = remember(webViewInstance) {
+        webViewInstance?.let { WebViewNovelBookView(it) }
+    }
+    // Keyed on the renderer only. Keying this on `bookModeCommands` re-ran the flow switch (a full
+    // document reflow) for every append/prune batch, which is what made scrolling stutter.
+    LaunchedEffect(state.bookMode.isEnabled, bookView, bookRenderer, bookModeDocumentGeneration) {
+        if (!state.bookMode.isEnabled) return@LaunchedEffect
+        val view = bookView ?: return@LaunchedEffect
+        view.setFlow(bookRenderer.flow)
+    }
+    // Native renderer side of book mode. Both renderers consume the same command stream, so the
+    // native list folds appends and prunes into its resident sections instead of running JavaScript.
+    val useNativeBookScroll = state.bookMode.isEnabled && !bookRenderer.usesWebView
+    var bookModeNativeSections by remember(state.novel.id) {
+        mutableStateOf<NovelBookNativeSections>(emptyList())
+    }
+    val bookModeNativeEntries = remember(bookModeNativeSections, state.bookMode.failedSectionIndices) {
+        buildNovelBookNativeEntries(
+            sections = bookModeNativeSections,
+            failedSectionIndices = state.bookMode.failedSectionIndices,
+        )
+    }
+    LaunchedEffect(useNativeBookScroll, bookModeCommands) {
+        if (!useNativeBookScroll) return@LaunchedEffect
+        val commands = bookModeCommands
+        if (commands.isEmpty()) return@LaunchedEffect
+        val nextSections = applyNovelBookCommandsToNativeSections(
+            sections = bookModeNativeSections,
+            commands = commands,
+            parseSection = ::parseNovelBookNativeSection,
+        )
+        bookModeNativeSections = nextSections
+        latestNovelBookScrollCommand(commands)?.let { scrollTo ->
+            val itemIndex = buildNovelBookNativeEntries(
+                sections = nextSections,
+                failedSectionIndices = state.bookMode.failedSectionIndices,
+            ).indexOfFirst { it.sectionIndex == scrollTo.sectionIndex }
+            if (itemIndex >= 0) {
+                textListState.scrollToItem(itemIndex)
+            }
+        }
+        onBookModeCommandsExecuted(commands.map { it.id })
+    }
+    // Position reporting for the native list, mirroring what the WebView relocate bridge sends.
+    LaunchedEffect(
+        useNativeBookScroll,
+        textListState.firstVisibleItemIndex,
+        textListState.firstVisibleItemScrollOffset,
+        bookModeNativeEntries,
+    ) {
+        if (!useNativeBookScroll) return@LaunchedEffect
+        val viewportItems = textListState.layoutInfo.visibleItemsInfo.mapNotNull { item ->
+            val sectionIndex = bookModeNativeEntries.getOrNull(item.index)?.sectionIndex
+                ?: return@mapNotNull null
+            NovelBookNativeViewportItem(
+                sectionIndex = sectionIndex,
+                offsetPx = item.offset,
+                heightPx = item.size,
+            )
+        }
+        val location = resolveNovelBookNativeRelocate(viewportItems) ?: return@LaunchedEffect
+        onBookModeScroll(location.sectionIndex, location.sectionFraction)
+    }
+    // Appending, pruning or jumping to a section changes the layout, so ask the document for a single
+    // relocate event once the queued DOM work settled. Installing again is a no-op when already done.
+    LaunchedEffect(state.bookMode.isEnabled, webViewInstance, bookModeCommands) {
+        if (!state.bookMode.isEnabled) return@LaunchedEffect
+        val view = webViewInstance ?: return@LaunchedEffect
+        if (!view.settings.javaScriptEnabled) return@LaunchedEffect
+        kotlinx.coroutines.delay(BOOK_MODE_RELOCATE_SETTLE_DELAY_MS)
+        view.post {
+            view.installBookRelocateBridgeScript()
+            view.requestBookRelocate()
+        }
     }
     val webViewTtsNavigationAdapter = remember(state.chapter.id, scrollContentBlocks.size) {
         WebViewTtsNavigationAdapter(
@@ -1594,9 +1806,16 @@ fun NovelReaderScreen(
         textListState.firstVisibleItemIndex,
         textListState.canScrollForward,
         usePageReader,
+        state.bookMode.isEnabled,
+        state.bookMode.bookProgressFraction,
     ) {
         derivedStateOf {
             when {
+                // In book mode the reader never leaves the book, so progress, "time to end" and the
+                // word counter all describe the whole novel instead of the section under the viewport.
+                state.bookMode.isEnabled -> {
+                    (state.bookMode.bookProgressFraction * 100f).roundToInt().coerceIn(0, 100)
+                }
                 showWebView -> webProgressPercent
                 usePageReader -> {
                     resolvePageReaderReadingProgressPercent(
@@ -1785,6 +2004,13 @@ fun NovelReaderScreen(
     }
 
     suspend fun moveBackwardByReaderActionWithAnimation(pageAnimationDurationMillis: Int?) {
+        if (state.bookMode.isEnabled) {
+            // The book is one continuous document, so stepping backwards never leaves it and chapter
+            // navigation must not kick in. The book view knows whether a step is a page (paginated
+            // flow) or a viewport of scroll.
+            bookView?.previous()
+            return
+        }
         if (showWebView) {
             val webView = webViewInstance
             if (webView != null && webView.canScrollVertically(-1)) {
@@ -1831,6 +2057,10 @@ fun NovelReaderScreen(
     }
 
     suspend fun moveForwardByReaderActionWithAnimation(pageAnimationDurationMillis: Int?) {
+        if (state.bookMode.isEnabled) {
+            bookView?.next()
+            return
+        }
         if (showWebView) {
             val webView = webViewInstance
             if (webView != null && webView.canScrollVertically(1)) {
@@ -2217,7 +2447,108 @@ fun NovelReaderScreen(
                     }
 
                     // Page Reader Mode (РїРѕСЃС‚СЂР°РЅРёС‡РЅС‹Р№ СЂРµР¶РёРј)
-                    if (pageReaderRendererRoute == NovelPageReaderRendererRoute.COMPOSE_PAGER) {
+                    val bookReaderPaddingPx = with(density) { 4.dp.roundToPx() }
+                    val bookReaderMaxStatusInsetPx = with(density) { 16.dp.roundToPx() }
+                    val bookReaderPaddingTop = resolveWebViewPaddingTopPx(
+                        statusBarHeightPx = statusBarHeight,
+                        showReaderUi = showReaderUi,
+                        appBarHeightPx = appBarHeight,
+                        basePaddingPx = bookReaderPaddingPx,
+                        maxStatusBarInsetPx = bookReaderMaxStatusInsetPx,
+                    )
+                    val bookReaderPaddingBottom = resolveWebViewPaddingBottomPx(
+                        navigationBarHeightPx = navigationBarHeight,
+                        showReaderUi = showReaderUi,
+                        bottomBarHeightPx = bottomBarHeight,
+                        basePaddingPx = bookReaderPaddingPx,
+                    )
+                    val bookReaderPaddingHorizontal = with(density) {
+                        state.readerSettings.margin.dp.roundToPx()
+                    }
+                    val bookReaderParagraphSpacingPx = with(density) {
+                        state.readerSettings.paragraphSpacing.dp.roundToPx()
+                    }
+                    val bookReaderTextAlignCss = resolveWebViewTextAlignCss(state.readerSettings.textAlign)
+                    val bookReaderFirstLineIndentCss = resolveWebViewFirstLineIndentCss(
+                        forceParagraphIndent = state.readerSettings.forceParagraphIndent,
+                    )
+                    val bookReaderTextShadowCss = resolveWebReaderTextShadowCss(
+                        textShadowEnabled = state.readerSettings.textShadow,
+                        textShadowColor = state.readerSettings.textShadowColor,
+                        textShadowBlur = state.readerSettings.textShadowBlur,
+                        textShadowX = state.readerSettings.textShadowX,
+                        textShadowY = state.readerSettings.textShadowY,
+                        textColor = textColor,
+                        backgroundColor = textBackground,
+                    )
+                    val bookReaderSelectedFontFamily = selectedReaderFont.id.takeIf { it.isNotBlank() }
+                    val bookReaderCss = buildString {
+                        append(
+                            buildWebReaderCssText(
+                                fontFaceCss = buildNovelReaderFontFaceCss(selectedReaderFont),
+                                paddingTop = bookReaderPaddingTop,
+                                paddingBottom = bookReaderPaddingBottom,
+                                paddingHorizontal = bookReaderPaddingHorizontal,
+                                fontSizePx = state.readerSettings.fontSize,
+                                lineHeightMultiplier = state.readerSettings.lineHeight,
+                                paragraphSpacingPx = bookReaderParagraphSpacingPx,
+                                textAlignCss = bookReaderTextAlignCss,
+                                firstLineIndentCss = bookReaderFirstLineIndentCss,
+                                textColorHex = colorToCssHex(textColor),
+                                backgroundHex = colorToCssHex(textBackground),
+                                appearanceMode = appearanceMode,
+                                backgroundTexture = activeBackgroundTexture,
+                                oledEdgeGradient = activeOledEdgeGradient && isDarkTheme,
+                                backgroundImageUrl = if (isBackgroundMode) backgroundModeWebImageUrl else null,
+                                fontFamilyName = bookReaderSelectedFontFamily,
+                                customCss = state.readerSettings.customCSS,
+                                textShadowCss = bookReaderTextShadowCss,
+                                forceBoldText = state.readerSettings.forceBoldText,
+                                forceItalicText = state.readerSettings.forceItalicText,
+                            ),
+                        )
+                        append(
+                            """
+
+#an-book-content {
+  padding-top: var(--an-reader-padding-top) !important;
+  padding-bottom: var(--an-reader-padding-bottom) !important;
+  padding-left: var(--an-reader-padding-left) !important;
+  padding-right: var(--an-reader-padding-right) !important;
+  background: var(--an-reader-bg) !important;
+  color: var(--an-reader-fg) !important;
+}
+                            """.trimIndent(),
+                        )
+                    }
+
+                    if (state.bookMode.isEnabled && loadBookEngineDocument != null) {
+                        NovelBookReader(
+                            spine = bookEngineSpine,
+                            location = bookEngineLocation,
+                            flow = if (state.readerSettings.pageReader) {
+                                NovelBookEngineFlow.PAGINATED
+                            } else {
+                                NovelBookEngineFlow.SCROLLED
+                            },
+                            loadDocument = loadBookEngineDocument,
+                            onLocationChanged = onBookEngineLocationChanged,
+                            onSectionMeasured = onBookEngineSectionMeasured,
+                            onToggleReaderUi = { onSetShowReaderUi(!showReaderUi) },
+                            readerCss = bookReaderCss,
+                            resolveResource = { requestUrl ->
+                                resolveReaderBackgroundWebResourceResponse(
+                                    requestUrl = requestUrl,
+                                    context = context,
+                                    selection = backgroundSelection,
+                                ) ?: resolveReaderFontWebResourceResponse(
+                                    requestUrl = requestUrl,
+                                    selectedFont = selectedReaderFont,
+                                )
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else if (pageReaderRendererRoute == NovelPageReaderRendererRoute.COMPOSE_PAGER) {
                         ComposePagerPageRenderer(
                             pagerState = pagerState,
                             contentPages = pageReaderContentPages,
@@ -2480,7 +2811,75 @@ fun NovelReaderScreen(
                                 end = state.readerSettings.margin.dp,
                             ),
                         ) {
-                            if (useRichNativeScroll) {
+                            if (useNativeBookScroll) {
+                                // Book mode, native renderer: one list item per resident book section,
+                                // keyed by spine index so pruning and re-appending never recreates the
+                                // whole book.
+                                itemsIndexed(
+                                    bookModeNativeEntries,
+                                    key = { _, entry -> "book-${entry.sectionIndex}" },
+                                ) { _, entry ->
+                                    when (entry) {
+                                        is NovelBookNativeEntry.Section -> {
+                                            Column(modifier = Modifier.fillMaxWidth()) {
+                                                entry.section.blocks.forEachIndexed { blockIndex, block ->
+                                                    NovelRichNativeScrollItem(
+                                                        block = block,
+                                                        index = blockIndex,
+                                                        lastIndex = entry.section.blocks.lastIndex,
+                                                        chapterTitle = state.chapter.name,
+                                                        novelTitle = state.novel.title,
+                                                        sourceId = state.novel.source,
+                                                        chapterWebUrl = state.chapterWebUrl,
+                                                        novelUrl = state.novel.url,
+                                                        statusBarTopPadding = statusBarTopPadding,
+                                                        textColor = textColor,
+                                                        backgroundColor = textBackground,
+                                                        readerSettings = state.readerSettings,
+                                                        textTypeface = composeTypeface,
+                                                        chapterTitleTypeface = chapterTitleTypeface,
+                                                        paragraphSpacing = paragraphSpacing,
+                                                        ttsHighlightState = ttsHighlightState,
+                                                        ttsHighlightColor = ttsHighlightColor,
+                                                        selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
+                                                        onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                                                        onPlainTap = { tapX, tapY, width, height ->
+                                                            latestReaderShortTapHandler(tapX, tapY, width, height)
+                                                        },
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        is NovelBookNativeEntry.Failed -> {
+                                            // The book keeps the failed chapter's place, so the reader
+                                            // can retry it without leaving the book.
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 24.dp),
+                                            ) {
+                                                Text(
+                                                    text = stringResource(
+                                                        AYMR.strings.novel_reader_book_mode_section_failed,
+                                                    ),
+                                                    color = textColor,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                )
+                                                TextButton(
+                                                    onClick = { onBookModeRetrySection(entry.sectionIndex) },
+                                                    modifier = Modifier.padding(top = 4.dp),
+                                                ) {
+                                                    Text(
+                                                        text = stringResource(
+                                                            AYMR.strings.novel_reader_book_mode_section_retry,
+                                                        ),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if (useRichNativeScroll) {
                                 itemsIndexed(
                                     richScrollBlocks,
                                     // Keyed by position, not by content: a content-derived key
@@ -2723,11 +3122,21 @@ fun NovelReaderScreen(
                     val initialSelectedFontFamily = selectedReaderFont.id.takeIf { it.isNotBlank() }
                     val initialFontFaceCss = buildNovelReaderFontFaceCss(selectedReaderFont)
 
+                    // Book mode keeps one document alive for the whole novel, so the document identity
+                    // must not change when the current chapter changes; otherwise the continuous DOM
+                    // (and the reading position inside it) would be destroyed on every chapter switch.
+                    val webReaderDocumentTag: Any = if (state.bookMode.isEnabled) {
+                        BOOK_MODE_DOCUMENT_TAG
+                    } else {
+                        state.html
+                    }
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
                         factory = { context ->
                             val initialFactoryWebViewHtml = buildInitialWebReaderHtml(
-                                rawHtml = state.html,
+                                // Book mode appends every chapter as its own section, so the document
+                                // starts empty instead of holding the current chapter twice.
+                                rawHtml = if (state.bookMode.isEnabled) "" else state.html,
                                 readerCss = buildWebReaderCssText(
                                     fontFaceCss = initialFontFaceCss,
                                     paddingTop = initialPaddingTop,
@@ -2798,6 +3207,7 @@ fun NovelReaderScreen(
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     webViewPageReadyForAutoScroll = true
+                                    bookModeDocumentGeneration++
                                     view?.applyReaderCss(
                                         fontFaceCss = initialFontFaceCss,
                                         paddingTop = initialPaddingTop,
@@ -2906,7 +3316,10 @@ fun NovelReaderScreen(
                                 webViewInstance = this
                                 setBackgroundColor(backgroundColor)
                                 alpha = if (shouldHideWebViewUntilReveal) 0f else 1f
-                                settings.javaScriptEnabled = shouldEnableJavaScriptInReaderWebView(state.enableJs)
+                                settings.javaScriptEnabled = shouldEnableJavaScriptInReaderWebView(
+                                    pluginRequestsJavaScript = state.enableJs,
+                                    bookModeEnabled = state.bookMode.isEnabled,
+                                )
                                 settings.domStorageEnabled = false
                                 registerWebReaderSelectionBridge(
                                     selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
@@ -2947,7 +3360,7 @@ fun NovelReaderScreen(
                                     }
                                 }
                                 loadDataWithBaseURL(baseUrl, initialFactoryWebViewHtml, "text/html", "utf-8", null)
-                                tag = state.html
+                                tag = webReaderDocumentTag
                             }
                         },
                         update = { webView ->
@@ -2957,7 +3370,10 @@ fun NovelReaderScreen(
                                 webView.isTranslationEnabled = state.readerSettings.selectedTextTranslationEnabled
                             }
                             webView.setBackgroundColor(backgroundColor)
-                            webView.settings.javaScriptEnabled = shouldEnableJavaScriptInReaderWebView(state.enableJs)
+                            webView.settings.javaScriptEnabled = shouldEnableJavaScriptInReaderWebView(
+                                pluginRequestsJavaScript = state.enableJs,
+                                bookModeEnabled = state.bookMode.isEnabled,
+                            )
                             webView.registerWebReaderSelectionBridge(
                                 selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                                 onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
@@ -3025,28 +3441,45 @@ fun NovelReaderScreen(
                                     }
                                     MotionEvent.ACTION_UP -> {
                                         if (!latestShowReaderUi && !horizontalSwipeHandled) {
-                                            when (
-                                                resolveHorizontalChapterSwipeAction(
-                                                    swipeGesturesEnabled = state.readerSettings.swipeGestures,
-                                                    deltaX = event.x - touchStartX,
-                                                    deltaY = event.y - touchStartY,
-                                                    thresholdPx = 160f,
-                                                    hasPreviousChapter = state.previousChapterId != null,
-                                                    hasNextChapter = state.nextChapterId != null,
-                                                )
+                                            if (state.bookMode.isEnabled &&
+                                                bookRenderer.flow == NovelBookFlow.PAGINATED
                                             ) {
-                                                HorizontalChapterSwipeAction.PREVIOUS -> {
+                                                val deltaX = event.x - touchStartX
+                                                val deltaY = event.y - touchStartY
+                                                if (kotlin.math.abs(deltaX) > kotlin.math.abs(deltaY) &&
+                                                    kotlin.math.abs(deltaX) > 80f
+                                                ) {
                                                     horizontalSwipeHandled = true
-                                                    openPreviousChapterFromReader()
+                                                    if (deltaX < 0) {
+                                                        coroutineScope.launch { moveForwardByReaderAction() }
+                                                    } else {
+                                                        coroutineScope.launch { moveBackwardByReaderAction() }
+                                                    }
                                                 }
-                                                HorizontalChapterSwipeAction.NEXT -> {
-                                                    horizontalSwipeHandled = true
-                                                    openNextChapterFromReader()
+                                            } else {
+                                                when (
+                                                    resolveHorizontalChapterSwipeAction(
+                                                        swipeGesturesEnabled = state.readerSettings.swipeGestures,
+                                                        deltaX = event.x - touchStartX,
+                                                        deltaY = event.y - touchStartY,
+                                                        thresholdPx = 160f,
+                                                        hasPreviousChapter = state.previousChapterId != null,
+                                                        hasNextChapter = state.nextChapterId != null,
+                                                    )
+                                                ) {
+                                                    HorizontalChapterSwipeAction.PREVIOUS -> {
+                                                        horizontalSwipeHandled = true
+                                                        openPreviousChapterFromReader()
+                                                    }
+                                                    HorizontalChapterSwipeAction.NEXT -> {
+                                                        horizontalSwipeHandled = true
+                                                        openNextChapterFromReader()
+                                                    }
+                                                    HorizontalChapterSwipeAction.NONE -> Unit
                                                 }
-                                                HorizontalChapterSwipeAction.NONE -> Unit
                                             }
                                         }
-                                        if (!showReaderUi && !horizontalSwipeHandled) {
+                                        if (!latestShowReaderUi && !horizontalSwipeHandled) {
                                             val deltaX = event.x - touchStartX
                                             val deltaY = event.y - touchStartY
                                             val gestureDurationMillis = (event.eventTime - touchStartEventTime)
@@ -3114,7 +3547,15 @@ fun NovelReaderScreen(
                             val fontFaceCss = buildNovelReaderFontFaceCss(selectedReaderFont)
                             val currentTextColorCss = colorToCssHex(textColor)
                             val currentBackgroundCss = colorToCssHex(textBackground)
-                            val currentCustomCss = state.readerSettings.customCSS
+                            // In book mode the document also needs the section/divider/placeholder
+                            // styles. Appending them to the user's custom CSS keeps every CSS path
+                            // (initial load, reload and live restyle) in sync automatically.
+                            val bookSectionsCss = if (state.bookMode.isEnabled) buildBookSectionsCss() else ""
+                            val currentCustomCss = if (bookSectionsCss.isEmpty()) {
+                                state.readerSettings.customCSS
+                            } else {
+                                state.readerSettings.customCSS + "\n" + bookSectionsCss
+                            }
                             val currentCustomJs = state.readerSettings.customJS
                             val currentTextShadowCss = resolveWebReaderTextShadowCss(
                                 textShadowEnabled = state.readerSettings.textShadow,
@@ -3128,7 +3569,9 @@ fun NovelReaderScreen(
                             val paragraphSpacingPx =
                                 with(density) { state.readerSettings.paragraphSpacing.dp.roundToPx() }
                             val styleFingerprint = buildWebReaderCssFingerprint(
-                                chapterId = state.chapter.id,
+                                // Book mode keeps one document alive for the whole novel, so the
+                                // fingerprint must not change per chapter.
+                                chapterId = if (state.bookMode.isEnabled) 0L else state.chapter.id,
                                 paddingTop = paddingTop,
                                 paddingBottom = paddingBottom,
                                 paddingHorizontal = paddingHorizontal,
@@ -3196,6 +3639,7 @@ fun NovelReaderScreen(
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     webViewPageReadyForAutoScroll = true
+                                    bookModeDocumentGeneration++
                                     view?.applyReaderCss(
                                         fontFaceCss = fontFaceCss,
                                         paddingTop = paddingTop,
@@ -3277,7 +3721,7 @@ fun NovelReaderScreen(
                                 }
                             }
 
-                            if (webView.tag != state.html) {
+                            if (webView.tag != webReaderDocumentTag) {
                                 val currentRestoreProgress = state.lastSavedWebProgressPercent.coerceIn(0, 100)
                                 val currentReaderCss = buildWebReaderCssText(
                                     fontFaceCss = fontFaceCss,
@@ -3302,7 +3746,7 @@ fun NovelReaderScreen(
                                     forceItalicText = state.readerSettings.forceItalicText,
                                 )
                                 val initialWebViewHtml = buildInitialWebReaderHtml(
-                                    rawHtml = state.html,
+                                    rawHtml = if (state.bookMode.isEnabled) "" else state.html,
                                     readerCss = currentReaderCss,
                                     hideUntilReveal = shouldHideWebViewUntilReveal,
                                 )
@@ -3312,7 +3756,7 @@ fun NovelReaderScreen(
                                 webView.animate().cancel()
                                 webView.alpha = if (shouldHideWebViewUntilReveal) 0f else 1f
                                 webView.loadDataWithBaseURL(baseUrl, initialWebViewHtml, "text/html", "utf-8", null)
-                                webView.tag = state.html
+                                webView.tag = webReaderDocumentTag
                             } else if (appliedWebCssFingerprint != styleFingerprint) {
                                 webView.applyReaderCss(
                                     fontFaceCss = fontFaceCss,
@@ -4380,6 +4824,7 @@ fun NovelReaderScreen(
                     currentWebViewActive = showWebView,
                     currentPageReaderActive = usePageReader,
                     onDismissRequest = { showSettings = false },
+                    onPrepareBook = if (state.bookMode.isEnabled) onPrepareWholeBook else null,
                 )
             }
             if (showChapterList) {
