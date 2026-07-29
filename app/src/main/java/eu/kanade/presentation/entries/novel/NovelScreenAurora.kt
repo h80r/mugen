@@ -190,6 +190,10 @@ fun NovelScreenAuroraImpl(
     onClickEditInfo: (() -> Unit)? = null,
     onRetrySuggestions: () -> Unit = {},
     onOpenSuggestions: () -> Unit = {},
+    onMakeBookClicked: (() -> Unit)? = null,
+    onAppendBookClicked: (() -> Unit)? = null,
+    onDeleteBookSourceChaptersClicked: (() -> Unit)? = null,
+    onToggleReadAsBook: ((Boolean) -> Unit)? = null,
     onGenreClick: ((String) -> Unit)? = null,
     onGenreLongClick: ((String) -> Unit)? = null,
     onGenresSearch: ((List<String>) -> Unit)? = null,
@@ -535,6 +539,15 @@ fun NovelScreenAuroraImpl(
                                     onBatchDownloadClicked = onOpenBatchDownloadDialog,
                                     onTranslatedDownloadClicked = onOpenTranslatedDownloadDialog,
                                     onExportEpubClicked = onOpenEpubExportDialog,
+                                    onMakeBookClicked = onMakeBookClicked,
+                                    isBookBuilt = state.bookState != null,
+                                    isBookBuilding = state.bookBuildProgress != null,
+                                    onAppendBookClicked = onAppendBookClicked,
+                                    appendableChapterCount = (
+                                        state.chapters.size - (state.bookState?.chapterCount ?: 0)
+                                        ).coerceAtLeast(0),
+                                    readAsBook = state.bookState?.enabled == true,
+                                    onToggleReadAsBook = onToggleReadAsBook.takeIf { state.bookState != null },
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 if (entrySuggestionsEnabled) {
@@ -641,7 +654,10 @@ fun NovelScreenAuroraImpl(
                                 ),
                             ) {
                                 item {
-                                    ChaptersHeader(chapterCount = listChapterCount)
+                                    ChaptersHeader(
+                                        chapterCount = listChapterCount,
+                                        isBookToc = state.bookState?.enabled == true,
+                                    )
                                 }
 
                                 if (chapterPageEnabled) {
@@ -1269,6 +1285,15 @@ fun NovelScreenAuroraImpl(
                                 onBatchDownloadClicked = onOpenBatchDownloadDialog,
                                 onTranslatedDownloadClicked = onOpenTranslatedDownloadDialog,
                                 onExportEpubClicked = onOpenEpubExportDialog,
+                                onMakeBookClicked = onMakeBookClicked,
+                                isBookBuilt = state.bookState != null,
+                                isBookBuilding = state.bookBuildProgress != null,
+                                onAppendBookClicked = onAppendBookClicked,
+                                appendableChapterCount = (
+                                    state.chapters.size - (state.bookState?.chapterCount ?: 0)
+                                    ).coerceAtLeast(0),
+                                readAsBook = state.bookState?.enabled == true,
+                                onToggleReadAsBook = onToggleReadAsBook.takeIf { state.bookState != null },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
@@ -1332,6 +1357,7 @@ fun NovelScreenAuroraImpl(
                         Spacer(modifier = Modifier.height(16.dp))
                         ChaptersHeader(
                             chapterCount = totalChapterCount,
+                            isBookToc = state.bookState?.enabled == true,
                             modifier = Modifier.auroraCenteredMaxWidth(contentMaxWidthDp),
                         )
                     }

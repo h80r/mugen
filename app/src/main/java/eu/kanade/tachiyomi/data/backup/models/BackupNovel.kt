@@ -33,6 +33,12 @@ data class BackupNovel(
     @ProtoNumber(803) var customDescription: String? = null,
     @ProtoNumber(804) var customGenre: List<String>? = null,
     @ProtoNumber(805) var customStatus: Long? = null,
+    /**
+     * Compiled-book state for this novel. The artifact itself is never backed up (it is derived
+     * data and can weigh hundreds of megabytes); only the reading position and the flags needed to
+     * detect that the book must be rebuilt travel with the backup.
+     */
+    @ProtoNumber(900) var bookState: BackupNovelBookState? = null,
 ) {
     fun getNovelImpl(): Novel {
         return Novel.create().copy(

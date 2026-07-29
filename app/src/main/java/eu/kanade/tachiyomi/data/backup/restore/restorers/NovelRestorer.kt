@@ -4,9 +4,12 @@ import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupChapter
 import eu.kanade.tachiyomi.data.backup.models.BackupHistory
 import eu.kanade.tachiyomi.data.backup.models.BackupNovel
+import eu.kanade.tachiyomi.data.backup.models.BackupNovelBookState
 import eu.kanade.tachiyomi.data.backup.restore.resolveRestoredText
 import tachiyomi.data.MangaUpdateStrategyColumnAdapter
 import tachiyomi.data.handlers.novel.NovelDatabaseHandler
+import tachiyomi.domain.book.novel.interactor.UpsertNovelBookState
+import tachiyomi.domain.book.novel.model.NovelBookState
 import tachiyomi.domain.category.novel.interactor.GetNovelCategories
 import tachiyomi.domain.entries.novel.interactor.GetNovelByUrlAndSourceId
 import tachiyomi.domain.entries.novel.model.Novel
@@ -22,6 +25,7 @@ class NovelRestorer(
     private val getNovelByUrlAndSourceId: GetNovelByUrlAndSourceId = Injekt.get(),
     private val getCategories: GetNovelCategories = Injekt.get(),
     private val chapterRepository: NovelChapterRepository = Injekt.get(),
+    private val upsertNovelBookState: UpsertNovelBookState = Injekt.get(),
 ) {
 
     suspend fun sortByNew(backupNovels: List<BackupNovel>): List<BackupNovel> {
@@ -55,6 +59,7 @@ class NovelRestorer(
                 backupCategories = backupCategories,
                 history = backupNovel.history,
                 excludedScanlators = backupNovel.excludedScanlators,
+                bookState = backupNovel.bookState,
             )
         }
     }
@@ -294,12 +299,43 @@ class NovelRestorer(
         backupCategories: List<BackupCategory>,
         history: List<BackupHistory>,
         excludedScanlators: List<String>,
+        bookState: BackupNovelBookState? = null,
     ): Novel {
         restoreCategories(novel, categories, backupCategories)
         restoreChapters(novel, chapters)
         restoreHistory(history)
         restoreExcludedScanlators(novel, excludedScanlators)
+        restoreBookState(novel, bookState)
         return novel
+    }
+
+    /**
+     * Restores the compiled-book state without the artifact: the reading offset and the chapter-set
+     * hash come back, so the title screen can tell that the book has to be compiled again on this
+     * device while the saved position is not lost. The last read chapter is resolved by URL because
+     * chapter ids differ between devices.
+     */
+    private suspend fun restoreBookState(novel: Novel, bookState: BackupNovelBookState?) {
+        if (bookState == null) return
+        val lastChapterId = bookState.lastChapterUrl?.let { url ->
+            runCatching { chapterRepository.getChapterByUrlAndNovelId(url, novel.id)?.id }.getOrNull()
+        }
+        upsertNovelBookState.await(
+            NovelBookState(
+                novelId = novel.id,
+                enabled = bookState.enabled,
+                bookVersion = bookState.bookVersion,
+                sourceId = novel.source,
+                chapterSetHash = bookState.chapterSetHash,
+                totalChars = bookState.totalChars,
+                chapterCount = bookState.chapterCount,
+                charOffset = bookState.charOffset,
+                lastChapterId = lastChapterId,
+                complete = bookState.complete,
+                builtAt = bookState.builtAt,
+                updatedAt = bookState.updatedAt,
+            ),
+        )
     }
 
     private suspend fun restoreCategories(

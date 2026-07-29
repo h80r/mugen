@@ -178,6 +178,10 @@ fun NovelScreen(
     onSaveScrollPosition: (Int, Int) -> Unit = { _, _ -> },
     onRetrySuggestions: () -> Unit = {},
     onOpenSuggestions: () -> Unit = {},
+    onMakeBookClicked: (() -> Unit)? = null,
+    onAppendBookClicked: (() -> Unit)? = null,
+    onDeleteBookSourceChaptersClicked: (() -> Unit)? = null,
+    onToggleReadAsBook: ((Boolean) -> Unit)? = null,
 ) {
     val uiPreferences = Injekt.get<UiPreferences>()
     val sourcePreferences = remember { Injekt.get<SourcePreferences>() }
@@ -267,6 +271,10 @@ fun NovelScreen(
             onToggleAutoJumpToNext = onToggleAutoJumpToNext,
             onRetrySuggestions = onRetrySuggestions,
             onOpenSuggestions = onOpenSuggestions,
+            onMakeBookClicked = onMakeBookClicked,
+            onAppendBookClicked = onAppendBookClicked,
+            onDeleteBookSourceChaptersClicked = onDeleteBookSourceChaptersClicked,
+            onToggleReadAsBook = onToggleReadAsBook,
         )
         return
     }
@@ -759,6 +767,75 @@ fun NovelScreen(
                                     text = stringResource(AYMR.strings.novel_epub_short),
                                     modifier = Modifier.padding(start = 4.dp),
                                 )
+                            }
+                        }
+                        if (onMakeBookClicked != null) {
+                            TextButton(
+                                onClick = onMakeBookClicked,
+                                enabled = state.bookBuildProgress == null,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+                                    contentDescription = null,
+                                )
+                                Text(
+                                    text = stringResource(
+                                        when {
+                                            state.bookBuildProgress != null -> AYMR.strings.novel_book_building
+                                            state.bookState != null -> AYMR.strings.novel_book_rebuild
+                                            else -> AYMR.strings.novel_book_make
+                                        },
+                                    ),
+                                    modifier = Modifier.padding(start = 4.dp),
+                                )
+                            }
+                        }
+                        if (onToggleReadAsBook != null && state.bookState != null) {
+                            val readAsBook = state.bookState.enabled
+                            TextButton(onClick = { onToggleReadAsBook(!readAsBook) }) {
+                                Text(
+                                    text = stringResource(
+                                        if (readAsBook) {
+                                            AYMR.strings.novel_book_read_as_chapters
+                                        } else {
+                                            AYMR.strings.novel_book_read_as_book
+                                        },
+                                    ),
+                                )
+                            }
+                        }
+                        // Appending preserves the artifact offsets, so it is a separate action from
+                        // a full rebuild and only appears while the book is behind the chapter list.
+                        if (state.bookState != null) {
+                            val appendableChapterCount = (state.chapters.size - state.bookState.chapterCount)
+                                .coerceAtLeast(0)
+                            if (appendableChapterCount > 0 && onAppendBookClicked != null) {
+                                TextButton(
+                                    onClick = onAppendBookClicked,
+                                    enabled = state.bookBuildProgress == null,
+                                ) {
+                                    Text(
+                                        text = stringResource(
+                                            AYMR.strings.novel_book_append_available,
+                                            appendableChapterCount,
+                                        ),
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = stringResource(AYMR.strings.novel_book_up_to_date),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                )
+                            }
+                            if (onDeleteBookSourceChaptersClicked != null) {
+                                TextButton(
+                                    onClick = onDeleteBookSourceChaptersClicked,
+                                    enabled = state.bookBuildProgress == null,
+                                ) {
+                                    Text(text = stringResource(AYMR.strings.novel_book_cleanup_source_chapters))
+                                }
                             }
                         }
                     }

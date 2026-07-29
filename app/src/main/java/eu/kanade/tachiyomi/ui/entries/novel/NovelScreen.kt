@@ -568,6 +568,19 @@ class NovelScreen(
                     ),
                 )
             },
+            // Local .epub/.fb2 titles are compiled into a book automatically on first open and can
+            // never gain new chapters, so manual build/append actions are hidden for them.
+            onMakeBookClicked = {
+                screenModel.buildBook()
+            }.takeIf { !eu.kanade.domain.entries.novel.LocalNovelVisibility.isLocalSource(successState.novel.source) },
+            onAppendBookClicked = {
+                screenModel.appendBookChapters()
+            }.takeIf { !eu.kanade.domain.entries.novel.LocalNovelVisibility.isLocalSource(successState.novel.source) },
+            // Local books have no per-chapter downloads to clean up, so the action is hidden too.
+            onDeleteBookSourceChaptersClicked = {
+                screenModel.deleteBookSourceChapters()
+            }.takeIf { !eu.kanade.domain.entries.novel.LocalNovelVisibility.isLocalSource(successState.novel.source) },
+            onToggleReadAsBook = screenModel::setBookEnabled,
         )
 
         if (showBatchDownloadDialog) {
@@ -588,6 +601,50 @@ class NovelScreen(
                 onActionSelected = { action, amount ->
                     screenModel.runDownloadAction(action, amount)
                     showBatchDownloadDialog = false
+                },
+            )
+        }
+
+        val bookMissingChapterCount = successState.bookMissingChapterCount
+        if (bookMissingChapterCount != null) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = screenModel::dismissBookMissingPrompt,
+                title = {
+                    androidx.compose.material3.Text(
+                        text = stringResource(AYMR.strings.novel_book_missing_downloads_title),
+                    )
+                },
+                text = {
+                    androidx.compose.material3.Text(
+                        text = stringResource(
+                            AYMR.strings.novel_book_missing_downloads_body,
+                            bookMissingChapterCount,
+                        ),
+                    )
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            screenModel.dismissBookMissingPrompt()
+                            screenModel.buildBook(downloadMissing = true)
+                        },
+                    ) {
+                        androidx.compose.material3.Text(
+                            text = stringResource(AYMR.strings.novel_book_missing_downloads_download),
+                        )
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            screenModel.dismissBookMissingPrompt()
+                            screenModel.buildBook(buildPartial = true)
+                        },
+                    ) {
+                        androidx.compose.material3.Text(
+                            text = stringResource(AYMR.strings.novel_book_missing_downloads_partial),
+                        )
+                    }
                 },
             )
         }
@@ -793,6 +850,7 @@ class NovelScreen(
                         includeCustomCss,
                         includeCustomJs,
                         includeCover,
+                        asFb2,
                     ->
                     coroutineScope.launch {
                         screenModel.saveEpubExportPreferences(
@@ -804,19 +862,31 @@ class NovelScreen(
                         )
                         epubExportProgress = NovelEpubExportProgress.Preparing(successState.chapters.size)
                         val exportResult = try {
-                            screenModel.exportAsEpub(
-                                downloadedOnly = downloadedOnly,
-                                startChapter = startChapter,
-                                endChapter = endChapter,
-                                destinationTreeUri = destinationTreeUri,
-                                applyReaderTheme = applyReaderTheme,
-                                includeCustomCss = includeCustomCss,
-                                includeCustomJs = includeCustomJs,
-                                includeCover = includeCover,
-                                onProgress = { progress ->
-                                    epubExportProgress = progress
-                                },
-                            )
+                            if (asFb2) {
+                                screenModel.exportAsFb2(
+                                    downloadedOnly = downloadedOnly,
+                                    startChapter = startChapter,
+                                    endChapter = endChapter,
+                                    destinationTreeUri = destinationTreeUri,
+                                    onProgress = { progress ->
+                                        epubExportProgress = progress
+                                    },
+                                )
+                            } else {
+                                screenModel.exportAsEpub(
+                                    downloadedOnly = downloadedOnly,
+                                    startChapter = startChapter,
+                                    endChapter = endChapter,
+                                    destinationTreeUri = destinationTreeUri,
+                                    applyReaderTheme = applyReaderTheme,
+                                    includeCustomCss = includeCustomCss,
+                                    includeCustomJs = includeCustomJs,
+                                    includeCover = includeCover,
+                                    onProgress = { progress ->
+                                        epubExportProgress = progress
+                                    },
+                                )
+                            }
                         } finally {
                             epubExportProgress = null
                         }
@@ -1651,6 +1721,7 @@ private fun NovelEpubExportSheet(
         includeCustomCss: Boolean,
         includeCustomJs: Boolean,
         includeCover: Boolean,
+        asFb2: Boolean,
     ) -> Unit,
 ) {
     val context = LocalContext.current
@@ -1664,6 +1735,7 @@ private fun NovelEpubExportSheet(
     var includeCustomCss by rememberSaveable(initialIncludeCustomCss) { mutableStateOf(initialIncludeCustomCss) }
     var includeCustomJs by rememberSaveable(initialIncludeCustomJs) { mutableStateOf(initialIncludeCustomJs) }
     var includeCover by rememberSaveable(initialIncludeCover) { mutableStateOf(initialIncludeCover) }
+    var exportAsFb2 by rememberSaveable { mutableStateOf(false) }
     val isExporting = progress != null
     val destinationLabel = remember(destinationTreeUri) { resolveTreeUriDisplayName(context, destinationTreeUri) }
 
@@ -1903,27 +1975,33 @@ private fun NovelEpubExportSheet(
                 icon = Icons.Outlined.DoneAll,
             ) {
                 AuroraSwitchItem(
+                    label = stringResource(AYMR.strings.novel_export_as_fb2),
+                    checked = exportAsFb2,
+                    enabled = !isExporting,
+                    onClick = { exportAsFb2 = !exportAsFb2 },
+                )
+                AuroraSwitchItem(
                     label = stringResource(AYMR.strings.novel_export_apply_reader_theme),
                     checked = applyReaderTheme,
-                    enabled = !isExporting,
+                    enabled = !isExporting && !exportAsFb2,
                     onClick = { applyReaderTheme = !applyReaderTheme },
                 )
                 AuroraSwitchItem(
                     label = stringResource(AYMR.strings.novel_export_include_cover),
                     checked = includeCover,
-                    enabled = !isExporting,
+                    enabled = !isExporting && !exportAsFb2,
                     onClick = { includeCover = !includeCover },
                 )
                 AuroraSwitchItem(
                     label = stringResource(AYMR.strings.novel_export_include_custom_css),
                     checked = includeCustomCss,
-                    enabled = !isExporting,
+                    enabled = !isExporting && !exportAsFb2,
                     onClick = { includeCustomCss = !includeCustomCss },
                 )
                 AuroraSwitchItem(
                     label = stringResource(AYMR.strings.novel_export_include_custom_js),
                     checked = includeCustomJs,
-                    enabled = !isExporting,
+                    enabled = !isExporting && !exportAsFb2,
                     onClick = { includeCustomJs = !includeCustomJs },
                 )
                 Box(
@@ -1992,6 +2070,7 @@ private fun NovelEpubExportSheet(
                             includeCustomCss,
                             includeCustomJs,
                             includeCover,
+                            exportAsFb2,
                         )
                     }
                     .padding(vertical = 14.dp),

@@ -4,8 +4,10 @@ import eu.kanade.tachiyomi.data.backup.create.BackupOptions
 import eu.kanade.tachiyomi.data.backup.models.BackupChapter
 import eu.kanade.tachiyomi.data.backup.models.BackupHistory
 import eu.kanade.tachiyomi.data.backup.models.BackupNovel
+import eu.kanade.tachiyomi.data.backup.models.BackupNovelBookState
 import eu.kanade.tachiyomi.data.backup.models.backupNovelChapterMapper
 import tachiyomi.data.handlers.novel.NovelDatabaseHandler
+import tachiyomi.domain.book.novel.interactor.GetNovelBookState
 import tachiyomi.domain.category.novel.repository.NovelCategoryRepository
 import tachiyomi.domain.entries.novel.model.Novel
 import tachiyomi.domain.history.novel.repository.NovelHistoryRepository
@@ -16,6 +18,7 @@ class NovelBackupCreator(
     private val handler: NovelDatabaseHandler = Injekt.get(),
     private val categoryRepository: NovelCategoryRepository = Injekt.get(),
     private val historyRepository: NovelHistoryRepository = Injekt.get(),
+    private val getNovelBookState: GetNovelBookState = Injekt.get(),
 ) {
 
     suspend operator fun invoke(novels: List<Novel>, options: BackupOptions): List<BackupNovel> {
@@ -61,6 +64,29 @@ class NovelBackupCreator(
                     novelObject.history = history
                 }
             }
+        }
+
+        // The compiled book artifact is derived data and stays out of the backup; only its state and
+        // reading offset are stored, with the last chapter kept as a URL so it survives new ids.
+        getNovelBookState.await(novel.id)?.let { bookState ->
+            val lastChapterUrl = bookState.lastChapterId?.let { chapterId ->
+                runCatching {
+                    handler.awaitOne { db -> db.novel_chaptersQueries.getChapterById(chapterId) }.url
+                }.getOrNull()
+            }
+            novelObject.bookState = BackupNovelBookState(
+                enabled = bookState.enabled,
+                bookVersion = bookState.bookVersion,
+                sourceId = bookState.sourceId,
+                chapterSetHash = bookState.chapterSetHash,
+                totalChars = bookState.totalChars,
+                chapterCount = bookState.chapterCount,
+                charOffset = bookState.charOffset,
+                lastChapterUrl = lastChapterUrl,
+                complete = bookState.complete,
+                builtAt = bookState.builtAt,
+                updatedAt = bookState.updatedAt,
+            )
         }
 
         return novelObject

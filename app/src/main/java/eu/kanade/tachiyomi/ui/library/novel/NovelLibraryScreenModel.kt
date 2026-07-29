@@ -12,6 +12,8 @@ import eu.kanade.core.preference.asState
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.entries.novel.LocalNovelBookImport
 import eu.kanade.domain.entries.novel.interactor.UpdateNovel
+import eu.kanade.domain.entries.novel.model.toSNovel
+import eu.kanade.domain.items.novelchapter.interactor.SyncNovelChaptersWithSource
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.novel.MapNovelTrackStatusToLibrary
 import eu.kanade.presentation.components.SEARCH_DEBOUNCE_MILLIS
@@ -1364,7 +1366,28 @@ class NovelLibraryScreenModel(
                 initialized = true,
             )
 
-            novelRepository.insertNovel(novel)
+            val insertedId = novelRepository.insertNovel(novel)
+
+            // Compile the book artifact right after the import so the first open is instant instead
+            // of paying for the lazy first-open migration. Best effort only: the import itself has
+            // already succeeded, and the title screen still compiles on open if anything fails.
+            if (insertedId != null) {
+                runCatching {
+                    val storedNovel = novel.copy(id = insertedId)
+                    val sourceManager = Injekt.get<tachiyomi.domain.source.novel.service.NovelSourceManager>()
+                    val localSource = sourceManager.get(LocalNovelSource.ID)
+                    if (localSource != null) {
+                        val sourceChapters = localSource.getChapterList(storedNovel.toSNovel())
+                        val syncedChapters = Injekt.get<SyncNovelChaptersWithSource>().await(
+                            rawSourceChapters = sourceChapters,
+                            novel = storedNovel,
+                            source = localSource,
+                        )
+                        eu.kanade.tachiyomi.data.book.novel.LocalNovelBookArtifactBuilder()
+                            .ensureArtifact(storedNovel, syncedChapters)
+                    }
+                }
+            }
         }
     }
 

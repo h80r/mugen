@@ -374,7 +374,18 @@ actual class LocalNovelSource(
 
     // Chapter text — supports multi-chapter epubs via #href in URL
     override suspend fun getChapterText(chapter: SNovelChapter): String = withIOContext {
-        try {
+        readChapterText(chapter)
+    }
+
+    /**
+     * Synchronous chapter-text reader shared by [getChapterText] and the book artifact builder.
+     *
+     * The builder merges a whole local book on a single IO thread and loads chapter bodies through
+     * a plain (non-suspending) provider, so the actual reading logic lives here and
+     * [getChapterText] only adds the IO dispatcher on top of it.
+     */
+    fun readChapterText(chapter: SNovelChapter): String {
+        return try {
             val urlParts = chapter.url.split("#", limit = 2)
             val filePath = urlParts[0]
             val chapterFragment = urlParts.getOrNull(1)
@@ -391,7 +402,7 @@ actual class LocalNovelSource(
                     }
             } else {
                 fileSystem.getBaseDirectory()?.findFile(novelDir)?.takeIf { !it.isDirectory }
-            } ?: return@withIOContext EMPTY_CHAPTER_HTML
+            } ?: return EMPTY_CHAPTER_HTML
 
             when {
                 chapterFile.isDirectory -> {

@@ -31,7 +31,7 @@ internal class NovelBookModeRuntime(
         showChapterHeadings = showChapterHeadings,
     )
 
-    private val loader = NovelBookSectionLoader(
+    private var loader = NovelBookSectionLoader(
         store = store,
         fetchSectionBaseUrl = resolver::resolvedBaseUrl,
         fetchSectionHtml = { chapterId -> resolver.resolve(chapterId) },
@@ -89,6 +89,11 @@ internal class NovelBookModeRuntime(
         session = null
         spine = NovelBookSpine.EMPTY
         loader.clear()
+        loader = NovelBookSectionLoader(
+            store = store,
+            fetchSectionBaseUrl = resolver::resolvedBaseUrl,
+            fetchSectionHtml = { chapterId -> resolver.resolve(chapterId) },
+        )
     }
 
     /**
@@ -238,4 +243,29 @@ internal class NovelBookModeRuntime(
     fun uiState(): NovelReaderScreenModel.State.ReaderBookModeState =
         session?.uiState(showChapterHeadings = showChapterHeadings())
             ?: NovelReaderScreenModel.State.ReaderBookModeState()
+
+    /**
+     * Starts book mode from a pre-built [spine] (e.g. from a compiled book artifact) and a custom
+     * section fetcher. The fetcher receives the synthetic section key stored in
+     * [NovelBookSection.chapterId] and must return the HTML for that section.
+     */
+    fun startWithSpine(
+        spine: NovelBookSpine,
+        resumeLocation: NovelBookLocation,
+        fetchSectionHtml: suspend (Long) -> String,
+    ): NovelBookLocation {
+        this.spine = spine
+        loader = NovelBookSectionLoader(
+            store = store,
+            fetchSectionBaseUrl = { null },
+            fetchSectionHtml = fetchSectionHtml,
+        )
+        session = NovelBookSession(
+            loader = loader,
+            config = NovelBookWindowConfig.DEFAULT.copy(
+                prefetchAhead = prepareAhead().coerceAtLeast(0),
+            ),
+        ).also { it.reset(spine, resumeLocation) }
+        return resumeLocation
+    }
 }

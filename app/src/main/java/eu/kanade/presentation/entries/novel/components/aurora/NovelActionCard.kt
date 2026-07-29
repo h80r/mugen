@@ -57,6 +57,13 @@ fun NovelActionCard(
     onBatchDownloadClicked: (() -> Unit)?,
     onTranslatedDownloadClicked: (() -> Unit)?,
     onExportEpubClicked: (() -> Unit)?,
+    onMakeBookClicked: (() -> Unit)? = null,
+    isBookBuilt: Boolean = false,
+    isBookBuilding: Boolean = false,
+    onAppendBookClicked: (() -> Unit)? = null,
+    appendableChapterCount: Int = 0,
+    readAsBook: Boolean = false,
+    onToggleReadAsBook: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = AuroraTheme.colors
@@ -127,6 +134,71 @@ fun NovelActionCard(
                     },
                     label = stringResource(MR.strings.manga_download),
                     onClick = onBatchDownloadClicked,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            if (onMakeBookClicked != null) {
+                ActionButton(
+                    icon = {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.MenuBook,
+                            contentDescription = null,
+                            tint = colors.accent,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    },
+                    label = stringResource(
+                        when {
+                            isBookBuilding -> AYMR.strings.novel_book_building
+                            isBookBuilt -> AYMR.strings.novel_book_rebuild
+                            else -> AYMR.strings.novel_book_make
+                        },
+                    ),
+                    isActive = isBookBuilt,
+                    onClick = { if (!isBookBuilding) onMakeBookClicked() },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            // Appending keeps existing offsets, so it is offered separately from a full rebuild and
+            // only while the artifact is behind the chapter list.
+            if (onAppendBookClicked != null && isBookBuilt && appendableChapterCount > 0) {
+                ActionButton(
+                    icon = {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.MenuBook,
+                            contentDescription = null,
+                            tint = colors.accent,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    },
+                    label = stringResource(AYMR.strings.novel_book_append),
+                    isActive = true,
+                    onClick = { if (!isBookBuilding) onAppendBookClicked() },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            if (onToggleReadAsBook != null) {
+                ActionButton(
+                    icon = {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.MenuBook,
+                            contentDescription = null,
+                            tint = colors.accent,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    },
+                    label = stringResource(
+                        if (readAsBook) {
+                            AYMR.strings.novel_book_read_as_book
+                        } else {
+                            AYMR.strings.novel_book_read_as_chapters
+                        },
+                    ),
+                    isActive = readAsBook,
+                    onClick = { onToggleReadAsBook(!readAsBook) },
                     modifier = Modifier.weight(1f),
                 )
             }

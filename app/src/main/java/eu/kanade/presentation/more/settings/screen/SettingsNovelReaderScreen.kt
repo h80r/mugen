@@ -120,7 +120,6 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderColorTheme
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTheme
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTypographyPreset
-import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReadingMode
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTranslationProvider
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTtsHighlightMode
 import eu.kanade.tachiyomi.ui.reader.novel.setting.TextAlign
@@ -1062,8 +1061,6 @@ object SettingsNovelReaderScreen : SearchableSettings {
         val cacheReadChapters by cacheReadChaptersPref.collectAsState()
         val cacheReadChaptersUnlimitedPref = prefs.cacheReadChaptersUnlimited()
         val cacheReadChaptersUnlimited by cacheReadChaptersUnlimitedPref.collectAsState()
-        val readingModePref = prefs.readingMode()
-        val readingMode by readingModePref.collectAsState()
         val bookModePrepareAheadPref = prefs.bookModePrepareAhead()
         val chapterCacheRefreshTick = remember { mutableIntStateOf(0) }
         val chapterCacheStats by produceState(
@@ -1425,19 +1422,10 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     subtitle = stringResource(AYMR.strings.novel_reader_cache_read_chapters_summary),
                 ),
             )
-            add(
-                Preference.PreferenceItem.ListPreference(
-                    preference = readingModePref,
-                    entries = persistentMapOf(
-                        NovelReadingMode.CHAPTERS to
-                            stringResource(AYMR.strings.novel_reader_reading_mode_chapters),
-                        NovelReadingMode.BOOK to
-                            stringResource(AYMR.strings.novel_reader_reading_mode_book),
-                    ),
-                    title = stringResource(AYMR.strings.novel_reader_reading_mode),
-                ),
-            )
-            if (readingMode == NovelReadingMode.BOOK) {
+            // Reading a title as one continuous book is decided per title by compiling its book
+            // artifact, so there is no global reading-mode choice anymore. The rows below only
+            // configure how a compiled book renders.
+            run {
                 add(
                     Preference.PreferenceItem.SwitchPreference(
                         preference = prefs.bookModeShowChapterHeadings(),

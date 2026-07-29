@@ -185,6 +185,9 @@ class NovelReaderScreenModel(
     private val getNovelSeriesWithEntries: GetNovelSeriesWithEntries = Injekt.get(),
     private val sourceManager: NovelSourceManager = Injekt.get(),
     private val novelDownloadManager: NovelDownloadManager = NovelDownloadManager(),
+    private val getNovelBookState: tachiyomi.domain.book.novel.interactor.GetNovelBookState = Injekt.get(),
+    private val setNovelBookProgress: tachiyomi.domain.book.novel.interactor.SetNovelBookProgress =
+        Injekt.get(),
     private val pluginStorage: NovelPluginStorage = Injekt.get(),
     private val historyRepository: NovelHistoryRepository? = null,
     private val basePreferences: BasePreferences = Injekt.get(),
@@ -393,6 +396,9 @@ class NovelReaderScreenModel(
         prepareAhead = { novelReaderPreferences.bookModePrepareAhead().get() },
     )
 
+    /** Opened compiled-book artifact, non-null while this novel is read as one continuous book. */
+    private var artifactSource: NovelBookArtifactSource? = null
+
     /** Pending book-mode DOM work, consumed and acknowledged by the reader UI. */
     private val bookModeCommandQueue = NovelBookUiCommandQueue()
 
@@ -443,7 +449,7 @@ class NovelReaderScreenModel(
 
     /** True when the reader should present the whole novel as one continuous document. */
     private fun isBookModeEnabled(): Boolean =
-        novelReaderPreferences.readingMode().get() == NovelReadingMode.BOOK
+        novelReaderPreferences.readingMode().get() == NovelReadingMode.BOOK || artifactSource != null
 
     /** Watches the reading-mode preference so book mode can be switched on without a reload. */
     private var readingModeJob: kotlinx.coroutines.Job? = null
@@ -481,7 +487,22 @@ class NovelReaderScreenModel(
      * Starts book mode for the currently loaded chapter, or keeps the runtime inert when the reader
      * is in the classic chapter-by-chapter mode.
      */
-    private fun maybeStartBookMode(chapter: NovelChapter) {
+    private suspend fun maybeStartBookMode(chapter: NovelChapter) {
+        val bookState = currentNovel?.let { novel -> getNovelBookState.await(novel.id) }
+        artifactSource = if (bookState?.enabled == true) {
+            currentNovel?.let { novel ->
+                NovelBookArtifactSource.open(
+                    directory = eu.kanade.tachiyomi.data.book.novel.NovelBookArtifact.directoryFor(
+                        root = eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder
+                            .defaultRootDirectory(),
+                        sourceId = novel.source,
+                        novelId = novel.id,
+                    ),
+                )
+            }
+        } else {
+            null
+        }
         if (!isBookModeEnabled()) {
             if (bookModeRuntime.isActive) {
                 bookEnginePrefetchJob?.cancel()
@@ -492,11 +513,31 @@ class NovelReaderScreenModel(
         }
         val chapters = fullChapterOrderList.ifEmpty { chapterOrderList }
         if (chapters.isEmpty()) return
-        bookModeRuntime.start(
-            chapters = chapters,
-            resumeProgress = chapter.lastPageRead,
-            resumeChapterId = chapter.id,
-        )
+        val artifact = artifactSource
+        if (artifact != null) {
+            // Opening the chapter the stored position belongs to means "continue reading", so the
+            // exact offset is restored. Any other chapter comes from a table-of-contents tap and
+            // must land on that chapter's first character instead.
+            val storedLocation = artifact.locationOf((bookState?.charOffset ?: 0L).toInt())
+            val resumeLocation = if (bookState?.lastChapterId == chapter.id) {
+                storedLocation
+            } else {
+                artifact.locationOfChapter(chapter.id) ?: storedLocation
+            }
+            bookModeRuntime.startWithSpine(
+                spine = artifact.spine,
+                resumeLocation = resumeLocation,
+                fetchSectionHtml = { sectionKey ->
+                    artifact.documentFor(-(sectionKey.toInt() + 1))?.html.orEmpty()
+                },
+            )
+        } else {
+            bookModeRuntime.start(
+                chapters = chapters,
+                resumeProgress = chapter.lastPageRead,
+                resumeChapterId = chapter.id,
+            )
+        }
         bookEnginePrefetchJob?.cancel()
         lastBookEnginePrefetchSectionIndex = -1
         bookModeCommandQueue.clear()
@@ -685,20 +726,36 @@ class NovelReaderScreenModel(
     }
 
     /**
-     * Marks chapters the reader scrolled past as read.
-     *
-     * In book mode the reader never leaves a chapter, so the classic per-chapter read threshold only
-     * ever fires for the section being read. The spine's read-marking policy decides which crossed
-     * sections count as read, and those chapters go through the normal persistence pipeline, so
-     * history, achievements and tracking behave exactly like in the chapter-by-chapter reader.
+     * Chapter that currently sits under the reading position when the session runs over a book
+     * artifact. Returns null in the per-chapter reader, where `currentChapter` is already correct.
      */
+    private fun bookModeChapterAtReadingPosition() = artifactSource
+        ?.takeIf { bookModeRuntime.isActive }
+        ?.let { artifact ->
+            val chapterId = artifact.chapterAt(artifact.charOffsetOf(bookModeRuntime.location))?.chapterId
+            chapterId?.let { id ->
+                chapterOrderList.firstOrNull { it.id == id }
+                    ?: fullChapterOrderList.firstOrNull { it.id == id }
+            }
+        }
+
     private fun markBookModeCrossedChaptersRead() {
         if (!bookModeRuntime.isActive) return
         val alreadyRead = buildSet {
             addAll(bookModeMarkedReadChapterIds)
             chapterOrderList.forEach { if (it.read) add(it.id) }
         }
-        val crossedChapterIds = bookModeRuntime.chaptersToMarkRead(alreadyRead)
+        // Over an artifact the spine sections are fixed-size blocks with synthetic ids, so the
+        // spine's read-marking policy cannot name real chapters. Crossed chapters are derived from
+        // the whole-book character offset instead, which is the exact same signal the position is
+        // persisted from.
+        val artifact = artifactSource
+        val crossedChapterIds = if (artifact != null) {
+            val charOffset = artifact.charOffsetOf(bookModeRuntime.location)
+            artifact.chaptersFullyReadBefore(charOffset).filterNot { it in alreadyRead }
+        } else {
+            bookModeRuntime.chaptersToMarkRead(alreadyRead)
+        }
         if (crossedChapterIds.isEmpty()) return
         val activeChapterId = currentChapter?.id
         crossedChapterIds.forEach { chapterId ->
@@ -752,6 +809,7 @@ class NovelReaderScreenModel(
      * read threshold and history behaviour untouched.
      */
     private fun persistBookModeProgress(sectionFraction: Float) {
+        persistBookArtifactProgress()
         val encodedProgress = bookModeRuntime.encodedProgress() ?: return
         val sectionPercent = (sectionFraction * 100f).toInt().coerceIn(0, 100)
         updateReadingProgress(
@@ -759,6 +817,26 @@ class NovelReaderScreenModel(
             totalItems = 100,
             persistedProgress = encodedProgress,
         )
+    }
+
+    /**
+     * Stores the whole-book position of a compiled book as a global character offset.
+     *
+     * Blocks are not chapters, so the per-chapter progress row cannot describe where the reader is
+     * inside the book; the artifact state row keeps the exact offset used to resume.
+     */
+    private fun persistBookArtifactProgress() {
+        val artifact = artifactSource ?: return
+        val novelId = currentNovel?.id ?: return
+        val charOffset = artifact.charOffsetOf(bookModeRuntime.location)
+        val chapterId = artifact.chapterAt(charOffset)?.chapterId
+        screenModelScope.launch {
+            setNovelBookProgress.await(
+                novelId = novelId,
+                charOffset = charOffset.toLong(),
+                lastChapterId = chapterId,
+            )
+        }
     }
 
     /**
@@ -2389,7 +2467,10 @@ class NovelReaderScreenModel(
                 geminiTranslationJob?.join()
             }
         }
-        val resolvedChapter = resolveTtsChapter(targetChapterId = currentChapter?.id ?: return) ?: return
+        // Over a compiled book `currentChapter` is only the session entry point, so playback has to
+        // start from the chapter under the reading position instead of the one the reader opened.
+        val ttsStartChapterId = bookModeChapterAtReadingPosition()?.id ?: currentChapter?.id ?: return
+        val resolvedChapter = resolveTtsChapter(targetChapterId = ttsStartChapterId) ?: return
         val useTranslatedText = shouldPreferTranslatedTts(settings) &&
             resolvedChapter.translatedModel != null
         val sessionModel = if (useTranslatedText) {
@@ -2798,6 +2879,26 @@ class NovelReaderScreenModel(
     }
 
     fun toggleChapterBookmark() {
+        // Over an artifact the reader never switches chapters, so `currentChapter` stays the entry
+        // point of the session while the reader is already deep inside another chapter. Bookmarking
+        // has to follow the character offset instead, or it would flag the wrong chapter.
+        val scrolledChapter = bookModeChapterAtReadingPosition()
+        if (scrolledChapter != null && scrolledChapter.id != currentChapter?.id) {
+            val scrolledBookmarked = !scrolledChapter.bookmark
+            val scrolledIndex = chapterOrderList.indexOfFirst { it.id == scrolledChapter.id }
+            if (scrolledIndex >= 0) {
+                chapterOrderList[scrolledIndex] = chapterOrderList[scrolledIndex].copy(bookmark = scrolledBookmarked)
+            }
+            screenModelScope.launch {
+                novelChapterRepository.updateChapter(
+                    NovelChapterUpdate(
+                        id = scrolledChapter.id,
+                        bookmark = scrolledBookmarked,
+                    ),
+                )
+            }
+            return
+        }
         val chapter = currentChapter ?: return
         val bookmarked = !chapter.bookmark
         val updatedChapter = chapter.copy(bookmark = bookmarked)

@@ -60,4 +60,5 @@ val migrations: List<Migration>
         ExtensionRepoToStoreMigration(),
         ExtensionStoreUrlRepairMigration(),
         ForceMissedMigrations187(),
+        RemoveNovelBookReadingModeMigration(),
     )

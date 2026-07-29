@@ -231,6 +231,13 @@ class NovelScreenModel(
         NovelDownloadQueueManager.enqueueTranslated(novel, chapters, format)
     },
     private val novelEpubExporter: NovelEpubExporter = NovelEpubExporter(),
+    private val novelBookBuilder: eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder =
+        eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder(),
+    private val localNovelBookArtifactBuilder: eu.kanade.tachiyomi.data.book.novel.LocalNovelBookArtifactBuilder =
+        eu.kanade.tachiyomi.data.book.novel.LocalNovelBookArtifactBuilder(novelBookBuilder),
+    private val getNovelBookState: tachiyomi.domain.book.novel.interactor.GetNovelBookState = Injekt.get(),
+    private val setNovelBookEnabledInteractor: tachiyomi.domain.book.novel.interactor.SetNovelBookEnabled =
+        Injekt.get(),
     private val novelReaderPreferences: NovelReaderPreferences = Injekt.get(),
     private val translationQueueManager: TranslationQueueManager = Injekt.get(),
     private val eventBus: AchievementEventBus? = runCatching { Injekt.get<AchievementEventBus>() }.getOrNull(),
@@ -391,6 +398,18 @@ class NovelScreenModel(
                 .onStart { emit(NovelDownloadCacheEvent.InvalidateAll) }
                 .flowWithLifecycle(lifecycle)
                 .collectLatest(::handleDownloadCacheEvent)
+        }
+
+        screenModelScope.launchIO {
+            getNovelBookState.subscribe(novelId)
+                .flowWithLifecycle(lifecycle)
+                .distinctUntilChanged()
+                .collectLatest { bookState ->
+                    updateSuccessState { it.copy(bookState = bookState) }
+                    // Local .epub / .fb2 titles are compiled into the artifact on first open, so
+                    // they are read as one continuous book instead of per-file fragments.
+                    ensureLocalBookArtifact()
+                }
         }
 
         screenModelScope.launchIO {
@@ -1006,6 +1025,176 @@ class NovelScreenModel(
                 is State.Success -> func(it)
                     .also(::cacheState)
             }
+        }
+    }
+
+    private var bookBuildJob: Job? = null
+
+    /**
+     * Compiles a local book (.epub / .fb2) into the artifact the moment the title is opened.
+     *
+     * Local files are finished books, so there is nothing to download and no reason to ask the
+     * user: the artifact is built lazily on first open (this doubles as the migration for books
+     * that were imported before the artifact existed) and reused afterwards.
+     */
+    fun ensureLocalBookArtifact() {
+        val state = successState ?: return
+        if (!localNovelBookArtifactBuilder.isLocalBook(state.novel)) return
+        if (bookBuildJob?.isActive == true) return
+        val chapters = state.chapters.sortedBy { it.sourceOrder }
+        if (chapters.isEmpty()) return
+        bookBuildJob = screenModelScope.launchIO {
+            try {
+                localNovelBookArtifactBuilder.ensureArtifact(
+                    novel = state.novel,
+                    chapters = chapters,
+                    onProgress = { progress ->
+                        updateSuccessState { it.copy(bookBuildProgress = progress) }
+                    },
+                )
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Local book artifact build failed for novel=$novelId" }
+            } finally {
+                updateSuccessState { it.copy(bookBuildProgress = null) }
+            }
+        }
+    }
+
+    /**
+     * Compiles every chapter of this title into a single book artifact.
+     *
+     * @param downloadMissing downloads the chapters that are not on disk yet instead of refusing.
+     * @param deleteSourceChapters removes the per-chapter files once the book is ready.
+     * @param buildPartial compiles only the already downloaded chapters up to the first gap.
+     */
+    fun buildBook(
+        downloadMissing: Boolean = false,
+        deleteSourceChapters: Boolean = false,
+        buildPartial: Boolean = false,
+    ) {
+        val state = successState ?: return
+        if (bookBuildJob?.isActive == true) return
+        val sortedChapters = state.chapters.sortedBy { it.sourceOrder }
+        val chapters = if (buildPartial) {
+            sortedChapters.takeWhile { it.id in state.downloadedChapterIds }
+        } else {
+            sortedChapters
+        }
+        if (chapters.isEmpty()) return
+        updateSuccessState { it.copy(bookMissingChapterCount = null) }
+        bookBuildJob = screenModelScope.launchIO {
+            try {
+                val outcome = novelBookBuilder.build(
+                    novel = state.novel,
+                    chapters = chapters,
+                    downloadMissing = downloadMissing,
+                    onProgress = { progress ->
+                        updateSuccessState { it.copy(bookBuildProgress = progress) }
+                    },
+                )
+                when (outcome) {
+                    is eu.kanade.tachiyomi.data.book.novel.NovelBookBuildOutcome.Built -> {
+                        if (deleteSourceChapters) {
+                            novelBookBuilder.deleteSourceChapters(state.novel, chapters.map { it.id })
+                            syncDownloadedState(deferFilesystemFallback = false)
+                        }
+                    }
+                    is eu.kanade.tachiyomi.data.book.novel.NovelBookBuildOutcome.MissingDownloads -> {
+                        updateSuccessState {
+                            it.copy(bookMissingChapterCount = outcome.missingChapters.size)
+                        }
+                    }
+                    eu.kanade.tachiyomi.data.book.novel.NovelBookBuildOutcome.NothingToBuild -> Unit
+                }
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Novel book build failed for novel=$novelId" }
+            } finally {
+                updateSuccessState { it.copy(bookBuildProgress = null) }
+            }
+        }
+    }
+
+    /**
+     * Extends the compiled book with the chapters that appeared after the last build.
+     *
+     * A rebuild would reset every byte offset and therefore the saved position, so new chapters are
+     * appended to the existing artifact and the reading position stays valid.
+     */
+    fun appendBookChapters(
+        downloadMissing: Boolean = false,
+        deleteSourceChapters: Boolean = false,
+    ) {
+        val state = successState ?: return
+        if (bookBuildJob?.isActive == true) return
+        val chapters = state.chapters.sortedBy { it.sourceOrder }
+        if (chapters.isEmpty()) return
+        updateSuccessState { it.copy(bookMissingChapterCount = null) }
+        bookBuildJob = screenModelScope.launchIO {
+            try {
+                val outcome = novelBookBuilder.appendNewChapters(
+                    novel = state.novel,
+                    chapters = chapters,
+                    downloadMissing = downloadMissing,
+                    onProgress = { progress ->
+                        updateSuccessState { it.copy(bookBuildProgress = progress) }
+                    },
+                )
+                when (outcome) {
+                    is eu.kanade.tachiyomi.data.book.novel.NovelBookBuildOutcome.Built -> {
+                        if (deleteSourceChapters) {
+                            novelBookBuilder.deleteSourceChapters(state.novel, chapters.map { it.id })
+                            syncDownloadedState(deferFilesystemFallback = false)
+                        }
+                    }
+                    is eu.kanade.tachiyomi.data.book.novel.NovelBookBuildOutcome.MissingDownloads -> {
+                        updateSuccessState {
+                            it.copy(bookMissingChapterCount = outcome.missingChapters.size)
+                        }
+                    }
+                    eu.kanade.tachiyomi.data.book.novel.NovelBookBuildOutcome.NothingToBuild -> Unit
+                }
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Novel book append failed for novel=$novelId" }
+            } finally {
+                updateSuccessState { it.copy(bookBuildProgress = null) }
+            }
+        }
+    }
+
+    /** Deletes the per-chapter files the book was compiled from, keeping the artifact. */
+    fun deleteBookSourceChapters() {
+        val state = successState ?: return
+        val chapterIds = state.chapters.map { it.id }
+        if (chapterIds.isEmpty()) return
+        screenModelScope.launchIO {
+            novelBookBuilder.deleteSourceChapters(state.novel, chapterIds)
+            syncDownloadedState(deferFilesystemFallback = false)
+        }
+    }
+
+    fun cancelBookBuild() {
+        bookBuildJob?.cancel()
+        bookBuildJob = null
+        updateSuccessState { it.copy(bookBuildProgress = null) }
+    }
+
+    fun dismissBookMissingPrompt() {
+        updateSuccessState { it.copy(bookMissingChapterCount = null) }
+    }
+
+    /** Switches this title between reading the compiled book and reading single chapters. */
+    fun setBookEnabled(enabled: Boolean) {
+        val state = successState ?: return
+        screenModelScope.launchIO {
+            setNovelBookEnabledInteractor.await(state.novel.id, enabled)
+        }
+    }
+
+    /** Drops the compiled book and returns the title to per-chapter reading. */
+    fun deleteBook() {
+        val state = successState ?: return
+        screenModelScope.launchIO {
+            novelBookBuilder.delete(state.novel)
         }
     }
 
@@ -2572,6 +2761,35 @@ class NovelScreenModel(
         }
     }
 
+    /**
+     * Exports the novel as a single FB2 file. Chapter text comes from the compiled book artifact
+     * when it exists, so the export also works after the per-chapter files were cleaned up.
+     */
+    suspend fun exportAsFb2(
+        downloadedOnly: Boolean,
+        startChapter: Int?,
+        endChapter: Int?,
+        destinationTreeUri: String,
+        onProgress: (NovelEpubExportProgress) -> Unit = {},
+    ): NovelEpubExportResult {
+        val state = successState ?: return NovelEpubExportResult.Failure(NovelEpubExportFailure.UNKNOWN)
+        return withContext(Dispatchers.IO) {
+            novelEpubExporter.exportAsFb2(
+                novel = state.novel,
+                chapters = state.chapters,
+                options = NovelEpubExportOptions(
+                    downloadedOnly = downloadedOnly,
+                    startChapter = startChapter,
+                    endChapter = endChapter,
+                    destinationTreeUri = destinationTreeUri.trim().ifBlank { null },
+                    includeCover = false,
+                    failOnMissingChapters = downloadedOnly,
+                ),
+                onProgress = onProgress,
+            )
+        }
+    }
+
     fun showSettingsDialog() {
         updateSuccessState { it.copy(dialog = Dialog.SettingsSheet) }
     }
@@ -2740,6 +2958,12 @@ class NovelScreenModel(
             val suggestions: SuggestionState = SuggestionState.Idle,
             /** Display-only preview from source list (after getChapterList, before full sync). */
             val chapterSourcePreview: List<NovelChapter>? = null,
+            /** Compiled book state of this title, or null when the title has no book yet. */
+            val bookState: tachiyomi.domain.book.novel.model.NovelBookState? = null,
+            /** Non-null while a book build is running. */
+            val bookBuildProgress: eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress? = null,
+            /** Set when a build was refused because some chapters are not downloaded yet. */
+            val bookMissingChapterCount: Int? = null,
         ) : State {
             val scanlatorFilterActive: Boolean
                 get() = excludedScanlators.intersect(availableScanlators).isNotEmpty()

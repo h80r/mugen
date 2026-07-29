@@ -5154,6 +5154,7 @@ private fun NovelReaderDialogHost(
             currentPageReaderActive = usePageReader,
             onDismissRequest = onDismissSettings,
             onPrepareBook = if (state.bookMode.isEnabled) onPrepareWholeBook else null,
+            bookModeActive = state.bookMode.isEnabled,
             prepareBookInProgress = state.bookMode.isPreparingWholeBook,
             preparedChapterCount = state.bookMode.preparedChapterCount,
             totalChapterCount = state.bookMode.totalChapterCount,

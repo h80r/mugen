@@ -123,6 +123,7 @@ import tachiyomi.data.achievement.handler.checkers.FeatureBasedAchievementChecke
 import tachiyomi.data.achievement.handler.checkers.StreakAchievementChecker
 import tachiyomi.data.achievement.handler.checkers.TimeBasedAchievementChecker
 import tachiyomi.data.achievement.repository.AchievementRepositoryImpl
+import tachiyomi.data.book.novel.NovelBookStateRepositoryImpl
 import tachiyomi.data.category.anime.AnimeCategoryRepositoryImpl
 import tachiyomi.data.category.manga.MangaCategoryRepositoryImpl
 import tachiyomi.data.category.novel.NovelCategoryRepositoryImpl
@@ -158,6 +159,12 @@ import tachiyomi.data.updates.manga.MangaUpdatesRepositoryImpl
 import tachiyomi.data.updates.novel.NovelUpdatesRepositoryImpl
 import tachiyomi.domain.achievement.repository.AchievementRepository
 import tachiyomi.domain.achievement.repository.ActivityDataRepository
+import tachiyomi.domain.book.novel.interactor.DeleteNovelBookState
+import tachiyomi.domain.book.novel.interactor.GetNovelBookState
+import tachiyomi.domain.book.novel.interactor.SetNovelBookEnabled
+import tachiyomi.domain.book.novel.interactor.SetNovelBookProgress
+import tachiyomi.domain.book.novel.interactor.UpsertNovelBookState
+import tachiyomi.domain.book.novel.repository.NovelBookStateRepository
 import tachiyomi.domain.category.anime.interactor.CreateAnimeCategoryWithName
 import tachiyomi.domain.category.anime.interactor.DeleteAnimeCategory
 import tachiyomi.domain.category.anime.interactor.GetAnimeCategories
@@ -394,6 +401,13 @@ class DomainModule : InjektModule {
         addFactory { ReorderSeriesEntries(get()) }
         addFactory { UpdateNovelSeries(get()) }
         addFactory { GetNovelIdsInAnySeries(get()) }
+
+        addSingletonFactory<NovelBookStateRepository> { NovelBookStateRepositoryImpl(get()) }
+        addFactory { GetNovelBookState(get()) }
+        addFactory { UpsertNovelBookState(get()) }
+        addFactory { SetNovelBookEnabled(get()) }
+        addFactory { SetNovelBookProgress(get()) }
+        addFactory { DeleteNovelBookState(get()) }
 
         addSingletonFactory<AnimeRepository> { AnimeRepositoryImpl(get(), get()) }
         addFactory { GetDuplicateLibraryAnime(get()) }
