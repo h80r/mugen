@@ -495,6 +495,9 @@ internal fun PageTurnPageRenderer(
     previousChapterLabel: String,
     nextChapterLabel: String,
     boundaryChapterHint: String,
+    // When false, the renderer never draws the intermediate "next/previous chapter" placeholder page:
+    // the edge page keeps showing real chapter content and the chapter switch happens directly.
+    showBoundaryChapterPages: Boolean = true,
     onToggleUi: () -> Unit,
     requestedPage: Int,
     onRequestedPageConsumed: () -> Unit,
@@ -509,6 +512,18 @@ internal fun PageTurnPageRenderer(
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
 ) {
+    // Chapter neighbour availability drives two different things: the extra boundary placeholder
+    // page (renderer geometry) and whether an edge tap may switch chapters (navigation). When the
+    // placeholder pages are disabled the extra slots have to disappear, otherwise the edge page
+    // renders clamped content and the last page of the chapter shows up twice.
+    val hasPreviousChapterNavigation = hasPreviousChapter
+    val hasNextChapterNavigation = hasNextChapter
+
+    @Suppress("NAME_SHADOWING")
+    val hasPreviousChapter = hasPreviousChapter && showBoundaryChapterPages
+
+    @Suppress("NAME_SHADOWING")
+    val hasNextChapter = hasNextChapter && showBoundaryChapterPages
     val safeContentPages = remember(contentPages) {
         contentPages.ifEmpty { listOf(NovelPageContentPage(emptyList())) }
     }
@@ -570,8 +585,9 @@ internal fun PageTurnPageRenderer(
     val latestChapterNavigationRequestConsumed by rememberUpdatedState(onChapterNavigationRequestConsumed)
     val latestRendererConfig by rememberUpdatedState(rendererConfig)
     val latestPageCount by rememberUpdatedState(safeContentPages.size)
-    val latestHasPreviousChapter by rememberUpdatedState(hasPreviousChapter)
-    val latestHasNextChapter by rememberUpdatedState(hasNextChapter)
+    val latestHasPreviousBoundaryPage by rememberUpdatedState(hasPreviousChapter)
+    val latestHasPreviousChapter by rememberUpdatedState(hasPreviousChapterNavigation)
+    val latestHasNextChapter by rememberUpdatedState(hasNextChapterNavigation)
     val latestTapToScrollEnabled by rememberUpdatedState(readerSettings.tapToScroll)
     val pageCurlConfig = rememberPageCurlConfig(
         onCustomTap = { size, offset ->
@@ -585,7 +601,7 @@ internal fun PageTurnPageRenderer(
                     currentPage = resolvePageTurnRendererProgressPageIndex(
                         currentPage = pageCurlState.current,
                         contentPageCount = latestPageCount,
-                        hasPreviousChapter = latestHasPreviousChapter,
+                        hasPreviousChapter = latestHasPreviousBoundaryPage,
                     ),
                     pageCount = latestPageCount.coerceAtLeast(1),
                     centerTapWidthFraction = latestRendererConfig.centerTapWidthFraction,
@@ -790,32 +806,36 @@ internal fun PageTurnPageRenderer(
             config = pageCurlConfig,
             modifier = Modifier.fillMaxSize(),
         ) { page ->
-            val boundaryPreview = when (
-                resolvePageTurnRendererBoundaryChapterTarget(
-                    currentPage = page,
-                    contentPageCount = actualPageCount,
-                    hasPreviousChapter = hasPreviousChapter,
-                    hasNextChapter = hasNextChapter,
-                )
-            ) {
-                HorizontalChapterSwipeAction.PREVIOUS,
-                HorizontalChapterSwipeAction.NEXT,
-                -> {
-                    createNovelPageBoundaryPreviewData(
-                        chapterLabel = if (page <= 0) {
-                            previousChapterLabel
-                        } else {
-                            nextChapterLabel
-                        },
-                        chapterName = if (page <= 0) {
-                            previousChapterName
-                        } else {
-                            nextChapterName
-                        },
-                        chapterHint = boundaryChapterHint,
+            val boundaryPreview = if (!showBoundaryChapterPages) {
+                null
+            } else {
+                when (
+                    resolvePageTurnRendererBoundaryChapterTarget(
+                        currentPage = page,
+                        contentPageCount = actualPageCount,
+                        hasPreviousChapter = hasPreviousChapter,
+                        hasNextChapter = hasNextChapter,
                     )
+                ) {
+                    HorizontalChapterSwipeAction.PREVIOUS,
+                    HorizontalChapterSwipeAction.NEXT,
+                    -> {
+                        createNovelPageBoundaryPreviewData(
+                            chapterLabel = if (page <= 0) {
+                                previousChapterLabel
+                            } else {
+                                nextChapterLabel
+                            },
+                            chapterName = if (page <= 0) {
+                                previousChapterName
+                            } else {
+                                nextChapterName
+                            },
+                            chapterHint = boundaryChapterHint,
+                        )
+                    }
+                    HorizontalChapterSwipeAction.NONE -> null
                 }
-                HorizontalChapterSwipeAction.NONE -> null
             }
             val contentPage = if (boundaryPreview == null) {
                 val actualPage = resolvePageTurnRendererProgressPageIndex(

@@ -555,6 +555,7 @@ class NovelBookEngineTest {
         var openedLocation: NovelBookLocation? = null
         var openedFlow: NovelBookEngineFlow? = null
         var openedRestoreFraction: Float? = null
+
         /** Mirrors the renderer contract: only a live scrolled document can be stitched. */
         var stitchingSupported = false
         var nextResult: NovelBookPageTurnResult = NovelBookPageTurnResult.Moved(charOffset = 0)

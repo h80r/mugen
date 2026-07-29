@@ -80,9 +80,10 @@ internal fun buildNovelBookEngineDocumentHtml(
     // element. The paged flow keeps the bare markup its column geometry was tuned against.
     val sectionMarkup = when (flow) {
         NovelBookEngineFlow.PAGINATED -> document.html
-        NovelBookEngineFlow.SCROLLED -> "<section class=\"an-book-section\" " +
-            "data-an-index=\"${document.sectionIndex}\" " +
-            "data-an-chapter=\"${document.chapterId}\">${document.html}</section>"
+        NovelBookEngineFlow.SCROLLED ->
+            "<section class=\"an-book-section\" " +
+                "data-an-index=\"${document.sectionIndex}\" " +
+                "data-an-chapter=\"${document.chapterId}\">${document.html}</section>"
     }
     val engineScript = """
         <script>
@@ -110,6 +111,15 @@ internal fun buildNovelBookEngineDocumentHtml(
             let pageGap = 0;
             let pagePitch = 1;
             let pageIndex = 0;
+            // Paged geometry is measured as a delta between rects of the column box. A page turn
+            // animates that box (depth scales it, book rotates it, curl tilts it), so anything
+            // measured mid-turn came back distorted: the page count collapsed, a turn could report a
+            // premature end of the chapter and the reported text offset snapped to its start, which
+            // is why the paged progress bar only ever sat at the beginning or the end. Measurements
+            // are taken while the box is settled and cached for the duration of the turn.
+            let turnActive = false;
+            let pageCountCache = 1;
+            let pageOffsetCache = { page: -1, offset: 0 };
             const sentinel = (function() {
               if (!isPaginated) return null;
               const marker = document.createElement('span');
@@ -147,9 +157,14 @@ internal fun buildNovelBookEngineDocumentHtml(
                 setImportant(media[index], 'max-height', columnHeight + 'px');
                 setImportant(media[index], 'height', 'auto');
               }
+              // Cached measurements belong to the geometry that produced them.
+              turnActive = false;
+              pageOffsetCache = { page: -1, offset: 0 };
             };
             const pageCount = function() {
               if (!isPaginated) return 1;
+              // A turn is in flight, so the last settled measurement is the truthful one.
+              if (turnActive) return pageCountCache;
               // Overflow columns are painted outside the content box and do not reliably grow
               // scrollWidth, so the count is measured from a marker at the end of the section.
               let width = 0;
@@ -159,7 +174,8 @@ internal fun buildNovelBookEngineDocumentHtml(
                 width = markerRect.left - contentRect.left + markerRect.width;
               }
               width = Math.max(width, content.scrollWidth, pagePitch);
-              return Math.max(1, Math.ceil((width - 1) / pagePitch));
+              pageCountCache = Math.max(1, Math.ceil((width - 1) / pagePitch));
+              return pageCountCache;
             };
             const currentPage = function() {
               if (!isPaginated) return 0;
@@ -206,6 +222,16 @@ internal fun buildNovelBookEngineDocumentHtml(
                 window.clearTimeout(turnTimer);
                 turnTimer = 0;
               }
+              // A rapid turn can start on top of a running animation, so the column box is snapped
+              // back to a pure translation of the page being left. Everything measured below then
+              // sees settled geometry, and the turn still animates because the transition property is
+              // set again right after.
+              turnActive = false;
+              setImportant(content, 'transition', 'none');
+              setImportant(content, 'transform', 'translateX(' + startX + 'px)');
+              setImportant(content, 'opacity', '1');
+              setImportant(content, 'filter', 'none');
+              pageOffsetCache = { page: target, offset: measurePageOffset(target) };
               setImportant(content, 'transform-origin', turnOrigin(style));
               if (style === 'instant' || startPage === target) {
                 setImportant(content, 'transition', 'none');
@@ -215,12 +241,15 @@ internal fun buildNovelBookEngineDocumentHtml(
                 return target;
               }
               if (style === 'slide') {
+                turnActive = true;
                 settlePage(targetX, TURN_DURATION_MILLIS);
+                window.setTimeout(function() { turnActive = false; }, TURN_DURATION_MILLIS);
                 return target;
               }
               // Two phases: the current page first lifts, tilts or curls away, then the target
               // page settles back into a flat, fully opaque column box.
               const half = Math.max(90, Math.round(TURN_DURATION_MILLIS / 2));
+              turnActive = true;
               setImportant(content, 'transition',
                 'transform ' + half + 'ms ease-in, opacity ' + half + 'ms ease-in, filter ' +
                 half + 'ms ease-in');
@@ -230,6 +259,7 @@ internal fun buildNovelBookEngineDocumentHtml(
               turnTimer = window.setTimeout(function() {
                 turnTimer = 0;
                 settlePage(targetX, half);
+                window.setTimeout(function() { turnActive = false; }, half);
               }, half);
               return target;
             };
@@ -311,21 +341,105 @@ internal fun buildNovelBookEngineDocumentHtml(
             };
             const offsetWithin = function(sectionNode, container, offsetInContainer) {
               const nodes = textNodesIn(sectionNode);
+              // A caret can land on an element instead of text (a point in the page padding or in the
+              // gap between two blocks). Resolving it to the child it points at keeps the offset where
+              // the reader is; it used to collapse onto the first text node, i.e. the chapter start.
+              let target = container;
+              let targetOffset = offsetInContainer;
+              if (container && container.nodeType === Node.ELEMENT_NODE) {
+                const children = container.childNodes;
+                const index = Math.max(0, Math.min(offsetInContainer, children.length - 1));
+                target = children.length > 0 ? children[index] : container;
+                targetOffset = 0;
+              }
               let offset = 0;
               for (const node of nodes) {
-                if (node === container) {
-                  return offset + Math.max(0, Math.min(offsetInContainer, (node.nodeValue || '').length));
+                if (node === target) {
+                  return offset + Math.max(0, Math.min(targetOffset, (node.nodeValue || '').length));
                 }
-                if (container.nodeType === Node.ELEMENT_NODE && container.contains(node)) {
+                if (target && target.nodeType === Node.ELEMENT_NODE && target.contains(node)) {
                   return offset;
                 }
                 offset += (node.nodeValue || '').length;
               }
               return offset;
             };
+            // Range over the character at an exact text offset of a section. Restoring a position and
+            // asking which page an offset landed on both need it, so it lives in one place.
+            const rangeAtOffset = function(nodes, charOffset) {
+              const total = totalCharCount(nodes);
+              if (nodes.length === 0 || total <= 0) return null;
+              let remaining = Math.max(0, Math.min(Number(charOffset) || 0, total - 1));
+              let target = nodes[nodes.length - 1];
+              let localOffset = (target.nodeValue || '').length;
+              for (const node of nodes) {
+                const length = (node.nodeValue || '').length;
+                if (remaining <= length) {
+                  target = node;
+                  localOffset = remaining;
+                  break;
+                }
+                remaining -= length;
+              }
+              const length = (target.nodeValue || '').length;
+              const start = Math.max(0, Math.min(localOffset, length));
+              const range = document.createRange();
+              range.setStart(target, start);
+              range.setEnd(target, Math.min(length, start + 1));
+              return range;
+            };
+            // A range on whitespace between blocks has an empty rect, which would read as column 0,
+            // so the enclosing element answers for it instead.
+            const rectOfRange = function(range) {
+              const rect = range.getBoundingClientRect();
+              if (rect.width > 0 || rect.height > 0) return rect;
+              const parent = range.startContainer.parentElement;
+              return parent ? parent.getBoundingClientRect() : rect;
+            };
+            const pageOfOffset = function(nodes, charOffset, contentRect) {
+              const range = rangeAtOffset(nodes, charOffset);
+              if (!range) return 0;
+              const rect = rectOfRange(range);
+              return Math.max(0, Math.floor((rect.left - contentRect.left) / pagePitch));
+            };
+            // The paged flow always knows which page it is on, so its text offset is derived from the
+            // page with a binary search over the column geometry instead of hit-testing a point.
+            const measurePageOffset = function(page) {
+              const nodes = textNodes();
+              const total = totalCharCount(nodes);
+              if (total <= 0) return 0;
+              const target = Math.max(0, page);
+              if (target === 0) return 0;
+              const contentRect = content.getBoundingClientRect();
+              let low = 0;
+              let high = total - 1;
+              let best = total - 1;
+              while (low <= high) {
+                const middle = (low + high) >> 1;
+                if (pageOfOffset(nodes, middle, contentRect) >= target) {
+                  best = middle;
+                  high = middle - 1;
+                } else {
+                  low = middle + 1;
+                }
+              }
+              return best;
+            };
+            const charOffsetAtPage = function(page) {
+              if (turnActive || pageOffsetCache.page === page) return pageOffsetCache.offset;
+              const offset = measurePageOffset(page);
+              pageOffsetCache = { page: page, offset: offset };
+              return offset;
+            };
             const locationAtViewportStart = function() {
               const sectionNode = currentSectionNode();
               if (!sectionNode) return { sectionIndex: -1, charOffset: 0 };
+              if (isPaginated) {
+                return {
+                  sectionIndex: sectionIndexOf(sectionNode),
+                  charOffset: charOffsetAtPage(currentPage())
+                };
+              }
               const bounds = viewport.getBoundingClientRect();
               const x = Math.min(bounds.right - 1, bounds.left + Math.max(1, viewport.clientWidth * 0.08));
               const y = Math.min(bounds.bottom - 1, bounds.top + Math.max(1, viewport.clientHeight * 0.08));
@@ -435,31 +549,14 @@ internal fun buildNovelBookEngineDocumentHtml(
             });
             const scrollToOffsetIn = function(sectionNode, charOffset) {
               const nodes = textNodesIn(sectionNode);
-              const total = totalCharCount(nodes);
-              if (nodes.length === 0 || total <= 0) return relocate();
-              let remaining = Math.max(0, Math.min(Number(charOffset) || 0, total - 1));
-              let target = nodes[nodes.length - 1];
-              let localOffset = (target.nodeValue || '').length;
-              for (const node of nodes) {
-                const length = (node.nodeValue || '').length;
-                if (remaining <= length) {
-                  target = node;
-                  localOffset = remaining;
-                  break;
-                }
-                remaining -= length;
-              }
-              const range = document.createRange();
-              range.setStart(target, Math.min(localOffset, (target.nodeValue || '').length));
-              range.collapse(true);
-              const rect = range.getBoundingClientRect();
-              const viewportRect = viewport.getBoundingClientRect();
+              const range = rangeAtOffset(nodes, charOffset);
+              if (!range) return relocate();
               if (isPaginated) {
-                const contentRect = content.getBoundingClientRect();
-                goToPage(Math.floor((rect.left - contentRect.left) / pagePitch), 'INSTANT');
+                goToPage(pageOfOffset(nodes, charOffset, content.getBoundingClientRect()), 'INSTANT');
               } else {
-                const absoluteTop = viewport.scrollTop + rect.top - viewportRect.top;
-                viewport.scrollTop = Math.max(0, absoluteTop);
+                const rect = rectOfRange(range);
+                const viewportRect = viewport.getBoundingClientRect();
+                viewport.scrollTop = Math.max(0, viewport.scrollTop + rect.top - viewportRect.top);
               }
               return relocate();
             };
@@ -705,7 +802,7 @@ internal fun buildNovelBookEngineDocumentHtml(
         </head>
         <body data-an-section="${document.sectionIndex}" data-an-chapter="${document.chapterId}">
           <main id="an-book-viewport">
-            <article id="an-book-content">${sectionMarkup}</article>
+            <article id="an-book-content">$sectionMarkup</article>
           </main>
           $engineScript
         </body>

@@ -64,7 +64,8 @@ internal fun NovelAtmosphereBackground(
         ) {
             val imageRes = when (backgroundTexture) {
                 NovelReaderBackgroundTexture.PAPER_GRAIN,
-                NovelReaderBackgroundTexture.PARCHMENT -> R.drawable.texture_paper
+                NovelReaderBackgroundTexture.PARCHMENT,
+                -> R.drawable.texture_paper
                 else -> R.drawable.texture_linen
             }
 

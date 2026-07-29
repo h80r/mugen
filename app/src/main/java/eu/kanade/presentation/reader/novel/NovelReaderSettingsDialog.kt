@@ -77,6 +77,9 @@ fun NovelReaderSettingsDialog(
     currentPageReaderActive: Boolean,
     onDismissRequest: () -> Unit,
     onPrepareBook: (() -> Unit)? = null,
+    prepareBookInProgress: Boolean = false,
+    preparedChapterCount: Int = 0,
+    totalChapterCount: Int = 0,
 ) {
     val preferences = remember { Injekt.get<NovelReaderPreferences>() }
     val sourceOverrides = remember { preferences.sourceOverrides() }
@@ -225,6 +228,9 @@ fun NovelReaderSettingsDialog(
                                 preferences = preferences,
                                 onDismissRequest = onDismissRequest,
                                 onPrepareBook = onPrepareBook,
+                                prepareBookInProgress = prepareBookInProgress,
+                                preparedChapterCount = preparedChapterCount,
+                                totalChapterCount = totalChapterCount,
                             )
                             1 -> ReadingTab(
                                 settings = settings,

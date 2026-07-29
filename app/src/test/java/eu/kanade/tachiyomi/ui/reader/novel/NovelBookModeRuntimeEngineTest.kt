@@ -72,7 +72,10 @@ class NovelBookModeRuntimeEngineTest {
                 NovelBookRawSection(
                     chapterId = chapterId,
                     chapterName = "Chapter $chapterId",
-                    rawHtml = "<p>chapter $chapterId body</p>",
+                    // Preparing a section now measures its real text length, so a section body has to
+                    // be longer than the offset under test: a 14-character chapter would legitimately
+                    // clamp the reading position to the end of its own text.
+                    rawHtml = "<p>" + "chapter $chapterId body ".repeat(20) + "</p>",
                 )
             },
             normalizeHtml = { html, _ -> html },

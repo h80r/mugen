@@ -724,6 +724,8 @@
     <string name="reader_toolbar_show_share">Show Share button</string>
     <string name="novel_reader_prefetch_next_chapter">Prefetch next chapter</string>
     <string name="novel_reader_prefetch_next_chapter_summary">Silently prefetch next chapter after reaching 50% progress</string>
+    <string name="novel_reader_seamless_chapter_transition">Seamless chapter transition (experimental)</string>
+    <string name="novel_reader_seamless_chapter_transition_summary">Change chapters inside the reader: no reload screen for scrolled pages and no intermediate chapter page in the paged reader</string>
     <string name="novel_reader_cache_read_chapters">Cache read chapters</string>
     <string name="novel_reader_cache_read_chapters_summary">Store opened chapters in a compressed temporary cache for faster reopen (auto-limited size)</string>
     <string name="novel_reader_cache_read_chapters_unlimited">Unlimited chapter cache</string>

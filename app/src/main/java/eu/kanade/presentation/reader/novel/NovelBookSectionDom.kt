@@ -419,7 +419,7 @@ internal fun buildBookPageTurnJavascript(
             const scroller = $BOOK_SCROLLER_JS;
             if (!scroller) return 'no-scroller';
             const step = $step;
-            const style = "${transitionStyleName}";
+            const style = "$transitionStyleName";
             if (paginated) {
                 const page = Math.max(1, window.innerWidth || root.clientWidth || 1);
                 const max = Math.max(0, scroller.scrollWidth - page);

@@ -144,10 +144,10 @@ internal class NovelBookWebViewRenderer(
     }
 
     override suspend fun next(transitionStyleName: String): NovelBookPageTurnResult =
-        evaluatePageTurn("window.__anBookEngine && window.__anBookEngine.next('${transitionStyleName}')")
+        evaluatePageTurn("window.__anBookEngine && window.__anBookEngine.next('$transitionStyleName')")
 
     override suspend fun previous(transitionStyleName: String): NovelBookPageTurnResult =
-        evaluatePageTurn("window.__anBookEngine && window.__anBookEngine.previous('${transitionStyleName}')")
+        evaluatePageTurn("window.__anBookEngine && window.__anBookEngine.previous('$transitionStyleName')")
 
     override suspend fun relocate(): NovelBookPageTurnResult =
         evaluatePageTurn("window.__anBookEngine && window.__anBookEngine.relocate()")

@@ -1413,6 +1413,13 @@ object SettingsNovelReaderScreen : SearchableSettings {
             )
             add(
                 Preference.PreferenceItem.SwitchPreference(
+                    preference = prefs.seamlessChapterTransition(),
+                    title = stringResource(AYMR.strings.novel_reader_seamless_chapter_transition),
+                    subtitle = stringResource(AYMR.strings.novel_reader_seamless_chapter_transition_summary),
+                ),
+            )
+            add(
+                Preference.PreferenceItem.SwitchPreference(
                     preference = prefs.cacheReadChapters(),
                     title = stringResource(AYMR.strings.novel_reader_cache_read_chapters),
                     subtitle = stringResource(AYMR.strings.novel_reader_cache_read_chapters_summary),

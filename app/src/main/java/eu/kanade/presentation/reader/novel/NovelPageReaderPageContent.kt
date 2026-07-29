@@ -23,6 +23,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.TextView
@@ -418,6 +419,33 @@ private class NovelPageReaderTextView constructor(
     private var isExecutingAction = false
     var isDictionaryEnabled = false
     var isTranslationEnabled = false
+    private var isDetaching = false
+
+    override fun onDetachedFromWindow() {
+        isDetaching = true
+        super.onDetachedFromWindow()
+        isDetaching = false
+    }
+
+    private fun isDetachingFromCompose(): Boolean {
+        if (isDetaching) return true
+        val p = parent as? View ?: return true
+        return p.parent == null
+    }
+
+    override fun clearFocus() {
+        if (isDetachingFromCompose() || isLayoutRequested) {
+            return
+        }
+        super.clearFocus()
+    }
+
+    override fun focusSearch(direction: Int): View? {
+        if (isDetachingFromCompose() || isLayoutRequested) {
+            return null
+        }
+        return super.focusSearch(direction)
+    }
 
     init {
         updateSelectionInteractionEnabled(selectionInteractionEnabled)
@@ -483,6 +511,14 @@ private class NovelPageReaderTextView constructor(
     fun updateSelectionInteractionEnabled(enabled: Boolean) {
         selectionInteractionEnabled = enabled && touchHandlingEnabled
         setTextIsSelectable(selectionInteractionEnabled)
+        // setTextIsSelectable() re-enables focusability, so this interop view can become the
+        // focused Android view. Compose detaches interop views while composition changes are
+        // still being applied, and ViewGroup.removeViewInLayout() then makes the framework search
+        // the hierarchy for a new focus target. That search re-enters Compose layout and crashes
+        // with "Cannot start a writer when another writer is pending". Selection here is driven by
+        // Selection.setSelection(), so Android focus is not needed.
+        isFocusable = false
+        isFocusableInTouchMode = false
         isLongClickable = selectionInteractionEnabled
         if (!selectionInteractionEnabled) {
             clearSelectionPromotion()

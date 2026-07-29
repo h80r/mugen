@@ -338,6 +338,14 @@ class NovelReaderScreen(
                     onCancelAutoScrollHandoff = screenModel::cancelAutoScrollHandoff,
                     onRequestAutoScrollNextChapterPrefetch = screenModel::requestAutoScrollNextChapterPrefetch,
                     onOpenPreviousChapter = { previousChapterId ->
+                        // A seamless in-place switch keeps this screen and its live document
+                        // alive, so the reader never shows the chapter loading screen.
+                        NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
+                            NovelReaderPageReaderHandoffTarget.END,
+                        )
+                        if (screenModel.openChapterInPlace(previousChapterId)) {
+                            return@NovelReaderScreen
+                        }
                         coroutineScope.launch {
                             screenModel.persistCurrentChapterExitState()
                             NovelReaderSystemUiSession.markInternalChapterReplace()
@@ -354,6 +362,12 @@ class NovelReaderScreen(
                         }
                     },
                     onOpenNextChapter = { nextChapterId ->
+                        NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
+                            NovelReaderPageReaderHandoffTarget.START,
+                        )
+                        if (screenModel.openChapterInPlace(nextChapterId)) {
+                            return@NovelReaderScreen
+                        }
                         coroutineScope.launch {
                             screenModel.persistCurrentChapterExitState()
                             NovelReaderSystemUiSession.markInternalChapterReplace()
@@ -375,6 +389,12 @@ class NovelReaderScreen(
                         if (successState.bookMode.isEnabled &&
                             screenModel.onBookModeChapterSelected(chapterId)
                         ) {
+                            return@NovelReaderScreen
+                        }
+                        NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
+                            NovelReaderPageReaderHandoffTarget.START,
+                        )
+                        if (screenModel.openChapterInPlace(chapterId)) {
                             return@NovelReaderScreen
                         }
                         coroutineScope.launch {

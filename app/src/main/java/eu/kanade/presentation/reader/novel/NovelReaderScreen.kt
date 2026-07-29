@@ -141,6 +141,7 @@ import eu.kanade.presentation.reader.DisplayRefreshHost
 import eu.kanade.presentation.reader.ReaderChapterListItem
 import eu.kanade.presentation.reader.ReaderChapterListSheet
 import eu.kanade.presentation.reader.components.AutoScrollActionFab
+import eu.kanade.presentation.reader.novel.components.SeamlessFocusGuardLayout
 import eu.kanade.presentation.theme.AuroraTheme
 import eu.kanade.tachiyomi.data.coil.NovelReaderRefererImage
 import eu.kanade.tachiyomi.source.novel.NovelPluginImage
@@ -515,23 +516,40 @@ fun NovelReaderScreen(
             showTtsBehaviorSettings = false
         }
     }
+    // A seamless in-place chapter switch reuses this composition, so the renderer that is already
+    // mounted must not change while the chapter content is swapped: detaching the reader WebView in
+    // the same pass that mounts the native lazy list makes Android restart a focus search from the
+    // window root, and Compose then disposes lazy subcompositions in the middle of that layout pass
+    // ("Cannot start a writer when another writer is pending"). Keep the mounted renderer until the
+    // reader screen itself is recreated or the reader settings change.
+    val mountedReaderRenderer = remember { arrayOfNulls<Boolean>(1) }
+    val mountedRendererSwitchToken = remember { longArrayOf(state.seamlessSwitchToken) }
+    val seamlessRendererSwap = mountedReaderRenderer[0] != null &&
+        state.seamlessSwitchToken != mountedRendererSwitchToken[0]
     var showWebView by remember(
         state.chapter.id,
         state.readerSettings.preferWebViewRenderer,
         state.contentBlocks.size,
         state.bookMode.isEnabled,
     ) {
+        val resolvedShowWebView = shouldStartInWebView(
+            preferWebViewRenderer = state.readerSettings.preferWebViewRenderer,
+            richNativeRendererExperimentalEnabled = state.readerSettings.richNativeRendererExperimental,
+            pageReaderEnabled = state.readerSettings.pageReader,
+            contentBlocksCount = state.contentBlocks.size,
+            richContentUnsupportedFeaturesDetected = state.richContentUnsupportedFeaturesDetected,
+            bookModeEnabled = state.bookMode.isEnabled,
+        )
         mutableStateOf(
-            shouldStartInWebView(
-                preferWebViewRenderer = state.readerSettings.preferWebViewRenderer,
-                richNativeRendererExperimentalEnabled = state.readerSettings.richNativeRendererExperimental,
-                pageReaderEnabled = state.readerSettings.pageReader,
-                contentBlocksCount = state.contentBlocks.size,
-                richContentUnsupportedFeaturesDetected = state.richContentUnsupportedFeaturesDetected,
-                bookModeEnabled = state.bookMode.isEnabled,
-            ),
+            if (seamlessRendererSwap) {
+                mountedReaderRenderer[0] ?: resolvedShowWebView
+            } else {
+                resolvedShowWebView
+            },
         )
     }
+    mountedReaderRenderer[0] = showWebView
+    mountedRendererSwitchToken[0] = state.seamlessSwitchToken
     val nextSelectedTextSelectionSessionId = remember(state.chapter.id) {
         {
             selectedTextSelectionSessionId += 1
@@ -547,6 +565,8 @@ fun NovelReaderScreen(
         state.richContentUnsupportedFeaturesDetected,
         state.bookMode.isEnabled,
     ) {
+        // Never flip the mounted renderer as part of a seamless chapter swap (see comment above).
+        if (seamlessRendererSwap) return@LaunchedEffect
         showWebView = syncShowWebViewWithReaderSettings(
             currentShowWebView = showWebView,
             preferWebViewRenderer = state.readerSettings.preferWebViewRenderer,
@@ -558,6 +578,9 @@ fun NovelReaderScreen(
         )
     }
     val readerPreferences = remember { Injekt.get<NovelReaderPreferences>() }
+    // Opt-in experimental chapter handoff: in-place chapter switch for scrolled reading and no
+    // intermediate chapter page in the paged reader. Disabled by default.
+    val seamlessChapterTransitionEnabled by readerPreferences.seamlessChapterTransition().collectAsState()
     val displayRefreshPreferences = remember { Injekt.get<ReaderPreferences>() }
     val uiPreferences = remember { Injekt.get<UiPreferences>() }
     val flashOnPageChange by displayRefreshPreferences.flashOnPageChange().collectAsState()
@@ -607,6 +630,10 @@ fun NovelReaderScreen(
     var shouldRestoreWebScroll by remember(state.chapter.id) { mutableStateOf(true) }
     var webViewPageReadyForAutoScroll by remember(state.chapter.id) { mutableStateOf(false) }
     var appliedWebCssFingerprint by remember(state.chapter.id) { mutableStateOf<String?>(null) }
+    // Deliberately a plain holder instead of Compose state: it has to survive an in-place chapter
+    // switch (so it cannot be keyed on the chapter id) and it is written from the AndroidView update
+    // block, where a snapshot state write would schedule recomposition during a layout pass.
+    val appliedSeamlessSwitchToken = remember { longArrayOf(state.seamlessSwitchToken) }
     var hasReportedReadingProgress by remember(state.chapter.id, showWebView, state.readerSettings.pageReader) {
         mutableStateOf(false)
     }
@@ -1246,8 +1273,13 @@ fun NovelReaderScreen(
         )
     }
     val pageReaderItemsCount = pageReaderContentPages.size
-    val composePagerHasPreviousChapter = state.previousChapterId != null
-    val composePagerHasNextChapter = state.nextChapterId != null
+    // The pager only needs an extra virtual page before/after the chapter while the intermediate
+    // "next/previous chapter" placeholder is shown. Seamless chapter transitions hide that
+    // placeholder, so the extra slots must not exist either: otherwise the edge page falls back to
+    // clamped content and the last page of the chapter is rendered twice.
+    val composePagerBoundaryPagesEnabled = !seamlessChapterTransitionEnabled
+    val composePagerHasPreviousChapter = state.previousChapterId != null && composePagerBoundaryPagesEnabled
+    val composePagerHasNextChapter = state.nextChapterId != null && composePagerBoundaryPagesEnabled
     val composePagerVirtualPageCount = remember(
         pageReaderItemsCount,
         composePagerHasPreviousChapter,
@@ -1556,6 +1588,29 @@ fun NovelReaderScreen(
             pagerState.scrollToPage(initialPagerPage)
         }
     }
+    // A seamless in-place chapter switch reuses this composition, so the scrolled reader keeps the
+    // lazy list state of the previous chapter and stays near its end instead of jumping to the new
+    // chapter's saved position. The pager route above resets itself the same way.
+    val appliedNativeScrollRestoreChapterId = remember { longArrayOf(state.chapter.id) }
+    LaunchedEffect(state.chapter.id, nativeScrollItemsCount) {
+        if (appliedNativeScrollRestoreChapterId[0] == state.chapter.id) return@LaunchedEffect
+        // Book mode is one continuous document: the current chapter changes while reading and the
+        // list position must never be reset under the reader.
+        if (state.bookMode.isEnabled) {
+            appliedNativeScrollRestoreChapterId[0] = state.chapter.id
+            return@LaunchedEffect
+        }
+        if (nativeScrollItemsCount <= 0) return@LaunchedEffect
+        appliedNativeScrollRestoreChapterId[0] = state.chapter.id
+        textListState.scrollToItem(
+            initialNativeReaderIndex.coerceIn(0, (nativeScrollItemsCount - 1).coerceAtLeast(0)),
+            if (state.lastSavedPageReaderProgress != null) {
+                0
+            } else {
+                state.lastSavedScrollOffsetPx.coerceAtLeast(0)
+            },
+        )
+    }
     var pageTurnCurrentPage by remember(pageReaderRendererRoute, state.chapter.id) {
         mutableIntStateOf(initialPagerPage)
     }
@@ -1711,6 +1766,7 @@ fun NovelReaderScreen(
         if (requestedTtsChapterSyncTarget == targetChapterId) return@LaunchedEffect
         requestedTtsChapterSyncTarget = targetChapterId
         NovelReaderTtsChapterHandoffPolicy.markPendingRestore(targetChapterId)
+        webViewInstance?.clearFocus()
         onOpenNextChapter?.invoke(targetChapterId)
     }
     val activePageReaderTtsAnchors = remember(
@@ -1944,6 +2000,12 @@ fun NovelReaderScreen(
         NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
             NovelReaderPageReaderHandoffTarget.END,
         )
+        // A seamless in-place chapter switch can detach the reader WebView (renderer may change
+        // between chapters). If the WebView still holds view focus when it is detached, ViewGroup
+        // restarts a focus search from the window root while Compose is applying the composition,
+        // which synchronously remeasures the lazy layout and disposes subcompositions mid-pass
+        // ("Cannot start a writer when another writer is pending"). Dropping focus first avoids it.
+        webViewInstance?.clearFocus()
         onOpenPreviousChapter?.invoke(chapterId)
     }
 
@@ -1952,6 +2014,7 @@ fun NovelReaderScreen(
         NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
             NovelReaderPageReaderHandoffTarget.START,
         )
+        webViewInstance?.clearFocus()
         onOpenNextChapter?.invoke(chapterId)
     }
 
@@ -2554,6 +2617,7 @@ fun NovelReaderScreen(
                             pagerState = pagerState,
                             contentPages = pageReaderContentPages,
                             transitionStyle = activePageTransitionStyle,
+                            showBoundaryChapterPages = !seamlessChapterTransitionEnabled,
                             readerSettings = state.readerSettings,
                             textColor = textColor,
                             textBackground = textBackground,
@@ -2609,6 +2673,7 @@ fun NovelReaderScreen(
                             chapterId = state.chapter.id,
                             contentPages = pageReaderContentPages,
                             transitionStyle = activePageTransitionStyle,
+                            showBoundaryChapterPages = !seamlessChapterTransitionEnabled,
                             readerSettings = state.readerSettings,
                             textColor = textColor,
                             textBackground = textBackground,
@@ -3724,6 +3789,14 @@ fun NovelReaderScreen(
 
                             if (webView.tag != webReaderDocumentTag) {
                                 val currentRestoreProgress = state.lastSavedWebProgressPercent.coerceIn(0, 100)
+                                // A seamless chapter switch replaces the document inside the live
+                                // WebView. Keeping the old frame visible until the next document
+                                // paints removes the fade-to-background flash at the chapter seam.
+                                val isSeamlessChapterSwap =
+                                    state.seamlessSwitchToken != appliedSeamlessSwitchToken[0]
+                                appliedSeamlessSwitchToken[0] = state.seamlessSwitchToken
+                                val seamlessInstantSwap = isSeamlessChapterSwap &&
+                                    currentRestoreProgress <= 0
                                 val currentReaderCss = buildWebReaderCssText(
                                     fontFaceCss = fontFaceCss,
                                     paddingTop = paddingTop,
@@ -3749,13 +3822,13 @@ fun NovelReaderScreen(
                                 val initialWebViewHtml = buildInitialWebReaderHtml(
                                     rawHtml = if (state.bookMode.isEnabled) "" else state.html,
                                     readerCss = currentReaderCss,
-                                    hideUntilReveal = shouldHideWebViewUntilReveal,
+                                    hideUntilReveal = shouldHideWebViewUntilReveal && !seamlessInstantSwap,
                                 )
                                 val shouldEarlyRevealWebView = shouldUseEarlyWebViewReveal(state.html)
                                 shouldRestoreWebScroll = true
                                 appliedWebCssFingerprint = null
                                 webView.animate().cancel()
-                                webView.alpha = if (shouldHideWebViewUntilReveal) 0f else 1f
+                                webView.alpha = if (shouldHideWebViewUntilReveal && !seamlessInstantSwap) 0f else 1f
                                 webView.loadDataWithBaseURL(baseUrl, initialWebViewHtml, "text/html", "utf-8", null)
                                 webView.tag = webReaderDocumentTag
                             } else if (appliedWebCssFingerprint != styleFingerprint) {
@@ -3784,6 +3857,9 @@ fun NovelReaderScreen(
                                 )
                                 appliedWebCssFingerprint = styleFingerprint
                             }
+                        },
+                        onRelease = { webView ->
+                            webView.clearFocus()
                         },
                     )
                 }
@@ -4984,8 +5060,6 @@ private fun NovelReaderAutoScrollEndOverlay(
     }
 }
 
-
-
 @Composable
 private fun NovelReaderDialogHost(
     showSettings: Boolean,
@@ -5080,6 +5154,9 @@ private fun NovelReaderDialogHost(
             currentPageReaderActive = usePageReader,
             onDismissRequest = onDismissSettings,
             onPrepareBook = if (state.bookMode.isEnabled) onPrepareWholeBook else null,
+            prepareBookInProgress = state.bookMode.isPreparingWholeBook,
+            preparedChapterCount = state.bookMode.preparedChapterCount,
+            totalChapterCount = state.bookMode.totalChapterCount,
         )
     }
     if (showChapterList) {

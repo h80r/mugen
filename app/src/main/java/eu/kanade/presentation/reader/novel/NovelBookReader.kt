@@ -283,6 +283,9 @@ internal fun NovelBookReader(
         AndroidView(
             factory = { webView },
             modifier = Modifier.fillMaxSize(),
+            onRelease = { view ->
+                view.clearFocus()
+            },
         )
         if (loading) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))

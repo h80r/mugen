@@ -621,7 +621,17 @@ class NovelReaderScreenModel(
 
     private fun refreshBookModeState() {
         val successState = mutableState.value as? State.Success ?: return
-        mutableState.value = successState.copy(bookMode = bookModeRuntime.uiState())
+        // The prepare-book action is owned by the screen model, so its progress is merged into the
+        // runtime snapshot instead of adding a second state holder for the UI to read.
+        val chapterCount = bookPrepareTotalCount.takeIf { it > 0 }
+            ?: fullChapterOrderList.ifEmpty { chapterOrderList }.size
+        mutableState.value = successState.copy(
+            bookMode = bookModeRuntime.uiState().copy(
+                isPreparingWholeBook = bookPrepareRunning,
+                preparedChapterCount = bookPreparedChapterCount,
+                totalChapterCount = chapterCount,
+            ),
+        )
     }
 
     /** Reports the reader position inside the book after a scroll update from the WebView. */
@@ -803,17 +813,39 @@ class NovelReaderScreenModel(
     /**
      * Prepares every chapter of the book, so the whole novel can be read offline without waiting for
      * the sliding window. Sections are prepared one by one to stay friendly to source rate limits.
+     *
+     * The run reports itself through the book-mode state, so the settings sheet can show a live
+     * "prepared X of Y" count and refuse a second run; it used to work silently, which made the entry
+     * look like it did nothing at all.
      */
+    private var bookPrepareJob: Job? = null
+
+    private var bookPrepareRunning: Boolean = false
+
+    private var bookPreparedChapterCount: Int = 0
+
+    private var bookPrepareTotalCount: Int = 0
+
     internal fun prepareWholeBook() {
-        if (!bookModeRuntime.isActive) return
+        if (!bookModeRuntime.isActive || bookPrepareJob?.isActive == true) return
         val chapters = fullChapterOrderList.ifEmpty { chapterOrderList }
         if (chapters.isEmpty()) return
-        screenModelScope.launch(Dispatchers.IO) {
-            chapters.forEach { chapter ->
-                runCatching { bookModeRuntime.prepareChapter(chapter.id) }
-                    .onFailure { error ->
-                        logBookModeFailure("prepare chapter ${chapter.id}", error)
-                    }
+        bookPrepareTotalCount = chapters.size
+        bookPreparedChapterCount = 0
+        bookPrepareRunning = true
+        refreshBookModeState()
+        bookPrepareJob = screenModelScope.launch(Dispatchers.IO) {
+            try {
+                chapters.forEach { chapter ->
+                    runCatching { bookModeRuntime.prepareChapter(chapter.id) }
+                        .onFailure { error ->
+                            logBookModeFailure("prepare chapter ${chapter.id}", error)
+                        }
+                    bookPreparedChapterCount += 1
+                    refreshBookModeState()
+                }
+            } finally {
+                bookPrepareRunning = false
                 refreshBookModeState()
             }
         }
@@ -878,6 +910,15 @@ class NovelReaderScreenModel(
     private var chapterReadStartTimeMs: Long = System.currentTimeMillis()
     private var pendingHistoryReadDurationMs: Long = 0L
     private var nextChapterPrefetchJob: Job? = null
+
+    /**
+     * Chapter currently owned by this screen model. It starts as the chapter the screen was opened
+     * with, but a seamless in-place chapter switch moves it forward/backward without recreating the
+     * screen.
+     */
+    private var currentSessionChapterId: Long = chapterId
+    private var seamlessChapterSwitchJob: Job? = null
+    private var seamlessChapterSwitchToken: Long = 0L
     private var hasTriggeredNextChapterPrefetch: Boolean = false
     private var nextChapterGeminiPrefetchJob: Job? = null
     private var adjacentJaomixPageJob: Job? = null
@@ -1016,9 +1057,13 @@ class NovelReaderScreenModel(
             loadChapter()
         }
     }
-    private suspend fun loadChapter() {
+    private suspend fun loadChapter(
+        targetChapterId: Long = currentSessionChapterId,
+        seamless: Boolean = false,
+    ) {
+        currentSessionChapterId = targetChapterId
         val snapshot = try {
-            ttsChapterRepository.loadChapterSnapshot(chapterId)
+            ttsChapterRepository.loadChapterSnapshot(targetChapterId)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to load novel chapter snapshot" }
             return setError(e.message)
@@ -1062,7 +1107,11 @@ class NovelReaderScreenModel(
             pluginSite = pluginSite,
         )
         val initialSettings = novelReaderPreferences.resolveSettings(novel.source)
-        mutableState.value = State.Loading(initialSettings)
+        // A seamless switch keeps the previous Success state on screen while the next chapter is
+        // prepared, so the reader never flashes the full-screen chapter loading state.
+        if (!seamless) {
+            mutableState.value = State.Loading(initialSettings)
+        }
         if (contentModel == null) return setError("Chapter content is empty")
         chapterReadStartTimeMs = System.currentTimeMillis()
         maybeStartBookMode(chapter)
@@ -1147,6 +1196,38 @@ class NovelReaderScreenModel(
     private fun setError(message: String?) {
         mutableState.value = State.Error(message)
     }
+
+    /**
+     * Switches to another chapter without leaving the reader screen: no screen replacement and no
+     * loading state, so the live document stays visible until the next chapter is ready.
+     *
+     * Returns false when an in-place switch is not possible (book mode owns its own continuous
+     * document, the reader is not ready yet, or a switch is already running), so callers can fall
+     * back to the classic screen replacement.
+     */
+    fun openChapterInPlace(targetChapterId: Long): Boolean {
+        val successState = mutableState.value as? State.Success ?: return false
+        // Opt-in feature: without it the reader keeps the classic screen replacement behaviour.
+        if (!novelReaderPreferences.seamlessChapterTransition().get()) return false
+        if (successState.bookMode.isEnabled) return false
+        if (targetChapterId == currentChapter?.id) return false
+        if (seamlessChapterSwitchJob?.isActive == true) return false
+        val hasTargetChapter = fullChapterOrderList.any { it.id == targetChapterId } ||
+            chapterOrderList.any { it.id == targetChapterId }
+        if (!hasTargetChapter) return false
+        seamlessChapterSwitchJob = screenModelScope.launch {
+            // Leave the current frame before touching reader state. A chapter switch is triggered
+            // from gesture/tap callbacks that can run inside a composition or layout pass, and
+            // swapping the reader content there crashes the Compose runtime while it is disposing
+            // subcompositions ("Cannot start a writer when another writer is pending").
+            kotlinx.coroutines.yield()
+            persistCurrentChapterExitState()
+            seamlessChapterSwitchToken += 1L
+            loadChapter(targetChapterId = targetChapterId, seamless = true)
+        }
+        return true
+    }
+
     private fun subscribeToQueueProgress(chapterId: Long) {
         queueProgressJob?.cancel()
         queueProgressJob = screenModelScope.launch {
@@ -1499,6 +1580,7 @@ class NovelReaderScreenModel(
         mutableState.value = State.Success(
             novel = novel,
             chapter = chapter,
+            seamlessSwitchToken = seamlessChapterSwitchToken,
             html = displayContent,
             enableJs = !pluginJs.isNullOrBlank() ||
                 settings.selectedTextTranslationEnabled ||
@@ -4859,6 +4941,11 @@ class NovelReaderScreenModel(
             val ttsUiState: NovelReaderTtsUiState = NovelReaderTtsUiState(),
             val aiProviders: ReaderAiProvidersState = ReaderAiProvidersState(),
             val bookMode: ReaderBookModeState = ReaderBookModeState(),
+            /**
+             * Incremented on every seamless in-place chapter switch. The reader UI uses it to swap
+             * the document without hiding the live WebView.
+             */
+            val seamlessSwitchToken: Long = 0L,
         ) : State {
             val textBlocks: List<String>
                 get() = contentBlocks
@@ -4937,6 +5024,9 @@ class NovelReaderScreenModel(
             val preparingSectionIndices: List<Int> = emptyList(),
             val failedSectionIndices: List<Int> = emptyList(),
             val showChapterHeadings: Boolean = true,
+            val isPreparingWholeBook: Boolean = false,
+            val preparedChapterCount: Int = 0,
+            val totalChapterCount: Int = 0,
         ) {
             val isReady: Boolean get() = isEnabled && sectionCount > 0
 

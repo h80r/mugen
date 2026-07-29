@@ -160,10 +160,28 @@ internal class NovelBookModeRuntime(
     }
 
     /** Prepares a chapter's section HTML, e.g. for the "prepare book" action. */
-    suspend fun prepareChapter(chapterId: Long): NovelBookSectionResult = loader.prepare(chapterId)
+    suspend fun prepareChapter(chapterId: Long): NovelBookSectionResult =
+        loader.prepare(chapterId).also { measurePreparedSection(chapterId, it) }
+
+    /**
+     * Replaces a section estimate with its real text length as soon as the section HTML exists.
+     *
+     * Section weights used to stay on the default estimate until the renderer displayed a section, so
+     * the book percentage was only exact around the few chapters that had been shown. Every prepared
+     * chapter now contributes its true weight, which makes whole-book progress exact once the novel is
+     * fully downloaded and prepared.
+     */
+    private fun measurePreparedSection(chapterId: Long, result: NovelBookSectionResult) {
+        val ready = result as? NovelBookSectionResult.Ready ?: return
+        val activeSession = session ?: return
+        val charCount = novelBookSectionTextLength(ready.html)
+        if (charCount <= 0) return
+        activeSession.measureSection(chapterId, charCount)
+        spine = activeSession.spine
+    }
 
     suspend fun loadEngineDocument(section: NovelBookSection): NovelBookDocument {
-        return when (val result = loader.prepare(section.chapterId)) {
+        return when (val result = prepareChapter(section.chapterId)) {
             is NovelBookSectionResult.Ready -> NovelBookDocument(
                 sectionIndex = section.index,
                 chapterId = section.chapterId,
@@ -196,12 +214,15 @@ internal class NovelBookModeRuntime(
             inFlightSections = inFlightSections,
             config = config,
         )
-        plan.prefetchQueue
+        val prepared = plan.prefetchQueue
             .mapNotNull(spine::sectionAt)
             .map { section ->
-                async { loader.prepare(section.chapterId) }
+                async { section.chapterId to loader.prepare(section.chapterId) }
             }
             .awaitAll()
+        // Measuring mutates the session, so it runs after the parallel loads have joined.
+        prepared.forEach { (chapterId, result) -> measurePreparedSection(chapterId, result) }
+        prepared.map { it.second }
     }
 
     suspend fun retryChapter(chapterId: Long): NovelBookSectionResult = loader.retry(chapterId)

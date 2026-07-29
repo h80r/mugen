@@ -2871,4 +2871,6 @@
     <string name="achievement_lattice_resonance_hint_vague">Что-то дрейфует под оболочкой рендера…</string>
     <string name="novel_reader_book_mode_section_failed">Не удалось загрузить эту главу</string>
     <string name="novel_reader_book_mode_section_retry">Повторить</string>
+    <string name="novel_reader_seamless_chapter_transition">Бесшовный переход между главами (эксперимент)</string>
+    <string name="novel_reader_seamless_chapter_transition_summary">Менять главу внутри читалки: без экрана перезагрузки для длинных страниц и без промежуточной страницы главы в постраничном режиме</string>
 </resources>

@@ -46,6 +46,9 @@ fun GeneralTab(
     preferences: NovelReaderPreferences,
     onDismissRequest: () -> Unit,
     onPrepareBook: (() -> Unit)? = null,
+    prepareBookInProgress: Boolean = false,
+    preparedChapterCount: Int = 0,
+    totalChapterCount: Int = 0,
 ) {
     fun <T> update(
         value: T,
@@ -170,14 +173,32 @@ fun GeneralTab(
                     onClick = { bookModeHeadingsPref.set(!bookModeHeadings) },
                 )
                 if (onPrepareBook != null) {
-                    TextPreferenceWidget(
-                        title = stringResource(AYMR.strings.novel_reader_book_mode_prepare_book),
-                        subtitle = stringResource(AYMR.strings.novel_reader_book_mode_prepare_book_summary),
-                        onPreferenceClick = {
-                            onPrepareBook()
-                            onDismissRequest()
-                        },
-                    )
+                    // The plain preference row read like a label, so the action is a real button now
+                    // and it reports how many chapters are already prepared.
+                    NovelGlassHint(stringResource(AYMR.strings.novel_reader_book_mode_prepare_book_summary))
+                    val prepareLabel = stringResource(AYMR.strings.novel_reader_book_mode_prepare_book)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        AuroraMiniOption(
+                            selected = prepareBookInProgress,
+                            onClick = {
+                                // The sheet stays open: this row is the only place the run reports to.
+                                if (!prepareBookInProgress) {
+                                    onPrepareBook()
+                                }
+                            },
+                            label = if (totalChapterCount > 0) {
+                                prepareLabel + "  " + preparedChapterCount + "/" + totalChapterCount
+                            } else {
+                                prepareLabel
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
             AuroraFieldLabel(stringResource(AYMR.strings.novel_reader_page_mode))

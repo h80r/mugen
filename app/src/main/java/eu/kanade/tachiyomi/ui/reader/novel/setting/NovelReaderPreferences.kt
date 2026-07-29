@@ -632,7 +632,15 @@ class NovelReaderPreferences(
     fun showAutoScrollFloatingButton() =
         preferenceStore.getBoolean("novel_reader_show_auto_scroll_floating_button", false)
 
-    fun prefetchNextChapter() = preferenceStore.getBoolean("novel_reader_prefetch_next_chapter", false)
+    // Experimental, disabled by default: switch to the next/previous chapter inside the already
+    // running reader (no screen reload, no loading screen, no intermediate chapter page in the
+    // paged reader). When it is off, chapter changes use the classic screen replacement.
+    fun seamlessChapterTransition() =
+        preferenceStore.getBoolean("novel_reader_seamless_chapter_transition", false)
+
+    // Enabled by default: chapter changes are seamless (no loading screen), which only works well
+    // when the next chapter text is already warmed up in the cache.
+    fun prefetchNextChapter() = preferenceStore.getBoolean("novel_reader_prefetch_next_chapter", true)
 
     fun cacheReadChapters() = preferenceStore.getBoolean("novel_reader_cache_read_chapters", true)
 
