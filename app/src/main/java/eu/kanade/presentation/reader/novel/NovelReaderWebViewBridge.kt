@@ -1109,6 +1109,7 @@ internal fun buildWebReaderCssFingerprint(
     textShadowCss: String?,
     forceBoldText: Boolean,
     forceItalicText: Boolean,
+    bionicReadingEnabled: Boolean,
 ): String {
     return buildString {
         append(chapterId)
@@ -1131,6 +1132,7 @@ internal fun buildWebReaderCssFingerprint(
         append('|').append(textShadowCss ?: "<none>")
         append('|').append(forceBoldText)
         append('|').append(forceItalicText)
+        append('|').append(bionicReadingEnabled)
     }
 }
 

@@ -1445,6 +1445,17 @@ fun NovelReaderScreen(
         }
         if (executedCommandIds.isNotEmpty()) {
             onBookModeCommandsExecuted(executedCommandIds)
+            // Book mode injects chapter HTML straight into the live document, so the bionic
+            // transform that runs together with the reader CSS never sees those sections. Without
+            // re-running it after content was appended, bionic reading does nothing in book mode.
+            if (state.readerSettings.bionicReading &&
+                bookModeCommands.any { it is NovelBookUiCommand.Append }
+            ) {
+                val bionicScript = buildWebReaderBionicJavascript(enabled = true)
+                if (bionicScript.isNotBlank()) {
+                    view.post { view.evaluateJavascript(bionicScript, null) }
+                }
+            }
             view.post {
                 view.revealReaderDocumentAndWebView(shouldHideWebViewUntilReveal)
             }
@@ -3477,6 +3488,7 @@ fun NovelReaderScreen(
                                         textShadowCss = initialTextShadowCss,
                                         forceBoldText = state.readerSettings.forceBoldText,
                                         forceItalicText = state.readerSettings.forceItalicText,
+                                        bionicReadingEnabled = state.readerSettings.bionicReading,
                                     )
 
                                     if (state.readerSettings.customJS.isNotEmpty()) {
@@ -3816,6 +3828,7 @@ fun NovelReaderScreen(
                                 textShadowCss = currentTextShadowCss,
                                 forceBoldText = state.readerSettings.forceBoldText,
                                 forceItalicText = state.readerSettings.forceItalicText,
+                                bionicReadingEnabled = state.readerSettings.bionicReading,
                             )
                             val currentFontSize = state.readerSettings.fontSize
                             val currentLineHeight = state.readerSettings.lineHeight
@@ -4469,348 +4482,52 @@ fun NovelReaderScreen(
                         },
                     )
 
-                    AnimatedVisibility(visible = autoScrollExpanded) {
-                        // Flat panel matching manga AutoScrollControlsPanel — no nested card.
-                        val scheme = MaterialTheme.colorScheme
-                        val isDark = isSystemInDarkTheme()
-                        val valuePillBg = if (isDark) {
-                            Color.White.copy(alpha = 0.10f)
-                        } else {
-                            Color.Black.copy(alpha = 0.06f)
-                        }
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            if (usePageReader) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = stringResource(AYMR.strings.novel_reader_auto_scroll_page_delay),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = scheme.primary,
-                                    )
-                                    Text(
-                                        text = stringResource(
-                                            AYMR.strings.reader_auto_scroll_page_time_fixed,
-                                            state.readerSettings.autoScrollInterval,
-                                        ),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = scheme.onSurface,
-                                        modifier = Modifier
-                                            .clip(CircleShape)
-                                            .background(valuePillBg)
-                                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                                    )
-                                }
-                                Slider(
-                                    value = state.readerSettings.autoScrollInterval.toFloat().coerceIn(2f, 60f),
-                                    onValueChange = {
-                                        persistAutoScrollIntervalPreference(it.roundToInt())
-                                    },
-                                    valueRange = 2f..60f,
-                                    steps = 58,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            appHaptics.tap()
-                                            persistAutoScrollAdaptiveDelayPreference(
-                                                !state.readerSettings.autoScrollAdaptiveDelay,
-                                            )
-                                        }
-                                        .padding(vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = stringResource(AYMR.strings.novel_reader_auto_scroll_adaptive_delay),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = scheme.onSurface,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    Switch(
-                                        checked = state.readerSettings.autoScrollAdaptiveDelay,
-                                        onCheckedChange = {
-                                            appHaptics.tap()
-                                            persistAutoScrollAdaptiveDelayPreference(it)
-                                        },
-                                    )
-                                }
-                                if (state.readerSettings.autoScrollAdaptiveDelay) {
-                                    Text(
-                                        text = stringResource(
-                                            AYMR.strings.reader_auto_scroll_page_time,
-                                            autoScrollPageDelayMsForCharacterCount(
-                                                intervalSeconds = state.readerSettings.autoScrollInterval,
-                                                characterCount =
-                                                pageReaderCharacterCounts.getOrNull(pageReaderProgressPageIndex)
-                                                    ?: 0,
-                                                adaptiveEnabled = true,
-                                            ) / 1000,
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = scheme.onSurfaceVariant,
-                                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                                    )
-                                }
-                            } else {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = stringResource(AYMR.strings.novel_reader_auto_scroll_speed),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = scheme.primary,
-                                    )
-                                    Text(
-                                        text = "$autoScrollSpeed",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = scheme.onSurface,
-                                        modifier = Modifier
-                                            .clip(CircleShape)
-                                            .background(valuePillBg)
-                                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                                    )
-                                }
-                                Slider(
-                                    value = autoScrollSpeed.toFloat(),
-                                    onValueChange = {
-                                        val newSpeed = it.roundToInt().coerceIn(1, 100)
-                                        autoScrollSpeed = newSpeed
-                                        persistAutoScrollIntervalPreference(
-                                            interval = autoScrollSpeedToInterval(newSpeed),
-                                        )
-                                    },
-                                    valueRange = 1f..100f,
-                                    steps = 98,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = stringResource(
-                                        AYMR.strings.novel_reader_auto_scroll_chapter_end_behavior,
-                                    ),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = scheme.onSurface,
-                                    modifier = Modifier.weight(1f).padding(end = 12.dp),
-                                )
-                                var dropdownExpanded by remember { mutableStateOf(false) }
-                                val behaviorEntries = novelAutoScrollChapterEndBehaviorEntries()
-                                Box {
-                                    Text(
-                                        text = behaviorEntries[state.readerSettings.autoScrollChapterEndBehavior]
-                                            ?: "",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = scheme.primary,
-                                        modifier = Modifier
-                                            .clip(CircleShape)
-                                            .background(valuePillBg)
-                                            .clickable { dropdownExpanded = true }
-                                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                                    )
-                                    DropdownMenu(
-                                        expanded = dropdownExpanded,
-                                        onDismissRequest = { dropdownExpanded = false },
-                                    ) {
-                                        behaviorEntries.forEach { (behavior, label) ->
-                                            DropdownMenuItem(
-                                                text = {
-                                                    Text(
-                                                        text = label,
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                    )
-                                                },
-                                                onClick = {
-                                                    dropdownExpanded = false
-                                                    persistAutoScrollChapterEndBehaviorPreference(behavior)
-                                                },
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (state.readerSettings.autoScrollChapterEndBehavior !=
-                                NovelAutoScrollChapterEndBehavior.StopAtEnd
-                            ) {
-                                val currentPauseSec =
-                                    (state.readerSettings.autoScrollEndPauseMs / 1000L).toInt()
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = stringResource(AYMR.strings.novel_reader_auto_scroll_end_pause),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = scheme.primary,
-                                    )
-                                    Text(
-                                        text = stringResource(
-                                            AYMR.strings.novel_reader_auto_scroll_end_pause_value,
-                                            currentPauseSec,
-                                        ),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = scheme.onSurface,
-                                        modifier = Modifier
-                                            .clip(CircleShape)
-                                            .background(valuePillBg)
-                                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                                    )
-                                }
-                                Slider(
-                                    value = currentPauseSec.toFloat().coerceIn(0f, 10f),
-                                    onValueChange = {
-                                        val seconds = it.roundToInt().coerceIn(0, 10)
-                                        persistAutoScrollEndPauseMsPreference(seconds * 1000L)
-                                    },
-                                    valueRange = 0f..10f,
-                                    steps = 10,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(44.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(
-                                        if (autoScrollEnabled) {
-                                            scheme.primary
-                                        } else {
-                                            scheme.primary.copy(alpha = 0.18f)
-                                        },
-                                    )
-                                    .clickable {
-                                        appHaptics.tap()
-                                        val nextState = resolveAutoScrollUiStateOnToggle(
-                                            currentEnabled = autoScrollEnabled,
-                                            showReaderUi = showReaderUi,
-                                            autoScrollExpanded = autoScrollExpanded,
-                                        )
-                                        autoScrollEnabled = nextState.autoScrollEnabled
-                                        if (!nextState.autoScrollEnabled) {
-                                            onCancelAutoScrollHandoff()
-                                            autoScrollEndStableFrames = 0
-                                            autoScrollEndDwellActive = false
-                                        }
-                                        onSetShowReaderUi(nextState.showReaderUi)
-                                        autoScrollExpanded = nextState.autoScrollExpanded
-                                    }
-                                    .padding(horizontal = 14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                            ) {
-                                Icon(
-                                    imageVector = if (autoScrollEnabled) {
-                                        Icons.Outlined.Pause
-                                    } else {
-                                        Icons.Outlined.PlayArrow
-                                    },
-                                    contentDescription = stringResource(
-                                        if (autoScrollEnabled) {
-                                            AYMR.strings.novel_reader_auto_scroll_pause_description
-                                        } else {
-                                            AYMR.strings.novel_reader_auto_scroll_play_description
-                                        },
-                                    ),
-                                    tint = if (autoScrollEnabled) scheme.onPrimary else scheme.primary,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = stringResource(
-                                        if (autoScrollEnabled) {
-                                            MR.strings.action_pause
-                                        } else {
-                                            MR.strings.action_start
-                                        },
-                                    ),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (autoScrollEnabled) scheme.onPrimary else scheme.primary,
-                                )
-                            }
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                    ) {
-                                        appHaptics.tap()
-                                        readerPreferences.showAutoScrollFloatingButton().set(
-                                            !state.readerSettings.showAutoScrollFloatingButton,
-                                        )
-                                    }
-                                    .padding(vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = stringResource(AYMR.strings.reader_auto_scroll_floating_button),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = scheme.onSurface,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Switch(
-                                    checked = state.readerSettings.showAutoScrollFloatingButton,
-                                    onCheckedChange = {
-                                        appHaptics.tap()
-                                        readerPreferences.showAutoScrollFloatingButton().set(it)
-                                    },
-                                )
-                            }
-                        }
-                    }
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        IconButton(
-                            onClick = {
-                                appHaptics.tap()
-                                autoScrollExpanded = !autoScrollExpanded
-                            },
-                        ) {
-                            Icon(
-                                imageVector = if (autoScrollExpanded) {
-                                    Icons.Filled.KeyboardArrowUp
-                                } else {
-                                    Icons.Filled.KeyboardArrowDown
-                                },
-                                contentDescription = if (autoScrollExpanded) {
-                                    "Collapse auto-scroll"
-                                } else {
-                                    "Expand auto-scroll"
-                                },
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                    NovelReaderAutoScrollPanel(
+                        expanded = autoScrollExpanded,
+                        usePageReader = usePageReader,
+                        autoScrollIntervalSeconds = state.readerSettings.autoScrollInterval,
+                        autoScrollAdaptiveDelay = state.readerSettings.autoScrollAdaptiveDelay,
+                        adaptiveDelayCharacterCount = {
+                            pageReaderCharacterCounts.getOrNull(pageReaderProgressPageIndex) ?: 0
+                        },
+                        autoScrollSpeed = autoScrollSpeed,
+                        chapterEndBehavior = state.readerSettings.autoScrollChapterEndBehavior,
+                        autoScrollEndPauseMs = state.readerSettings.autoScrollEndPauseMs,
+                        autoScrollEnabled = autoScrollEnabled,
+                        showFloatingButton = state.readerSettings.showAutoScrollFloatingButton,
+                        onHapticTap = { appHaptics.tap() },
+                        onIntervalChange = { persistAutoScrollIntervalPreference(it) },
+                        onAdaptiveDelayChange = { persistAutoScrollAdaptiveDelayPreference(it) },
+                        onSpeedChange = { newSpeed ->
+                            autoScrollSpeed = newSpeed
+                            persistAutoScrollIntervalPreference(
+                                interval = autoScrollSpeedToInterval(newSpeed),
                             )
-                        }
-                    }
+                        },
+                        onChapterEndBehaviorChange = {
+                            persistAutoScrollChapterEndBehaviorPreference(it)
+                        },
+                        onEndPauseMsChange = { persistAutoScrollEndPauseMsPreference(it) },
+                        onToggleAutoScroll = {
+                            val nextState = resolveAutoScrollUiStateOnToggle(
+                                currentEnabled = autoScrollEnabled,
+                                showReaderUi = showReaderUi,
+                                autoScrollExpanded = autoScrollExpanded,
+                            )
+                            autoScrollEnabled = nextState.autoScrollEnabled
+                            if (!nextState.autoScrollEnabled) {
+                                onCancelAutoScrollHandoff()
+                                autoScrollEndStableFrames = 0
+                                autoScrollEndDwellActive = false
+                            }
+                            onSetShowReaderUi(nextState.showReaderUi)
+                            autoScrollExpanded = nextState.autoScrollExpanded
+                        },
+                        onShowFloatingButtonChange = {
+                            readerPreferences.showAutoScrollFloatingButton().set(it)
+                        },
+                        onToggleExpanded = { autoScrollExpanded = !autoScrollExpanded },
+                    )
                 }
             }
 

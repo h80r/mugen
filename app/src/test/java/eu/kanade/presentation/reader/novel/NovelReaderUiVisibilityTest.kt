@@ -4483,6 +4483,7 @@ class NovelReaderUiVisibilityTest {
             textShadowCss = null,
             forceBoldText = false,
             forceItalicText = false,
+            bionicReadingEnabled = false,
         )
         val second = buildWebReaderCssFingerprint(
             chapterId = 1L,
@@ -4505,9 +4506,39 @@ class NovelReaderUiVisibilityTest {
             textShadowCss = null,
             forceBoldText = false,
             forceItalicText = false,
+            bionicReadingEnabled = false,
         )
 
         assertNotEquals(first, second)
+    }
+
+    @Test
+    fun `webview css fingerprint changes when bionic reading toggles`() {
+        fun fingerprint(bionicReadingEnabled: Boolean): String = buildWebReaderCssFingerprint(
+            chapterId = 1L,
+            paddingTop = 0,
+            paddingBottom = 0,
+            paddingHorizontal = 16,
+            fontSizePx = 16,
+            lineHeightMultiplier = 1.6f,
+            paragraphSpacingPx = 12,
+            textAlignCss = null,
+            firstLineIndentCss = null,
+            textColorHex = "#111111",
+            backgroundHex = "#FFFFFF",
+            appearanceMode = NovelReaderAppearanceMode.BACKGROUND,
+            backgroundTexture = NovelReaderBackgroundTexture.NONE,
+            oledEdgeGradient = false,
+            backgroundImageIdentity = "preset:linen_paper",
+            fontFamilyName = null,
+            customCss = "",
+            textShadowCss = null,
+            forceBoldText = false,
+            forceItalicText = false,
+            bionicReadingEnabled = bionicReadingEnabled,
+        )
+
+        assertNotEquals(fingerprint(false), fingerprint(true))
     }
 
     @Test
