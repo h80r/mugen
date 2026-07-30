@@ -440,8 +440,37 @@ class NovelReaderScreenModel(
     private var bookModeSyncPending = false
 
     private var bookModeProgressJob: kotlinx.coroutines.Job? = null
+    private var bookModeResumeGuardJob: kotlinx.coroutines.Job? = null
 
     private var lastPersistedBookModeSectionIndex = -1
+
+    /**
+     * Position this book session resumed at, kept until the renderer actually reports it.
+     *
+     * A freshly loaded document reports its own start (section 0, offset 0) before the queued resume
+     * scroll lands. That echo used to be persisted immediately - the stored whole-book offset was
+     * overwritten with zero on every open, which is why the scrolled flow always reopened at the very
+     * beginning of the novel. Positions before the resume point are ignored while this is set.
+     */
+    private var bookModeResumeLocation: NovelBookLocation? = null
+
+    /** Hard expiry for the resume guard, so a never-arriving resume cannot freeze persistence. */
+    private var bookModeResumeGuardUntilMs = 0L
+
+    /** Whole-book offset this session started from; earlier chapters are not this session's doing. */
+    private var bookModeSessionStartCharOffset = 0
+
+    /** Chapter under the reading caret, tracked to notice chapter changes inside one block. */
+    private var lastBookModeChapterId: Long? = null
+
+    /** Mirrors [State.ReaderBookModeState.isRestoringPosition] for the UI snapshot. */
+    private var bookModeRestoringPosition = false
+
+    /** Slack when comparing a reported position with the resume position. */
+    private val bookModeResumeToleranceChars = 400
+
+    /** Upper bound for the resume guard window. */
+    private val bookModeResumeGuardMillis = 1_200L
 
     /** Chapters this book-mode session already reported as read, to avoid duplicate write-through. */
     private val bookModeMarkedReadChapterIds = mutableSetOf<Long>()
@@ -593,6 +622,23 @@ class NovelReaderScreenModel(
         lastBookEnginePrefetchSectionIndex = -1
         bookModeCommandQueue.clear()
         val resumeState = bookModeRuntime.uiState()
+        val resumedLocation = bookModeRuntime.location
+        bookModeResumeLocation = resumedLocation
+        bookModeResumeGuardUntilMs = System.currentTimeMillis() + bookModeResumeGuardMillis
+        bookModeRestoringPosition = resumedLocation.sectionIndex > 0 || resumedLocation.charOffset > 0
+        bookModeResumeGuardJob?.cancel()
+        if (bookModeRestoringPosition) {
+            bookModeResumeGuardJob = screenModelScope.launch {
+                kotlinx.coroutines.delay(bookModeResumeGuardMillis)
+                releaseBookModeResumeGuard()
+            }
+        }
+        bookModeSessionStartCharOffset = artifactSource
+            ?.let { it.chapterStartAt(it.charOffsetOf(resumedLocation)) }
+            ?: 0
+        lastPersistedBookModeSectionIndex = resumedLocation.sectionIndex
+        lastBookModeChapterId = bookModeChapterAtReadingPosition()?.id
+        bookModeMarkedReadChapterIds.clear()
         // The native renderer has no document-ready hook to place the reader, so the resume position
         // is queued as a regular scroll command. Both renderers therefore open the book where the
         // reader left off instead of at the top of the resident window.
@@ -729,6 +775,7 @@ class NovelReaderScreenModel(
                 isPreparingWholeBook = bookPrepareRunning,
                 preparedChapterCount = bookPreparedChapterCount,
                 totalChapterCount = chapterCount,
+                isRestoringPosition = bookModeRestoringPosition,
             ),
         )
     }
@@ -739,10 +786,7 @@ class NovelReaderScreenModel(
         bookModeRuntime.moveTo(sectionIndex = sectionIndex, sectionFraction = sectionFraction)
         scheduleBookModeSync()
         refreshBookModeState()
-        if (sectionIndex != lastPersistedBookModeSectionIndex) {
-            markBookModeCrossedChaptersRead()
-        }
-        scheduleBookModeProgressPersistence(sectionIndex = sectionIndex, sectionFraction = sectionFraction)
+        onBookModePositionChanged(sectionFraction)
     }
 
     /** Receives the dedicated renderer's exact section/text location without touching the legacy DOM sync. */
@@ -752,13 +796,107 @@ class NovelReaderScreenModel(
         refreshBookModeState()
         val currentLocation = bookModeRuntime.location
         scheduleBookEnginePrefetch(currentLocation.sectionIndex)
-        if (currentLocation.sectionIndex != lastPersistedBookModeSectionIndex) {
+        onBookModePositionChanged(bookModeRuntime.uiState().currentSectionFraction)
+    }
+
+    /**
+     * Turns a new reading position into read marking and persistence.
+     *
+     * Both renderers funnel through here so the rules cannot drift apart. Read marking used to be
+     * bound to block changes, but a block holds tens of thousands of characters: two short chapters
+     * that follow each other inside one block never produced a block change, so the first of them was
+     * never marked read. The chapter under the caret is tracked instead, which is the signal the user
+     * actually sees.
+     */
+    private fun onBookModePositionChanged(sectionFraction: Float) {
+        val location = bookModeRuntime.location
+        if (isBookModeResumeEcho(location)) return
+        val chapterId = bookModeChapterAtReadingPosition()?.id
+        if (chapterId != null && chapterId != lastBookModeChapterId) {
+            lastBookModeChapterId = chapterId
+            adoptBookModeChapter(chapterId)
+            markBookModeCrossedChaptersRead()
+        } else if (location.sectionIndex != lastPersistedBookModeSectionIndex) {
             markBookModeCrossedChaptersRead()
         }
         scheduleBookModeProgressPersistence(
-            sectionIndex = currentLocation.sectionIndex,
-            sectionFraction = bookModeRuntime.uiState().currentSectionFraction,
+            sectionIndex = location.sectionIndex,
+            sectionFraction = sectionFraction,
         )
+    }
+
+    /**
+     * True while the renderer is still reporting positions from before the resume point.
+     *
+     * The guard is released as soon as the resume position is reached, and always after
+     * [bookModeResumeGuardMillis], so a renderer that never reaches it cannot block persistence for
+     * the rest of the session.
+     */
+    private fun isBookModeResumeEcho(location: NovelBookLocation): Boolean {
+        val pending = bookModeResumeLocation ?: return false
+        if (System.currentTimeMillis() > bookModeResumeGuardUntilMs) {
+            releaseBookModeResumeGuard()
+            return false
+        }
+        val artifact = artifactSource
+        val reached = if (artifact != null) {
+            artifact.charOffsetOf(location) + bookModeResumeToleranceChars >=
+                artifact.charOffsetOf(pending)
+        } else {
+            location.sectionIndex > pending.sectionIndex ||
+                (
+                    location.sectionIndex == pending.sectionIndex &&
+                        location.charOffset + bookModeResumeToleranceChars >= pending.charOffset
+                    )
+        }
+        if (!reached) return true
+        releaseBookModeResumeGuard()
+        return false
+    }
+
+    /** Drops the resume guard and uncovers the reader once the saved position is on screen. */
+    private fun releaseBookModeResumeGuard() {
+        bookModeResumeGuardJob?.cancel()
+        bookModeResumeGuardJob = null
+        bookModeResumeLocation = null
+        if (bookModeRestoringPosition) {
+            bookModeRestoringPosition = false
+            refreshBookModeState()
+        }
+    }
+
+    /**
+     * Moves the session's chapter anchor to the chapter under the caret.
+     *
+     * Over a book the reader never opens a new chapter, so the anchor stayed on the chapter the
+     * session was entered from: history, the exit snapshot and the read threshold all described
+     * chapter one no matter how far the reader had scrolled. "Continue" from the home screen then
+     * resolved that stale chapter, found it did not match the stored book position, and opened the
+     * book at that chapter's first character. The anchor now follows the text, so the stored position
+     * and the history entry describe the same chapter and resuming lands where reading stopped.
+     *
+     * Only the model-side anchor moves; the reader UI keeps rendering the continuous document, so no
+     * chapter-change effects are triggered.
+     */
+    private fun adoptBookModeChapter(chapterId: Long) {
+        val chapter = chapterOrderList.firstOrNull { it.id == chapterId }
+            ?: fullChapterOrderList.firstOrNull { it.id == chapterId }
+            ?: return
+        val previousChapterId = currentChapter?.id
+        if (previousChapterId == chapter.id) return
+        currentChapter = chapter
+        lastSavedRead = chapter.read
+        lastSavedProgress = chapter.lastPageRead
+        initialProgressIndex = 0
+        hasProgressChanged = true
+        chapterReadStartTimeMs = System.currentTimeMillis()
+        if (previousChapterId != null) {
+            screenModelScope.launch {
+                withContext(NonCancellable) {
+                    flushPendingHistorySnapshot(previousChapterId)
+                }
+            }
+        }
     }
 
     internal fun seekBookModeToProgress(fraction: Float) {
@@ -824,7 +962,12 @@ class NovelReaderScreenModel(
         val artifact = artifactSource
         val crossedChapterIds = if (artifact != null) {
             val charOffset = artifact.charOffsetOf(bookModeRuntime.location)
-            artifact.chaptersFullyReadBefore(charOffset).filterNot { it in alreadyRead }
+            artifact
+                .chaptersFullyReadBetween(
+                    fromCharOffset = bookModeSessionStartCharOffset,
+                    toCharOffset = charOffset,
+                )
+                .filterNot { it in alreadyRead }
         } else {
             bookModeRuntime.chaptersToMarkRead(alreadyRead)
         }
@@ -3026,8 +3169,15 @@ class NovelReaderScreenModel(
         }
         bookModeProgressJob?.cancel()
         bookModeProgressJob = null
+        bookModeResumeGuardJob?.cancel()
+        bookModeResumeGuardJob = null
         bookModeSyncPending = false
         lastPersistedBookModeSectionIndex = -1
+        bookModeResumeLocation = null
+        bookModeResumeGuardUntilMs = 0L
+        bookModeRestoringPosition = false
+        bookModeSessionStartCharOffset = 0
+        lastBookModeChapterId = null
         bookModeMarkedReadChapterIds.clear()
         bookModeRuntime.stop()
         bookModeCommandQueue.clear()
@@ -5204,6 +5354,14 @@ class NovelReaderScreenModel(
             val failedSectionIndices: List<Int> = emptyList(),
             val showChapterHeadings: Boolean = true,
             val isPreparingWholeBook: Boolean = false,
+            /**
+             * The renderer is mounted but has not reached the saved position yet.
+             *
+             * A freshly loaded document paints its own start before the queued resume scroll lands,
+             * so the reader flashed the first page of the book and then jumped. The UI covers those
+             * frames instead of showing a position the reader never asked for.
+             */
+            val isRestoringPosition: Boolean = false,
             val preparedChapterCount: Int = 0,
             val totalChapterCount: Int = 0,
         ) {

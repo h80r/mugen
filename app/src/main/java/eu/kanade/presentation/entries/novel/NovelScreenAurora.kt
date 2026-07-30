@@ -219,8 +219,8 @@ fun NovelScreenAuroraImpl(
     val groupedByChapter = false
     // PERF: use cheaper keys for remember. Full list reference changes often; size + scanlator is usually sufficient
     // for grouping decision until actual chapter content (names/numbers) changes.
-    val groupedByVolume = remember(chapters.size, selectedScanlator) { shouldGroupNovelChaptersByVolume(chapters) }
-    val chapterGroups = remember(chapters.size, groupedByChapter, selectedScanlator) {
+    val groupedByVolume = remember(chapters, selectedScanlator) { shouldGroupNovelChaptersByVolume(chapters) }
+    val chapterGroups = remember(chapters, groupedByChapter, selectedScanlator) {
         if (groupedByChapter) {
             resolveNovelChapterDisplayData(
                 chapters = chapters,
@@ -231,7 +231,7 @@ fun NovelScreenAuroraImpl(
             emptyList()
         }
     }
-    val volumeGroups = remember(chapters.size, groupedByVolume, selectedScanlator) {
+    val volumeGroups = remember(chapters, groupedByVolume, selectedScanlator) {
         if (groupedByVolume) {
             resolveNovelVolumeChapterDisplayData(
                 chapters = chapters,
@@ -249,7 +249,7 @@ fun NovelScreenAuroraImpl(
         }
     }
     val initialExpandedGroupKeys =
-        remember(chapters.size, selectedScanlator, state.targetChapterIndex, groupedByVolume) {
+        remember(chapters, selectedScanlator, state.targetChapterIndex, groupedByVolume) {
             when {
                 groupedByVolume -> {
                     val targetChapterId = chapters.getOrNull(state.targetChapterIndex)?.id
@@ -363,7 +363,7 @@ fun NovelScreenAuroraImpl(
             .collect { isReverseScrollingOverlay = it }
     }
     val visibleRows =
-        remember(displayRows.size, chaptersExpanded, listChapterCount, groupedByChapter, groupedByVolume) {
+        remember(displayRows, chaptersExpanded, listChapterCount, groupedByChapter, groupedByVolume) {
             if (chaptersExpanded) {
                 displayRows
             } else {

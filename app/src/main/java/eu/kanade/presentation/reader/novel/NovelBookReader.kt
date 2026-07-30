@@ -1,6 +1,7 @@
 package eu.kanade.presentation.reader.novel
 
 import android.graphics.Color
+import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.webkit.WebResourceResponse
@@ -99,6 +100,11 @@ internal fun NovelBookReader(
             settings.allowUniversalAccessFromFileURLs = true
         }
     }
+    // Every location the engine reports travels up to the screen model and comes straight back
+    // down as the [location] parameter. Reopening the document for those echoes is what made the
+    // book flash its first page and repaint the loading spinner while scrolling.
+    val engineEmittedLocation = remember { arrayOfNulls<NovelBookLocation>(1) }
+    val engineEmittedAtMillis = remember { longArrayOf(0L) }
     val engineHolder = remember { arrayOfNulls<NovelBookEngine>(1) }
     // The renderer is created before the stitching lambda exists, so boundary reports from the
     // document are routed through this holder instead of duplicating the logic.
@@ -124,6 +130,8 @@ internal fun NovelBookReader(
             loadDocument = { section -> latestLoadDocument.value(section) },
             renderer = renderer,
             onLocationChanged = { nextLocation ->
+                engineEmittedLocation[0] = nextLocation
+                engineEmittedAtMillis[0] = SystemClock.uptimeMillis()
                 latestOnLocationChanged.value(nextLocation)
             },
             onSectionMeasured = { chapterId, charCount ->
@@ -199,8 +207,18 @@ internal fun NovelBookReader(
         loading = false
     }
     LaunchedEffect(location, opened) {
-        if (!opened || engine.location == location) return@LaunchedEffect
-        loading = true
+        if (!opened) return@LaunchedEffect
+        val isSeek = isExternalBookSeekRequest(
+            requested = location,
+            engineLocation = engine.location,
+            lastEmitted = engineEmittedLocation[0],
+            millisSinceEmit = SystemClock.uptimeMillis() - engineEmittedAtMillis[0],
+        )
+        if (!isSeek) return@LaunchedEffect
+        // Swapping to another section replaces the document, so the reader has nothing to show in
+        // the meantime. A seek inside the live section keeps its content on screen, and painting a
+        // spinner over it is exactly the flicker this guard exists to remove.
+        loading = location.sectionIndex != engine.location.sectionIndex
         failure = null
         runCatching {
             operationMutex.withLock {
@@ -293,7 +311,7 @@ internal fun NovelBookReader(
                 view.clearFocus()
             },
         )
-        if (loading) {
+        if (loading && !opened) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         } else if (failure != null) {
             Surface(modifier = Modifier.align(Alignment.Center)) {
@@ -325,6 +343,32 @@ internal fun NovelBookReader(
             }
         }
     }
+}
+
+/** How long a location coming back from the screen model still counts as the engine's own echo. */
+internal const val BOOK_ENGINE_ECHO_WINDOW_MILLIS = 1_500L
+
+/** Text distance below which a same-section location is treated as a rounded echo, not a seek. */
+internal const val BOOK_ENGINE_ECHO_CHAR_TOLERANCE = 2_000
+
+/**
+ * Decides whether an incoming location is a real seek (progress bar, chapter picker, resume) or the
+ * engine's own position travelling back down through the screen model.
+ *
+ * The model re-derives the char offset from a fraction of the measured section length, so an echo
+ * never compares equal to what the engine holds; without this test every scroll reopened the
+ * document.
+ */
+internal fun isExternalBookSeekRequest(
+    requested: NovelBookLocation,
+    engineLocation: NovelBookLocation,
+    lastEmitted: NovelBookLocation?,
+    millisSinceEmit: Long,
+): Boolean {
+    if (requested == engineLocation || requested == lastEmitted) return false
+    if (requested.sectionIndex != engineLocation.sectionIndex) return true
+    if (millisSinceEmit in 0..BOOK_ENGINE_ECHO_WINDOW_MILLIS) return false
+    return abs(requested.charOffset - engineLocation.charOffset) > BOOK_ENGINE_ECHO_CHAR_TOLERANCE
 }
 
 private const val TAP_TIMEOUT_MILLIS = 300L

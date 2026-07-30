@@ -95,9 +95,9 @@ class NovelBookSectionDomTest {
 
     @Test
     fun `scroll script clamps the section fraction`() {
-        buildScrollToBookSectionJavascript(4, 2f) shouldContain "rect.height * 1.0"
-        buildScrollToBookSectionJavascript(4, -1f) shouldContain "rect.height * 0.0"
-        buildScrollToBookSectionJavascript(4, 0.25f) shouldContain "rect.height * 0.25"
+        buildScrollToBookSectionJavascript(4, 2f) shouldContain "sectionHeight * 1.0"
+        buildScrollToBookSectionJavascript(4, -1f) shouldContain "sectionHeight * 0.0"
+        buildScrollToBookSectionJavascript(4, 0.25f) shouldContain "sectionHeight * 0.25"
     }
 
     @Test
@@ -107,7 +107,7 @@ class NovelBookSectionDomTest {
         // The paginated flow scrolls the body horizontally, so the same command has to write
         // scrollLeft on the paginated scroller instead of scrollTop on the document element.
         script shouldContain BOOK_PAGINATED_CLASS
-        script shouldContain "rect.width * 0.5"
+        script shouldContain "sectionWidth * 0.5"
         script shouldContain "scroller.scrollLeft ="
     }
 

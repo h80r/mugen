@@ -362,15 +362,28 @@ internal fun buildScrollToBookSectionJavascript(
             const scroller = $BOOK_SCROLLER_JS;
             if (!scroller) return 'no-scroller';
             const rect = target.getBoundingClientRect();
+            const next = target.nextElementSibling;
             if (paginated) {
                 const page = Math.max(1, window.innerWidth || 1);
                 const sectionLeft = scroller.scrollLeft + rect.left;
-                const rawTarget = sectionLeft + Math.round(rect.width * $clampedFraction);
+                const sectionWidth = (function() {
+                    if (next && next.offsetLeft > target.offsetLeft) {
+                        return next.offsetLeft - target.offsetLeft;
+                    }
+                    return Math.max(rect.width, scroller.scrollWidth - target.offsetLeft);
+                })();
+                const rawTarget = sectionLeft + Math.round(sectionWidth * $clampedFraction);
                 const max = Math.max(0, scroller.scrollWidth - page);
                 scroller.scrollLeft = Math.min(max, Math.round(rawTarget / page) * page);
             } else {
                 const sectionTop = scroller.scrollTop + rect.top;
-                const rawTarget = sectionTop + Math.round(rect.height * $clampedFraction);
+                const sectionHeight = (function() {
+                    if (next && next.offsetTop > target.offsetTop) {
+                        return next.offsetTop - target.offsetTop;
+                    }
+                    return Math.max(rect.height, scroller.scrollHeight - target.offsetTop);
+                })();
+                const rawTarget = sectionTop + Math.round(sectionHeight * $clampedFraction);
                 const max = Math.max(0, scroller.scrollHeight - (window.innerHeight || 0));
                 scroller.scrollTop = Math.min(max, Math.max(0, rawTarget));
             }

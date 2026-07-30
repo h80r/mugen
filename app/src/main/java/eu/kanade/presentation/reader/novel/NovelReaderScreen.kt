@@ -92,6 +92,7 @@ import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
@@ -345,128 +346,121 @@ fun createNovelReaderWebView(context: Context): WebView {
 @Composable
 fun NovelReaderScreen(
     rawState: NovelReaderScreenModel.State.Success,
-    onBack: () -> Unit,
-    onReadingProgress: (currentIndex: Int, totalItems: Int, persistedProgress: Long?) -> Unit,
-    onSeekBookModeProgress: (Float) -> Unit = {},
-    onToggleBookmark: () -> Unit = {},
-    onOpenDictionaryHistory: (() -> Unit)? = null,
-    onStartGeminiTranslation: () -> Unit = {},
-    onStopGeminiTranslation: () -> Unit = {},
-    onToggleGeminiTranslationVisibility: () -> Unit = {},
-    onClearGeminiTranslation: () -> Unit = {},
-    onClearAllGeminiTranslationCache: () -> Unit = {},
-    onAddAiTranslationLog: (String) -> Unit = {},
-    onClearGeminiLogs: () -> Unit = {},
-    onSetGeminiApiKey: (String) -> Unit = {},
-    onSetGeminiModel: (String) -> Unit = {},
-    onSetGeminiBatchSize: (Int) -> Unit = {},
-    onSetGeminiConcurrency: (Int) -> Unit = {},
-    onSetGeminiRelaxedMode: (Boolean) -> Unit = {},
-    onSetGeminiDisableCache: (Boolean) -> Unit = {},
-    onSetGeminiReasoningEffort: (String) -> Unit = {},
-    onSetGeminiBudgetTokens: (Int) -> Unit = {},
-    onSetGeminiTemperature: (Float) -> Unit = {},
-    onSetGeminiTopP: (Float) -> Unit = {},
-    onSetGeminiTopK: (Int) -> Unit = {},
-    onSetGeminiPromptMode: (GeminiPromptMode) -> Unit = {},
-    onSetGeminiSourceLang: (String) -> Unit = {},
-    onSetGeminiTargetLang: (String) -> Unit = {},
-    onSetGeminiStylePreset: (NovelTranslationStylePreset) -> Unit = {},
-    onSetGeminiEnabledPromptModifiers: (List<String>) -> Unit = {},
-    onSetGeminiCustomPromptModifier: (String) -> Unit = {},
-    onSetGeminiAutoTranslateEnglishSource: (Boolean) -> Unit = {},
-    onSetGeminiPrefetchNextChapterTranslation: (Boolean) -> Unit = {},
-    onSetGeminiPrivateUnlocked: (Boolean) -> Unit = {},
-    onSetGeminiPrivatePythonLikeMode: (Boolean) -> Unit = {},
-    onSetTranslationProvider: (NovelTranslationProvider) -> Unit = {},
-    onSetOpenRouterBaseUrl: (String) -> Unit = {},
-    onSetOpenRouterApiKey: (String) -> Unit = {},
-    onSetOpenRouterModel: (String) -> Unit = {},
-    onRefreshOpenRouterModels: () -> Unit = {},
-    onTestOpenRouterConnection: () -> Unit = {},
-    onSetDeepSeekBaseUrl: (String) -> Unit = {},
-    onSetDeepSeekApiKey: (String) -> Unit = {},
-    onSetDeepSeekModel: (String) -> Unit = {},
-    onRefreshDeepSeekModels: () -> Unit = {},
-    onTestDeepSeekConnection: () -> Unit = {},
-    onSetMistralBaseUrl: (String) -> Unit = {},
-    onSetMistralApiKey: (String) -> Unit = {},
-    onSetMistralModel: (String) -> Unit = {},
-    onRefreshMistralModels: () -> Unit = {},
-    onTestMistralConnection: () -> Unit = {},
-    onSetNvidiaBaseUrl: (String) -> Unit = {},
-    onSetNvidiaApiKey: (String) -> Unit = {},
-    onSetNvidiaModel: (String) -> Unit = {},
-    onRefreshNvidiaModels: () -> Unit = {},
-    onTestNvidiaConnection: () -> Unit = {},
-    onSetOllamaCloudBaseUrl: (String) -> Unit = {},
-    onSetOllamaCloudApiKey: (String) -> Unit = {},
-    onSetOllamaCloudModel: (String) -> Unit = {},
-    onRefreshOllamaCloudModels: () -> Unit = {},
-    onTestOllamaCloudConnection: () -> Unit = {},
-    onStartGoogleTranslation: () -> Unit = {},
-    onStopGoogleTranslation: () -> Unit = {},
-    onResumeGoogleTranslation: () -> Unit = {},
-    onToggleGoogleTranslationVisibility: () -> Unit = {},
-    onClearGoogleTranslation: () -> Unit = {},
-    onSetGoogleTranslationEnabled: (Boolean) -> Unit = {},
-    onSetGoogleTranslationAutoStart: (Boolean) -> Unit = {},
-    onSetGoogleTranslationSourceLang: (String) -> Unit = {},
-    onSetGoogleTranslationTargetLang: (String) -> Unit = {},
-    onToggleTtsPlayback: (NovelTtsPlaybackStartRequest) -> Unit = {},
-    onStopTtsPlayback: () -> Unit = {},
-    onSkipPreviousTts: () -> Unit = {},
-    onSkipNextTts: () -> Unit = {},
-    onPauseTtsForManualNavigation: (NovelTtsPlaybackStartRequest) -> Unit = {},
-    onSetTtsEnginePackage: (String) -> Unit = {},
-    onSetTtsVoiceId: (String) -> Unit = {},
-    onSetTtsLocaleTag: (String) -> Unit = {},
-    onSetTtsSpeechRate: (Float) -> Unit = {},
-    onSetTtsPitch: (Float) -> Unit = {},
-    onDisableTts: () -> Unit = {},
-    onPreviewTtsVoice: (String) -> Unit = {},
-    onStopTtsVoicePreview: () -> Unit = {},
-    onOpenPreviousChapter: ((Long) -> Unit)? = null,
-    onOpenNextChapter: ((Long) -> Unit)? = null,
-    onPrepareAutoScrollHandoff: (targetChapterId: Long, speed: Int) -> Unit = { _, _ -> },
-    onConsumeAutoScrollHandoff: (chapterId: Long) -> NovelAutoScrollHandoffState? = { null },
-    onCancelAutoScrollHandoff: () -> Unit = {},
-    onRequestAutoScrollNextChapterPrefetch: () -> Unit = {},
-    onOpenChapter: ((Long) -> Unit)? = null,
-    onDownloadChapter: ((Long) -> Unit)? = null,
     showReaderUi: Boolean,
-    onSetShowReaderUi: (Boolean) -> Unit,
-    onOpenBottomSheet: () -> Unit = {},
-    onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
-    onTranslateSelectedText: () -> Unit = {},
-    onRetrySelectedTextTranslation: () -> Unit = onTranslateSelectedText,
-    onDismissSelectedTextTranslation: () -> Unit = {},
-    onLookupSelectedTextDefinition: () -> Unit = {},
-    onRetryNovelDictionary: () -> Unit = onLookupSelectedTextDefinition,
-    onDismissNovelDictionary: () -> Unit = {},
-    onPlaySelectedTextPronunciation: (String) -> Unit = {},
     bookEngineSpine: NovelBookSpine = NovelBookSpine.EMPTY,
     bookEngineLocation: NovelBookLocation = NovelBookLocation.START,
-    loadBookEngineDocument: (suspend (NovelBookSection) -> NovelBookDocument)? = null,
-    onBookEngineLocationChanged: (NovelBookLocation) -> Unit = {},
-    onBookEngineSectionMeasured: (chapterId: Long, charCount: Int) -> Unit = { _, _ -> },
     bookModeCommands: List<NovelBookUiCommand> = emptyList(),
-    onBookModeCommandsExecuted: (List<Long>) -> Unit = {},
-    onBookModeScroll: (sectionIndex: Int, sectionFraction: Float) -> Unit = { _, _ -> },
-    onBookModeSectionMeasured: (chapterId: Long, charCount: Int) -> Unit = { _, _ -> },
-    onBookModeRetrySection: (sectionIndex: Int) -> Unit = {},
-    onBookModeDocumentReady: () -> Unit = {},
-    onPrepareWholeBook: () -> Unit = {},
-    /**
-     * Pre-compiled blocks of a book section, or null when the compiled book has none.
-     *
-     * Supplied by the screen model from the book artifact. When present, the native renderer
-     * skips parsing the section HTML entirely, which is what makes opening and scrolling a
-     * 50-100 chapter book instant instead of running Jsoup over a 200k character window on
-     * every append.
-     */
-    nativeBookBlocksForSection: (sectionIndex: Int) -> List<NovelRichContentBlock>? = { null },
+    actions: NovelReaderScreenActions,
 ) {
+    val onBack = actions.onBack
+    val onReadingProgress = actions.onReadingProgress
+    val onSeekBookModeProgress = actions.onSeekBookModeProgress
+    val onToggleBookmark = actions.onToggleBookmark
+    val onOpenDictionaryHistory = actions.onOpenDictionaryHistory
+    val onStartGeminiTranslation = actions.onStartGeminiTranslation
+    val onStopGeminiTranslation = actions.onStopGeminiTranslation
+    val onToggleGeminiTranslationVisibility = actions.onToggleGeminiTranslationVisibility
+    val onClearGeminiTranslation = actions.onClearGeminiTranslation
+    val onClearAllGeminiTranslationCache = actions.onClearAllGeminiTranslationCache
+    val onAddAiTranslationLog = actions.onAddAiTranslationLog
+    val onClearGeminiLogs = actions.onClearGeminiLogs
+    val onSetGeminiApiKey = actions.onSetGeminiApiKey
+    val onSetGeminiModel = actions.onSetGeminiModel
+    val onSetGeminiBatchSize = actions.onSetGeminiBatchSize
+    val onSetGeminiConcurrency = actions.onSetGeminiConcurrency
+    val onSetGeminiRelaxedMode = actions.onSetGeminiRelaxedMode
+    val onSetGeminiDisableCache = actions.onSetGeminiDisableCache
+    val onSetGeminiReasoningEffort = actions.onSetGeminiReasoningEffort
+    val onSetGeminiBudgetTokens = actions.onSetGeminiBudgetTokens
+    val onSetGeminiTemperature = actions.onSetGeminiTemperature
+    val onSetGeminiTopP = actions.onSetGeminiTopP
+    val onSetGeminiTopK = actions.onSetGeminiTopK
+    val onSetGeminiPromptMode = actions.onSetGeminiPromptMode
+    val onSetGeminiSourceLang = actions.onSetGeminiSourceLang
+    val onSetGeminiTargetLang = actions.onSetGeminiTargetLang
+    val onSetGeminiStylePreset = actions.onSetGeminiStylePreset
+    val onSetGeminiEnabledPromptModifiers = actions.onSetGeminiEnabledPromptModifiers
+    val onSetGeminiCustomPromptModifier = actions.onSetGeminiCustomPromptModifier
+    val onSetGeminiAutoTranslateEnglishSource = actions.onSetGeminiAutoTranslateEnglishSource
+    val onSetGeminiPrefetchNextChapterTranslation = actions.onSetGeminiPrefetchNextChapterTranslation
+    val onSetGeminiPrivateUnlocked = actions.onSetGeminiPrivateUnlocked
+    val onSetGeminiPrivatePythonLikeMode = actions.onSetGeminiPrivatePythonLikeMode
+    val onSetTranslationProvider = actions.onSetTranslationProvider
+    val onSetOpenRouterBaseUrl = actions.onSetOpenRouterBaseUrl
+    val onSetOpenRouterApiKey = actions.onSetOpenRouterApiKey
+    val onSetOpenRouterModel = actions.onSetOpenRouterModel
+    val onRefreshOpenRouterModels = actions.onRefreshOpenRouterModels
+    val onTestOpenRouterConnection = actions.onTestOpenRouterConnection
+    val onSetDeepSeekBaseUrl = actions.onSetDeepSeekBaseUrl
+    val onSetDeepSeekApiKey = actions.onSetDeepSeekApiKey
+    val onSetDeepSeekModel = actions.onSetDeepSeekModel
+    val onRefreshDeepSeekModels = actions.onRefreshDeepSeekModels
+    val onTestDeepSeekConnection = actions.onTestDeepSeekConnection
+    val onSetMistralBaseUrl = actions.onSetMistralBaseUrl
+    val onSetMistralApiKey = actions.onSetMistralApiKey
+    val onSetMistralModel = actions.onSetMistralModel
+    val onRefreshMistralModels = actions.onRefreshMistralModels
+    val onTestMistralConnection = actions.onTestMistralConnection
+    val onSetNvidiaBaseUrl = actions.onSetNvidiaBaseUrl
+    val onSetNvidiaApiKey = actions.onSetNvidiaApiKey
+    val onSetNvidiaModel = actions.onSetNvidiaModel
+    val onRefreshNvidiaModels = actions.onRefreshNvidiaModels
+    val onTestNvidiaConnection = actions.onTestNvidiaConnection
+    val onSetOllamaCloudBaseUrl = actions.onSetOllamaCloudBaseUrl
+    val onSetOllamaCloudApiKey = actions.onSetOllamaCloudApiKey
+    val onSetOllamaCloudModel = actions.onSetOllamaCloudModel
+    val onRefreshOllamaCloudModels = actions.onRefreshOllamaCloudModels
+    val onTestOllamaCloudConnection = actions.onTestOllamaCloudConnection
+    val onStartGoogleTranslation = actions.onStartGoogleTranslation
+    val onStopGoogleTranslation = actions.onStopGoogleTranslation
+    val onResumeGoogleTranslation = actions.onResumeGoogleTranslation
+    val onToggleGoogleTranslationVisibility = actions.onToggleGoogleTranslationVisibility
+    val onClearGoogleTranslation = actions.onClearGoogleTranslation
+    val onSetGoogleTranslationEnabled = actions.onSetGoogleTranslationEnabled
+    val onSetGoogleTranslationAutoStart = actions.onSetGoogleTranslationAutoStart
+    val onSetGoogleTranslationSourceLang = actions.onSetGoogleTranslationSourceLang
+    val onSetGoogleTranslationTargetLang = actions.onSetGoogleTranslationTargetLang
+    val onToggleTtsPlayback = actions.onToggleTtsPlayback
+    val onStopTtsPlayback = actions.onStopTtsPlayback
+    val onSkipPreviousTts = actions.onSkipPreviousTts
+    val onSkipNextTts = actions.onSkipNextTts
+    val onPauseTtsForManualNavigation = actions.onPauseTtsForManualNavigation
+    val onSetTtsEnginePackage = actions.onSetTtsEnginePackage
+    val onSetTtsVoiceId = actions.onSetTtsVoiceId
+    val onSetTtsLocaleTag = actions.onSetTtsLocaleTag
+    val onSetTtsSpeechRate = actions.onSetTtsSpeechRate
+    val onSetTtsPitch = actions.onSetTtsPitch
+    val onDisableTts = actions.onDisableTts
+    val onPreviewTtsVoice = actions.onPreviewTtsVoice
+    val onStopTtsVoicePreview = actions.onStopTtsVoicePreview
+    val onOpenPreviousChapter = actions.onOpenPreviousChapter
+    val onOpenNextChapter = actions.onOpenNextChapter
+    val onPrepareAutoScrollHandoff = actions.onPrepareAutoScrollHandoff
+    val onConsumeAutoScrollHandoff = actions.onConsumeAutoScrollHandoff
+    val onCancelAutoScrollHandoff = actions.onCancelAutoScrollHandoff
+    val onRequestAutoScrollNextChapterPrefetch = actions.onRequestAutoScrollNextChapterPrefetch
+    val onOpenChapter = actions.onOpenChapter
+    val onDownloadChapter = actions.onDownloadChapter
+    val onSetShowReaderUi = actions.onSetShowReaderUi
+    val onOpenBottomSheet = actions.onOpenBottomSheet
+    val onSelectedTextSelectionChanged = actions.onSelectedTextSelectionChanged
+    val onTranslateSelectedText = actions.onTranslateSelectedText
+    val onRetrySelectedTextTranslation = actions.onRetrySelectedTextTranslation
+    val onDismissSelectedTextTranslation = actions.onDismissSelectedTextTranslation
+    val onLookupSelectedTextDefinition = actions.onLookupSelectedTextDefinition
+    val onRetryNovelDictionary = actions.onRetryNovelDictionary
+    val onDismissNovelDictionary = actions.onDismissNovelDictionary
+    val onPlaySelectedTextPronunciation = actions.onPlaySelectedTextPronunciation
+    val loadBookEngineDocument = actions.loadBookEngineDocument
+    val onBookEngineLocationChanged = actions.onBookEngineLocationChanged
+    val onBookEngineSectionMeasured = actions.onBookEngineSectionMeasured
+    val onBookModeCommandsExecuted = actions.onBookModeCommandsExecuted
+    val onBookModeScroll = actions.onBookModeScroll
+    val onBookModeSectionMeasured = actions.onBookModeSectionMeasured
+    val onBookModeRetrySection = actions.onBookModeRetrySection
+    val onBookModeDocumentReady = actions.onBookModeDocumentReady
+    val onPrepareWholeBook = actions.onPrepareWholeBook
+    val nativeBookBlocksForSection = actions.nativeBookBlocksForSection
     val sanitizedSettings = remember(rawState.readerSettings) {
         rawState.readerSettings.copy(
             theme = safeEnum(rawState.readerSettings.theme, NovelReaderTheme.SYSTEM),
@@ -2598,73 +2592,85 @@ fun NovelReaderScreen(
                         backgroundColor = textBackground,
                     )
                     val bookReaderSelectedFontFamily = selectedReaderFont.id.takeIf { it.isNotBlank() }
-                    val bookReaderCss = buildString {
-                        append(
-                            buildWebReaderCssText(
-                                fontFaceCss = buildNovelReaderFontFaceCss(selectedReaderFont),
-                                paddingTop = bookReaderPaddingTop,
-                                paddingBottom = bookReaderPaddingBottom,
-                                paddingHorizontal = bookReaderPaddingHorizontal,
-                                fontSizePx = state.readerSettings.fontSize,
-                                lineHeightMultiplier = state.readerSettings.lineHeight,
-                                paragraphSpacingPx = bookReaderParagraphSpacingPx,
-                                textAlignCss = bookReaderTextAlignCss,
-                                firstLineIndentCss = bookReaderFirstLineIndentCss,
-                                textColorHex = colorToCssHex(textColor),
-                                backgroundHex = colorToCssHex(textBackground),
-                                appearanceMode = appearanceMode,
-                                backgroundTexture = activeBackgroundTexture,
-                                oledEdgeGradient = activeOledEdgeGradient && isDarkTheme,
-                                backgroundImageUrl = if (isBackgroundMode) backgroundModeWebImageUrl else null,
-                                fontFamilyName = bookReaderSelectedFontFamily,
-                                customCss = state.readerSettings.customCSS,
-                                textShadowCss = bookReaderTextShadowCss,
-                                forceBoldText = state.readerSettings.forceBoldText,
-                                forceItalicText = state.readerSettings.forceItalicText,
-                            ),
-                        )
-                        append(
-                            """
-
-#an-book-content {
-  padding-top: var(--an-reader-padding-top) !important;
-  padding-bottom: var(--an-reader-padding-bottom) !important;
-  padding-left: var(--an-reader-padding-left) !important;
-  padding-right: var(--an-reader-padding-right) !important;
-  background: var(--an-reader-bg) !important;
-  color: var(--an-reader-fg) !important;
-}
-                            """.trimIndent(),
-                        )
+                    val bookReaderBaseCss = buildWebReaderCssText(
+                        fontFaceCss = buildNovelReaderFontFaceCss(selectedReaderFont),
+                        paddingTop = bookReaderPaddingTop,
+                        paddingBottom = bookReaderPaddingBottom,
+                        paddingHorizontal = bookReaderPaddingHorizontal,
+                        fontSizePx = state.readerSettings.fontSize,
+                        lineHeightMultiplier = state.readerSettings.lineHeight,
+                        paragraphSpacingPx = bookReaderParagraphSpacingPx,
+                        textAlignCss = bookReaderTextAlignCss,
+                        firstLineIndentCss = bookReaderFirstLineIndentCss,
+                        textColorHex = colorToCssHex(textColor),
+                        backgroundHex = colorToCssHex(textBackground),
+                        appearanceMode = appearanceMode,
+                        backgroundTexture = activeBackgroundTexture,
+                        oledEdgeGradient = activeOledEdgeGradient && isDarkTheme,
+                        backgroundImageUrl = if (isBackgroundMode) backgroundModeWebImageUrl else null,
+                        fontFamilyName = bookReaderSelectedFontFamily,
+                        customCss = state.readerSettings.customCSS,
+                        textShadowCss = bookReaderTextShadowCss,
+                        forceBoldText = state.readerSettings.forceBoldText,
+                        forceItalicText = state.readerSettings.forceItalicText,
+                    )
+                    val bookReaderCss = remember(bookReaderBaseCss) {
+                        withNovelBookReaderContentOverrides(bookReaderBaseCss)
                     }
 
                     if (state.bookMode.isEnabled && loadBookEngineDocument != null) {
-                        NovelBookReader(
-                            spine = bookEngineSpine,
-                            location = bookEngineLocation,
-                            flow = if (state.readerSettings.pageReader) {
-                                NovelBookEngineFlow.PAGINATED
-                            } else {
-                                NovelBookEngineFlow.SCROLLED
-                            },
-                            transitionStyleName = activePageTransitionStyle.name,
-                            loadDocument = loadBookEngineDocument,
-                            onLocationChanged = onBookEngineLocationChanged,
-                            onSectionMeasured = onBookEngineSectionMeasured,
-                            onToggleReaderUi = { onSetShowReaderUi(!showReaderUi) },
-                            readerCss = bookReaderCss,
-                            resolveResource = { requestUrl ->
-                                resolveReaderBackgroundWebResourceResponse(
-                                    requestUrl = requestUrl,
-                                    context = context,
-                                    selection = backgroundSelection,
-                                ) ?: resolveReaderFontWebResourceResponse(
-                                    requestUrl = requestUrl,
-                                    selectedFont = selectedReaderFont,
-                                )
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
+                            NovelBookReader(
+                                spine = bookEngineSpine,
+                                location = bookEngineLocation,
+                                flow = if (state.readerSettings.pageReader) {
+                                    NovelBookEngineFlow.PAGINATED
+                                } else {
+                                    NovelBookEngineFlow.SCROLLED
+                                },
+                                transitionStyleName = activePageTransitionStyle.name,
+                                loadDocument = loadBookEngineDocument,
+                                onLocationChanged = onBookEngineLocationChanged,
+                                onSectionMeasured = onBookEngineSectionMeasured,
+                                onToggleReaderUi = { onSetShowReaderUi(!showReaderUi) },
+                                readerCss = bookReaderCss,
+                                resolveResource = { requestUrl ->
+                                    resolveReaderBackgroundWebResourceResponse(
+                                        requestUrl = requestUrl,
+                                        context = context,
+                                        selection = backgroundSelection,
+                                    ) ?: resolveReaderFontWebResourceResponse(
+                                        requestUrl = requestUrl,
+                                        selectedFont = selectedReaderFont,
+                                    )
+                                },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            // The renderer paints its own start before the queued resume
+                            // scroll lands. Those frames are covered instead of flashing
+                            // the first page of the book.
+                            var localRestoringPosition by remember(state.bookMode.isRestoringPosition) {
+                                mutableStateOf(state.bookMode.isRestoringPosition)
+                            }
+                            LaunchedEffect(state.bookMode.isRestoringPosition) {
+                                if (state.bookMode.isRestoringPosition) {
+                                    kotlinx.coroutines.delay(1000L)
+                                    localRestoringPosition = false
+                                }
+                            }
+                            if (localRestoringPosition) {
+                                androidx.compose.foundation.layout.Box(
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .background(textBackground),
+                                    contentAlignment = androidx.compose.ui.Alignment.Center,
+                                ) {
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        color = textColor.copy(alpha = 0.4f),
+                                    )
+                                }
+                            }
+                        }
                     } else if (pageReaderRendererRoute == NovelPageReaderRendererRoute.COMPOSE_PAGER) {
                         ComposePagerPageRenderer(
                             pagerState = pagerState,
@@ -4968,89 +4974,91 @@ fun NovelReaderScreen(
             // Dialogs & sheets host
             NovelReaderDialogHost(
                 showSettings = showSettings,
-                onDismissSettings = { showSettings = false },
                 showChapterList = showChapterList,
-                onDismissChapterList = { showChapterList = false },
-                onOpenBottomSheet = onOpenBottomSheet,
-                onOpenChapter = onOpenChapter,
-                onDownloadChapter = onDownloadChapter,
                 showTtsBehaviorSettings = showTtsBehaviorSettings,
-                onDismissTtsBehaviorSettings = { showTtsBehaviorSettings = false },
                 showGeminiDialog = showGeminiDialog,
-                onDismissGeminiDialog = { showGeminiDialog = false },
                 showGoogleDialog = showGoogleDialog,
-                onDismissGoogleDialog = { showGoogleDialog = false },
                 translationSwitchRequest = translationSwitchRequest,
-                onDismissTranslationSwitchRequest = { translationSwitchRequest = null },
                 state = state,
                 showWebView = showWebView,
                 usePageReader = usePageReader,
                 ttsPlacement = ttsPlacement,
-                requestGeminiTranslationStart = { requestGeminiTranslationStart() },
-                requestGoogleTranslationStart = { requestGoogleTranslationStart() },
-                onPrepareWholeBook = onPrepareWholeBook,
-                onStopGeminiTranslation = onStopGeminiTranslation,
-                onToggleGeminiTranslationVisibility = onToggleGeminiTranslationVisibility,
-                onClearGeminiTranslation = onClearGeminiTranslation,
-                onClearAllGeminiTranslationCache = onClearAllGeminiTranslationCache,
-                onAddAiTranslationLog = onAddAiTranslationLog,
-                onClearGeminiLogs = onClearGeminiLogs,
-                onSetGeminiApiKey = onSetGeminiApiKey,
-                onSetGeminiModel = onSetGeminiModel,
-                onSetGeminiBatchSize = onSetGeminiBatchSize,
-                onSetGeminiConcurrency = onSetGeminiConcurrency,
-                onSetGeminiRelaxedMode = onSetGeminiRelaxedMode,
-                onSetGeminiDisableCache = onSetGeminiDisableCache,
-                onSetGeminiReasoningEffort = onSetGeminiReasoningEffort,
-                onSetGeminiBudgetTokens = onSetGeminiBudgetTokens,
-                onSetGeminiTemperature = onSetGeminiTemperature,
-                onSetGeminiTopP = onSetGeminiTopP,
-                onSetGeminiTopK = onSetGeminiTopK,
-                onSetGeminiPromptMode = onSetGeminiPromptMode,
-                onSetGeminiSourceLang = onSetGeminiSourceLang,
-                onSetGeminiTargetLang = onSetGeminiTargetLang,
-                onSetGeminiStylePreset = onSetGeminiStylePreset,
-                onSetGeminiEnabledPromptModifiers = onSetGeminiEnabledPromptModifiers,
-                onSetGeminiCustomPromptModifier = onSetGeminiCustomPromptModifier,
-                onSetGeminiAutoTranslateEnglishSource = onSetGeminiAutoTranslateEnglishSource,
-                onSetGeminiPrefetchNextChapterTranslation = onSetGeminiPrefetchNextChapterTranslation,
-                onSetGeminiPrivateUnlocked = onSetGeminiPrivateUnlocked,
-                onSetGeminiPrivatePythonLikeMode = onSetGeminiPrivatePythonLikeMode,
-                onSetTranslationProvider = onSetTranslationProvider,
-                onSetOpenRouterBaseUrl = onSetOpenRouterBaseUrl,
-                onSetOpenRouterApiKey = onSetOpenRouterApiKey,
-                onSetOpenRouterModel = onSetOpenRouterModel,
-                onRefreshOpenRouterModels = onRefreshOpenRouterModels,
-                onTestOpenRouterConnection = onTestOpenRouterConnection,
-                onSetDeepSeekBaseUrl = onSetDeepSeekBaseUrl,
-                onSetDeepSeekApiKey = onSetDeepSeekApiKey,
-                onSetDeepSeekModel = onSetDeepSeekModel,
-                onRefreshDeepSeekModels = onRefreshDeepSeekModels,
-                onTestDeepSeekConnection = onTestDeepSeekConnection,
-                onSetMistralBaseUrl = onSetMistralBaseUrl,
-                onSetMistralApiKey = onSetMistralApiKey,
-                onSetMistralModel = onSetMistralModel,
-                onRefreshMistralModels = onRefreshMistralModels,
-                onTestMistralConnection = onTestMistralConnection,
-                onSetNvidiaBaseUrl = onSetNvidiaBaseUrl,
-                onSetNvidiaApiKey = onSetNvidiaApiKey,
-                onSetNvidiaModel = onSetNvidiaModel,
-                onRefreshNvidiaModels = onRefreshNvidiaModels,
-                onTestNvidiaConnection = onTestNvidiaConnection,
-                onSetOllamaCloudBaseUrl = onSetOllamaCloudBaseUrl,
-                onSetOllamaCloudApiKey = onSetOllamaCloudApiKey,
-                onSetOllamaCloudModel = onSetOllamaCloudModel,
-                onRefreshOllamaCloudModels = onRefreshOllamaCloudModels,
-                onTestOllamaCloudConnection = onTestOllamaCloudConnection,
-                onStopGoogleTranslation = onStopGoogleTranslation,
-                onResumeGoogleTranslation = onResumeGoogleTranslation,
-                onToggleGoogleTranslationVisibility = onToggleGoogleTranslationVisibility,
-                onClearGoogleTranslation = onClearGoogleTranslation,
-                onSetGoogleTranslationAutoStart = onSetGoogleTranslationAutoStart,
-                onSetGoogleTranslationSourceLang = onSetGoogleTranslationSourceLang,
-                onSetGoogleTranslationTargetLang = onSetGoogleTranslationTargetLang,
-                onStartGeminiTranslation = onStartGeminiTranslation,
-                onStartGoogleTranslation = onStartGoogleTranslation,
+                actions = NovelReaderDialogActions(
+                    onDismissSettings = { showSettings = false },
+                    onDismissChapterList = { showChapterList = false },
+                    onOpenBottomSheet = onOpenBottomSheet,
+                    onOpenChapter = onOpenChapter,
+                    onDownloadChapter = onDownloadChapter,
+                    onDismissTtsBehaviorSettings = { showTtsBehaviorSettings = false },
+                    onDismissGeminiDialog = { showGeminiDialog = false },
+                    onDismissGoogleDialog = { showGoogleDialog = false },
+                    onDismissTranslationSwitchRequest = { translationSwitchRequest = null },
+                    requestGeminiTranslationStart = { requestGeminiTranslationStart() },
+                    requestGoogleTranslationStart = { requestGoogleTranslationStart() },
+                    onPrepareWholeBook = onPrepareWholeBook,
+                    onStopGeminiTranslation = onStopGeminiTranslation,
+                    onToggleGeminiTranslationVisibility = onToggleGeminiTranslationVisibility,
+                    onClearGeminiTranslation = onClearGeminiTranslation,
+                    onClearAllGeminiTranslationCache = onClearAllGeminiTranslationCache,
+                    onAddAiTranslationLog = onAddAiTranslationLog,
+                    onClearGeminiLogs = onClearGeminiLogs,
+                    onSetGeminiApiKey = onSetGeminiApiKey,
+                    onSetGeminiModel = onSetGeminiModel,
+                    onSetGeminiBatchSize = onSetGeminiBatchSize,
+                    onSetGeminiConcurrency = onSetGeminiConcurrency,
+                    onSetGeminiRelaxedMode = onSetGeminiRelaxedMode,
+                    onSetGeminiDisableCache = onSetGeminiDisableCache,
+                    onSetGeminiReasoningEffort = onSetGeminiReasoningEffort,
+                    onSetGeminiBudgetTokens = onSetGeminiBudgetTokens,
+                    onSetGeminiTemperature = onSetGeminiTemperature,
+                    onSetGeminiTopP = onSetGeminiTopP,
+                    onSetGeminiTopK = onSetGeminiTopK,
+                    onSetGeminiPromptMode = onSetGeminiPromptMode,
+                    onSetGeminiSourceLang = onSetGeminiSourceLang,
+                    onSetGeminiTargetLang = onSetGeminiTargetLang,
+                    onSetGeminiStylePreset = onSetGeminiStylePreset,
+                    onSetGeminiEnabledPromptModifiers = onSetGeminiEnabledPromptModifiers,
+                    onSetGeminiCustomPromptModifier = onSetGeminiCustomPromptModifier,
+                    onSetGeminiAutoTranslateEnglishSource = onSetGeminiAutoTranslateEnglishSource,
+                    onSetGeminiPrefetchNextChapterTranslation = onSetGeminiPrefetchNextChapterTranslation,
+                    onSetGeminiPrivateUnlocked = onSetGeminiPrivateUnlocked,
+                    onSetGeminiPrivatePythonLikeMode = onSetGeminiPrivatePythonLikeMode,
+                    onSetTranslationProvider = onSetTranslationProvider,
+                    onSetOpenRouterBaseUrl = onSetOpenRouterBaseUrl,
+                    onSetOpenRouterApiKey = onSetOpenRouterApiKey,
+                    onSetOpenRouterModel = onSetOpenRouterModel,
+                    onRefreshOpenRouterModels = onRefreshOpenRouterModels,
+                    onTestOpenRouterConnection = onTestOpenRouterConnection,
+                    onSetDeepSeekBaseUrl = onSetDeepSeekBaseUrl,
+                    onSetDeepSeekApiKey = onSetDeepSeekApiKey,
+                    onSetDeepSeekModel = onSetDeepSeekModel,
+                    onRefreshDeepSeekModels = onRefreshDeepSeekModels,
+                    onTestDeepSeekConnection = onTestDeepSeekConnection,
+                    onSetMistralBaseUrl = onSetMistralBaseUrl,
+                    onSetMistralApiKey = onSetMistralApiKey,
+                    onSetMistralModel = onSetMistralModel,
+                    onRefreshMistralModels = onRefreshMistralModels,
+                    onTestMistralConnection = onTestMistralConnection,
+                    onSetNvidiaBaseUrl = onSetNvidiaBaseUrl,
+                    onSetNvidiaApiKey = onSetNvidiaApiKey,
+                    onSetNvidiaModel = onSetNvidiaModel,
+                    onRefreshNvidiaModels = onRefreshNvidiaModels,
+                    onTestNvidiaConnection = onTestNvidiaConnection,
+                    onSetOllamaCloudBaseUrl = onSetOllamaCloudBaseUrl,
+                    onSetOllamaCloudApiKey = onSetOllamaCloudApiKey,
+                    onSetOllamaCloudModel = onSetOllamaCloudModel,
+                    onRefreshOllamaCloudModels = onRefreshOllamaCloudModels,
+                    onTestOllamaCloudConnection = onTestOllamaCloudConnection,
+                    onStopGoogleTranslation = onStopGoogleTranslation,
+                    onResumeGoogleTranslation = onResumeGoogleTranslation,
+                    onToggleGoogleTranslationVisibility = onToggleGoogleTranslationVisibility,
+                    onClearGoogleTranslation = onClearGoogleTranslation,
+                    onSetGoogleTranslationAutoStart = onSetGoogleTranslationAutoStart,
+                    onSetGoogleTranslationSourceLang = onSetGoogleTranslationSourceLang,
+                    onSetGoogleTranslationTargetLang = onSetGoogleTranslationTargetLang,
+                    onStartGeminiTranslation = onStartGeminiTranslation,
+                    onStartGoogleTranslation = onStartGoogleTranslation,
+                ),
             )
         }
     }
@@ -5131,93 +5139,102 @@ private fun NovelReaderAutoScrollEndOverlay(
     }
 }
 
+/**
+ * Host for every reader dialog and sheet.
+ *
+ * Its callbacks travel in [NovelReaderDialogActions] instead of as individual parameters: a
+ * composable with ninety parameters makes the compiler emit a change-tracking prologue so large
+ * that ART refuses to JIT-compile the method ("Method exceeds compiler instruction limit"), and
+ * an interpreted reader is what made scrolling stutter.
+ */
 @Composable
 private fun NovelReaderDialogHost(
     showSettings: Boolean,
-    onDismissSettings: () -> Unit,
     showChapterList: Boolean,
-    onDismissChapterList: () -> Unit,
-    onOpenBottomSheet: () -> Unit,
-    onOpenChapter: ((Long) -> Unit)?,
-    onDownloadChapter: ((Long) -> Unit)?,
     showTtsBehaviorSettings: Boolean,
-    onDismissTtsBehaviorSettings: () -> Unit,
     showGeminiDialog: Boolean,
-    onDismissGeminiDialog: () -> Unit,
     showGoogleDialog: Boolean,
-    onDismissGoogleDialog: () -> Unit,
     translationSwitchRequest: TranslationSwitchRequest?,
-    onDismissTranslationSwitchRequest: () -> Unit,
     state: NovelReaderScreenModel.State.Success,
     showWebView: Boolean,
     usePageReader: Boolean,
     ttsPlacement: NovelReaderTtsSettingsPlacementSnapshot,
-    requestGeminiTranslationStart: () -> Unit,
-    requestGoogleTranslationStart: () -> Unit,
-    onPrepareWholeBook: () -> Unit,
-    onStopGeminiTranslation: () -> Unit,
-    onToggleGeminiTranslationVisibility: () -> Unit,
-    onClearGeminiTranslation: () -> Unit,
-    onClearAllGeminiTranslationCache: () -> Unit,
-    onAddAiTranslationLog: (String) -> Unit,
-    onClearGeminiLogs: () -> Unit,
-    onSetGeminiApiKey: (String) -> Unit,
-    onSetGeminiModel: (String) -> Unit,
-    onSetGeminiBatchSize: (Int) -> Unit,
-    onSetGeminiConcurrency: (Int) -> Unit,
-    onSetGeminiRelaxedMode: (Boolean) -> Unit,
-    onSetGeminiDisableCache: (Boolean) -> Unit,
-    onSetGeminiReasoningEffort: (String) -> Unit,
-    onSetGeminiBudgetTokens: (Int) -> Unit,
-    onSetGeminiTemperature: (Float) -> Unit,
-    onSetGeminiTopP: (Float) -> Unit,
-    onSetGeminiTopK: (Int) -> Unit,
-    onSetGeminiPromptMode: (GeminiPromptMode) -> Unit,
-    onSetGeminiSourceLang: (String) -> Unit,
-    onSetGeminiTargetLang: (String) -> Unit,
-    onSetGeminiStylePreset: (NovelTranslationStylePreset) -> Unit,
-    onSetGeminiEnabledPromptModifiers: (List<String>) -> Unit,
-    onSetGeminiCustomPromptModifier: (String) -> Unit,
-    onSetGeminiAutoTranslateEnglishSource: (Boolean) -> Unit,
-    onSetGeminiPrefetchNextChapterTranslation: (Boolean) -> Unit,
-    onSetGeminiPrivateUnlocked: (Boolean) -> Unit,
-    onSetGeminiPrivatePythonLikeMode: (Boolean) -> Unit,
-    onSetTranslationProvider: (NovelTranslationProvider) -> Unit,
-    onSetOpenRouterBaseUrl: (String) -> Unit,
-    onSetOpenRouterApiKey: (String) -> Unit,
-    onSetOpenRouterModel: (String) -> Unit,
-    onRefreshOpenRouterModels: () -> Unit,
-    onTestOpenRouterConnection: () -> Unit,
-    onSetDeepSeekBaseUrl: (String) -> Unit,
-    onSetDeepSeekApiKey: (String) -> Unit,
-    onSetDeepSeekModel: (String) -> Unit,
-    onRefreshDeepSeekModels: () -> Unit,
-    onTestDeepSeekConnection: () -> Unit,
-    onSetMistralBaseUrl: (String) -> Unit,
-    onSetMistralApiKey: (String) -> Unit,
-    onSetMistralModel: (String) -> Unit,
-    onRefreshMistralModels: () -> Unit,
-    onTestMistralConnection: () -> Unit,
-    onSetNvidiaBaseUrl: (String) -> Unit,
-    onSetNvidiaApiKey: (String) -> Unit,
-    onSetNvidiaModel: (String) -> Unit,
-    onRefreshNvidiaModels: () -> Unit,
-    onTestNvidiaConnection: () -> Unit,
-    onSetOllamaCloudBaseUrl: (String) -> Unit,
-    onSetOllamaCloudApiKey: (String) -> Unit,
-    onSetOllamaCloudModel: (String) -> Unit,
-    onRefreshOllamaCloudModels: () -> Unit,
-    onTestOllamaCloudConnection: () -> Unit,
-    onStopGoogleTranslation: () -> Unit,
-    onResumeGoogleTranslation: () -> Unit,
-    onToggleGoogleTranslationVisibility: () -> Unit,
-    onClearGoogleTranslation: () -> Unit,
-    onSetGoogleTranslationAutoStart: (Boolean) -> Unit,
-    onSetGoogleTranslationSourceLang: (String) -> Unit,
-    onSetGoogleTranslationTargetLang: (String) -> Unit,
-    onStartGeminiTranslation: () -> Unit,
-    onStartGoogleTranslation: () -> Unit,
+    actions: NovelReaderDialogActions,
 ) {
+    val onDismissSettings = actions.onDismissSettings
+    val onDismissChapterList = actions.onDismissChapterList
+    val onOpenBottomSheet = actions.onOpenBottomSheet
+    val onOpenChapter = actions.onOpenChapter
+    val onDownloadChapter = actions.onDownloadChapter
+    val onDismissTtsBehaviorSettings = actions.onDismissTtsBehaviorSettings
+    val onDismissGeminiDialog = actions.onDismissGeminiDialog
+    val onDismissGoogleDialog = actions.onDismissGoogleDialog
+    val onDismissTranslationSwitchRequest = actions.onDismissTranslationSwitchRequest
+    val requestGeminiTranslationStart = actions.requestGeminiTranslationStart
+    val requestGoogleTranslationStart = actions.requestGoogleTranslationStart
+    val onPrepareWholeBook = actions.onPrepareWholeBook
+    val onStopGeminiTranslation = actions.onStopGeminiTranslation
+    val onToggleGeminiTranslationVisibility = actions.onToggleGeminiTranslationVisibility
+    val onClearGeminiTranslation = actions.onClearGeminiTranslation
+    val onClearAllGeminiTranslationCache = actions.onClearAllGeminiTranslationCache
+    val onAddAiTranslationLog = actions.onAddAiTranslationLog
+    val onClearGeminiLogs = actions.onClearGeminiLogs
+    val onSetGeminiApiKey = actions.onSetGeminiApiKey
+    val onSetGeminiModel = actions.onSetGeminiModel
+    val onSetGeminiBatchSize = actions.onSetGeminiBatchSize
+    val onSetGeminiConcurrency = actions.onSetGeminiConcurrency
+    val onSetGeminiRelaxedMode = actions.onSetGeminiRelaxedMode
+    val onSetGeminiDisableCache = actions.onSetGeminiDisableCache
+    val onSetGeminiReasoningEffort = actions.onSetGeminiReasoningEffort
+    val onSetGeminiBudgetTokens = actions.onSetGeminiBudgetTokens
+    val onSetGeminiTemperature = actions.onSetGeminiTemperature
+    val onSetGeminiTopP = actions.onSetGeminiTopP
+    val onSetGeminiTopK = actions.onSetGeminiTopK
+    val onSetGeminiPromptMode = actions.onSetGeminiPromptMode
+    val onSetGeminiSourceLang = actions.onSetGeminiSourceLang
+    val onSetGeminiTargetLang = actions.onSetGeminiTargetLang
+    val onSetGeminiStylePreset = actions.onSetGeminiStylePreset
+    val onSetGeminiEnabledPromptModifiers = actions.onSetGeminiEnabledPromptModifiers
+    val onSetGeminiCustomPromptModifier = actions.onSetGeminiCustomPromptModifier
+    val onSetGeminiAutoTranslateEnglishSource = actions.onSetGeminiAutoTranslateEnglishSource
+    val onSetGeminiPrefetchNextChapterTranslation = actions.onSetGeminiPrefetchNextChapterTranslation
+    val onSetGeminiPrivateUnlocked = actions.onSetGeminiPrivateUnlocked
+    val onSetGeminiPrivatePythonLikeMode = actions.onSetGeminiPrivatePythonLikeMode
+    val onSetTranslationProvider = actions.onSetTranslationProvider
+    val onSetOpenRouterBaseUrl = actions.onSetOpenRouterBaseUrl
+    val onSetOpenRouterApiKey = actions.onSetOpenRouterApiKey
+    val onSetOpenRouterModel = actions.onSetOpenRouterModel
+    val onRefreshOpenRouterModels = actions.onRefreshOpenRouterModels
+    val onTestOpenRouterConnection = actions.onTestOpenRouterConnection
+    val onSetDeepSeekBaseUrl = actions.onSetDeepSeekBaseUrl
+    val onSetDeepSeekApiKey = actions.onSetDeepSeekApiKey
+    val onSetDeepSeekModel = actions.onSetDeepSeekModel
+    val onRefreshDeepSeekModels = actions.onRefreshDeepSeekModels
+    val onTestDeepSeekConnection = actions.onTestDeepSeekConnection
+    val onSetMistralBaseUrl = actions.onSetMistralBaseUrl
+    val onSetMistralApiKey = actions.onSetMistralApiKey
+    val onSetMistralModel = actions.onSetMistralModel
+    val onRefreshMistralModels = actions.onRefreshMistralModels
+    val onTestMistralConnection = actions.onTestMistralConnection
+    val onSetNvidiaBaseUrl = actions.onSetNvidiaBaseUrl
+    val onSetNvidiaApiKey = actions.onSetNvidiaApiKey
+    val onSetNvidiaModel = actions.onSetNvidiaModel
+    val onRefreshNvidiaModels = actions.onRefreshNvidiaModels
+    val onTestNvidiaConnection = actions.onTestNvidiaConnection
+    val onSetOllamaCloudBaseUrl = actions.onSetOllamaCloudBaseUrl
+    val onSetOllamaCloudApiKey = actions.onSetOllamaCloudApiKey
+    val onSetOllamaCloudModel = actions.onSetOllamaCloudModel
+    val onRefreshOllamaCloudModels = actions.onRefreshOllamaCloudModels
+    val onTestOllamaCloudConnection = actions.onTestOllamaCloudConnection
+    val onStopGoogleTranslation = actions.onStopGoogleTranslation
+    val onResumeGoogleTranslation = actions.onResumeGoogleTranslation
+    val onToggleGoogleTranslationVisibility = actions.onToggleGoogleTranslationVisibility
+    val onClearGoogleTranslation = actions.onClearGoogleTranslation
+    val onSetGoogleTranslationAutoStart = actions.onSetGoogleTranslationAutoStart
+    val onSetGoogleTranslationSourceLang = actions.onSetGoogleTranslationSourceLang
+    val onSetGoogleTranslationTargetLang = actions.onSetGoogleTranslationTargetLang
+    val onStartGeminiTranslation = actions.onStartGeminiTranslation
+    val onStartGoogleTranslation = actions.onStartGoogleTranslation
     if (showSettings) {
         NovelReaderSettingsDialog(
             sourceId = state.novel.source,
@@ -5490,3 +5507,240 @@ internal fun <T : Any> safeEnum(value: Any?, fallback: T): T {
         fallback
     }
 }
+
+/**
+ * Every callback the reader dialogs need, grouped into one parameter.
+ *
+ * Grouping keeps both the host and its caller inside the compiler's per-method instruction
+ * budget; passing these one by one is what pushed [NovelReaderScreen] out of it.
+ */
+@Immutable
+internal data class NovelReaderDialogActions(
+    val onDismissSettings: () -> Unit,
+    val onDismissChapterList: () -> Unit,
+    val onOpenBottomSheet: () -> Unit,
+    val onOpenChapter: ((Long) -> Unit)?,
+    val onDownloadChapter: ((Long) -> Unit)?,
+    val onDismissTtsBehaviorSettings: () -> Unit,
+    val onDismissGeminiDialog: () -> Unit,
+    val onDismissGoogleDialog: () -> Unit,
+    val onDismissTranslationSwitchRequest: () -> Unit,
+    val requestGeminiTranslationStart: () -> Unit,
+    val requestGoogleTranslationStart: () -> Unit,
+    val onPrepareWholeBook: () -> Unit,
+    val onStopGeminiTranslation: () -> Unit,
+    val onToggleGeminiTranslationVisibility: () -> Unit,
+    val onClearGeminiTranslation: () -> Unit,
+    val onClearAllGeminiTranslationCache: () -> Unit,
+    val onAddAiTranslationLog: (String) -> Unit,
+    val onClearGeminiLogs: () -> Unit,
+    val onSetGeminiApiKey: (String) -> Unit,
+    val onSetGeminiModel: (String) -> Unit,
+    val onSetGeminiBatchSize: (Int) -> Unit,
+    val onSetGeminiConcurrency: (Int) -> Unit,
+    val onSetGeminiRelaxedMode: (Boolean) -> Unit,
+    val onSetGeminiDisableCache: (Boolean) -> Unit,
+    val onSetGeminiReasoningEffort: (String) -> Unit,
+    val onSetGeminiBudgetTokens: (Int) -> Unit,
+    val onSetGeminiTemperature: (Float) -> Unit,
+    val onSetGeminiTopP: (Float) -> Unit,
+    val onSetGeminiTopK: (Int) -> Unit,
+    val onSetGeminiPromptMode: (GeminiPromptMode) -> Unit,
+    val onSetGeminiSourceLang: (String) -> Unit,
+    val onSetGeminiTargetLang: (String) -> Unit,
+    val onSetGeminiStylePreset: (NovelTranslationStylePreset) -> Unit,
+    val onSetGeminiEnabledPromptModifiers: (List<String>) -> Unit,
+    val onSetGeminiCustomPromptModifier: (String) -> Unit,
+    val onSetGeminiAutoTranslateEnglishSource: (Boolean) -> Unit,
+    val onSetGeminiPrefetchNextChapterTranslation: (Boolean) -> Unit,
+    val onSetGeminiPrivateUnlocked: (Boolean) -> Unit,
+    val onSetGeminiPrivatePythonLikeMode: (Boolean) -> Unit,
+    val onSetTranslationProvider: (NovelTranslationProvider) -> Unit,
+    val onSetOpenRouterBaseUrl: (String) -> Unit,
+    val onSetOpenRouterApiKey: (String) -> Unit,
+    val onSetOpenRouterModel: (String) -> Unit,
+    val onRefreshOpenRouterModels: () -> Unit,
+    val onTestOpenRouterConnection: () -> Unit,
+    val onSetDeepSeekBaseUrl: (String) -> Unit,
+    val onSetDeepSeekApiKey: (String) -> Unit,
+    val onSetDeepSeekModel: (String) -> Unit,
+    val onRefreshDeepSeekModels: () -> Unit,
+    val onTestDeepSeekConnection: () -> Unit,
+    val onSetMistralBaseUrl: (String) -> Unit,
+    val onSetMistralApiKey: (String) -> Unit,
+    val onSetMistralModel: (String) -> Unit,
+    val onRefreshMistralModels: () -> Unit,
+    val onTestMistralConnection: () -> Unit,
+    val onSetNvidiaBaseUrl: (String) -> Unit,
+    val onSetNvidiaApiKey: (String) -> Unit,
+    val onSetNvidiaModel: (String) -> Unit,
+    val onRefreshNvidiaModels: () -> Unit,
+    val onTestNvidiaConnection: () -> Unit,
+    val onSetOllamaCloudBaseUrl: (String) -> Unit,
+    val onSetOllamaCloudApiKey: (String) -> Unit,
+    val onSetOllamaCloudModel: (String) -> Unit,
+    val onRefreshOllamaCloudModels: () -> Unit,
+    val onTestOllamaCloudConnection: () -> Unit,
+    val onStopGoogleTranslation: () -> Unit,
+    val onResumeGoogleTranslation: () -> Unit,
+    val onToggleGoogleTranslationVisibility: () -> Unit,
+    val onClearGoogleTranslation: () -> Unit,
+    val onSetGoogleTranslationAutoStart: (Boolean) -> Unit,
+    val onSetGoogleTranslationSourceLang: (String) -> Unit,
+    val onSetGoogleTranslationTargetLang: (String) -> Unit,
+    val onStartGeminiTranslation: () -> Unit,
+    val onStartGoogleTranslation: () -> Unit,
+)
+
+/**
+ * Every callback [NovelReaderScreen] needs, grouped into a single parameter.
+ *
+ * Compose emits a change-tracking prologue for each parameter, and with more than a hundred of
+ * them the generated method grew past the runtime's per-method instruction budget: ART logged
+ * "Method exceeds compiler instruction limit" and ran the whole reader interpreted, which is what
+ * made scrolling stutter and reloads visible.
+ */
+@Immutable
+data class NovelReaderScreenActions(
+    val onBack: () -> Unit,
+    val onReadingProgress: (currentIndex: Int, totalItems: Int, persistedProgress: Long?) -> Unit,
+    val onSeekBookModeProgress: (Float) -> Unit = {},
+    val onToggleBookmark: () -> Unit = {},
+    val onOpenDictionaryHistory: (() -> Unit)? = null,
+    val onStartGeminiTranslation: () -> Unit = {},
+    val onStopGeminiTranslation: () -> Unit = {},
+    val onToggleGeminiTranslationVisibility: () -> Unit = {},
+    val onClearGeminiTranslation: () -> Unit = {},
+    val onClearAllGeminiTranslationCache: () -> Unit = {},
+    val onAddAiTranslationLog: (String) -> Unit = {},
+    val onClearGeminiLogs: () -> Unit = {},
+    val onSetGeminiApiKey: (String) -> Unit = {},
+    val onSetGeminiModel: (String) -> Unit = {},
+    val onSetGeminiBatchSize: (Int) -> Unit = {},
+    val onSetGeminiConcurrency: (Int) -> Unit = {},
+    val onSetGeminiRelaxedMode: (Boolean) -> Unit = {},
+    val onSetGeminiDisableCache: (Boolean) -> Unit = {},
+    val onSetGeminiReasoningEffort: (String) -> Unit = {},
+    val onSetGeminiBudgetTokens: (Int) -> Unit = {},
+    val onSetGeminiTemperature: (Float) -> Unit = {},
+    val onSetGeminiTopP: (Float) -> Unit = {},
+    val onSetGeminiTopK: (Int) -> Unit = {},
+    val onSetGeminiPromptMode: (GeminiPromptMode) -> Unit = {},
+    val onSetGeminiSourceLang: (String) -> Unit = {},
+    val onSetGeminiTargetLang: (String) -> Unit = {},
+    val onSetGeminiStylePreset: (NovelTranslationStylePreset) -> Unit = {},
+    val onSetGeminiEnabledPromptModifiers: (List<String>) -> Unit = {},
+    val onSetGeminiCustomPromptModifier: (String) -> Unit = {},
+    val onSetGeminiAutoTranslateEnglishSource: (Boolean) -> Unit = {},
+    val onSetGeminiPrefetchNextChapterTranslation: (Boolean) -> Unit = {},
+    val onSetGeminiPrivateUnlocked: (Boolean) -> Unit = {},
+    val onSetGeminiPrivatePythonLikeMode: (Boolean) -> Unit = {},
+    val onSetTranslationProvider: (NovelTranslationProvider) -> Unit = {},
+    val onSetOpenRouterBaseUrl: (String) -> Unit = {},
+    val onSetOpenRouterApiKey: (String) -> Unit = {},
+    val onSetOpenRouterModel: (String) -> Unit = {},
+    val onRefreshOpenRouterModels: () -> Unit = {},
+    val onTestOpenRouterConnection: () -> Unit = {},
+    val onSetDeepSeekBaseUrl: (String) -> Unit = {},
+    val onSetDeepSeekApiKey: (String) -> Unit = {},
+    val onSetDeepSeekModel: (String) -> Unit = {},
+    val onRefreshDeepSeekModels: () -> Unit = {},
+    val onTestDeepSeekConnection: () -> Unit = {},
+    val onSetMistralBaseUrl: (String) -> Unit = {},
+    val onSetMistralApiKey: (String) -> Unit = {},
+    val onSetMistralModel: (String) -> Unit = {},
+    val onRefreshMistralModels: () -> Unit = {},
+    val onTestMistralConnection: () -> Unit = {},
+    val onSetNvidiaBaseUrl: (String) -> Unit = {},
+    val onSetNvidiaApiKey: (String) -> Unit = {},
+    val onSetNvidiaModel: (String) -> Unit = {},
+    val onRefreshNvidiaModels: () -> Unit = {},
+    val onTestNvidiaConnection: () -> Unit = {},
+    val onSetOllamaCloudBaseUrl: (String) -> Unit = {},
+    val onSetOllamaCloudApiKey: (String) -> Unit = {},
+    val onSetOllamaCloudModel: (String) -> Unit = {},
+    val onRefreshOllamaCloudModels: () -> Unit = {},
+    val onTestOllamaCloudConnection: () -> Unit = {},
+    val onStartGoogleTranslation: () -> Unit = {},
+    val onStopGoogleTranslation: () -> Unit = {},
+    val onResumeGoogleTranslation: () -> Unit = {},
+    val onToggleGoogleTranslationVisibility: () -> Unit = {},
+    val onClearGoogleTranslation: () -> Unit = {},
+    val onSetGoogleTranslationEnabled: (Boolean) -> Unit = {},
+    val onSetGoogleTranslationAutoStart: (Boolean) -> Unit = {},
+    val onSetGoogleTranslationSourceLang: (String) -> Unit = {},
+    val onSetGoogleTranslationTargetLang: (String) -> Unit = {},
+    val onToggleTtsPlayback: (NovelTtsPlaybackStartRequest) -> Unit = {},
+    val onStopTtsPlayback: () -> Unit = {},
+    val onSkipPreviousTts: () -> Unit = {},
+    val onSkipNextTts: () -> Unit = {},
+    val onPauseTtsForManualNavigation: (NovelTtsPlaybackStartRequest) -> Unit = {},
+    val onSetTtsEnginePackage: (String) -> Unit = {},
+    val onSetTtsVoiceId: (String) -> Unit = {},
+    val onSetTtsLocaleTag: (String) -> Unit = {},
+    val onSetTtsSpeechRate: (Float) -> Unit = {},
+    val onSetTtsPitch: (Float) -> Unit = {},
+    val onDisableTts: () -> Unit = {},
+    val onPreviewTtsVoice: (String) -> Unit = {},
+    val onStopTtsVoicePreview: () -> Unit = {},
+    val onOpenPreviousChapter: ((Long) -> Unit)? = null,
+    val onOpenNextChapter: ((Long) -> Unit)? = null,
+    val onPrepareAutoScrollHandoff: (targetChapterId: Long, speed: Int) -> Unit = { _, _ -> },
+    val onConsumeAutoScrollHandoff: (chapterId: Long) -> NovelAutoScrollHandoffState? = { null },
+    val onCancelAutoScrollHandoff: () -> Unit = {},
+    val onRequestAutoScrollNextChapterPrefetch: () -> Unit = {},
+    val onOpenChapter: ((Long) -> Unit)? = null,
+    val onDownloadChapter: ((Long) -> Unit)? = null,
+    val onSetShowReaderUi: (Boolean) -> Unit,
+    val onOpenBottomSheet: () -> Unit = {},
+    val onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
+    val onTranslateSelectedText: () -> Unit = {},
+    val onRetrySelectedTextTranslation: () -> Unit = onTranslateSelectedText,
+    val onDismissSelectedTextTranslation: () -> Unit = {},
+    val onLookupSelectedTextDefinition: () -> Unit = {},
+    val onRetryNovelDictionary: () -> Unit = onLookupSelectedTextDefinition,
+    val onDismissNovelDictionary: () -> Unit = {},
+    val onPlaySelectedTextPronunciation: (String) -> Unit = {},
+    val loadBookEngineDocument: (suspend (NovelBookSection) -> NovelBookDocument)? = null,
+    val onBookEngineLocationChanged: (NovelBookLocation) -> Unit = {},
+    val onBookEngineSectionMeasured: (chapterId: Long, charCount: Int) -> Unit = { _, _ -> },
+    val onBookModeCommandsExecuted: (List<Long>) -> Unit = {},
+    val onBookModeScroll: (sectionIndex: Int, sectionFraction: Float) -> Unit = { _, _ -> },
+    val onBookModeSectionMeasured: (chapterId: Long, charCount: Int) -> Unit = { _, _ -> },
+    val onBookModeRetrySection: (sectionIndex: Int) -> Unit = {},
+    val onBookModeDocumentReady: () -> Unit = {},
+    val onPrepareWholeBook: () -> Unit = {},
+    /**
+     * Pre-compiled blocks of a book section, or null when the compiled book has none.
+     *
+     * Supplied by the screen model from the book artifact. When present, the native renderer
+     * skips parsing the section HTML entirely, which is what makes opening and scrolling a
+     * 50-100 chapter book instant instead of running Jsoup over a 200k character window on
+     * every append.
+     */
+    val nativeBookBlocksForSection: (sectionIndex: Int) -> List<NovelRichContentBlock>? = { null },
+)
+
+/**
+ * Appends the book renderer's own layout overrides to [baseCss].
+ *
+ * The stylesheet used to be assembled with an inline `buildString` inside `NovelReaderScreen`, so
+ * every line of it counted towards that composable's own bytecode. The method grew past the size ART
+ * is willing to JIT-compile, which left the reader running interpreted for its first frames - exactly
+ * when the book is being restored and the user is looking at it. The literal lives here instead and
+ * is only re-joined when the base stylesheet changes.
+ */
+private fun withNovelBookReaderContentOverrides(baseCss: String): String =
+    baseCss + NOVEL_BOOK_READER_CONTENT_OVERRIDES_CSS
+
+private val NOVEL_BOOK_READER_CONTENT_OVERRIDES_CSS = """
+
+#an-book-content {
+  padding-top: var(--an-reader-padding-top) !important;
+  padding-bottom: var(--an-reader-padding-bottom) !important;
+  padding-left: var(--an-reader-padding-left) !important;
+  padding-right: var(--an-reader-padding-right) !important;
+  background: var(--an-reader-bg) !important;
+  color: var(--an-reader-fg) !important;
+}
+""".trimIndent()

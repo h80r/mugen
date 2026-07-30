@@ -282,9 +282,8 @@ fun NovelScreen(
     // Standard implementation (non-Aurora)
     val chapters = state.processedChapters
     val groupedByChapter = false
-    // PERF: cheaper remember keys (size + filter is stable enough for grouping)
-    val groupedByVolume = remember(chapters.size, selectedScanlator) { shouldGroupNovelChaptersByVolume(chapters) }
-    val chapterGroups = remember(chapters.size, groupedByChapter, selectedScanlator) {
+    val groupedByVolume = remember(chapters, selectedScanlator) { shouldGroupNovelChaptersByVolume(chapters) }
+    val chapterGroups = remember(chapters, groupedByChapter, selectedScanlator) {
         if (groupedByChapter) {
             resolveNovelChapterDisplayData(
                 chapters = chapters,
@@ -295,7 +294,7 @@ fun NovelScreen(
             emptyList()
         }
     }
-    val volumeGroups = remember(chapters.size, groupedByVolume, selectedScanlator) {
+    val volumeGroups = remember(chapters, groupedByVolume, selectedScanlator) {
         if (groupedByVolume) {
             resolveNovelVolumeChapterDisplayData(
                 chapters = chapters,
@@ -313,7 +312,7 @@ fun NovelScreen(
         }
     }
     val initialExpandedGroupKeys =
-        remember(chapters.size, selectedScanlator, state.targetChapterIndex, groupedByVolume) {
+        remember(chapters, selectedScanlator, state.targetChapterIndex, groupedByVolume) {
             when {
                 groupedByVolume -> {
                     val targetChapterId = chapters.getOrNull(state.targetChapterIndex)?.id

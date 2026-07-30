@@ -32,6 +32,7 @@ import eu.kanade.presentation.reader.novel.NovelReaderBackdropSession
 import eu.kanade.presentation.reader.novel.NovelReaderChapterHandoffPolicy
 import eu.kanade.presentation.reader.novel.NovelReaderPageReaderHandoffTarget
 import eu.kanade.presentation.reader.novel.NovelReaderScreen
+import eu.kanade.presentation.reader.novel.NovelReaderScreenActions
 import eu.kanade.presentation.reader.novel.NovelReaderSystemUiSession
 import eu.kanade.presentation.reader.novel.SeriesInterstitialOverlay
 import eu.kanade.presentation.reader.novel.SystemUIController
@@ -225,200 +226,203 @@ class NovelReaderScreen(
                 }
                 NovelReaderScreen(
                     rawState = successState,
-                    nativeBookBlocksForSection = screenModel::nativeBookBlocksForSection,
                     showReaderUi = showReaderUi,
-                    onSetShowReaderUi = { showReaderUi = it },
-                    onOpenBottomSheet = screenModel::loadFullChapterOrderList,
-                    onBack = {
-                        coroutineScope.launch {
-                            screenModel.persistCurrentChapterExitState()
-                            navigator.pop()
-                        }
-                    },
-                    onReadingProgress = screenModel::updateReadingProgress,
-                    onSeekBookModeProgress = screenModel::seekBookModeToProgress,
-                    onToggleBookmark = screenModel::toggleChapterBookmark,
-                    onOpenDictionaryHistory = { navigator.push(NovelDictionaryHistoryScreen()) },
-                    onStartGeminiTranslation = screenModel::startGeminiTranslation,
-                    onStopGeminiTranslation = screenModel::stopGeminiTranslation,
-                    onToggleGeminiTranslationVisibility = screenModel::toggleGeminiTranslationVisibility,
-                    onClearGeminiTranslation = screenModel::clearGeminiTranslation,
-                    onClearAllGeminiTranslationCache = screenModel::clearAllGeminiTranslationCache,
-                    onAddAiTranslationLog = screenModel::addAiTranslationLog,
-                    onClearGeminiLogs = screenModel::clearGeminiLogs,
-                    onSetGeminiApiKey = screenModel::setGeminiApiKey,
-                    onSetGeminiModel = screenModel::setGeminiModel,
-                    onSetGeminiBatchSize = screenModel::setGeminiBatchSize,
-                    onSetGeminiConcurrency = screenModel::setGeminiConcurrency,
-                    onSetGeminiRelaxedMode = screenModel::setGeminiRelaxedMode,
-                    onSetGeminiDisableCache = screenModel::setGeminiDisableCache,
-                    onSetGeminiReasoningEffort = screenModel::setGeminiReasoningEffort,
-                    onSetGeminiBudgetTokens = screenModel::setGeminiBudgetTokens,
-                    onSetGeminiTemperature = screenModel::setGeminiTemperature,
-                    onSetGeminiTopP = screenModel::setGeminiTopP,
-                    onSetGeminiTopK = screenModel::setGeminiTopK,
-                    onSetGeminiPromptMode = screenModel::setGeminiPromptMode,
-                    onSetGeminiSourceLang = screenModel::setGeminiSourceLang,
-                    onSetGeminiTargetLang = screenModel::setGeminiTargetLang,
-                    onSetGeminiStylePreset = screenModel::setGeminiStylePreset,
-                    onSetGeminiEnabledPromptModifiers = screenModel::setGeminiEnabledPromptModifiers,
-                    onSetGeminiCustomPromptModifier = screenModel::setGeminiCustomPromptModifier,
-                    onSetGeminiAutoTranslateEnglishSource = screenModel::setGeminiAutoTranslateEnglishSource,
-                    onSetGeminiPrefetchNextChapterTranslation = screenModel::setGeminiPrefetchNextChapterTranslation,
-                    onSetGeminiPrivateUnlocked = screenModel::setGeminiPrivateUnlocked,
-                    onSetGeminiPrivatePythonLikeMode = screenModel::setGeminiPrivatePythonLikeMode,
-                    onSetTranslationProvider = screenModel::setTranslationProvider,
-                    onSetOpenRouterBaseUrl = screenModel::setOpenRouterBaseUrl,
-                    onSetOpenRouterApiKey = screenModel::setOpenRouterApiKey,
-                    onSetOpenRouterModel = screenModel::setOpenRouterModel,
-                    onRefreshOpenRouterModels = screenModel::refreshOpenRouterModels,
-                    onTestOpenRouterConnection = screenModel::testOpenRouterConnection,
-                    onSetDeepSeekBaseUrl = screenModel::setDeepSeekBaseUrl,
-                    onSetDeepSeekApiKey = screenModel::setDeepSeekApiKey,
-                    onSetDeepSeekModel = screenModel::setDeepSeekModel,
-                    onRefreshDeepSeekModels = screenModel::refreshDeepSeekModels,
-                    onTestDeepSeekConnection = screenModel::testDeepSeekConnection,
-                    onSetMistralBaseUrl = screenModel::setMistralBaseUrl,
-                    onSetMistralApiKey = screenModel::setMistralApiKey,
-                    onSetMistralModel = screenModel::setMistralModel,
-                    onRefreshMistralModels = screenModel::refreshMistralModels,
-                    onTestMistralConnection = screenModel::testMistralConnection,
-                    onSetNvidiaBaseUrl = screenModel::setNvidiaBaseUrl,
-                    onSetNvidiaApiKey = screenModel::setNvidiaApiKey,
-                    onSetNvidiaModel = screenModel::setNvidiaModel,
-                    onRefreshNvidiaModels = screenModel::refreshNvidiaModels,
-                    onTestNvidiaConnection = screenModel::testNvidiaConnection,
-                    onSetOllamaCloudBaseUrl = screenModel::setOllamaCloudBaseUrl,
-                    onSetOllamaCloudApiKey = screenModel::setOllamaCloudApiKey,
-                    onSetOllamaCloudModel = screenModel::setOllamaCloudModel,
-                    onRefreshOllamaCloudModels = screenModel::refreshOllamaCloudModels,
-                    onTestOllamaCloudConnection = screenModel::testOllamaCloudConnection,
-                    onStartGoogleTranslation = screenModel::startGoogleTranslation,
-                    onStopGoogleTranslation = screenModel::stopGoogleTranslation,
-                    onResumeGoogleTranslation = screenModel::resumeGoogleTranslation,
-                    onToggleGoogleTranslationVisibility = screenModel::toggleGoogleTranslationVisibility,
-                    onClearGoogleTranslation = screenModel::clearGoogleTranslation,
-                    onSetGoogleTranslationEnabled = screenModel::setGoogleTranslationEnabled,
-                    onSetGoogleTranslationAutoStart = screenModel::setGoogleTranslationAutoStart,
-                    onSetGoogleTranslationSourceLang = screenModel::setGoogleTranslationSourceLang,
-                    onSetGoogleTranslationTargetLang = screenModel::setGoogleTranslationTargetLang,
-                    onToggleTtsPlayback = screenModel::toggleTtsPlayback,
-                    onStopTtsPlayback = screenModel::stopTtsPlayback,
-                    onSkipPreviousTts = screenModel::skipToPreviousTtsSegment,
-                    onSkipNextTts = screenModel::skipToNextTtsSegment,
-                    onPauseTtsForManualNavigation = screenModel::pauseTtsForManualNavigation,
-                    onSetTtsEnginePackage = screenModel::setTtsEnginePackage,
-                    onSetTtsVoiceId = screenModel::setTtsVoiceId,
-                    onSetTtsLocaleTag = screenModel::setTtsLocaleTag,
-                    onSetTtsSpeechRate = screenModel::setTtsSpeechRate,
-                    onSetTtsPitch = screenModel::setTtsPitch,
-                    onDisableTts = screenModel::disableTts,
-                    onPreviewTtsVoice = screenModel::previewTtsVoice,
-                    onStopTtsVoicePreview = screenModel::stopTtsVoicePreview,
-                    onSelectedTextSelectionChanged = screenModel::updateSelectedTextSelection,
-                    onTranslateSelectedText = screenModel::translateSelectedText,
-                    onRetrySelectedTextTranslation = screenModel::retrySelectedTextTranslation,
-                    onDismissSelectedTextTranslation = screenModel::dismissSelectedTextTranslation,
-                    onLookupSelectedTextDefinition = screenModel::lookupSelectedTextDefinition,
-                    onRetryNovelDictionary = screenModel::retryNovelDictionary,
-                    onDismissNovelDictionary = screenModel::dismissNovelDictionary,
-                    onPlaySelectedTextPronunciation = screenModel::playSelectedTextPronunciation,
                     bookEngineSpine = screenModel.bookEngineSpine,
                     bookEngineLocation = screenModel.bookEngineLocation,
-                    loadBookEngineDocument = screenModel::loadBookEngineDocument,
-                    onBookEngineLocationChanged = screenModel::onBookEngineLocationChanged,
-                    onBookEngineSectionMeasured = screenModel::onBookEngineSectionMeasured,
                     bookModeCommands = screenModel.bookModeCommands.collectAsState().value,
-                    onBookModeCommandsExecuted = screenModel::onBookModeCommandsExecuted,
-                    onBookModeScroll = screenModel::onBookModeScroll,
-                    onBookModeSectionMeasured = screenModel::onBookModeSectionMeasured,
-                    onBookModeRetrySection = screenModel::onBookModeRetrySection,
-                    onBookModeDocumentReady = screenModel::onBookModeDocumentReady,
-                    onPrepareWholeBook = screenModel::prepareWholeBook,
-                    onPrepareAutoScrollHandoff = screenModel::prepareAutoScrollHandoff,
-                    onConsumeAutoScrollHandoff = screenModel::consumeAutoScrollHandoffIfMatches,
-                    onCancelAutoScrollHandoff = screenModel::cancelAutoScrollHandoff,
-                    onRequestAutoScrollNextChapterPrefetch = screenModel::requestAutoScrollNextChapterPrefetch,
-                    onOpenPreviousChapter = { previousChapterId ->
-                        // A seamless in-place switch keeps this screen and its live document
-                        // alive, so the reader never shows the chapter loading screen.
-                        NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
-                            NovelReaderPageReaderHandoffTarget.END,
-                        )
-                        if (screenModel.openChapterInPlace(previousChapterId)) {
-                            return@NovelReaderScreen
-                        }
-                        coroutineScope.launch {
-                            screenModel.persistCurrentChapterExitState()
-                            NovelReaderSystemUiSession.markInternalChapterReplace()
+                    actions = NovelReaderScreenActions(
+                        nativeBookBlocksForSection = screenModel::nativeBookBlocksForSection,
+                        onSetShowReaderUi = { showReaderUi = it },
+                        onOpenBottomSheet = screenModel::loadFullChapterOrderList,
+                        onBack = {
+                            coroutineScope.launch {
+                                screenModel.persistCurrentChapterExitState()
+                                navigator.pop()
+                            }
+                        },
+                        onReadingProgress = screenModel::updateReadingProgress,
+                        onSeekBookModeProgress = screenModel::seekBookModeToProgress,
+                        onToggleBookmark = screenModel::toggleChapterBookmark,
+                        onOpenDictionaryHistory = { navigator.push(NovelDictionaryHistoryScreen()) },
+                        onStartGeminiTranslation = screenModel::startGeminiTranslation,
+                        onStopGeminiTranslation = screenModel::stopGeminiTranslation,
+                        onToggleGeminiTranslationVisibility = screenModel::toggleGeminiTranslationVisibility,
+                        onClearGeminiTranslation = screenModel::clearGeminiTranslation,
+                        onClearAllGeminiTranslationCache = screenModel::clearAllGeminiTranslationCache,
+                        onAddAiTranslationLog = screenModel::addAiTranslationLog,
+                        onClearGeminiLogs = screenModel::clearGeminiLogs,
+                        onSetGeminiApiKey = screenModel::setGeminiApiKey,
+                        onSetGeminiModel = screenModel::setGeminiModel,
+                        onSetGeminiBatchSize = screenModel::setGeminiBatchSize,
+                        onSetGeminiConcurrency = screenModel::setGeminiConcurrency,
+                        onSetGeminiRelaxedMode = screenModel::setGeminiRelaxedMode,
+                        onSetGeminiDisableCache = screenModel::setGeminiDisableCache,
+                        onSetGeminiReasoningEffort = screenModel::setGeminiReasoningEffort,
+                        onSetGeminiBudgetTokens = screenModel::setGeminiBudgetTokens,
+                        onSetGeminiTemperature = screenModel::setGeminiTemperature,
+                        onSetGeminiTopP = screenModel::setGeminiTopP,
+                        onSetGeminiTopK = screenModel::setGeminiTopK,
+                        onSetGeminiPromptMode = screenModel::setGeminiPromptMode,
+                        onSetGeminiSourceLang = screenModel::setGeminiSourceLang,
+                        onSetGeminiTargetLang = screenModel::setGeminiTargetLang,
+                        onSetGeminiStylePreset = screenModel::setGeminiStylePreset,
+                        onSetGeminiEnabledPromptModifiers = screenModel::setGeminiEnabledPromptModifiers,
+                        onSetGeminiCustomPromptModifier = screenModel::setGeminiCustomPromptModifier,
+                        onSetGeminiAutoTranslateEnglishSource = screenModel::setGeminiAutoTranslateEnglishSource,
+                        onSetGeminiPrefetchNextChapterTranslation =
+                        screenModel::setGeminiPrefetchNextChapterTranslation,
+                        onSetGeminiPrivateUnlocked = screenModel::setGeminiPrivateUnlocked,
+                        onSetGeminiPrivatePythonLikeMode = screenModel::setGeminiPrivatePythonLikeMode,
+                        onSetTranslationProvider = screenModel::setTranslationProvider,
+                        onSetOpenRouterBaseUrl = screenModel::setOpenRouterBaseUrl,
+                        onSetOpenRouterApiKey = screenModel::setOpenRouterApiKey,
+                        onSetOpenRouterModel = screenModel::setOpenRouterModel,
+                        onRefreshOpenRouterModels = screenModel::refreshOpenRouterModels,
+                        onTestOpenRouterConnection = screenModel::testOpenRouterConnection,
+                        onSetDeepSeekBaseUrl = screenModel::setDeepSeekBaseUrl,
+                        onSetDeepSeekApiKey = screenModel::setDeepSeekApiKey,
+                        onSetDeepSeekModel = screenModel::setDeepSeekModel,
+                        onRefreshDeepSeekModels = screenModel::refreshDeepSeekModels,
+                        onTestDeepSeekConnection = screenModel::testDeepSeekConnection,
+                        onSetMistralBaseUrl = screenModel::setMistralBaseUrl,
+                        onSetMistralApiKey = screenModel::setMistralApiKey,
+                        onSetMistralModel = screenModel::setMistralModel,
+                        onRefreshMistralModels = screenModel::refreshMistralModels,
+                        onTestMistralConnection = screenModel::testMistralConnection,
+                        onSetNvidiaBaseUrl = screenModel::setNvidiaBaseUrl,
+                        onSetNvidiaApiKey = screenModel::setNvidiaApiKey,
+                        onSetNvidiaModel = screenModel::setNvidiaModel,
+                        onRefreshNvidiaModels = screenModel::refreshNvidiaModels,
+                        onTestNvidiaConnection = screenModel::testNvidiaConnection,
+                        onSetOllamaCloudBaseUrl = screenModel::setOllamaCloudBaseUrl,
+                        onSetOllamaCloudApiKey = screenModel::setOllamaCloudApiKey,
+                        onSetOllamaCloudModel = screenModel::setOllamaCloudModel,
+                        onRefreshOllamaCloudModels = screenModel::refreshOllamaCloudModels,
+                        onTestOllamaCloudConnection = screenModel::testOllamaCloudConnection,
+                        onStartGoogleTranslation = screenModel::startGoogleTranslation,
+                        onStopGoogleTranslation = screenModel::stopGoogleTranslation,
+                        onResumeGoogleTranslation = screenModel::resumeGoogleTranslation,
+                        onToggleGoogleTranslationVisibility = screenModel::toggleGoogleTranslationVisibility,
+                        onClearGoogleTranslation = screenModel::clearGoogleTranslation,
+                        onSetGoogleTranslationEnabled = screenModel::setGoogleTranslationEnabled,
+                        onSetGoogleTranslationAutoStart = screenModel::setGoogleTranslationAutoStart,
+                        onSetGoogleTranslationSourceLang = screenModel::setGoogleTranslationSourceLang,
+                        onSetGoogleTranslationTargetLang = screenModel::setGoogleTranslationTargetLang,
+                        onToggleTtsPlayback = screenModel::toggleTtsPlayback,
+                        onStopTtsPlayback = screenModel::stopTtsPlayback,
+                        onSkipPreviousTts = screenModel::skipToPreviousTtsSegment,
+                        onSkipNextTts = screenModel::skipToNextTtsSegment,
+                        onPauseTtsForManualNavigation = screenModel::pauseTtsForManualNavigation,
+                        onSetTtsEnginePackage = screenModel::setTtsEnginePackage,
+                        onSetTtsVoiceId = screenModel::setTtsVoiceId,
+                        onSetTtsLocaleTag = screenModel::setTtsLocaleTag,
+                        onSetTtsSpeechRate = screenModel::setTtsSpeechRate,
+                        onSetTtsPitch = screenModel::setTtsPitch,
+                        onDisableTts = screenModel::disableTts,
+                        onPreviewTtsVoice = screenModel::previewTtsVoice,
+                        onStopTtsVoicePreview = screenModel::stopTtsVoicePreview,
+                        onSelectedTextSelectionChanged = screenModel::updateSelectedTextSelection,
+                        onTranslateSelectedText = screenModel::translateSelectedText,
+                        onRetrySelectedTextTranslation = screenModel::retrySelectedTextTranslation,
+                        onDismissSelectedTextTranslation = screenModel::dismissSelectedTextTranslation,
+                        onLookupSelectedTextDefinition = screenModel::lookupSelectedTextDefinition,
+                        onRetryNovelDictionary = screenModel::retryNovelDictionary,
+                        onDismissNovelDictionary = screenModel::dismissNovelDictionary,
+                        onPlaySelectedTextPronunciation = screenModel::playSelectedTextPronunciation,
+                        loadBookEngineDocument = screenModel::loadBookEngineDocument,
+                        onBookEngineLocationChanged = screenModel::onBookEngineLocationChanged,
+                        onBookEngineSectionMeasured = screenModel::onBookEngineSectionMeasured,
+                        onBookModeCommandsExecuted = screenModel::onBookModeCommandsExecuted,
+                        onBookModeScroll = screenModel::onBookModeScroll,
+                        onBookModeSectionMeasured = screenModel::onBookModeSectionMeasured,
+                        onBookModeRetrySection = screenModel::onBookModeRetrySection,
+                        onBookModeDocumentReady = screenModel::onBookModeDocumentReady,
+                        onPrepareWholeBook = screenModel::prepareWholeBook,
+                        onPrepareAutoScrollHandoff = screenModel::prepareAutoScrollHandoff,
+                        onConsumeAutoScrollHandoff = screenModel::consumeAutoScrollHandoffIfMatches,
+                        onCancelAutoScrollHandoff = screenModel::cancelAutoScrollHandoff,
+                        onRequestAutoScrollNextChapterPrefetch = screenModel::requestAutoScrollNextChapterPrefetch,
+                        onOpenPreviousChapter = { previousChapterId ->
+                            // A seamless in-place switch keeps this screen and its live document
+                            // alive, so the reader never shows the chapter loading screen.
                             NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
                                 NovelReaderPageReaderHandoffTarget.END,
                             )
-                            navigator.replace(
-                                NovelReaderScreen(
-                                    previousChapterId,
-                                    sourceId = successState.novel.source,
-                                    seriesId = seriesId,
-                                ),
-                            )
-                        }
-                    },
-                    onOpenNextChapter = { nextChapterId ->
-                        NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
-                            NovelReaderPageReaderHandoffTarget.START,
-                        )
-                        if (screenModel.openChapterInPlace(nextChapterId)) {
-                            return@NovelReaderScreen
-                        }
-                        coroutineScope.launch {
-                            screenModel.persistCurrentChapterExitState()
-                            NovelReaderSystemUiSession.markInternalChapterReplace()
+                            if (screenModel.openChapterInPlace(previousChapterId)) {
+                                return@NovelReaderScreenActions
+                            }
+                            coroutineScope.launch {
+                                screenModel.persistCurrentChapterExitState()
+                                NovelReaderSystemUiSession.markInternalChapterReplace()
+                                NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
+                                    NovelReaderPageReaderHandoffTarget.END,
+                                )
+                                navigator.replace(
+                                    NovelReaderScreen(
+                                        previousChapterId,
+                                        sourceId = successState.novel.source,
+                                        seriesId = seriesId,
+                                    ),
+                                )
+                            }
+                        },
+                        onOpenNextChapter = { nextChapterId ->
                             NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
                                 NovelReaderPageReaderHandoffTarget.START,
                             )
-                            navigator.replace(
-                                NovelReaderScreen(
-                                    nextChapterId,
-                                    sourceId = successState.novel.source,
-                                    seriesId = seriesId,
-                                ),
-                            )
-                        }
-                    },
-                    onOpenChapter = { chapterId ->
-                        // In book mode the whole novel is one continuous document, so jumping to a
-                        // chapter only moves the reading position instead of reloading the screen.
-                        if (successState.bookMode.isEnabled &&
-                            screenModel.onBookModeChapterSelected(chapterId)
-                        ) {
-                            return@NovelReaderScreen
-                        }
-                        NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
-                            NovelReaderPageReaderHandoffTarget.START,
-                        )
-                        if (screenModel.openChapterInPlace(chapterId)) {
-                            return@NovelReaderScreen
-                        }
-                        coroutineScope.launch {
-                            screenModel.persistCurrentChapterExitState()
-                            NovelReaderSystemUiSession.markInternalChapterReplace()
+                            if (screenModel.openChapterInPlace(nextChapterId)) {
+                                return@NovelReaderScreenActions
+                            }
+                            coroutineScope.launch {
+                                screenModel.persistCurrentChapterExitState()
+                                NovelReaderSystemUiSession.markInternalChapterReplace()
+                                NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
+                                    NovelReaderPageReaderHandoffTarget.START,
+                                )
+                                navigator.replace(
+                                    NovelReaderScreen(
+                                        nextChapterId,
+                                        sourceId = successState.novel.source,
+                                        seriesId = seriesId,
+                                    ),
+                                )
+                            }
+                        },
+                        onOpenChapter = { chapterId ->
+                            // In book mode the whole novel is one continuous document, so jumping to a
+                            // chapter only moves the reading position instead of reloading the screen.
+                            if (successState.bookMode.isEnabled &&
+                                screenModel.onBookModeChapterSelected(chapterId)
+                            ) {
+                                return@NovelReaderScreenActions
+                            }
                             NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
                                 NovelReaderPageReaderHandoffTarget.START,
                             )
-                            navigator.replace(
-                                NovelReaderScreen(
-                                    chapterId,
-                                    sourceId = successState.novel.source,
-                                    seriesId = seriesId,
-                                ),
-                            )
-                        }
-                    },
-                    onDownloadChapter = { chapterId ->
-                        coroutineScope.launch {
-                            screenModel.downloadChapter(chapterId)
-                        }
-                    },
+                            if (screenModel.openChapterInPlace(chapterId)) {
+                                return@NovelReaderScreenActions
+                            }
+                            coroutineScope.launch {
+                                screenModel.persistCurrentChapterExitState()
+                                NovelReaderSystemUiSession.markInternalChapterReplace()
+                                NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
+                                    NovelReaderPageReaderHandoffTarget.START,
+                                )
+                                navigator.replace(
+                                    NovelReaderScreen(
+                                        chapterId,
+                                        sourceId = successState.novel.source,
+                                        seriesId = seriesId,
+                                    ),
+                                )
+                            }
+                        },
+                        onDownloadChapter = { chapterId ->
+                            coroutineScope.launch {
+                                screenModel.downloadChapter(chapterId)
+                            }
+                        },
+                    ),
                 )
                 successState.seriesInterstitialState?.let { seriesInterstitialState ->
                     val continueAction: (() -> Unit)? = seriesInterstitialState.nextNovel?.let { nextNovel ->

@@ -134,6 +134,25 @@ class NovelBookArtifactSource(
         .map { it.chapterId }
         .toList()
 
+    /**
+     * Chapters that were completely passed inside one reading session.
+     *
+     * Read marking used to look at everything before the caret, so re-opening a book always
+     * re-marked every chapter before the stored position - which is why unmarking a chapter on the
+     * novel screen looked like it did nothing: the next book session wrote it back. Only chapters
+     * that start at or after where the session began are considered now, so the reader reports what
+     * it actually read and manual read states survive.
+     */
+    fun chaptersFullyReadBetween(fromCharOffset: Int, toCharOffset: Int): List<Long> = index.chapters
+        .asSequence()
+        .filter { it.charStart >= fromCharOffset }
+        .filter { it.charStart + it.charLength <= toCharOffset }
+        .map { it.chapterId }
+        .toList()
+
+    /** First character of the chapter that owns [charOffset], used as a session start anchor. */
+    fun chapterStartAt(charOffset: Int): Int = chapterAt(charOffset)?.charStart ?: charOffset
+
     fun progressOf(charOffset: Int): Float = NovelBookBlockPlanner.progressOf(meta, charOffset)
 
     companion object {

@@ -2106,13 +2106,29 @@ class NovelScreenModel(
         return (this as? NovelJsSource)?.isJaomixPagedPlugin() == true
     }
 
+    /**
+     * Resolves the chapter a list action was performed on.
+     *
+     * The rendered rows come from `chapterSourcePreview ?: chapters`, and with chapter paging they
+     * are a window over the full list, while the actions only ever looked at `chapters`. Whenever an
+     * id was missing there the action returned before touching the database, so the button did
+     * nothing at all and the card kept its old state - which is what the contents list of a compiled
+     * book shows. The rendered rows are consulted first and the database answers for everything else.
+     */
+    private suspend fun resolveActionableChapter(chapterId: Long): NovelChapter? {
+        val state = successState
+        return state?.chapters?.firstOrNull { it.id == chapterId }
+            ?: state?.chapterSourcePreview?.firstOrNull { it.id == chapterId }
+            ?: novelChapterRepository.getChapterById(chapterId)
+    }
+
     fun toggleChapterRead(chapterId: Long) {
-        val chapter = successState?.chapters?.firstOrNull { it.id == chapterId } ?: return
-        val newRead = !chapter.read
-        val shouldEmitReadEvent = !chapter.read && newRead
-        val shouldEmitCompletion = shouldEmitReadEvent &&
-            (successState?.chapters?.all { it.read || it.id == chapterId } == true)
         screenModelScope.launchIO {
+            val chapter = resolveActionableChapter(chapterId) ?: return@launchIO
+            val newRead = !chapter.read
+            val shouldEmitReadEvent = !chapter.read && newRead
+            val shouldEmitCompletion = shouldEmitReadEvent &&
+                (successState?.chapters?.all { it.read || it.id == chapterId } == true)
             novelChapterRepository.updateChapter(
                 NovelChapterUpdate(
                     id = chapterId,
@@ -2151,8 +2167,8 @@ class NovelScreenModel(
     }
 
     fun toggleChapterBookmark(chapterId: Long) {
-        val chapter = successState?.chapters?.firstOrNull { it.id == chapterId } ?: return
         screenModelScope.launchIO {
+            val chapter = resolveActionableChapter(chapterId) ?: return@launchIO
             novelChapterRepository.updateChapter(
                 NovelChapterUpdate(
                     id = chapterId,
