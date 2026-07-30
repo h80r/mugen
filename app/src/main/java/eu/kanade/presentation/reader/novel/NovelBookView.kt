@@ -49,12 +49,21 @@ internal fun resolveNovelBookRenderer(
     richNativeRendererExperimentalEnabled: Boolean,
     bionicReadingEnabled: Boolean,
     richContentUnsupportedFeaturesDetected: Boolean,
+    /**
+     * True when the user configured custom CSS or JavaScript for the reader.
+     *
+     * Those hooks are applied to the WebView document and have no meaning for Compose text,
+     * so silently dropping them in the native renderer would look like the setting stopped
+     * working. Honouring the setting by staying on the WebView is the honest behaviour.
+     */
+    customStylesPresent: Boolean = false,
     nativeBookRendererAvailable: Boolean = NOVEL_BOOK_NATIVE_RENDERER_READY,
 ): NovelBookRenderer {
     if (pageReaderEnabled) return NovelBookRenderer.WEBVIEW_PAGINATED
     val canUseRichNative = nativeBookRendererAvailable &&
         richNativeRendererExperimentalEnabled &&
         !bionicReadingEnabled &&
+        !customStylesPresent &&
         !richContentUnsupportedFeaturesDetected
     return if (canUseRichNative) {
         NovelBookRenderer.RICH_NATIVE_SCROLLED

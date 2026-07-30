@@ -2,13 +2,18 @@ package eu.kanade.tachiyomi.data.book.novel
 
 import android.app.Application
 import eu.kanade.tachiyomi.data.download.novel.NovelDownloadManager
+import eu.kanade.tachiyomi.source.novel.NovelSiteSource
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.book.novel.model.NovelBookState
 import tachiyomi.domain.book.novel.repository.NovelBookStateRepository
 import tachiyomi.domain.entries.novel.model.Novel
 import tachiyomi.domain.items.novelchapter.model.NovelChapter
+import tachiyomi.domain.source.novel.service.NovelSourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
@@ -20,7 +25,12 @@ data class NovelBookBuildProgress(
     val done: Int,
     val total: Int,
 ) {
-    enum class Phase { DOWNLOADING, MERGING }
+    /**
+     * PARSING covers compiling the native block stream of a book that was built before that
+     * format existed. It is reported separately because it downloads nothing and can be
+     * cancelled at any point without losing the book.
+     */
+    enum class Phase { DOWNLOADING, MERGING, PARSING }
 
     val fraction: Float
         get() = if (total <= 0) 0f else (done.toFloat() / total.toFloat()).coerceIn(0f, 1f)
@@ -46,6 +56,14 @@ class NovelBookBuilder(
     private val downloadManager: NovelDownloadManager = NovelDownloadManager(),
     private val repository: NovelBookStateRepository = Injekt.get(),
     private val now: () -> Long = { System.currentTimeMillis() },
+    /**
+     * Referer stored with the images of the compiled book.
+     *
+     * Many sites reject hotlinked illustrations, so the chapter-by-chapter reader already
+     * sends the site URL as a referer. The compiled book has to carry it too, otherwise
+     * remote illustrations that load in chapter mode would break in book mode.
+     */
+    private val imageReferer: (Novel) -> String? = { novel -> defaultImageReferer(novel) },
 ) {
 
     /**
@@ -113,6 +131,7 @@ class NovelBookBuilder(
         val result = writer.build(
             request = request,
             chapters = sourceChapters,
+            imageReferer = imageReferer(novel),
             loadHtml = { chapter ->
                 loadHtml?.invoke(chapter)
                     ?: downloadManager.getDownloadedChapterText(novel, chapter.id)
@@ -235,6 +254,7 @@ class NovelBookBuilder(
             request = request,
             existing = existingIndex,
             newChapters = newSourceChapters,
+            imageReferer = imageReferer(novel),
             loadHtml = { chapter -> downloadManager.getDownloadedChapterText(novel, chapter.id) },
             bookVersion = ((previous?.bookVersion ?: 1L) + 1L).toInt(),
             onProgress = { done, total ->
@@ -272,6 +292,51 @@ class NovelBookBuilder(
         return NovelBookBuildOutcome.Built(state, result.missingChapterIds)
     }
 
+    /**
+     * Compiles the native block stream of an already built book when it does not have one yet.
+     *
+     * Books compiled before the native format existed keep working in HTML mode, so this is an
+     * upgrade and never a precondition for reading. It reads the artifact's own body file, downloads
+     * nothing, and leaves every character offset untouched, which is what keeps the saved reading
+     * position valid across the upgrade.
+     *
+     * @return true when the book has an up to date native stream afterwards.
+     */
+    suspend fun ensureNativeStream(
+        novel: Novel,
+        onProgress: (NovelBookBuildProgress) -> Unit = {},
+    ): Boolean {
+        val directory = NovelBookArtifact.directoryFor(rootDirectory, novel.source, novel.id)
+        if (!NovelBookNativeMigrator.needsMigration(directory)) {
+            return NovelBookArtifact.nativeFile(directory).exists()
+        }
+        return withContext(Dispatchers.IO) {
+            val scope = this
+            runCatching {
+                NovelBookNativeMigrator.migrate(
+                    directory = directory,
+                    imageReferer = imageReferer(novel),
+                    onProgress = { done, total ->
+                        onProgress(
+                            NovelBookBuildProgress(
+                                phase = NovelBookBuildProgress.Phase.PARSING,
+                                done = done,
+                                total = total,
+                            ),
+                        )
+                    },
+                    // Leaving a half written stream behind is harmless: the migrator writes to a
+                    // temporary file and only swaps it in once every chapter is compiled.
+                    isCancelled = { !scope.isActive },
+                )
+            }.onFailure { error ->
+                logcat(LogPriority.WARN, error) {
+                    "Native book stream migration failed for novel ${novel.id}"
+                }
+            }.getOrDefault(false)
+        }
+    }
+
     /** Drops the artifact and the stored state, returning the title to per-chapter reading. */
     suspend fun delete(novel: Novel) {
         NovelBookArtifact.delete(NovelBookArtifact.directoryFor(rootDirectory, novel.source, novel.id))
@@ -286,6 +351,16 @@ class NovelBookBuilder(
 
     companion object {
         const val ROOT_DIRECTORY_NAME = "novel_books"
+
+        /**
+         * Site URL of the novel's source, or null for local books and unknown sources.
+         *
+         * Resolved lazily through Injekt so a builder can still be constructed in tests where
+         * no source manager is registered.
+         */
+        fun defaultImageReferer(novel: Novel): String? = runCatching {
+            (Injekt.get<NovelSourceManager>().get(novel.source) as? NovelSiteSource)?.siteUrl
+        }.getOrNull()
 
         /** App-private location of the artifacts: they need real file offsets, so no SAF here. */
         fun defaultRootDirectory(): File {

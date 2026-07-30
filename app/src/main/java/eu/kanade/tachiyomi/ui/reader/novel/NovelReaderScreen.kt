@@ -225,6 +225,7 @@ class NovelReaderScreen(
                 }
                 NovelReaderScreen(
                     rawState = successState,
+                    nativeBookBlocksForSection = screenModel::nativeBookBlocksForSection,
                     showReaderUi = showReaderUi,
                     onSetShowReaderUi = { showReaderUi = it },
                     onOpenBottomSheet = screenModel::loadFullChapterOrderList,

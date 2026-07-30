@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.data.book.novel.NovelBookBlockPlanner
 import eu.kanade.tachiyomi.data.book.novel.NovelBookChapterEntry
 import eu.kanade.tachiyomi.data.book.novel.NovelBookIndex
 import eu.kanade.tachiyomi.data.book.novel.NovelBookMeta
+import eu.kanade.tachiyomi.data.book.novel.NovelBookNativeBlock
 import java.io.File
 
 /**
@@ -54,6 +55,45 @@ class NovelBookArtifactSource(
             chapterId = block.firstChapterId,
             html = html,
         )
+    }
+
+    /**
+     * True when this book carries pre-compiled native blocks, so the native renderer can skip the
+     * HTML parse at scroll time.
+     */
+    val hasNativeBlocks: Boolean = NovelBookArtifact.hasNativeStream(directory, meta) &&
+        index.chapters.all { it.nativeByteLength > 0 }
+
+    /**
+     * Pre-compiled blocks of a section, or null when the book has no native stream yet and the
+     * caller has to fall back to parsing [documentFor].
+     *
+     * A section is a window of the continuous book and can span several chapters, so the native
+     * ranges of every chapter it touches are read and then clipped to the section's own character
+     * range. That clipping uses the same offsets as the HTML path, which is why progress, the table
+     * of contents and read marking behave identically in both renderers.
+     */
+    fun nativeBlocksFor(sectionIndex: Int): List<NovelBookNativeBlock>? {
+        if (!hasNativeBlocks) return null
+        val block = blocks.getOrNull(sectionIndex) ?: return null
+        val sectionStart = block.charStart
+        val sectionEnd = block.charStart + block.charLength
+        val chapters = index.chapters.filter { chapter ->
+            chapter.charStart < sectionEnd && chapter.charStart + chapter.charLength > sectionStart
+        }
+        if (chapters.isEmpty()) return null
+
+        // Chapters are contiguous in the native stream, so overlapping chapters collapse into a
+        // single sequential read instead of one read per chapter.
+        val nativeStart = chapters.first().nativeByteStart
+        val nativeLength = chapters.sumOf { it.nativeByteLength }
+        val decoded = NovelBookArtifact.readNativeRange(
+            directory = directory,
+            byteStart = nativeStart,
+            byteLength = nativeLength,
+        )
+        if (decoded.isEmpty()) return null
+        return decoded.filter { it.charStart < sectionEnd && it.charStart + it.charLength > sectionStart }
     }
 
     /** Whole-book character offset of a block location, used as the persisted reading position. */

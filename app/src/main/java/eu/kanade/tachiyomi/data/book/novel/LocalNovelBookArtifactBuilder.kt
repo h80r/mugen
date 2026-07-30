@@ -58,7 +58,13 @@ class LocalNovelBookArtifactBuilder(
         val currentMeta = NovelBookArtifact.readMeta(directory)?.takeIf {
             NovelBookArtifact.exists(directory)
         }
-        if (currentMeta != null && currentMeta.chapterSetHash == expectedHash) return true
+        if (currentMeta != null && currentMeta.chapterSetHash == expectedHash) {
+            // The artifact is current, but it may predate the native block stream. Upgrading it
+            // here is the same lazy migration this class already does for the artifact itself,
+            // so an imported book opened once keeps opening instantly afterwards.
+            bookBuilder.ensureNativeStream(novel, onProgress)
+            return true
+        }
 
         val outcome = bookBuilder.build(
             novel = novel,

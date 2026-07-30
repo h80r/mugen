@@ -19,7 +19,16 @@ data class NovelBookBlock(
 
 object NovelBookBlockPlanner {
 
-    const val DEFAULT_TARGET_CHARS = 200_000
+    /**
+     * Characters per render window.
+     *
+     * A window used to be worth 200k characters because it was a single HTML string handed to a
+     * WebView, where the cost of a bigger window was close to zero. The native renderer keeps a
+     * window as live block objects instead, so the same 200k characters cost tens of thousands of
+     * allocations that stay in memory. Smaller windows are appended more often, which is cheap
+     * with pre-compiled blocks and keeps chapter boundaries intact all the same.
+     */
+    const val DEFAULT_TARGET_CHARS = 40_000
     const val MIN_TARGET_CHARS = 20_000
 
     /** Groups consecutive chapters into windows of roughly [targetChars] characters. */

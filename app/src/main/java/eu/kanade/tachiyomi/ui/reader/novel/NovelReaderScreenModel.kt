@@ -399,6 +399,19 @@ class NovelReaderScreenModel(
     /** Opened compiled-book artifact, non-null while this novel is read as one continuous book. */
     private var artifactSource: NovelBookArtifactSource? = null
 
+    /**
+     * Pre-compiled native blocks of a book section, or null when this book has none.
+     *
+     * The native renderer asks for them before parsing the section HTML, so a book compiled with the
+     * native stream renders without touching Jsoup (and without touching WebView) at scroll time.
+     * Books compiled by an older app version return null here and keep parsing as before.
+     */
+    fun nativeBookBlocksForSection(sectionIndex: Int): List<NovelRichContentBlock>? =
+        artifactSource
+            ?.nativeBlocksFor(sectionIndex)
+            ?.toRichContentBlocks()
+            ?.takeIf { it.isNotEmpty() }
+
     /** Pending book-mode DOM work, consumed and acknowledged by the reader UI. */
     private val bookModeCommandQueue = NovelBookUiCommandQueue()
 
@@ -484,6 +497,40 @@ class NovelReaderScreenModel(
     }
 
     /**
+     * Builds the native block stream of an older book in the background.
+     *
+     * The book stays fully readable while this runs: sections keep being parsed on the fly until the
+     * stream is ready. Only then is the artifact re-opened, so the sections rendered after that point
+     * come from pre-compiled blocks. Nothing is re-downloaded and no offset changes, which is why
+     * swapping the source mid-read is safe.
+     */
+    private fun scheduleNativeBookStreamUpgrade() {
+        val novel = currentNovel ?: return
+        val source = artifactSource ?: return
+        if (source.hasNativeBlocks) return
+        screenModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val migrated = runCatching {
+                eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder().ensureNativeStream(novel)
+            }.getOrDefault(false)
+            if (!migrated || currentNovel?.id != novel.id) return@launch
+            val upgraded = runCatching {
+                NovelBookArtifactSource.open(
+                    directory = eu.kanade.tachiyomi.data.book.novel.NovelBookArtifact.directoryFor(
+                        root = eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder
+                            .defaultRootDirectory(),
+                        sourceId = novel.source,
+                        novelId = novel.id,
+                    ),
+                )
+            }.getOrNull() ?: return@launch
+            if (currentNovel?.id == novel.id) {
+                artifactSource = upgraded
+                logcat(LogPriority.INFO) { "Native book stream ready: novel=${novel.id}" }
+            }
+        }
+    }
+
+    /**
      * Starts book mode for the currently loaded chapter, or keeps the runtime inert when the reader
      * is in the classic chapter-by-chapter mode.
      */
@@ -503,6 +550,7 @@ class NovelReaderScreenModel(
         } else {
             null
         }
+        scheduleNativeBookStreamUpgrade()
         if (!isBookModeEnabled()) {
             if (bookModeRuntime.isActive) {
                 bookEnginePrefetchJob?.cancel()

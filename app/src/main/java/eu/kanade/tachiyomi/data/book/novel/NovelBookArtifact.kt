@@ -28,6 +28,12 @@ data class NovelBookChapterEntry(
     val charLength: Int,
     val byteStart: Long,
     val byteLength: Int,
+    /**
+     * Where this chapter's pre-compiled native blocks live in `book.native.jsonl`.
+     * Zero length means the chapter predates the native stream and must be migrated.
+     */
+    val nativeByteStart: Long = 0L,
+    val nativeByteLength: Int = 0,
 )
 
 @Serializable
@@ -49,6 +55,9 @@ data class NovelBookMeta(
     val chapterCount: Int = 0,
     val builtAt: Long = 0L,
     val complete: Boolean = false,
+    /** 0 means no native block stream was written for this book yet. */
+    val nativeFormatVersion: Int = 0,
+    val nativeComplete: Boolean = false,
 )
 
 /** Everything the writer needs that does not come from the chapters themselves. */
@@ -85,6 +94,15 @@ object NovelBookArtifact {
     const val INDEX_FILE = "book.index.json"
     const val META_FILE = "book.meta.json"
 
+    /**
+     * Pre-compiled native blocks, one JSON object per line, in the same order as the body file.
+     *
+     * It is a second append-only stream next to the body instead of a replacement for it: the
+     * WebView renderer, custom CSS/JS and every existing byte offset keep working untouched, while
+     * the native renderer can read a ready made window without running Jsoup at scroll time.
+     */
+    const val NATIVE_FILE = "book.native.jsonl"
+
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -95,6 +113,14 @@ object NovelBookArtifact {
         File(File(root, sourceId.toString()), novelId.toString())
 
     fun bodyFile(directory: File): File = File(directory, BODY_FILE)
+
+    fun nativeFile(directory: File): File = File(directory, NATIVE_FILE)
+
+    /** True when the artifact carries a native block stream this app version can read. */
+    fun hasNativeStream(directory: File, meta: NovelBookMeta?): Boolean =
+        meta != null &&
+            meta.nativeFormatVersion == NovelBookNativeCodec.FORMAT_VERSION &&
+            nativeFile(directory).exists()
 
     fun exists(directory: File): Boolean = bodyFile(directory).exists() && readMeta(directory) != null
 
@@ -129,6 +155,20 @@ object NovelBookArtifact {
             val buffer = ByteArray(available.toInt())
             access.readFully(buffer)
             return String(buffer, Charsets.UTF_8)
+        }
+    }
+
+    /** Reads a byte range of the native block stream and decodes the complete lines in it. */
+    fun readNativeRange(directory: File, byteStart: Long, byteLength: Int): List<NovelBookNativeBlock> {
+        val file = nativeFile(directory)
+        if (!file.exists() || byteLength <= 0 || byteStart < 0) return emptyList()
+        val available = (file.length() - byteStart).coerceAtMost(byteLength.toLong())
+        if (available <= 0) return emptyList()
+        RandomAccessFile(file, "r").use { access ->
+            access.seek(byteStart)
+            val buffer = ByteArray(available.toInt())
+            access.readFully(buffer)
+            return NovelBookNativeCodec.decodeChunk(String(buffer, Charsets.UTF_8))
         }
     }
 
@@ -176,8 +216,10 @@ class NovelBookArtifactWriter(private val directory: File) {
         chapters: List<NovelBookSourceChapter>,
         loadHtml: (NovelBookSourceChapter) -> String?,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
+        imageReferer: String? = null,
     ): NovelBookBuildResult {
         NovelBookArtifact.bodyFile(directory).delete()
+        NovelBookArtifact.nativeFile(directory).delete()
         return writeSections(
             request = request,
             chapters = chapters,
@@ -185,6 +227,7 @@ class NovelBookArtifactWriter(private val directory: File) {
             onProgress = onProgress,
             existingChapters = emptyList(),
             bookVersion = 1,
+            imageReferer = imageReferer,
         )
     }
 
@@ -195,6 +238,7 @@ class NovelBookArtifactWriter(private val directory: File) {
         loadHtml: (NovelBookSourceChapter) -> String?,
         bookVersion: Int,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
+        imageReferer: String? = null,
     ): NovelBookBuildResult {
         val known = existing.chapters.map { chapter -> chapter.chapterId }.toSet()
         return writeSections(
@@ -204,6 +248,7 @@ class NovelBookArtifactWriter(private val directory: File) {
             onProgress = onProgress,
             existingChapters = existing.chapters,
             bookVersion = bookVersion,
+            imageReferer = imageReferer,
         )
     }
 
@@ -214,48 +259,78 @@ class NovelBookArtifactWriter(private val directory: File) {
         onProgress: (Int, Int) -> Unit,
         existingChapters: List<NovelBookChapterEntry>,
         bookVersion: Int,
+        imageReferer: String? = null,
     ): NovelBookBuildResult {
         directory.mkdirs()
         val bodyFile = NovelBookArtifact.bodyFile(directory)
+        val nativeFile = NovelBookArtifact.nativeFile(directory)
         val appending = existingChapters.isNotEmpty()
         val entries = existingChapters.toMutableList()
         val missing = mutableListOf<Long>()
         val lastExisting = existingChapters.lastOrNull()
         var charOffset = if (lastExisting == null) 0 else lastExisting.charStart + lastExisting.charLength
         var byteOffset = if (appending) bodyFile.length() else 0L
+        // The native stream is append-only exactly like the body, so an append never rewrites the
+        // blocks of chapters the user may already have read.
+        var nativeOffset = if (appending && nativeFile.exists()) nativeFile.length() else 0L
         var order = existingChapters.size
+        val nativeAppending = appending && nativeFile.exists()
+        // Only a book whose whole native stream is present may claim to be natively readable.
+        var nativeUsable = !appending ||
+            (nativeAppending && existingChapters.all { it.nativeByteLength > 0 })
 
         FileOutputStream(bodyFile, appending).use { output ->
-            chapters.forEachIndexed { position, chapter ->
-                val rawHtml = loadHtml(chapter)
-                if (rawHtml.isNullOrBlank()) {
-                    missing.add(chapter.id)
-                } else {
-                    val section = NovelBookChapterNormalizer.normalize(
-                        rawHtml = rawHtml,
-                        chapterId = chapter.id,
-                        chapterName = chapter.name,
-                        startOffset = charOffset,
-                    )
-                    val bytes = (section.html + "\n").toByteArray(Charsets.UTF_8)
-                    output.write(bytes)
-                    entries.add(
-                        NovelBookChapterEntry(
+            FileOutputStream(nativeFile, nativeAppending).use { nativeOutput ->
+                chapters.forEachIndexed { position, chapter ->
+                    val rawHtml = loadHtml(chapter)
+                    if (rawHtml.isNullOrBlank()) {
+                        missing.add(chapter.id)
+                    } else {
+                        val section = NovelBookChapterNormalizer.normalize(
+                            rawHtml = rawHtml,
                             chapterId = chapter.id,
-                            order = order,
-                            title = chapter.name,
-                            anchorId = NovelBookChapterNormalizer.chapterAnchorId(chapter.id),
-                            charStart = charOffset,
-                            charLength = section.charCount,
-                            byteStart = byteOffset,
-                            byteLength = bytes.size,
-                        ),
-                    )
-                    charOffset += section.charCount
-                    byteOffset += bytes.size
-                    order += 1
+                            chapterName = chapter.name,
+                            startOffset = charOffset,
+                        )
+                        val bytes = (section.html + "\n").toByteArray(Charsets.UTF_8)
+                        output.write(bytes)
+                        // Compiling from the normalized section, not from the raw chapter, is what
+                        // guarantees the native blocks share the offsets of the HTML body.
+                        val nativeBytes = runCatching {
+                            NovelBookNativeCodec.encodeLines(
+                                NovelBookNativeCompiler.compileSection(
+                                    sectionHtml = section.html,
+                                    chapterId = chapter.id,
+                                    imageReferer = imageReferer,
+                                ),
+                            ).toByteArray(Charsets.UTF_8)
+                        }.getOrElse {
+                            nativeUsable = false
+                            ByteArray(0)
+                        }
+                        nativeOutput.write(nativeBytes)
+                        entries.add(
+                            NovelBookChapterEntry(
+                                chapterId = chapter.id,
+                                order = order,
+                                title = chapter.name,
+                                anchorId = NovelBookChapterNormalizer.chapterAnchorId(chapter.id),
+                                charStart = charOffset,
+                                charLength = section.charCount,
+                                byteStart = byteOffset,
+                                byteLength = bytes.size,
+                                nativeByteStart = nativeOffset,
+                                nativeByteLength = nativeBytes.size,
+                            ),
+                        )
+                        charOffset += section.charCount
+                        byteOffset += bytes.size
+                        nativeOffset += nativeBytes.size
+                        order += 1
+                    }
+                    onProgress(position + 1, chapters.size)
                 }
-                onProgress(position + 1, chapters.size)
+                nativeOutput.flush()
             }
             output.flush()
         }
@@ -273,6 +348,8 @@ class NovelBookArtifactWriter(private val directory: File) {
             chapterCount = entries.size,
             builtAt = request.builtAt,
             complete = missing.isEmpty(),
+            nativeFormatVersion = if (nativeUsable) NovelBookNativeCodec.FORMAT_VERSION else 0,
+            nativeComplete = nativeUsable && missing.isEmpty(),
         )
         NovelBookArtifact.writeIndex(directory, index)
         NovelBookArtifact.writeMeta(directory, meta)

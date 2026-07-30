@@ -32,6 +32,15 @@ internal fun <T> applyNovelBookCommandsToNativeSections(
     sections: List<NovelBookNativeSection<T>>,
     commands: List<NovelBookUiCommand>,
     parseSection: (String) -> List<T>,
+    /**
+     * Blocks the compiled book already holds for a section, or null when the book has none.
+     *
+     * When the artifact was built with the native stream, appending a section costs a byte range
+     * read plus a JSON decode instead of a full HTML parse of a 200k character window, which is what
+     * removes the stall when the reader scrolls into a new part of the book. [parseSection] stays as
+     * the fallback so books compiled by older versions keep working unchanged.
+     */
+    precompiledSection: (Int) -> List<T>? = { null },
 ): List<NovelBookNativeSection<T>> {
     if (commands.isEmpty()) return sections
     val bySectionIndex = sections.associateByTo(LinkedHashMap()) { it.sectionIndex }
@@ -39,9 +48,12 @@ internal fun <T> applyNovelBookCommandsToNativeSections(
         when (command) {
             is NovelBookUiCommand.Append -> {
                 if (!bySectionIndex.containsKey(command.sectionIndex)) {
+                    val blocks = precompiledSection(command.sectionIndex)
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: parseSection(command.html)
                     bySectionIndex[command.sectionIndex] = NovelBookNativeSection(
                         sectionIndex = command.sectionIndex,
-                        blocks = parseSection(command.html),
+                        blocks = blocks,
                     )
                 }
             }

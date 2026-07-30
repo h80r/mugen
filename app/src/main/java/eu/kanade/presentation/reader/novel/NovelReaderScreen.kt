@@ -154,6 +154,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSection
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSpine
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookUiCommand
 import eu.kanade.tachiyomi.ui.reader.novel.NovelReaderScreenModel
+import eu.kanade.tachiyomi.ui.reader.novel.NovelRichContentBlock
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRenderer
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection
 import eu.kanade.tachiyomi.ui.reader.novel.SelectedTextAction
@@ -456,6 +457,15 @@ fun NovelReaderScreen(
     onBookModeRetrySection: (sectionIndex: Int) -> Unit = {},
     onBookModeDocumentReady: () -> Unit = {},
     onPrepareWholeBook: () -> Unit = {},
+    /**
+     * Pre-compiled blocks of a book section, or null when the compiled book has none.
+     *
+     * Supplied by the screen model from the book artifact. When present, the native renderer
+     * skips parsing the section HTML entirely, which is what makes opening and scrolling a
+     * 50-100 chapter book instant instead of running Jsoup over a 200k character window on
+     * every append.
+     */
+    nativeBookBlocksForSection: (sectionIndex: Int) -> List<NovelRichContentBlock>? = { null },
 ) {
     val sanitizedSettings = remember(rawState.readerSettings) {
         rawState.readerSettings.copy(
@@ -1474,6 +1484,8 @@ fun NovelReaderScreen(
             pageReaderEnabled = state.readerSettings.pageReader,
             richNativeRendererExperimentalEnabled = state.readerSettings.richNativeRendererExperimental,
             bionicReadingEnabled = state.readerSettings.bionicReading,
+            customStylesPresent = state.readerSettings.customCSS.isNotBlank() ||
+                state.readerSettings.customJS.isNotBlank(),
             richContentUnsupportedFeaturesDetected = state.richContentUnsupportedFeaturesDetected,
         )
     }
@@ -1507,6 +1519,7 @@ fun NovelReaderScreen(
             sections = bookModeNativeSections,
             commands = commands,
             parseSection = ::parseNovelBookNativeSection,
+            precompiledSection = nativeBookBlocksForSection,
         )
         bookModeNativeSections = nextSections
         latestNovelBookScrollCommand(commands)?.let { scrollTo ->

@@ -636,7 +636,9 @@ class NovelScreen(
                         val phaseText = when (bookBuildProgress.phase) {
                             eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.DOWNLOADING ->
                                 stringResource(AYMR.strings.novel_book_downloading_chapters)
-                            eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.MERGING ->
+                            eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.MERGING,
+                            eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.PARSING,
+                            ->
                                 stringResource(AYMR.strings.novel_book_building)
                         }
                         Text(
