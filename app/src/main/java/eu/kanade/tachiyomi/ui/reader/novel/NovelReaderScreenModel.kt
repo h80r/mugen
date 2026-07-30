@@ -575,6 +575,9 @@ class NovelReaderScreenModel(
             bookModeRuntime.startWithSpine(
                 spine = artifact.spine,
                 resumeLocation = resumeLocation,
+                windowConfig = NovelBookWindowConfig.forBlockChars(
+                    eu.kanade.tachiyomi.data.book.novel.NovelBookBlockPlanner.DEFAULT_TARGET_CHARS,
+                ),
                 fetchSectionHtml = { sectionKey ->
                     artifact.documentFor(-(sectionKey.toInt() + 1))?.html.orEmpty()
                 },
@@ -590,6 +593,13 @@ class NovelReaderScreenModel(
         lastBookEnginePrefetchSectionIndex = -1
         bookModeCommandQueue.clear()
         val resumeState = bookModeRuntime.uiState()
+        // The native renderer has no document-ready hook to place the reader, so the resume position
+        // is queued as a regular scroll command. Both renderers therefore open the book where the
+        // reader left off instead of at the top of the resident window.
+        bookModeCommandQueue.enqueueScrollTo(
+            sectionIndex = resumeState.currentSectionIndex,
+            sectionFraction = resumeState.currentSectionFraction,
+        )
         logcat(LogPriority.INFO) {
             "Book mode started: sections=${resumeState.sectionCount}, " +
                 "resumeSection=${resumeState.currentSectionIndex}, " +

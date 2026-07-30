@@ -39,6 +39,15 @@ internal class NovelBookModeRuntime(
 
     private var session: NovelBookSession? = null
 
+    /**
+     * Window configuration of the running session.
+     *
+     * Prefetching used to rebuild the default configuration instead of reusing the one the session
+     * was started with, so a book started with a wider window kept prefetching (and pruning) with
+     * the narrow default.
+     */
+    private var activeConfig: NovelBookWindowConfig = NovelBookWindowConfig.DEFAULT
+
     val isActive: Boolean get() = session != null
 
     val location: NovelBookLocation get() = session?.location ?: NovelBookLocation.START
@@ -75,11 +84,12 @@ internal class NovelBookModeRuntime(
             fallbackChapterId = resumeChapterId,
             fallbackChapterFraction = resumeChapterFraction,
         )
+        activeConfig = NovelBookWindowConfig.DEFAULT.copy(
+            prefetchAhead = prepareAhead().coerceAtLeast(NovelBookWindowConfig.DEFAULT.prefetchAhead),
+        )
         session = NovelBookSession(
             loader = loader,
-            config = NovelBookWindowConfig.DEFAULT.copy(
-                prefetchAhead = prepareAhead().coerceAtLeast(0),
-            ),
+            config = activeConfig,
         ).also { it.reset(spine, resumeLocation) }
         return resumeLocation
     }
@@ -202,9 +212,7 @@ internal class NovelBookModeRuntime(
     /** Prepares the dedicated reader's neighboring spine sections without adding them to one DOM. */
     suspend fun prefetchAround(sectionIndex: Int): List<NovelBookSectionResult> = coroutineScope {
         if (session == null || spine.isEmpty) return@coroutineScope emptyList()
-        val config = NovelBookWindowConfig.DEFAULT.copy(
-            prefetchAhead = prepareAhead().coerceAtLeast(0),
-        )
+        val config = activeConfig
         val loadedSections = spine.sections
             .filter { loader.isPrepared(it.chapterId) }
             .mapTo(mutableSetOf()) { it.index }
@@ -252,6 +260,11 @@ internal class NovelBookModeRuntime(
     fun startWithSpine(
         spine: NovelBookSpine,
         resumeLocation: NovelBookLocation,
+        /**
+         * Window of the compiled book. Blocks are much smaller than chapters, so the caller sizes
+         * the window from the block length instead of leaving it at the per-chapter default.
+         */
+        windowConfig: NovelBookWindowConfig = NovelBookWindowConfig.DEFAULT,
         fetchSectionHtml: suspend (Long) -> String,
     ): NovelBookLocation {
         this.spine = spine
@@ -260,11 +273,12 @@ internal class NovelBookModeRuntime(
             fetchSectionBaseUrl = { null },
             fetchSectionHtml = fetchSectionHtml,
         )
+        activeConfig = windowConfig.copy(
+            prefetchAhead = prepareAhead().coerceAtLeast(windowConfig.prefetchAhead),
+        )
         session = NovelBookSession(
             loader = loader,
-            config = NovelBookWindowConfig.DEFAULT.copy(
-                prefetchAhead = prepareAhead().coerceAtLeast(0),
-            ),
+            config = activeConfig,
         ).also { it.reset(spine, resumeLocation) }
         return resumeLocation
     }

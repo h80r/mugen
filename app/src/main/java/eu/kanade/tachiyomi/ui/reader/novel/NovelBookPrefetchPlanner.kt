@@ -21,6 +21,32 @@ data class NovelBookWindowConfig(
         const val DEFAULT_PREFETCH_BEHIND = 1
         const val DEFAULT_MAX_CONCURRENT_PREFETCH = 2
 
+        /**
+         * Text that should stay rendered around the reading position, in characters.
+         *
+         * The window used to be counted in sections only. That was fine while a section was a whole
+         * chapter, but a compiled book is sliced into fixed-size blocks: shrinking the block size
+         * silently shrank the rendered window with it, so a single fling left the resident window,
+         * pruned the section under the reader and threw the reader back to the anchored position.
+         * Sizing the window in characters keeps the same amount of text resident no matter how the
+         * book is sliced.
+         */
+        const val TARGET_RESIDENT_CHARS = 240_000
+
+        /** Window configuration for a book whose sections are [blockChars] characters long. */
+        fun forBlockChars(
+            blockChars: Int,
+            base: NovelBookWindowConfig = DEFAULT,
+        ): NovelBookWindowConfig {
+            if (blockChars <= 0) return base
+            val radius = ((TARGET_RESIDENT_CHARS / blockChars) / 2).coerceIn(1, 8)
+            return base.copy(
+                residentRadius = radius.coerceAtLeast(base.residentRadius),
+                prefetchAhead = (radius + 2).coerceAtLeast(base.prefetchAhead),
+                prefetchBehind = radius.coerceAtLeast(base.prefetchBehind),
+            )
+        }
+
         val DEFAULT = NovelBookWindowConfig()
     }
 }

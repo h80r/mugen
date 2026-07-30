@@ -1388,6 +1388,9 @@ fun NovelReaderScreen(
     // placeholder, appended section, flow class and relocate listener. This counter tracks the loaded
     // document so all of that work is (re)applied against the document that is actually on screen.
     var bookModeDocumentGeneration by remember(state.novel.id) { mutableStateOf(0) }
+    // Timestamp until which the document's own position reports are ignored, see
+    // BOOK_MODE_SCROLL_RESTORE_GUARD_MS.
+    val bookModeWebScrollGuard = remember(state.novel.id) { longArrayOf(0L) }
     LaunchedEffect(bookModeCommands, webViewInstance) {
         if (bookModeCommands.isEmpty()) return@LaunchedEffect
         val view = webViewInstance ?: return@LaunchedEffect
@@ -1428,6 +1431,11 @@ fun NovelReaderScreen(
                     }
                 }
             }
+            if (command is NovelBookUiCommand.ScrollTo) {
+                // The jump settles over the next frames; until then the document still reports the
+                // old (or empty) position and must not be allowed to overwrite the book position.
+                bookModeWebScrollGuard[0] = System.currentTimeMillis() + BOOK_MODE_SCROLL_RESTORE_GUARD_MS
+            }
             executedCommandIds += command.id
         }
         if (executedCommandIds.isNotEmpty()) {
@@ -1441,14 +1449,21 @@ fun NovelReaderScreen(
     // at most one per animation frame. The previous version polled the document every 400 ms forever,
     // which kept the JS thread and the progress-persistence pipeline permanently busy: that is what
     // produced the scroll jank, the endless logcat spam and the unresponsive reader chrome.
-    val bookModeRelocateHandler: (NovelBookDocumentMetrics) -> Unit = remember {
+    val bookModeRelocateHandler: (NovelBookDocumentMetrics) -> Unit = remember(state.novel.id) {
         { metrics ->
             // Heights are layout information only; book progress stays in the spine's text domain.
             metrics.measuredSections().forEach { section ->
                 onBookModeSectionMeasured(section.chapterId, section.heightPx)
             }
-            metrics.currentSection()?.let { current ->
-                onBookModeScroll(current.index, metrics.fractionInside(current))
+            // A document that only holds collapsed placeholders has no reading position yet: right
+            // after a (re)load it reports the top of the book, and reporting that back replaced the
+            // stored position with the first chapter.
+            val hasRenderedSection = metrics.sections.any { !it.isPruned && it.heightPx > 0 }
+            val restoring = System.currentTimeMillis() < bookModeWebScrollGuard[0]
+            if (hasRenderedSection && !restoring) {
+                metrics.currentSection()?.let { current ->
+                    onBookModeScroll(current.index, metrics.fractionInside(current))
+                }
             }
         }
     }
@@ -1466,6 +1481,9 @@ fun NovelReaderScreen(
     LaunchedEffect(state.bookMode.isEnabled, bookModeDocumentGeneration) {
         if (!state.bookMode.isEnabled) return@LaunchedEffect
         if (bookModeDocumentGeneration <= 0) return@LaunchedEffect
+        // The fresh document is empty and scrolled to the top. Hold its position reports back until
+        // the book has been seeded and the reading position re-applied.
+        bookModeWebScrollGuard[0] = System.currentTimeMillis() + BOOK_MODE_SCROLL_RESTORE_GUARD_MS
         onBookModeDocumentReady()
         webViewInstance?.post {
             webViewInstance?.revealReaderDocumentAndWebView(shouldHideWebViewUntilReveal)
@@ -1511,6 +1529,9 @@ fun NovelReaderScreen(
             failedSectionIndices = state.bookMode.failedSectionIndices,
         )
     }
+    // [0] = id of the scroll command that was already applied, [1] = when the list was last moved
+    // programmatically. Kept in an array so updating it never triggers a recomposition of the reader.
+    val bookModeScrollGuard = remember(state.novel.id) { longArrayOf(0L, 0L) }
     LaunchedEffect(useNativeBookScroll, bookModeCommands) {
         if (!useNativeBookScroll) return@LaunchedEffect
         val commands = bookModeCommands
@@ -1522,14 +1543,27 @@ fun NovelReaderScreen(
             precompiledSection = nativeBookBlocksForSection,
         )
         bookModeNativeSections = nextSections
-        latestNovelBookScrollCommand(commands)?.let { scrollTo ->
-            val itemIndex = buildNovelBookNativeEntries(
+        val scrollTarget = resolveNovelBookNativeScrollTarget(
+            entries = buildNovelBookNativeEntries(
                 sections = nextSections,
                 failedSectionIndices = state.bookMode.failedSectionIndices,
-            ).indexOfFirst { it.sectionIndex == scrollTo.sectionIndex }
-            if (itemIndex >= 0) {
-                textListState.scrollToItem(itemIndex)
+            ),
+            commands = commands,
+            lastAppliedCommandId = bookModeScrollGuard[0],
+        )
+        if (scrollTarget != null) {
+            bookModeScrollGuard[0] = scrollTarget.commandId
+            bookModeScrollGuard[1] = System.currentTimeMillis()
+            textListState.scrollToItem(scrollTarget.itemIndex)
+            val itemHeight = textListState.layoutInfo.visibleItemsInfo
+                .firstOrNull { it.index == scrollTarget.itemIndex }
+                ?.size
+                ?: 0
+            val offsetPx = (itemHeight * scrollTarget.fraction).toInt()
+            if (offsetPx > 0) {
+                textListState.scrollToItem(scrollTarget.itemIndex, offsetPx)
             }
+            bookModeScrollGuard[1] = System.currentTimeMillis()
         }
         onBookModeCommandsExecuted(commands.map { it.id })
     }
@@ -1541,6 +1575,11 @@ fun NovelReaderScreen(
         bookModeNativeEntries,
     ) {
         if (!useNativeBookScroll) return@LaunchedEffect
+        // Ignore the frames a programmatic jump produces; reporting them moved the book's position
+        // to the intermediate layout and pulled the reader back.
+        if (System.currentTimeMillis() - bookModeScrollGuard[1] < BOOK_MODE_NATIVE_SCROLL_GUARD_MS) {
+            return@LaunchedEffect
+        }
         val viewportItems = textListState.layoutInfo.visibleItemsInfo.mapNotNull { item ->
             val sectionIndex = bookModeNativeEntries.getOrNull(item.index)?.sectionIndex
                 ?: return@mapNotNull null

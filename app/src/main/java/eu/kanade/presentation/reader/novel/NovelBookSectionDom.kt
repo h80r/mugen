@@ -236,6 +236,8 @@ internal fun buildAppendBookSectionJavascript(
             const paginated = $BOOK_PAGINATED_JS;
             const scroller = $BOOK_SCROLLER_JS;
             const previousScrollTop = scroller ? scroller.scrollTop : 0;
+            const previousScrollLeft = scroller ? scroller.scrollLeft : 0;
+            const previousScrollWidth = scroller ? scroller.scrollWidth : 0;
             const existing = document.getElementById(elementId);
             const previousHeight = existing ? existing.offsetHeight : 0;
             if (existing) {
@@ -264,6 +266,19 @@ internal fun buildAppendBookSectionJavascript(
                     const delta = node.offsetHeight - previousHeight;
                     if (delta !== 0) {
                         scroller.scrollTop = Math.max(0, previousScrollTop + delta);
+                    }
+                }
+            } else if (keepAnchored && scroller && paginated) {
+                // The paginated flow lays the same book out along the x axis. Without this branch a
+                // section appended behind the reader shifted every following column, so each window
+                // sync threw the reader back onto an earlier page.
+                if (node.offsetLeft <= previousScrollLeft + 1) {
+                    const page = Math.max(1, window.innerWidth || 1);
+                    const deltaWidth = scroller.scrollWidth - previousScrollWidth;
+                    if (deltaWidth !== 0) {
+                        const anchored = Math.max(0, previousScrollLeft + deltaWidth);
+                        const maxLeft = Math.max(0, scroller.scrollWidth - page);
+                        scroller.scrollLeft = Math.min(maxLeft, Math.round(anchored / page) * page);
                     }
                 }
             }

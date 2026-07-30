@@ -67,6 +67,46 @@ internal fun <T> applyNovelBookCommandsToNativeSections(
     return bySectionIndex.values.sortedBy { it.sectionIndex }
 }
 
+/**
+ * How long position reports are ignored after the reader was moved programmatically.
+ *
+ * A programmatic jump lands over several frames. Reporting the intermediate layout back to the book
+ * moved the reading position to wherever the list happened to be at that moment, which then queued
+ * another window sync and pulled the reader back again.
+ */
+internal const val BOOK_MODE_NATIVE_SCROLL_GUARD_MS = 250L
+
+/** A programmatic scroll the native list still has to perform. */
+internal data class NovelBookNativeScrollTarget(
+    val commandId: Long,
+    val itemIndex: Int,
+    val fraction: Float,
+)
+
+/**
+ * Resolves the scroll command the native list has to apply, or null when there is nothing to do.
+ *
+ * Scroll commands used to be re-applied for every command batch, so each append or prune that
+ * arrived while the reader was scrolling threw the list back to the last requested position - the
+ * book simply refused to be scrolled. A command is now applied exactly once, identified by its id,
+ * and the position inside the section is honoured instead of always landing on the section's top.
+ */
+internal fun resolveNovelBookNativeScrollTarget(
+    entries: List<NovelBookNativeEntry>,
+    commands: List<NovelBookUiCommand>,
+    lastAppliedCommandId: Long,
+): NovelBookNativeScrollTarget? {
+    val scrollTo = latestNovelBookScrollCommand(commands) ?: return null
+    if (scrollTo.id <= lastAppliedCommandId) return null
+    val itemIndex = entries.indexOfFirst { it.sectionIndex == scrollTo.sectionIndex }
+    if (itemIndex < 0) return null
+    return NovelBookNativeScrollTarget(
+        commandId = scrollTo.id,
+        itemIndex = itemIndex,
+        fraction = scrollTo.sectionFraction.coerceIn(0f, 1f),
+    )
+}
+
 /** Returns the last scroll command in [commands], which is the only one still worth applying. */
 internal fun latestNovelBookScrollCommand(
     commands: List<NovelBookUiCommand>,

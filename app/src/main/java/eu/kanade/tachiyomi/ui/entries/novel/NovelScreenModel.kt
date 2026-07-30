@@ -179,6 +179,10 @@ internal fun buildNovelChapterActionUiStates(
     }
 }
 
+/** How long the local-book compile waits for the chapter list of a freshly imported file. */
+private const val LOCAL_BOOK_CHAPTERS_TIMEOUT_MS = 30_000L
+private const val LOCAL_BOOK_CHAPTERS_POLL_MS = 300L
+
 class NovelScreenModel(
     private val lifecycle: Lifecycle,
     private val novelId: Long,
@@ -1037,16 +1041,40 @@ class NovelScreenModel(
      * user: the artifact is built lazily on first open (this doubles as the migration for books
      * that were imported before the artifact existed) and reused afterwards.
      */
-    fun ensureLocalBookArtifact() {
+    fun ensureLocalBookArtifact(showProgress: Boolean = false) {
         val state = successState ?: return
         if (!localNovelBookArtifactBuilder.isLocalBook(state.novel)) return
         if (bookBuildJob?.isActive == true) return
-        val chapters = state.chapters.sortedBy { it.sourceOrder }
-        if (chapters.isEmpty()) return
+        if (showProgress) {
+            // The compile runs off the main thread and its first progress callback can be seconds
+            // away, so the dialog is opened right away instead of leaving the screen silent.
+            updateSuccessState {
+                it.copy(
+                    bookMissingChapterCount = null,
+                    bookBuildProgress = eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress(
+                        phase = eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.MERGING,
+                        done = 0,
+                        total = state.chapters.size.coerceAtLeast(1),
+                    ),
+                )
+            }
+        }
         bookBuildJob = screenModelScope.launchIO {
             try {
+                // The title screen is shown before the chapter list finished syncing. Bailing out on
+                // an empty list meant an imported .epub only became a book on the second visit, so
+                // the list is awaited here instead.
+                var chapters = successState?.chapters.orEmpty().sortedBy { it.sourceOrder }
+                var waitedMs = 0L
+                while (chapters.isEmpty() && waitedMs < LOCAL_BOOK_CHAPTERS_TIMEOUT_MS) {
+                    kotlinx.coroutines.delay(LOCAL_BOOK_CHAPTERS_POLL_MS)
+                    waitedMs += LOCAL_BOOK_CHAPTERS_POLL_MS
+                    chapters = successState?.chapters.orEmpty().sortedBy { it.sourceOrder }
+                }
+                if (chapters.isEmpty()) return@launchIO
+                val novel = successState?.novel ?: return@launchIO
                 localNovelBookArtifactBuilder.ensureArtifact(
-                    novel = state.novel,
+                    novel = novel,
                     chapters = chapters,
                     onProgress = { progress ->
                         updateSuccessState { it.copy(bookBuildProgress = progress) }
@@ -1081,7 +1109,18 @@ class NovelScreenModel(
             sortedChapters
         }
         if (chapters.isEmpty()) return
-        updateSuccessState { it.copy(bookMissingChapterCount = null) }
+        // Reported before the job starts: enumerating and downloading chapters takes seconds, and
+        // the screen used to stay completely silent until the first progress callback arrived.
+        updateSuccessState {
+            it.copy(
+                bookMissingChapterCount = null,
+                bookBuildProgress = eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress(
+                    phase = eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.DOWNLOADING,
+                    done = 0,
+                    total = chapters.size,
+                ),
+            )
+        }
         bookBuildJob = screenModelScope.launchIO {
             try {
                 val outcome = novelBookBuilder.build(
@@ -1128,7 +1167,16 @@ class NovelScreenModel(
         if (bookBuildJob?.isActive == true) return
         val chapters = state.chapters.sortedBy { it.sourceOrder }
         if (chapters.isEmpty()) return
-        updateSuccessState { it.copy(bookMissingChapterCount = null) }
+        updateSuccessState {
+            it.copy(
+                bookMissingChapterCount = null,
+                bookBuildProgress = eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress(
+                    phase = eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.DOWNLOADING,
+                    done = 0,
+                    total = chapters.size,
+                ),
+            )
+        }
         bookBuildJob = screenModelScope.launchIO {
             try {
                 val outcome = novelBookBuilder.appendNewChapters(

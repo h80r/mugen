@@ -22,6 +22,17 @@ internal const val BOOK_MODE_RELOCATE_SETTLE_DELAY_MS = 120L
  */
 internal const val BOOK_MODE_DOCUMENT_TAG = "an-book-document"
 
+/**
+ * How long position reports from the book document are ignored after the reader was placed
+ * programmatically.
+ *
+ * A restored document reports `scrollTop = 0` for the frames between "document committed" and
+ * "reading position applied". Those frames used to be written straight back into the book position
+ * and persisted, which is what silently reset the saved progress to the first chapter on every
+ * document reload, append or fast page turn.
+ */
+internal const val BOOK_MODE_SCROLL_RESTORE_GUARD_MS = 700L
+
 /** One book section as it is currently laid out in the reader document. */
 internal data class NovelBookSectionMetrics(
     val index: Int,
@@ -73,7 +84,31 @@ internal data class NovelBookDocumentMetrics(
      * rescale on every re-measure.
      */
     fun measuredSections(): List<NovelBookSectionMetrics> =
-        sections.filter { !it.isPruned && it.heightPx > 0 && it.chapterId > 0L }
+        // Compiled books address their blocks with synthetic negative section keys, so requiring a
+        // positive chapter id dropped every measurement for them and left the reader sizing book
+        // placeholders from estimates only.
+        sections.filter { !it.isPruned && it.heightPx > 0 && it.chapterId != 0L }
+
+    /**
+     * The same snapshot with every section's extent derived from where the next section starts.
+     *
+     * A section that flows across paginated columns reports the box of its first column fragment,
+     * not the space it really occupies: a 43-page section measured as one 389 px column. Every
+     * position inside it therefore collapsed onto the section start, so paging forward never moved
+     * the stored position and "continue reading" always reopened the first chapter. Deriving the
+     * extent from the neighbouring section start is flow independent - in the scrolled flow the
+     * derived value equals the measured one.
+     */
+    fun withDerivedSectionExtents(): NovelBookDocumentMetrics {
+        if (sections.size < 2 && contentHeightPx <= 0) return this
+        val ordered = sections.sortedBy { it.topPx }
+        val derived = ordered.mapIndexed { position, section ->
+            val nextTop = ordered.getOrNull(position + 1)?.topPx ?: contentHeightPx
+            val extent = (nextTop - section.topPx).coerceAtLeast(0)
+            if (extent > section.heightPx) section.copy(heightPx = extent) else section
+        }
+        return copy(sections = derived.sortedBy { it.index })
+    }
 }
 
 @Serializable
@@ -128,7 +163,7 @@ internal fun parseNovelBookDocumentMetrics(rawResult: String?): NovelBookDocumen
                     )
                 }
                 .sortedBy { it.index },
-        )
+        ).withDerivedSectionExtents()
     }.getOrNull()
 }
 

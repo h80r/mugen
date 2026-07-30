@@ -108,6 +108,7 @@ import eu.kanade.presentation.entries.novel.NovelTranslationBatchSheet
 import eu.kanade.presentation.entries.novel.TranslatedDownloadOptionsDialog
 import eu.kanade.presentation.entries.novel.components.NovelCoverDialog
 import eu.kanade.presentation.entries.novel.components.NovelTranslatedDownloadFormatSelector
+import eu.kanade.presentation.entries.novel.components.aurora.NovelBookBuildDialog
 import eu.kanade.presentation.theme.AuroraTheme
 import eu.kanade.tachiyomi.data.download.novel.NovelTranslatedDownloadFormat
 import eu.kanade.tachiyomi.data.export.novel.NovelEpubExportProgress
@@ -569,10 +570,20 @@ class NovelScreen(
                 )
             },
             // Local .epub/.fb2 titles are compiled into a book automatically on first open and can
-            // never gain new chapters, so manual build/append actions are hidden for them.
+            // never gain new chapters, so the append action stays hidden for them. The build action
+            // remains available until the artifact exists: the automatic compile can be missed (a
+            // freshly imported file has no chapter list yet) and hiding the button left the reader
+            // with no way to make the book at all.
             onMakeBookClicked = {
-                screenModel.buildBook()
-            }.takeIf { !eu.kanade.domain.entries.novel.LocalNovelVisibility.isLocalSource(successState.novel.source) },
+                if (eu.kanade.domain.entries.novel.LocalNovelVisibility.isLocalSource(successState.novel.source)) {
+                    screenModel.ensureLocalBookArtifact(showProgress = true)
+                } else {
+                    screenModel.buildBook()
+                }
+            }.takeIf {
+                !eu.kanade.domain.entries.novel.LocalNovelVisibility.isLocalSource(successState.novel.source) ||
+                    successState.bookState == null
+            },
             onAppendBookClicked = {
                 screenModel.appendBookChapters()
             }.takeIf { !eu.kanade.domain.entries.novel.LocalNovelVisibility.isLocalSource(successState.novel.source) },
@@ -605,117 +616,15 @@ class NovelScreen(
             )
         }
 
-        val bookBuildProgress = successState.bookBuildProgress
-        if (bookBuildProgress != null) {
-            val colors = eu.kanade.presentation.theme.AuroraTheme.colors
-            val cardBg: androidx.compose.ui.graphics.Color = colors.cardBackground
-            val accentColor: androidx.compose.ui.graphics.Color = colors.accent
-            androidx.compose.ui.window.Dialog(
-                onDismissRequest = {},
-            ) {
-                androidx.compose.material3.Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = cardBg,
-                    tonalElevation = 6.dp,
-                    shadowElevation = 12.dp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = stringResource(AYMR.strings.novel_book_building),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = colors.textPrimary,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        val phaseText = when (bookBuildProgress.phase) {
-                            eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.DOWNLOADING ->
-                                stringResource(AYMR.strings.novel_book_downloading_chapters)
-                            eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.MERGING,
-                            eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.PARSING,
-                            ->
-                                stringResource(AYMR.strings.novel_book_building)
-                        }
-                        Text(
-                            text = "$phaseText  ${bookBuildProgress.done}/${bookBuildProgress.total}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = colors.textSecondary,
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        androidx.compose.material3.LinearProgressIndicator(
-                            progress = { bookBuildProgress.fraction },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp),
-                            color = accentColor,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "${(bookBuildProgress.fraction * 100).toInt()}%",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = accentColor,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                        )
-                    }
-                }
-            }
-        }
-
-        val bookMissingChapterCount = successState.bookMissingChapterCount
-        if (bookMissingChapterCount != null) {
-            val colors = eu.kanade.presentation.theme.AuroraTheme.colors
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = screenModel::dismissBookMissingPrompt,
-                containerColor = colors.cardBackground,
-                shape = RoundedCornerShape(24.dp),
-                title = {
-                    androidx.compose.material3.Text(
-                        text = stringResource(AYMR.strings.novel_book_missing_downloads_title),
-                        color = colors.textPrimary,
-                    )
-                },
-                text = {
-                    androidx.compose.material3.Text(
-                        text = stringResource(
-                            AYMR.strings.novel_book_missing_downloads_body,
-                            bookMissingChapterCount,
-                        ),
-                        color = colors.textSecondary,
-                    )
-                },
-                confirmButton = {
-                    androidx.compose.material3.TextButton(
-                        onClick = {
-                            screenModel.dismissBookMissingPrompt()
-                            screenModel.buildBook(downloadMissing = true)
-                        },
-                    ) {
-                        androidx.compose.material3.Text(
-                            text = stringResource(AYMR.strings.novel_book_missing_downloads_download),
-                            color = colors.accent,
-                        )
-                    }
-                },
-                dismissButton = {
-                    androidx.compose.material3.TextButton(
-                        onClick = {
-                            screenModel.dismissBookMissingPrompt()
-                            screenModel.buildBook(buildPartial = true)
-                        },
-                    ) {
-                        androidx.compose.material3.Text(
-                            text = stringResource(AYMR.strings.novel_book_missing_downloads_partial),
-                            color = colors.textSecondary,
-                        )
-                    }
-                },
-            )
-        }
+        // One dialog for the whole flow: the missing-downloads question turns into the progress
+        // bar in place instead of closing and opening a second window.
+        NovelBookBuildDialog(
+            progress = successState.bookBuildProgress,
+            missingChapterCount = successState.bookMissingChapterCount,
+            onDownloadMissing = { screenModel.buildBook(downloadMissing = true) },
+            onBuildPartial = { screenModel.buildBook(buildPartial = true) },
+            onDismissRequest = screenModel::dismissBookMissingPrompt,
+        )
 
         if (showBatchChapterPickerDialog) {
             NovelDownloadChapterPickerDialog(
