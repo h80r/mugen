@@ -27,7 +27,7 @@ class NovelBookSectionHtmlResolverTest {
                 rawHtml = rawHtml(chapterId),
             )
         },
-        normalizeHtml = { html, _ -> html.trim() },
+        normalizeHtml = { _, html, _ -> html.trim() },
         showChapterHeadings = { showChapterHeadings },
     )
 

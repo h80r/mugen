@@ -202,6 +202,42 @@ class NovelSelectedTextTranslationScreenModelTest {
                 Injekt.addSingleton(fullType<TrackNovelChapter>(), mockk<TrackNovelChapter>(relaxed = true))
             }
 
+        runCatching { Injekt.get<tachiyomi.domain.book.novel.interactor.GetNovelBookState>() }
+            .getOrElse {
+                // Registered in DomainModule with addFactory for the app; unit tests never run that
+                // module, so back the interactor with a repository that reports no saved book state.
+                val bookStateRepository =
+                    mockk<tachiyomi.domain.book.novel.repository.NovelBookStateRepository>(relaxed = true)
+                io.mockk.coEvery { bookStateRepository.getBookState(any()) } returns null
+                every { bookStateRepository.subscribeBookState(any()) } returns flowOf(null)
+                every { bookStateRepository.subscribeEnabledBookStates() } returns flowOf(emptyList())
+                io.mockk.coEvery { bookStateRepository.getAllBookStates() } returns emptyList()
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.repository.NovelBookStateRepository>(),
+                    bookStateRepository,
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.GetNovelBookState>(),
+                    tachiyomi.domain.book.novel.interactor.GetNovelBookState(bookStateRepository),
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.SetNovelBookProgress>(),
+                    tachiyomi.domain.book.novel.interactor.SetNovelBookProgress(bookStateRepository),
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.SetNovelBookEnabled>(),
+                    tachiyomi.domain.book.novel.interactor.SetNovelBookEnabled(bookStateRepository),
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.UpsertNovelBookState>(),
+                    tachiyomi.domain.book.novel.interactor.UpsertNovelBookState(bookStateRepository),
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.DeleteNovelBookState>(),
+                    tachiyomi.domain.book.novel.interactor.DeleteNovelBookState(bookStateRepository),
+                )
+            }
+
         Injekt.addSingleton(fullType<Json>(), Json { encodeDefaults = true })
         every { getNovelSeriesWithEntries.subscribe(any()) } returns MutableStateFlow(null)
         Injekt.addSingleton(fullType<GetNovelSeriesWithEntries>(), getNovelSeriesWithEntries)

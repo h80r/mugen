@@ -382,19 +382,43 @@ class NovelReaderScreenModel(
                 chapterWebUrl = snapshot.chapterWebUrl,
             )
         },
-        normalizeHtml = { rawHtml, chapterName ->
+        normalizeHtml = { sectionChapterId, rawHtml, chapterName ->
             withContext(Dispatchers.Default) {
                 val withHeading = prependChapterHeadingIfMissing(
                     rawHtml = rawHtml.normalizeStructuredChapterPayload(),
                     chapterName = chapterName,
                 )
                 val sanitized = sanitizeChapterHtmlForReader(withHeading)
-                if (sanitized.isBlank()) withHeading else sanitized
+                val bodyHtml = if (sanitized.isBlank()) withHeading else sanitized
+                applyBookSectionTranslation(chapterId = sectionChapterId, bodyHtml = bodyHtml)
             }
         },
         showChapterHeadings = { novelReaderPreferences.bookModeShowChapterHeadings().get() },
         prepareAhead = { novelReaderPreferences.bookModePrepareAhead().get() },
+        sectionCacheScope = { bookSectionCacheScope() },
+        readCachedSection = { key -> NovelBookSectionDiskCacheStore.read(key) },
+        writeCachedSection = { key, section -> NovelBookSectionDiskCacheStore.write(key, section) },
+        deleteCachedSection = { key -> NovelBookSectionDiskCacheStore.remove(key) },
     )
+
+    /**
+     * Scope prepared book sections are cached under.
+     *
+     * Section HTML is normalized, heading-wrapped and possibly translated, so it may only be reused
+     * for the same novel and the same visible translation. Mixing those would show a translated
+     * section after the translation was hidden (or the other way round), which is why the translation
+     * state is part of the scope instead of being invalidated on every toggle. Null before a novel is
+     * known, which keeps sections in memory only.
+     */
+    private fun bookSectionCacheScope(): String? {
+        val novelId = currentNovel?.id ?: return null
+        val translation = when {
+            isGeminiTranslationVisible -> "gemini"
+            isGoogleTranslationVisible -> "google"
+            else -> "raw"
+        }
+        return "novel$novelId-$translation"
+    }
 
     /** Opened compiled-book artifact, non-null while this novel is read as one continuous book. */
     private var artifactSource: NovelBookArtifactSource? = null
@@ -2745,8 +2769,11 @@ class NovelReaderScreenModel(
 
     private fun maybeSwitchActiveTtsTextSource(settings: NovelReaderSettings) {
         val session = ttsSessionController.state.value.session ?: return
-        val chapter = currentChapter ?: return
-        if (session.chapterId != chapter.id) return
+        // The TTS session is started for the chapter under the reading position (book mode included),
+        // so comparing it against `currentChapter` silently skipped every original/translated switch
+        // while reading a book.
+        val activeChapterId = activeTranslationChapterId() ?: return
+        if (session.chapterId != activeChapterId) return
         val preferTranslated = shouldPreferTranslatedTts(settings) && hasCurrentTranslatedTtsContent(settings)
         val targetTextSource = if (preferTranslated) {
             NovelTtsTextSource.TRANSLATED
@@ -4177,9 +4204,12 @@ class NovelReaderScreenModel(
     fun startGeminiTranslation() {
         if (isGeminiTranslating) return
         val currentState = mutableState.value as? State.Success ?: return
-        val chapter = currentChapter ?: return
-        val baseTextBlocks = currentParsedTextBlocks()
-        if (baseTextBlocks.isEmpty()) return
+        // Over a book this is the chapter under the reading position; the old `currentChapter` was
+        // the chapter the book was entered from, so the queued job translated the wrong chapter.
+        val translationChapterId = activeTranslationChapterId() ?: return
+        // The content model belongs to the entry chapter and is empty over a book, so it cannot gate
+        // the queue there: the worker resolves the chapter payload itself.
+        if (!bookModeRuntime.isActive && currentParsedTextBlocks().isEmpty()) return
         val settings = currentState.readerSettings
         if (!settings.geminiEnabled) {
             addAiTranslationLog("AI translation is disabled.")
@@ -4200,7 +4230,7 @@ class NovelReaderScreenModel(
         refreshGeminiUiState()
         geminiTranslationJob = screenModelScope.launch(Dispatchers.IO) {
             try {
-                translationQueueManager.addToQueue(listOf(chapter.id), currentState.novel.id)
+                translationQueueManager.addToQueue(listOf(translationChapterId), currentState.novel.id)
                 if (!isActive) return@launch
                 val appContext = Injekt.get<Application>()
                 TranslationJob.runImmediately(appContext)
@@ -4208,7 +4238,7 @@ class NovelReaderScreenModel(
             } catch (_: CancellationException) {
                 // Job cancelled intentionally by the user or screen teardown.
             } catch (error: Exception) {
-                logcat(LogPriority.WARN, error) { "Failed to queue AI translation for chapter=${chapter.id}" }
+                logcat(LogPriority.WARN, error) { "Failed to queue AI translation for chapter=$translationChapterId" }
                 addAiTranslationLog(
                     "Failed to start background translation: ${error.message ?: error::class.java.simpleName}",
                 )
@@ -4281,16 +4311,10 @@ class NovelReaderScreenModel(
             return
         }
 
-        val baseTextBlocks = currentParsedTextBlocks()
-        if (baseTextBlocks.isEmpty()) return
-        addGoogleLog(
-            "Start: chapter=${currentChapter?.id ?: -1}, textBlocks=${baseTextBlocks.size}, source=${settings.googleTranslationSourceLang}, target=${settings.googleTranslationTargetLang}, backend=simple, autoStart=${settings.googleTranslationAutoStart}",
-        )
-        val firstText = baseTextBlocks.firstOrNull()
-        val firstTextPreview = firstText?.take(80)?.replace('\n', ' ') ?: ""
-        addGoogleLog(
-            "Sample: firstTextLen=${firstText?.length ?: 0}, firstTextPreview=$firstTextPreview",
-        )
+        // Over a book the text on screen belongs to the chapter under the reading position, not to
+        // the chapter the reader was opened with. The source blocks are resolved inside the job
+        // below because loading another chapter's payload suspends.
+        val translationChapterId = activeTranslationChapterId() ?: return
 
         val params = GoogleTranslationParams(
             sourceLang = settings.googleTranslationSourceLang,
@@ -4309,6 +4333,22 @@ class NovelReaderScreenModel(
 
         googleTranslationJob = screenModelScope.launch {
             try {
+                val baseTextBlocks = translationSourceTextBlocks(translationChapterId)
+                if (baseTextBlocks.isEmpty()) {
+                    addGoogleLog("Nothing to translate: chapter=$translationChapterId has no text.")
+                    isGoogleTranslating = false
+                    translationPhase = TranslationPhase.IDLE
+                    updateContent(settings)
+                    return@launch
+                }
+                addGoogleLog(
+                    "Start: chapter=$translationChapterId, textBlocks=${baseTextBlocks.size}, source=${settings.googleTranslationSourceLang}, target=${settings.googleTranslationTargetLang}, backend=simple, autoStart=${settings.googleTranslationAutoStart}",
+                )
+                val firstText = baseTextBlocks.firstOrNull()
+                val firstTextPreview = firstText?.take(80)?.replace('\n', ' ') ?: ""
+                addGoogleLog(
+                    "Sample: firstTextLen=${firstText?.length ?: 0}, firstTextPreview=$firstTextPreview",
+                )
                 val response = googleTranslationService.translateBatch(
                     texts = baseTextBlocks,
                     params = params,
@@ -4338,15 +4378,12 @@ class NovelReaderScreenModel(
                     }}/$baseTextBlocks.size, rateLimited=false",
                 )
                 translationHolder.put("google", results)
-                val chapter = currentChapter
-                if (chapter != null) {
-                    googleSessionCache.put(
-                        chapterId = chapter.id,
-                        sourceLang = params.sourceLang,
-                        targetLang = params.targetLang,
-                        translatedByIndex = results,
-                    )
-                }
+                googleSessionCache.put(
+                    chapterId = translationChapterId,
+                    sourceLang = params.sourceLang,
+                    targetLang = params.targetLang,
+                    translatedByIndex = results,
+                )
                 hasGoogleTranslationCache = results.isNotEmpty()
                 isGoogleTranslating = false
                 googleTranslationProgress = 100
@@ -4355,6 +4392,8 @@ class NovelReaderScreenModel(
                     isGoogleTranslationVisible = true
                 }
                 updateContent(settings)
+                // `updateContent` only rebuilds the chapter HTML, which book mode does not render.
+                if (results.isNotEmpty()) refreshBookModeSection(translationChapterId)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -4503,6 +4542,9 @@ class NovelReaderScreenModel(
         geminiTranslationProgress = 100
         isGeminiTranslationVisible = true
         addAiTranslationLog("?? Restored cached translation")
+        // In book mode the document is not rebuilt from the chapter HTML, so the section that holds
+        // this chapter has to be re-rendered for the translation to become visible.
+        refreshBookModeSection(chapterId)
     }
     private fun applyGeminiTranslationToContentBlocks(
         blocks: List<ContentBlock>,
@@ -4883,6 +4925,86 @@ class NovelReaderScreenModel(
 
     private fun currentParsedTextBlocks(): List<String> {
         return contentModel?.textBlocks ?: emptyList()
+    }
+
+    /**
+     * Chapter the translator, its cache and the TTS text source have to work on.
+     *
+     * `currentChapter` is the chapter the reader was opened with. Over a book that chapter only says
+     * where the session started: the text on screen belongs to whichever spine chapter the reading
+     * position is in. Translating, caching and switching TTS text by `currentChapter` therefore hit
+     * a chapter the user is not reading, which is why the translators looked like they did nothing.
+     */
+    private fun activeTranslationChapterId(): Long? =
+        bookModeChapterAtReadingPosition()?.id ?: currentChapter?.id
+
+    /**
+     * Source text blocks for [chapterId].
+     *
+     * The content model only ever holds the chapter the reader loaded, so over a book the blocks of
+     * any other spine chapter have to be parsed from its own payload.
+     */
+    private suspend fun translationSourceTextBlocks(chapterId: Long): List<String> {
+        if (!bookModeRuntime.isActive || chapterId == currentChapter?.id) return currentParsedTextBlocks()
+        return runCatching {
+            val snapshot = ttsChapterRepository.loadChapterSnapshot(chapterId)
+            withContext(Dispatchers.Default) {
+                NovelReaderContentModel(
+                    canonicalHtml = prependChapterHeadingIfMissing(
+                        rawHtml = snapshot.rawHtml.normalizeStructuredChapterPayload(),
+                        chapterName = snapshot.chapter.name,
+                    ),
+                    chapterWebUrl = snapshot.chapterWebUrl,
+                    novelUrl = snapshot.novel.url,
+                ).textBlocks
+            }
+        }.getOrElse { emptyList() }
+    }
+
+    /**
+     * Renders a book section translated when a translation for that chapter exists.
+     *
+     * The chapter reader shows translations by rebuilding the chapter HTML in [updateContent] and
+     * handing it to the chapter WebView. Book mode never takes that path: its document is streamed
+     * section by section and the chapter HTML is deliberately empty over a book, so a finished AI or
+     * Google translation was computed, cached and then never displayed. The section pipeline applies
+     * it here instead, which is the only place the book document is built.
+     */
+    private fun applyBookSectionTranslation(chapterId: Long, bodyHtml: String): String {
+        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return bodyHtml
+        val inMemory = when {
+            chapterId != activeTranslationChapterId() -> emptyMap()
+            isGeminiTranslationVisible && !translationHolder.isEmpty("gemini") ->
+                translationHolder.map("gemini")
+            isGoogleTranslationVisible && !translationHolder.isEmpty("google") ->
+                translationHolder.map("google")
+            else -> emptyMap()
+        }
+        val translatedByIndex = inMemory.ifEmpty {
+            val cached = NovelReaderTranslationDiskCacheStore.get(chapterId) ?: return bodyHtml
+            val settingsMatch = NovelReaderTranslationCacheResolver.matches(
+                cached = cached,
+                requirements = settings.toTranslationCacheRequirements(),
+            )
+            if (!settingsMatch) return bodyHtml
+            cached.translatedByIndex
+        }
+        if (translatedByIndex.isEmpty()) return bodyHtml
+        return buildTranslatedHtmlFromTemplate(bodyHtml, translatedByIndex) ?: bodyHtml
+    }
+
+    /**
+     * Re-renders a book section whose translation changed.
+     *
+     * Sections are cached once they are rendered, so a translation that finishes after the section
+     * was mounted would otherwise only appear after leaving and re-entering the book.
+     */
+    private fun refreshBookModeSection(chapterId: Long) {
+        if (!bookModeRuntime.isActive) return
+        screenModelScope.launch {
+            runCatching { bookModeRuntime.retryChapter(chapterId) }
+            onBookModeDocumentReady()
+        }
     }
 
     private fun currentParsedContentBlocks(): List<ContentBlock> {

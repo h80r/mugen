@@ -1311,13 +1311,24 @@ fun NovelReaderScreen(
     // Book mode streams the whole novel into one document, so the per-chapter content blocks stay
     // empty and readiness has to come from the book session instead. Otherwise auto-scroll and the
     // reader chrome wait forever for a chapter payload that book mode never loads.
+    // Surface published by the mounted book renderer, see NovelBookScrollSurface. Declared here,
+    // above auto-scroll readiness, because readiness has to know whether the book renderer is
+    // mounted: book mode has no chapter WebView to ask.
+    var bookScrollSurface by remember(state.novel.id) { mutableStateOf<NovelBookScrollSurface?>(null) }
     val autoScrollContentReady = when {
-        state.bookMode.isEnabled -> webViewPageReadyForAutoScroll && state.bookMode.isReady
+        // `webViewPageReadyForAutoScroll` is only ever set by the chapter WebView, which book mode
+        // never mounts, so requiring it here kept readiness false forever and auto-scroll could
+        // never evaluate the end of the document.
+        state.bookMode.isEnabled -> state.bookMode.isReady
         showWebView -> webViewPageReadyForAutoScroll && scrollContentBlocks.isNotEmpty()
         else -> scrollContentBlocks.isNotEmpty() || richScrollBlocks.isNotEmpty()
     }
     val autoScrollHasRenderableItems = when {
-        state.bookMode.isEnabled -> webViewInstance != null && state.bookMode.sectionCount > 0
+        // Same reason: `webViewInstance` is the chapter WebView and stays null over a book. What is
+        // renderable there is the book surface, or the native list that hosts the book sections.
+        state.bookMode.isEnabled ->
+            state.bookMode.sectionCount > 0 &&
+                (bookScrollSurface != null || nativeScrollItemsCount > 0)
         showWebView -> webViewInstance != null
         usePageReader -> pageReaderItemsCount > 0
         else -> nativeScrollItemsCount > 0
@@ -1514,6 +1525,7 @@ fun NovelReaderScreen(
     // Native renderer side of book mode. Both renderers consume the same command stream, so the
     // native list folds appends and prunes into its resident sections instead of running JavaScript.
     val useNativeBookScroll = state.bookMode.isEnabled && !bookRenderer.usesWebView
+    // `bookScrollSurface` is declared next to auto-scroll readiness above, which needs it.
     var bookModeNativeSections by remember(state.novel.id) {
         mutableStateOf<NovelBookNativeSections>(emptyList())
     }
@@ -1618,10 +1630,19 @@ fun NovelReaderScreen(
             totalBlocks = scrollContentBlocks.size.coerceAtLeast(1),
         )
     }
+    // Book mode renders its own document, so neither the WebView adapter (chapter WebView) nor the
+    // native adapter (per-chapter lazy list) can follow the voice there.
+    val bookTtsNavigationAdapter = remember(state.novel.id) {
+        BookTtsNavigationAdapter(
+            surface = { bookScrollSurface },
+            sectionIndexForSpeech = { null },
+        )
+    }
     SideEffect {
         pageReaderTtsNavigationAdapter.hashCode()
         nativeScrollTtsNavigationAdapter.hashCode()
         webViewTtsNavigationAdapter.hashCode()
+        bookTtsNavigationAdapter.hashCode()
     }
     LaunchedEffect(
         state.chapter.id,
@@ -1840,6 +1861,8 @@ fun NovelReaderScreen(
         usePageReader,
         pageReaderProgressPageIndex,
         activePageReaderTtsAnchors,
+        state.bookMode.isEnabled,
+        bookScrollSurface,
     ) {
         if (!state.readerSettings.ttsFollowAlong) return@LaunchedEffect
         val session = state.ttsUiState.activeSession ?: return@LaunchedEffect
@@ -1847,6 +1870,9 @@ fun NovelReaderScreen(
         pendingProgrammaticTtsBlockIndex = segment.sourceBlockIndex
         suppressManualTtsPauseUntilMs = SystemClock.elapsedRealtime() + 1_500L
         when {
+            // Checked first: over a book `showWebView` is false and `usePageReader` is irrelevant,
+            // so follow-along used to fall into the native branch and scroll an empty chapter list.
+            state.bookMode.isEnabled -> bookTtsNavigationAdapter.syncToSegment(segment)
             showWebView -> webViewTtsNavigationAdapter.syncToSegment(segment)
             usePageReader -> {
                 val anchor = activePageReaderTtsAnchors[session.utterance.id]
@@ -2056,6 +2082,13 @@ fun NovelReaderScreen(
         onOpenPreviousChapter?.invoke(chapterId)
     }
 
+    // True only on the last section of the spine: the single place where auto-scroll over a book is
+    // really out of content.
+    fun isAtEndOfBook(): Boolean {
+        val sectionCount = state.bookMode.sectionCount
+        return sectionCount <= 0 || state.bookMode.currentSectionIndex >= sectionCount - 1
+    }
+
     fun openNextChapterFromReader() {
         val chapterId = state.nextChapterId ?: return
         NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
@@ -2066,6 +2099,22 @@ fun NovelReaderScreen(
     }
 
     fun handleAutoScrollChapterEnd() {
+        if (state.bookMode.isEnabled) {
+            // A book has no chapter boundary to hand off at: the spine continues inside the same
+            // document and the next section is stitched in on demand. Treating the end of the
+            // resident window as the end of a chapter is what stopped auto-scroll mid-book (or, with
+            // continuous reading, kicked the reader out into the next chapter).
+            if (!isAtEndOfBook()) {
+                autoScrollEndStableFrames = 0
+                autoScrollEndDwellActive = false
+                return
+            }
+            autoScrollEnabled = false
+            autoScrollEndStableFrames = 0
+            autoScrollEndDwellActive = false
+            onCancelAutoScrollHandoff()
+            return
+        }
         val nextChapterId = state.nextChapterId
         val behavior = state.readerSettings.autoScrollChapterEndBehavior
         if (!shouldAutoScrollAdvanceToNextChapter(behavior, nextChapterId != null) || nextChapterId == null) {
@@ -2087,6 +2136,12 @@ fun NovelReaderScreen(
     }
 
     suspend fun handleAutoScrollStableChapterEndAfterDwell() {
+        if (state.bookMode.isEnabled && !isAtEndOfBook()) {
+            // Not the end of anything the reader should pause at - only the end of the sections that
+            // are currently resident.
+            autoScrollEndStableFrames = 0
+            return
+        }
         val behavior = state.readerSettings.autoScrollChapterEndBehavior
         if (behavior == NovelAutoScrollChapterEndBehavior.StopAtEnd) {
             autoScrollEnabled = false
@@ -2118,7 +2173,16 @@ fun NovelReaderScreen(
             // The book is one continuous document, so stepping backwards never leaves it and chapter
             // navigation must not kick in. The book view knows whether a step is a page (paginated
             // flow) or a viewport of scroll.
-            bookView?.previous(activePageTransitionStyle.name)
+            val surface = bookScrollSurface
+            if (surface != null) {
+                if (surface.isPaginated()) {
+                    surface.step(forward = false)
+                } else {
+                    surface.scrollBy(-volumeScrollStepPx.roundToInt())
+                }
+            } else {
+                bookView?.previous(activePageTransitionStyle.name)
+            }
             return
         }
         if (showWebView) {
@@ -2168,7 +2232,16 @@ fun NovelReaderScreen(
 
     suspend fun moveForwardByReaderActionWithAnimation(pageAnimationDurationMillis: Int?) {
         if (state.bookMode.isEnabled) {
-            bookView?.next(activePageTransitionStyle.name)
+            val surface = bookScrollSurface
+            if (surface != null) {
+                if (surface.isPaginated()) {
+                    surface.step(forward = true)
+                } else {
+                    surface.scrollBy(volumeScrollStepPx.roundToInt())
+                }
+            } else {
+                bookView?.next(activePageTransitionStyle.name)
+            }
             return
         }
         if (showWebView) {
@@ -2309,6 +2382,8 @@ fun NovelReaderScreen(
         autoScrollContentReady,
         autoScrollHasRenderableItems,
         hasCompletedInitialReaderLayout,
+        state.bookMode.isEnabled,
+        bookScrollSurface,
     ) {
         if (!autoScrollEnabled) return@LaunchedEffect
         var previousFrameNanos: Long? = null
@@ -2341,6 +2416,68 @@ fun NovelReaderScreen(
                 continue
             }
 
+            // Book mode renders its own surface, so none of the chapter branches below can move
+            // it. Without this branch auto-scroll either span on an absent WebView or scrolled the
+            // empty chapter list, which is why it looked dead over a book.
+            // The native book renderer publishes no surface: it draws the book sections into the
+            // shared lazy list, so it is handled by the list branch at the bottom instead of idling
+            // here forever.
+            if (state.bookMode.isEnabled && (bookScrollSurface != null || !useNativeBookScroll)) {
+                val surface = bookScrollSurface
+                if (surface == null) {
+                    previousFrameNanos = null
+                    stepRemainderPx = 0f
+                    autoScrollEndStableFrames = 0
+                    delay(120)
+                    continue
+                }
+                if (surface.isPaginated()) {
+                    previousFrameNanos = null
+                    stepRemainderPx = 0f
+                    autoScrollEndStableFrames = 0
+                    delay(
+                        autoScrollPageDelayMsForCharacterCount(
+                            intervalSeconds = state.readerSettings.autoScrollInterval,
+                            characterCount = 0,
+                            adaptiveEnabled = false,
+                        ),
+                    )
+                    if (showReaderUi || !autoScrollEnabled) continue
+                    surface.step(forward = true)
+                    continue
+                }
+                val frameTimeNanos = withFrameNanos { it }
+                val previousNanos = previousFrameNanos
+                previousFrameNanos = frameTimeNanos
+                if (previousNanos == null) continue
+                val frameDeltaNanos = (frameTimeNanos - previousNanos).coerceAtLeast(1L)
+                val frameStepPx = autoScrollFrameStepPx(
+                    speed = autoScrollSpeed,
+                    frameDeltaNanos = frameDeltaNanos,
+                ) * speedFactor
+                val resolvedStep = resolveAutoScrollStep(frameStepPx, stepRemainderPx)
+                val stepPx = resolvedStep.stepPx
+                stepRemainderPx = resolvedStep.remainderPx
+                if (stepPx == 0) continue
+                val consumedPx = surface.scrollBy(stepPx)
+                // The scrolled book stitches the next section in at its boundary, so "cannot scroll
+                // further" only means the end of the book when no section is left after this one.
+                val hasSectionsLeft = state.bookMode.currentSectionIndex <
+                    state.bookMode.sectionCount - 1
+                val endState = resolveNovelAutoScrollEndState(
+                    canScrollForward = surface.canScrollForward() || hasSectionsLeft,
+                    scrollConsumedPx = consumedPx.toFloat(),
+                    isContentReady = autoScrollContentReady,
+                    hasCompletedInitialLayout = hasCompletedInitialReaderLayout,
+                    hasRenderableItems = autoScrollHasRenderableItems,
+                    previousStableEndFrameCount = autoScrollEndStableFrames,
+                )
+                autoScrollEndStableFrames = endState.stableEndFrameCount
+                if (endState.shouldEnterDwell) {
+                    handleAutoScrollStableChapterEndAfterDwell()
+                }
+                continue
+            }
             if (showWebView) {
                 val webView = webViewInstance
                 if (webView == null) {
@@ -2633,6 +2770,7 @@ fun NovelReaderScreen(
                                 onLocationChanged = onBookEngineLocationChanged,
                                 onSectionMeasured = onBookEngineSectionMeasured,
                                 onToggleReaderUi = { onSetShowReaderUi(!showReaderUi) },
+                                onSurfaceChanged = { surface -> bookScrollSurface = surface },
                                 readerCss = bookReaderCss,
                                 resolveResource = { requestUrl ->
                                     resolveReaderBackgroundWebResourceResponse(

@@ -72,7 +72,8 @@ class NovelReaderPreferencesTest {
         prefs.autoScroll().get() shouldBe false
         prefs.autoScrollInterval().get() shouldBe 10
         prefs.autoScrollOffset().get() shouldBe 0
-        prefs.prefetchNextChapter().get() shouldBe false
+        // Enabled by default so seamless chapter transitions have the next chapter warmed up.
+        prefs.prefetchNextChapter().get() shouldBe true
         prefs.cacheReadChapters().get() shouldBe true
         prefs.cacheReadChaptersUnlimited().get() shouldBe false
         prefs.bionicReading().get() shouldBe false

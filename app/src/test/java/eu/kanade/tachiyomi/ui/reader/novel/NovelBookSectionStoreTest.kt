@@ -148,4 +148,63 @@ class NovelBookSectionStoreTest {
         sections.get(2L) shouldBe null
         sections.isPrepared(2L) shouldBe false
     }
+
+    @Test
+    fun `the combined disk hooks replace the split ones`() {
+        val splitHtml = mutableMapOf<Long, String>()
+        val stored = mutableMapOf<Long, NovelBookPreparedSection>()
+        val sections = NovelBookSectionStore(
+            maxResidentEntries = 1,
+            diskRead = { splitHtml[it] },
+            diskWrite = { id, html -> splitHtml[id] = html },
+            diskReadSection = { stored[it] },
+            diskWriteSection = { id, section -> stored[id] = section },
+        )
+        val expected = NovelBookPreparedSection(
+            html = "<p>one</p>",
+            baseUrl = "https://example.org/chapter/1/",
+        )
+
+        sections.put(1L, expected.html, baseUrl = expected.baseUrl)
+        sections.release(1L)
+
+        splitHtml.containsKey(1L) shouldBe false
+        stored[1L] shouldBe expected
+        sections.getPrepared(1L) shouldBe expected
+        sections.isPrepared(1L) shouldBe true
+    }
+
+    @Test
+    fun `reads fall back to the split hooks when the combined hook is empty`() {
+        val sections = NovelBookSectionStore(
+            diskRead = { "<p>legacy $it</p>" },
+            diskReadSection = { null },
+        )
+
+        sections.get(4L) shouldBe "<p>legacy 4</p>"
+        sections.isPrepared(4L) shouldBe true
+    }
+
+    @Test
+    fun `a blank combined disk entry is treated as missing`() {
+        val sections = NovelBookSectionStore(
+            diskReadSection = { NovelBookPreparedSection(html = "   ") },
+        )
+
+        sections.getPrepared(1L) shouldBe null
+        sections.isPrepared(1L) shouldBe false
+    }
+
+    @Test
+    fun `combined hook failures are swallowed`() {
+        val sections = NovelBookSectionStore(
+            diskReadSection = { error("boom") },
+            diskWriteSection = { _, _ -> error("boom") },
+        )
+
+        sections.put(1L, "<p>1</p>")
+        sections.get(1L) shouldBe "<p>1</p>"
+        sections.get(2L) shouldBe null
+        sections.isPrepared(2L) shouldBe false
+    }
 }

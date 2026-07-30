@@ -5,6 +5,10 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import tachiyomi.domain.items.novelchapter.model.NovelChapter
 
+/** Spine kinds of a session; a compiled book's synthetic section key can collide with a chapter id. */
+private const val SPINE_KIND_CHAPTERS = "chapters"
+private const val SPINE_KIND_ARTIFACT = "artifact"
+
 /**
  * Single entry point the novel reader screen model uses to drive book mode.
  *
@@ -15,14 +19,44 @@ import tachiyomi.domain.items.novelchapter.model.NovelChapter
  */
 internal class NovelBookModeRuntime(
     private val loadRawSection: suspend (Long) -> NovelBookRawSection,
-    private val normalizeHtml: suspend (String, String) -> String,
+    private val normalizeHtml: suspend (Long, String, String) -> String,
     private val showChapterHeadings: () -> Boolean = { true },
     private val prepareAhead: () -> Int = { NovelBookWindowConfig.DEFAULT_PREFETCH_AHEAD },
+    /**
+     * Scope the prepared sections are cached under, e.g. the novel plus the translation variant the
+     * HTML was built with. Returning null keeps sections in memory only, which is what tests want.
+     */
+    private val sectionCacheScope: () -> String? = { null },
+    private val readCachedSection: (String) -> NovelBookPreparedSection? = { null },
+    private val writeCachedSection: (String, NovelBookPreparedSection) -> Unit = { _, _ -> },
+    private val deleteCachedSection: (String) -> Unit = {},
 ) {
 
     private var spine: NovelBookSpine = NovelBookSpine.EMPTY
 
-    private val store = NovelBookSectionStore()
+    /** Spine kind of the running session, mirrored into the section cache key. */
+    private var spineCacheKind: String = SPINE_KIND_CHAPTERS
+
+    private val store = NovelBookSectionStore(
+        diskReadSection = { chapterId -> sectionCacheKey(chapterId)?.let(readCachedSection) },
+        diskWriteSection = { chapterId, section ->
+            sectionCacheKey(chapterId)?.let { key -> writeCachedSection(key, section) }
+        },
+        diskDelete = { chapterId -> sectionCacheKey(chapterId)?.let(deleteCachedSection) },
+    )
+
+    /**
+     * Disk key of one section, or null while no scope is configured.
+     *
+     * The spine kind and the heading setting are part of the key on purpose: the same id means a
+     * different section for a compiled book than for a chapter spine, and the same section can be
+     * prepared with or without its chapter heading, so one shared key would serve the wrong markup.
+     */
+    private fun sectionCacheKey(chapterId: Long): String? {
+        val scope = sectionCacheScope()?.takeIf { it.isNotBlank() } ?: return null
+        val headings = if (showChapterHeadings()) "h1" else "h0"
+        return "$scope-$spineCacheKind-$headings-$chapterId"
+    }
 
     private val resolver = NovelBookSectionHtmlResolver(
         currentSpine = { spine },
@@ -78,6 +112,7 @@ internal class NovelBookModeRuntime(
             chapters = chapters,
             measuredCharCounts = measuredCharCounts,
         )
+        spineCacheKind = SPINE_KIND_CHAPTERS
         val resumeLocation = NovelBookReadMarkingPolicy.resolveResumeLocation(
             spine = spine,
             progressValue = resumeProgress,
@@ -268,6 +303,7 @@ internal class NovelBookModeRuntime(
         fetchSectionHtml: suspend (Long) -> String,
     ): NovelBookLocation {
         this.spine = spine
+        spineCacheKind = SPINE_KIND_ARTIFACT
         loader = NovelBookSectionLoader(
             store = store,
             fetchSectionBaseUrl = { null },

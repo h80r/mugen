@@ -60,6 +60,13 @@ internal fun NovelBookReader(
     onLocationChanged: (NovelBookLocation) -> Unit,
     onSectionMeasured: (chapterId: Long, charCount: Int) -> Unit,
     onToggleReaderUi: () -> Unit,
+    /**
+     * Publishes the mounted surface so the reader chrome can drive the book.
+     *
+     * Auto-scroll, volume keys and tap zones used to address the chapter WebView, which book mode
+     * never shows. Null is sent when the renderer leaves the composition.
+     */
+    onSurfaceChanged: (NovelBookScrollSurface?) -> Unit = {},
     readerCss: String = "",
     resolveResource: (String) -> WebResourceResponse? = { null },
     modifier: Modifier = Modifier,
@@ -77,6 +84,7 @@ internal fun NovelBookReader(
     val latestOnSectionMeasured = rememberUpdatedState(onSectionMeasured)
     val latestOnToggleReaderUi = rememberUpdatedState(onToggleReaderUi)
     val latestReaderCss = rememberUpdatedState(readerCss)
+    val latestOnSurfaceChanged = rememberUpdatedState(onSurfaceChanged)
     val latestResolveResource = rememberUpdatedState(resolveResource)
 
     var loading by remember { mutableStateOf(true) }
@@ -215,24 +223,30 @@ internal fun NovelBookReader(
             millisSinceEmit = SystemClock.uptimeMillis() - engineEmittedAtMillis[0],
         )
         if (!isSeek) return@LaunchedEffect
-        // Swapping to another section replaces the document, so the reader has nothing to show in
-        // the meantime. A seek inside the live section keeps its content on screen, and painting a
-        // spinner over it is exactly the flicker this guard exists to remove.
-        loading = location.sectionIndex != engine.location.sectionIndex
-        failure = null
-        runCatching {
-            operationMutex.withLock {
-                engine.open(
-                    spine = latestSpine.value,
-                    location = location,
-                    flow = latestFlow.value,
-                )
+        val isSameSection = location.sectionIndex == engine.location.sectionIndex
+        if (isSameSection) {
+            runCatching {
+                operationMutex.withLock {
+                    engine.goTo(location)
+                }
             }
-        }.onSuccess {
-            appliedFlow = latestFlow.value
-            appliedReaderCss = latestReaderCss.value
-        }.onFailure { failure = it }
-        loading = false
+        } else {
+            loading = true
+            failure = null
+            runCatching {
+                operationMutex.withLock {
+                    engine.open(
+                        spine = latestSpine.value,
+                        location = location,
+                        flow = latestFlow.value,
+                    )
+                }
+            }.onSuccess {
+                appliedFlow = latestFlow.value
+                appliedReaderCss = latestReaderCss.value
+            }.onFailure { failure = it }
+            loading = false
+        }
     }
 
     val navigate: (Boolean) -> Unit = remember(engine, coroutineScope, operationMutex) {
@@ -261,6 +275,15 @@ internal fun NovelBookReader(
                 }
             }
         }
+    }
+    DisposableEffect(webView, navigate) {
+        val surface = ViewNovelBookScrollSurface(
+            view = webView,
+            paginated = { latestFlow.value == NovelBookEngineFlow.PAGINATED },
+            onStep = navigate,
+        )
+        latestOnSurfaceChanged.value(surface)
+        onDispose { latestOnSurfaceChanged.value(null) }
     }
     DisposableEffect(webView, navigate, stitch) {
         stitchHolder[0] = stitch

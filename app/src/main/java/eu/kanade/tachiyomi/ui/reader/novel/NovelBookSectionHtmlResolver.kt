@@ -21,7 +21,10 @@ internal data class NovelBookRawSection(
 internal class NovelBookSectionHtmlResolver(
     private val currentSpine: () -> NovelBookSpine,
     private val loadRawSection: suspend (Long) -> NovelBookRawSection,
-    private val normalizeHtml: suspend (String, String) -> String,
+    // (chapterId, rawHtml, chapterName) -> reader ready HTML. The chapter id is part of the
+    // contract because a section may have to be rendered translated, and translations are keyed by
+    // chapter.
+    private val normalizeHtml: suspend (Long, String, String) -> String,
     private val showChapterHeadings: () -> Boolean = { true },
 ) {
 
@@ -40,7 +43,11 @@ internal class NovelBookSectionHtmlResolver(
             ?.takeIf { it.isNotBlank() }
             ?.let { resolvedBaseUrls[chapterId] = it }
             ?: resolvedBaseUrls.remove(chapterId)
-        val bodyHtml = normalizeHtml(raw.rawHtml, raw.chapterName.ifBlank { section.name })
+        val bodyHtml = normalizeHtml(
+            raw.chapterId,
+            raw.rawHtml,
+            raw.chapterName.ifBlank { section.name },
+        )
         if (bodyHtml.isBlank()) return ""
         return buildBookSectionHtml(
             sectionIndex = section.index,

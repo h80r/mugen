@@ -170,6 +170,11 @@ internal class NovelBookWebViewRenderer(
     override suspend fun relocate(): NovelBookPageTurnResult =
         evaluatePageTurn("window.__anBookEngine && window.__anBookEngine.relocate()")
 
+    override suspend fun goTo(location: NovelBookLocation): NovelBookPageTurnResult =
+        evaluatePageTurn(
+            "window.__anBookEngine && window.__anBookEngine.goTo(${location.charOffset}, ${location.sectionIndex})",
+        )
+
     /**
      * Adds a chapter to the live scrolled document instead of replacing it, which is what removes
      * the jump between chapters: the reader simply keeps scrolling into the next section.

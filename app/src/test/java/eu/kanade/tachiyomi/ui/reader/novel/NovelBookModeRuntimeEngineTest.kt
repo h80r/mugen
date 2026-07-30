@@ -19,7 +19,7 @@ class NovelBookModeRuntimeEngineTest {
                     chapterWebUrl = "https://example.org/chapter/$chapterId/",
                 )
             },
-            normalizeHtml = { html, _ -> html.trim() },
+            normalizeHtml = { _, html, _ -> html.trim() },
         )
         runtime.start(
             chapters = listOf(
@@ -48,7 +48,7 @@ class NovelBookModeRuntimeEngineTest {
                     rawHtml = "<p>chapter $chapterId body</p>",
                 )
             },
-            normalizeHtml = { html, _ -> html },
+            normalizeHtml = { _, html, _ -> html },
         )
         runtime.start(
             chapters = listOf(
@@ -78,7 +78,7 @@ class NovelBookModeRuntimeEngineTest {
                     rawHtml = "<p>" + "chapter $chapterId body ".repeat(20) + "</p>",
                 )
             },
-            normalizeHtml = { html, _ -> html },
+            normalizeHtml = { _, html, _ -> html },
             prepareAhead = { 2 },
         )
         runtime.start(

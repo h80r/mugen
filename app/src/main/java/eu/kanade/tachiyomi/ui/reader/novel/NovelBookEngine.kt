@@ -56,6 +56,8 @@ internal interface NovelBookEngineRenderer {
 
     /** Drops a resident section from the document, compensating the scroll offset when needed. */
     suspend fun removeSection(sectionIndex: Int): Boolean = false
+
+    suspend fun goTo(location: NovelBookLocation): NovelBookPageTurnResult = relocate()
 }
 
 /**
@@ -183,6 +185,18 @@ internal class NovelBookEngine(
         if (this.flow == flow) return
         this.flow = flow
         openCurrentSection()
+    }
+
+    suspend fun goTo(location: NovelBookLocation) {
+        val clamped = spine.clampLocation(location)
+        if (clamped.sectionIndex != this.location.sectionIndex) {
+            open(spine, clamped, flow)
+        } else {
+            val result = renderer.goTo(clamped)
+            if (result is NovelBookPageTurnResult.Moved) {
+                updateLocation(locationOf(result))
+            }
+        }
     }
 
     suspend fun reload() {

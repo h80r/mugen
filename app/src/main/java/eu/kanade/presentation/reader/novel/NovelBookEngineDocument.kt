@@ -755,6 +755,20 @@ internal fun buildNovelBookEngineDocumentHtml(
                 if (viewport.scrollTop <= 1) return JSON.stringify({ kind: 'start' });
                 viewport.scrollTop = Math.max(0, viewport.scrollTop - viewport.clientHeight * 0.9);
                 return relocate();
+              },
+              canScrollForward: function() {
+                if (!viewport) return false;
+                if (isPaginated) return currentPage() < pageCount() - 1;
+                return viewport.scrollTop < (viewport.scrollHeight - viewport.clientHeight - 1);
+              },
+              scrollBy: function(px) {
+                if (isPaginated || !viewport || !px) return 0;
+                const before = viewport.scrollTop;
+                const maximum = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+                viewport.scrollTop = Math.max(0, Math.min(maximum, before + px));
+                pushRelocated();
+                pushStitchRequests();
+                return Math.round(viewport.scrollTop - before);
               }
             });
           })();
