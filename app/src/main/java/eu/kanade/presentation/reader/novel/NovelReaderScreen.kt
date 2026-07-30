@@ -2367,6 +2367,10 @@ fun NovelReaderScreen(
         }
     }
 
+    // The auto-scroll state machine lives outside the effect, so the touch cooldown, the speed ramp
+    // and the sub-pixel remainder survive the effect restarting on a settings or surface change.
+    val autoScrollController = remember { NovelAutoScrollController() }
+
     LaunchedEffect(
         autoScrollEnabled,
         autoScrollSpeed,
@@ -2385,192 +2389,131 @@ fun NovelReaderScreen(
         state.bookMode.isEnabled,
         bookScrollSurface,
     ) {
-        if (!autoScrollEnabled) return@LaunchedEffect
-        var previousFrameNanos: Long? = null
-        var stepRemainderPx = 0f
+        if (!autoScrollEnabled) {
+            autoScrollController.stop()
+            return@LaunchedEffect
+        }
+        autoScrollController.start()
+        // One target per surface, resolved once per effect run: every input that can change the
+        // surface is already a key of this effect, so the loop below never branches per surface.
+        val target: NovelAutoScrollTarget? = when {
+            state.bookMode.isEnabled && (bookScrollSurface != null || !useNativeBookScroll) ->
+                bookScrollSurface?.let { surface ->
+                    BookSurfaceAutoScrollTarget(
+                        surface = surface,
+                        hasSectionsLeft = {
+                            state.bookMode.currentSectionIndex < state.bookMode.sectionCount - 1
+                        },
+                    )
+                }
+            showWebView -> webViewInstance?.let { webView ->
+                WebViewAutoScrollTarget(
+                    webView = webView,
+                    reachedProgressThreshold = { webAutoScrollNearEnd },
+                )
+            }
+            usePageReader -> PageReaderAutoScrollTarget(
+                currentPageIndex = { pageReaderProgressPageIndex },
+                pageCount = { pageReaderItemsCount },
+                characterCount = {
+                    pageReaderCharacterCounts.getOrNull(pageReaderProgressPageIndex) ?: 0
+                },
+                onStepPage = {
+                    moveForwardByReaderActionWithAnimation(bookFlipPageAnimationDurationMillis)
+                },
+            )
+            else -> LazyListAutoScrollTarget(
+                listState = textListState,
+                nearConfiguredEnd = {
+                    val layoutInfo = textListState.layoutInfo
+                    val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()
+                    state.readerSettings.autoScrollOffset > 0 &&
+                        lastVisibleItem != null &&
+                        lastVisibleItem.index >= nativeScrollItemsCount - 1 &&
+                        lastVisibleItem.offset + lastVisibleItem.size <=
+                        layoutInfo.viewportEndOffset + state.readerSettings.autoScrollOffset
+                },
+            )
+        }
         while (isActive && autoScrollEnabled) {
             if (showReaderUi) {
-                previousFrameNanos = null
-                stepRemainderPx = 0f
+                autoScrollController.pause()
+                delay(120)
+                continue
+            }
+            autoScrollController.resume()
+
+            // The surface this run belongs to is not mounted yet (book renderer or chapter WebView
+            // still attaching). Every input that can produce it is a key of this effect, so idling
+            // here is enough: the effect restarts once it exists.
+            if (target == null) {
+                autoScrollController.resetFrameState()
+                autoScrollEndStableFrames = 0
                 delay(120)
                 continue
             }
 
-            if (resolveAutoScrollPrefetchNeeded(
-                    currentIndex = readingProgressPercent,
-                    totalItems = 100,
+            if (resolveAutoScrollPrefetchNeededByPercent(
+                    progressPercent = readingProgressPercent,
                     behavior = state.readerSettings.autoScrollChapterEndBehavior,
                 )
             ) {
                 onRequestAutoScrollNextChapterPrefetch()
             }
 
-            val isInCooldown = System.nanoTime() < touchCooldownUntilNanos
-            speedFactor = resolveAutoScrollSpeedFactor(
-                currentFactor = speedFactor,
-                inCooldown = isInCooldown,
-                delta = AUTO_SCROLL_SPEED_FACTOR_DELTA,
-            )
-            if (isInCooldown && speedFactor <= 0f) {
+            if (!autoScrollController.tickSpeedFactor(
+                    nowNanos = System.nanoTime(),
+                    delta = AUTO_SCROLL_SPEED_FACTOR_DELTA,
+                )
+            ) {
                 delay(100)
                 continue
             }
+            speedFactor = autoScrollController.speedFactor
 
-            // Book mode renders its own surface, so none of the chapter branches below can move
-            // it. Without this branch auto-scroll either span on an absent WebView or scrolled the
-            // empty chapter list, which is why it looked dead over a book.
-            // The native book renderer publishes no surface: it draws the book sections into the
-            // shared lazy list, so it is handled by the list branch at the bottom instead of idling
-            // here forever.
-            if (state.bookMode.isEnabled && (bookScrollSurface != null || !useNativeBookScroll)) {
-                val surface = bookScrollSurface
-                if (surface == null) {
-                    previousFrameNanos = null
-                    stepRemainderPx = 0f
-                    autoScrollEndStableFrames = 0
-                    delay(120)
-                    continue
-                }
-                if (surface.isPaginated()) {
-                    previousFrameNanos = null
-                    stepRemainderPx = 0f
-                    autoScrollEndStableFrames = 0
-                    delay(
-                        autoScrollPageDelayMsForCharacterCount(
-                            intervalSeconds = state.readerSettings.autoScrollInterval,
-                            characterCount = 0,
-                            adaptiveEnabled = false,
-                        ),
-                    )
-                    if (showReaderUi || !autoScrollEnabled) continue
-                    surface.step(forward = true)
-                    continue
-                }
-                val frameTimeNanos = withFrameNanos { it }
-                val previousNanos = previousFrameNanos
-                previousFrameNanos = frameTimeNanos
-                if (previousNanos == null) continue
-                val frameDeltaNanos = (frameTimeNanos - previousNanos).coerceAtLeast(1L)
-                val frameStepPx = autoScrollFrameStepPx(
-                    speed = autoScrollSpeed,
-                    frameDeltaNanos = frameDeltaNanos,
-                ) * speedFactor
-                val resolvedStep = resolveAutoScrollStep(frameStepPx, stepRemainderPx)
-                val stepPx = resolvedStep.stepPx
-                stepRemainderPx = resolvedStep.remainderPx
-                if (stepPx == 0) continue
-                val consumedPx = surface.scrollBy(stepPx)
-                // The scrolled book stitches the next section in at its boundary, so "cannot scroll
-                // further" only means the end of the book when no section is left after this one.
-                val hasSectionsLeft = state.bookMode.currentSectionIndex <
-                    state.bookMode.sectionCount - 1
-                val endState = resolveNovelAutoScrollEndState(
-                    canScrollForward = surface.canScrollForward() || hasSectionsLeft,
-                    scrollConsumedPx = consumedPx.toFloat(),
-                    isContentReady = autoScrollContentReady,
-                    hasCompletedInitialLayout = hasCompletedInitialReaderLayout,
-                    hasRenderableItems = autoScrollHasRenderableItems,
-                    previousStableEndFrameCount = autoScrollEndStableFrames,
-                )
-                autoScrollEndStableFrames = endState.stableEndFrameCount
-                if (endState.shouldEnterDwell) {
-                    handleAutoScrollStableChapterEndAfterDwell()
-                }
-                continue
-            }
-            if (showWebView) {
-                val webView = webViewInstance
-                if (webView == null) {
-                    previousFrameNanos = null
-                    stepRemainderPx = 0f
-                    autoScrollEndStableFrames = 0
-                    delay(120)
-                    continue
-                }
-                val frameTimeNanos = withFrameNanos { it }
-                val previousNanos = previousFrameNanos
-                previousFrameNanos = frameTimeNanos
-                if (previousNanos == null) continue
-                val frameDeltaNanos = (frameTimeNanos - previousNanos).coerceAtLeast(1L)
-                val frameStepPx = autoScrollFrameStepPx(
-                    speed = autoScrollSpeed,
-                    frameDeltaNanos = frameDeltaNanos,
-                ) * speedFactor
-                val resolvedStep = resolveAutoScrollStep(frameStepPx, stepRemainderPx)
-                val stepPx = resolvedStep.stepPx
-                stepRemainderPx = resolvedStep.remainderPx
-                if (stepPx == 0) continue
-                val canScrollBefore = webView.canScrollVertically(1)
-                if (canScrollBefore) {
-                    webView.scrollBy(0, stepPx)
-                }
-                val reachedWebAutoScrollThreshold = webAutoScrollNearEnd || !webView.canScrollVertically(1)
-                val endState = resolveNovelAutoScrollEndState(
-                    canScrollForward = webView.canScrollVertically(1) && !reachedWebAutoScrollThreshold,
-                    scrollConsumedPx = if (canScrollBefore) stepPx.toFloat() else 0f,
-                    isContentReady = autoScrollContentReady,
-                    hasCompletedInitialLayout = hasCompletedInitialReaderLayout,
-                    hasRenderableItems = autoScrollHasRenderableItems,
-                    previousStableEndFrameCount = autoScrollEndStableFrames,
-                )
-                autoScrollEndStableFrames = endState.stableEndFrameCount
-                if (endState.shouldEnterDwell) {
-                    handleAutoScrollStableChapterEndAfterDwell()
-                }
-                continue
-            }
-            if (usePageReader) {
-                previousFrameNanos = null
-                stepRemainderPx = 0f
+            if (target.isPaginated()) {
+                autoScrollController.resetFrameState()
                 autoScrollEndStableFrames = 0
+                // Only the page reader counts characters; continuous-but-paginated surfaces report
+                // 0, which keeps the delay at the plain interval exactly as before.
+                val pageCharacterCount = target.pageDelayCharacterCount()
                 delay(
                     autoScrollPageDelayMsForCharacterCount(
                         intervalSeconds = state.readerSettings.autoScrollInterval,
-                        characterCount = pageReaderCharacterCounts.getOrNull(pageReaderProgressPageIndex) ?: 0,
-                        adaptiveEnabled = state.readerSettings.autoScrollAdaptiveDelay,
+                        characterCount = pageCharacterCount,
+                        adaptiveEnabled = state.readerSettings.autoScrollAdaptiveDelay &&
+                            pageCharacterCount > 0,
                     ),
                 )
-                if (showReaderUi || showWebView || !autoScrollEnabled) continue
-                val currentPage = pageReaderProgressPageIndex
-                if (currentPage < pageReaderItemsCount - 1) {
-                    moveForwardByReaderActionWithAnimation(bookFlipPageAnimationDurationMillis)
-                } else if (autoScrollContentReady && hasCompletedInitialReaderLayout && autoScrollHasRenderableItems) {
+                if (showReaderUi || !autoScrollEnabled) continue
+                if (target.canScrollForward()) {
+                    target.stepPage(forward = true)
+                } else if (
+                    autoScrollContentReady &&
+                    hasCompletedInitialReaderLayout &&
+                    autoScrollHasRenderableItems
+                ) {
                     handleAutoScrollStableChapterEndAfterDwell()
                 }
-            } else {
-                val frameTimeNanos = withFrameNanos { it }
-                val previousNanos = previousFrameNanos
-                previousFrameNanos = frameTimeNanos
-                if (previousNanos == null) continue
-                val frameDeltaNanos = (frameTimeNanos - previousNanos).coerceAtLeast(1L)
-                val frameStepPx = autoScrollFrameStepPx(
-                    speed = autoScrollSpeed,
-                    frameDeltaNanos = frameDeltaNanos,
-                ) * speedFactor
-                val resolvedStep = resolveAutoScrollStep(frameStepPx, stepRemainderPx)
-                val stepPx = resolvedStep.stepPx
-                stepRemainderPx = resolvedStep.remainderPx
-                if (stepPx == 0) continue
-                val consumed = textListState.scrollBy(stepPx.toFloat())
-                val layoutInfo = textListState.layoutInfo
-                val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()
-                val nativeNearConfiguredEndOffset = state.readerSettings.autoScrollOffset > 0 &&
-                    lastVisibleItem != null &&
-                    lastVisibleItem.index >= nativeScrollItemsCount - 1 &&
-                    lastVisibleItem.offset + lastVisibleItem.size <=
-                    layoutInfo.viewportEndOffset + state.readerSettings.autoScrollOffset
-                val endState = resolveNovelAutoScrollEndState(
-                    canScrollForward = textListState.canScrollForward && !nativeNearConfiguredEndOffset,
-                    scrollConsumedPx = consumed,
-                    isContentReady = autoScrollContentReady,
-                    hasCompletedInitialLayout = hasCompletedInitialReaderLayout,
-                    hasRenderableItems = autoScrollHasRenderableItems,
-                    previousStableEndFrameCount = autoScrollEndStableFrames,
-                )
-                autoScrollEndStableFrames = endState.stableEndFrameCount
-                if (endState.shouldEnterDwell) {
-                    handleAutoScrollStableChapterEndAfterDwell()
-                }
+                continue
+            }
+
+            val stepPx = autoScrollController.frameStepPx(
+                speed = autoScrollSpeed,
+                frameTimeNanos = withFrameNanos { it },
+            )
+            if (stepPx == 0) continue
+            val consumedPx = target.scrollBy(stepPx)
+            val frameResult = autoScrollController.onScrolled(
+                canScrollForward = target.canScrollForward(),
+                scrollConsumedPx = consumedPx,
+                isContentReady = autoScrollContentReady,
+                hasCompletedInitialLayout = hasCompletedInitialReaderLayout,
+                hasRenderableItems = autoScrollHasRenderableItems,
+            )
+            autoScrollEndStableFrames = autoScrollController.stableEndFrames
+            if (frameResult == NovelAutoScrollFrameResult.ReachedEnd) {
+                handleAutoScrollStableChapterEndAfterDwell()
             }
         }
     }
@@ -2594,7 +2537,14 @@ fun NovelReaderScreen(
                 .pointerInput(autoScrollEnabled) {
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
-                        touchCooldownUntilNanos = System.nanoTime() + AUTO_SCROLL_COOLDOWN_MS * 1_000_000L
+                        val touchNanos = System.nanoTime()
+                        touchCooldownUntilNanos = touchNanos + AUTO_SCROLL_COOLDOWN_MS * 1_000_000L
+                        // The controller owns the cooldown the auto-scroll loop reads now; the
+                        // field stays in sync for the rest of the reader that still observes it.
+                        autoScrollController.noteTouch(
+                            nowNanos = touchNanos,
+                            cooldownMs = AUTO_SCROLL_COOLDOWN_MS,
+                        )
                     }
                 },
         ) {
