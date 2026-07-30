@@ -2660,11 +2660,23 @@ fun NovelReaderScreen(
                             }
                             if (localRestoringPosition) {
                                 androidx.compose.foundation.layout.Box(
-                                    modifier = Modifier
-                                        .matchParentSize()
-                                        .background(textBackground),
+                                    modifier = Modifier.matchParentSize(),
                                     contentAlignment = androidx.compose.ui.Alignment.Center,
                                 ) {
+                                    NovelAtmosphereBackground(
+                                        backgroundColor = textBackground,
+                                        backgroundTexture = activeBackgroundTexture,
+                                        nativeTextureStrengthPercent = if (isBackgroundMode) {
+                                            0
+                                        } else {
+                                            state.readerSettings.nativeTextureStrengthPercent
+                                        },
+                                        oledEdgeGradient = activeOledEdgeGradient,
+                                        isDarkTheme = isDarkTheme,
+                                        pageEdgeShadow = state.readerSettings.pageEdgeShadow,
+                                        pageEdgeShadowAlpha = state.readerSettings.pageEdgeShadowAlpha,
+                                        backgroundImageModel = if (isBackgroundMode) backgroundImageModel else null,
+                                    )
                                     androidx.compose.material3.CircularProgressIndicator(
                                         color = textColor.copy(alpha = 0.4f),
                                     )
