@@ -160,6 +160,11 @@ object SettingsBrowseScreen : SearchableSettings {
                         title = stringResource(MR.strings.pref_epub_import_add_to_library),
                         subtitle = stringResource(MR.strings.pref_epub_import_add_to_library_summary),
                     ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = sourcePreferences.autoCompileLocalEpubBook(),
+                        title = stringResource(AYMR.strings.pref_auto_compile_local_epub_book),
+                        subtitle = stringResource(AYMR.strings.pref_auto_compile_local_epub_book_summary),
+                    ),
                 ),
             ),
             Preference.PreferenceGroup(

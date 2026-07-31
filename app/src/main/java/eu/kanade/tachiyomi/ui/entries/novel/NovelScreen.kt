@@ -591,6 +591,9 @@ class NovelScreen(
             onDeleteBookSourceChaptersClicked = {
                 screenModel.deleteBookSourceChapters()
             }.takeIf { !eu.kanade.domain.entries.novel.LocalNovelVisibility.isLocalSource(successState.novel.source) },
+            onDeleteBookClicked = {
+                screenModel.deleteBook()
+            },
             onToggleReadAsBook = screenModel::setBookEnabled,
         )
 

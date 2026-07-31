@@ -410,9 +410,10 @@ class NovelScreenModel(
                 .distinctUntilChanged()
                 .collectLatest { bookState ->
                     updateSuccessState { it.copy(bookState = bookState) }
-                    // Local .epub / .fb2 titles are compiled into the artifact on first open, so
-                    // they are read as one continuous book instead of per-file fragments.
-                    ensureLocalBookArtifact()
+                    // Local .epub / .fb2 titles are compiled into the artifact on first open if auto-compile is enabled.
+                    if (sourcePreferences.autoCompileLocalEpubBook().get()) {
+                        ensureLocalBookArtifact()
+                    }
                 }
         }
 

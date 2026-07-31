@@ -267,4 +267,6 @@ class SourcePreferences(
     )
 
     fun importEpubAddToLibrary() = preferenceStore.getBoolean("pref_epub_import_add_to_library", true)
+
+    fun autoCompileLocalEpubBook() = preferenceStore.getBoolean("pref_auto_compile_local_epub_book", false)
 }

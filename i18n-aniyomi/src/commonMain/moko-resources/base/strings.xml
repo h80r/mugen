@@ -742,8 +742,10 @@
     <string name="novel_reader_book_mode_prepare_book_summary">Download and prepare the remaining chapters so the whole book can be read offline</string>
     <string name="novel_reader_book_mode_section_failed">This chapter could not be loaded</string>
     <string name="novel_reader_book_mode_section_retry">Retry</string>
-    <string name="novel_book_make">Make book</string>
-    <string name="novel_book_rebuild">Rebuild book</string>
+    <string name="pref_auto_compile_local_epub_book">(Experimental) Auto-compile local EPUB/FB2 books</string>
+    <string name="pref_auto_compile_local_epub_book_summary">When disabled, imported local files remain as individual chapters</string>
+    <string name="novel_book_make">Make book (experimental)</string>
+    <string name="novel_book_rebuild">Rebuild book (experimental)</string>
     <string name="novel_book_building">Compiling book…</string>
     <string name="novel_book_downloading_chapters">Downloading chapters…</string>
     <string name="novel_book_delete">Delete book</string>

@@ -25,6 +25,8 @@ import eu.kanade.tachiyomi.data.download.novel.NovelDownloadQueueManager
 import eu.kanade.tachiyomi.data.download.novel.NovelTranslatedDownloadFormat
 import eu.kanade.tachiyomi.data.download.novel.NovelTranslatedDownloadManager
 import eu.kanade.tachiyomi.data.track.TrackerManager
+import eu.kanade.tachiyomi.novelsource.NovelSource
+import eu.kanade.tachiyomi.novelsource.model.SNovelChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.ui.entries.novel.NovelDownloadAction
 import eu.kanade.tachiyomi.ui.entries.novel.NovelScreenModel
@@ -121,6 +123,10 @@ class NovelLibraryScreenModel(
     private val searchDebounceMillis: Long = SEARCH_DEBOUNCE_MILLIS,
     private val trackerManager: TrackerManager = Injekt.get(),
     private val startActive: Boolean = true,
+    private val localNovelBookArtifactBuilderFactory:
+    () -> eu.kanade.tachiyomi.data.book.novel.LocalNovelBookArtifactBuilder = {
+        eu.kanade.tachiyomi.data.book.novel.LocalNovelBookArtifactBuilder()
+    },
 ) : StateScreenModel<NovelLibraryScreenModel.State>(
     State(
         groupType = if (libraryPreferences.globalGroupLibrary().get()) {
@@ -1368,25 +1374,26 @@ class NovelLibraryScreenModel(
 
             val insertedId = novelRepository.insertNovel(novel)
 
-            // Compile the book artifact right after the import so the first open is instant instead
-            // of paying for the lazy first-open migration. Best effort only: the import itself has
-            // already succeeded, and the title screen still compiles on open if anything fails.
-            if (insertedId != null) {
-                runCatching {
-                    val storedNovel = novel.copy(id = insertedId)
-                    val sourceManager = Injekt.get<tachiyomi.domain.source.novel.service.NovelSourceManager>()
-                    val localSource = sourceManager.get(LocalNovelSource.ID)
-                    if (localSource != null) {
-                        val sourceChapters = localSource.getChapterList(storedNovel.toSNovel())
-                        val syncedChapters = Injekt.get<SyncNovelChaptersWithSource>().await(
-                            rawSourceChapters = sourceChapters,
-                            novel = storedNovel,
-                            source = localSource,
+            // Compile the book artifact right after the import if auto-compile is enabled.
+            // The explicit null check keeps the smart cast for the artifact build below.
+            if (insertedId != null &&
+                shouldCompileLocalBookArtifact(insertedId, sourcePreferences.autoCompileLocalEpubBook().get())
+            ) {
+                compileLocalBookArtifact(
+                    novel = novel.copy(id = insertedId),
+                    sourceManager = Injekt.get(),
+                    syncChapters = { rawSourceChapters, novelToSync, source ->
+                        Injekt.get<SyncNovelChaptersWithSource>().await(
+                            rawSourceChapters = rawSourceChapters,
+                            novel = novelToSync,
+                            source = source,
                         )
-                        eu.kanade.tachiyomi.data.book.novel.LocalNovelBookArtifactBuilder()
-                            .ensureArtifact(storedNovel, syncedChapters)
-                    }
-                }
+                    },
+                    compile = { novelToCompile, syncedChapters ->
+                        localNovelBookArtifactBuilderFactory()
+                            .ensureArtifact(novelToCompile, syncedChapters)
+                    },
+                )
             }
         }
     }
@@ -1566,4 +1573,38 @@ private fun List<NovelLibraryItem>.selectedNovelEntries(): List<tachiyomi.domain
 
 private fun List<NovelLibraryItem>.selectedNovels(): List<Novel> {
     return selectedNovelEntries().map { it.novel }
+}
+
+/**
+ * Whether the local book artifact should be compiled right after an import.
+ *
+ * Auto-compilation is opt-in via [SourcePreferences.autoCompileLocalEpubBook] and only makes
+ * sense when the novel row was actually inserted. Extracted so the import gate is unit-testable.
+ */
+internal fun shouldCompileLocalBookArtifact(insertedId: Long?, autoCompileEnabled: Boolean): Boolean {
+    return insertedId != null && autoCompileEnabled
+}
+
+/**
+ * Compiles the local book artifact of a just-imported novel, best effort only.
+ *
+ * The import itself has already succeeded, so failures here are swallowed: the title screen
+ * still compiles the artifact on open (when auto-compile is enabled). Extracted so the import
+ * flow is unit-testable without Android/Injekt — the source manager, chapter sync step and
+ * artifact builder are injected.
+ */
+internal suspend fun compileLocalBookArtifact(
+    novel: Novel,
+    sourceManager: NovelSourceManager,
+    syncChapters: suspend (List<SNovelChapter>, Novel, NovelSource) -> List<NovelChapter>,
+    compile: suspend (Novel, List<NovelChapter>) -> Boolean,
+) {
+    runCatching {
+        val localSource = sourceManager.get(LocalNovelSource.ID)
+        if (localSource != null) {
+            val sourceChapters = localSource.getChapterList(novel.toSNovel())
+            val syncedChapters = syncChapters(sourceChapters, novel, localSource)
+            compile(novel, syncedChapters)
+        }
+    }
 }
