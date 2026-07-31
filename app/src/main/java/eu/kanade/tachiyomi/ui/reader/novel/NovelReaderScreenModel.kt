@@ -727,20 +727,16 @@ class NovelReaderScreenModel(
         bookModeCommandQueue.clear()
         bookModeRuntime.forgetRenderedSections()
         val current = bookModeRuntime.uiState()
-        bookModeCommandQueue.enqueueSeed(
-            sections = (0 until current.sectionCount).mapNotNull { sectionIndex ->
-                bookModeRuntime.chapterIdOfSection(sectionIndex)?.let { chapterId ->
-                    SeedSection(sectionIndex = sectionIndex, chapterId = chapterId)
-                }
-            },
-        )
+        // The legacy WebView used to be re-seeded with one placeholder per section here; the book
+        // engine and the native list rebuild their resident window from the sync round instead, so
+        // only the reading position is re-applied.
         bookModeCommandQueue.enqueueScrollTo(
             sectionIndex = current.currentSectionIndex,
             sectionFraction = current.currentSectionFraction,
         )
         logcat(LogPriority.INFO) {
-            "Book mode document ready: reseed sections=${current.sectionCount}, " +
-                "section=${current.currentSectionIndex}, fraction=${current.currentSectionFraction}"
+            "Book mode document ready: section=${current.currentSectionIndex}, " +
+                "fraction=${current.currentSectionFraction}"
         }
         scheduleBookModeSync()
     }

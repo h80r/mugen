@@ -59,9 +59,6 @@ internal fun <T> applyNovelBookCommandsToNativeSections(
             }
             is NovelBookUiCommand.Prune -> bySectionIndex.remove(command.sectionIndex)
             is NovelBookUiCommand.ScrollTo -> Unit
-            // Seeding is a DOM-only concern: the native list derives its order from the resident
-            // sections it already holds, so there is nothing to pre-create here.
-            is NovelBookUiCommand.Seed -> Unit
         }
     }
     return bySectionIndex.values.sortedBy { it.sectionIndex }

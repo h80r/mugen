@@ -458,7 +458,6 @@ fun NovelReaderScreen(
     val onBookModeScroll = actions.onBookModeScroll
     val onBookModeSectionMeasured = actions.onBookModeSectionMeasured
     val onBookModeRetrySection = actions.onBookModeRetrySection
-    val onBookModeDocumentReady = actions.onBookModeDocumentReady
     val onPrepareWholeBook = actions.onPrepareWholeBook
     val nativeBookBlocksForSection = actions.nativeBookBlocksForSection
     val sanitizedSettings = remember(rawState.readerSettings) {
@@ -1387,124 +1386,11 @@ fun NovelReaderScreen(
             },
         )
     }
-    // Book mode: run the queued DOM work against the live document, then acknowledge it so the
-    // screen model can queue the next window. Commands stay pending while the WebView is missing.
-    // The reader document is loaded asynchronously and can be replaced, which wipes every seeded
-    // placeholder, appended section, flow class and relocate listener. This counter tracks the loaded
-    // document so all of that work is (re)applied against the document that is actually on screen.
-    var bookModeDocumentGeneration by remember(state.novel.id) { mutableStateOf(0) }
-    // Timestamp until which the document's own position reports are ignored, see
-    // BOOK_MODE_SCROLL_RESTORE_GUARD_MS.
-    val bookModeWebScrollGuard = remember(state.novel.id) { longArrayOf(0L) }
-    LaunchedEffect(bookModeCommands, webViewInstance) {
-        if (bookModeCommands.isEmpty()) return@LaunchedEffect
-        val view = webViewInstance ?: return@LaunchedEffect
-        if (!view.settings.javaScriptEnabled) return@LaunchedEffect
-        val executedCommandIds = mutableListOf<Long>()
-        for (command in bookModeCommands) {
-            val script = when (command) {
-                is NovelBookUiCommand.Append -> buildAppendBookSectionJavascript(
-                    sectionIndex = command.sectionIndex,
-                    sectionHtml = command.html,
-                    keepScrollAnchored = command.keepScrollAnchored,
-                )
-                is NovelBookUiCommand.Prune -> buildPruneBookSectionJavascript(
-                    sectionIndex = command.sectionIndex,
-                )
-                is NovelBookUiCommand.ScrollTo -> buildScrollToBookSectionJavascript(
-                    sectionIndex = command.sectionIndex,
-                    sectionFraction = command.sectionFraction,
-                )
-                // Seed the full spine as collapsed placeholders before any other DOM work, so a
-                // resume in the middle of the book still produces a document that can be scrolled
-                // back to the first chapter instead of starting at the resume section.
-                is NovelBookUiCommand.Seed -> buildBookSkeletonJavascript(
-                    sections = command.sections.map { seed ->
-                        NovelBookSkeletonSection(
-                            sectionIndex = seed.sectionIndex,
-                            chapterId = seed.chapterId,
-                        )
-                    },
-                )
-            }
-            suspendCancellableCoroutine<Unit> { continuation ->
-                view.post {
-                    view.evaluateJavascript(script) {
-                        if (continuation.isActive) {
-                            continuation.resume(Unit)
-                        }
-                    }
-                }
-            }
-            if (command is NovelBookUiCommand.ScrollTo) {
-                // The jump settles over the next frames; until then the document still reports the
-                // old (or empty) position and must not be allowed to overwrite the book position.
-                bookModeWebScrollGuard[0] = System.currentTimeMillis() + BOOK_MODE_SCROLL_RESTORE_GUARD_MS
-            }
-            executedCommandIds += command.id
-        }
-        if (executedCommandIds.isNotEmpty()) {
-            onBookModeCommandsExecuted(executedCommandIds)
-            // Book mode injects chapter HTML straight into the live document, so the bionic
-            // transform that runs together with the reader CSS never sees those sections. Without
-            // re-running it after content was appended, bionic reading does nothing in book mode.
-            if (state.readerSettings.bionicReading &&
-                bookModeCommands.any { it is NovelBookUiCommand.Append }
-            ) {
-                val bionicScript = buildWebReaderBionicJavascript(enabled = true)
-                if (bionicScript.isNotBlank()) {
-                    view.post { view.evaluateJavascript(bionicScript, null) }
-                }
-            }
-            view.post {
-                view.revealReaderDocumentAndWebView(shouldHideWebViewUntilReveal)
-            }
-        }
-    }
-    // Book mode: the document PUSHES its reading position to the reader (relocate events), coalesced to
-    // at most one per animation frame. The previous version polled the document every 400 ms forever,
-    // which kept the JS thread and the progress-persistence pipeline permanently busy: that is what
-    // produced the scroll jank, the endless logcat spam and the unresponsive reader chrome.
-    val bookModeRelocateHandler: (NovelBookDocumentMetrics) -> Unit = remember(state.novel.id) {
-        { metrics ->
-            // Heights are layout information only; book progress stays in the spine's text domain.
-            metrics.measuredSections().forEach { section ->
-                onBookModeSectionMeasured(section.chapterId, section.heightPx)
-            }
-            // A document that only holds collapsed placeholders has no reading position yet: right
-            // after a (re)load it reports the top of the book, and reporting that back replaced the
-            // stored position with the first chapter.
-            val hasRenderedSection = metrics.sections.any { !it.isPruned && it.heightPx > 0 }
-            val restoring = System.currentTimeMillis() < bookModeWebScrollGuard[0]
-            if (hasRenderedSection && !restoring) {
-                metrics.currentSection()?.let { current ->
-                    onBookModeScroll(current.index, metrics.fractionInside(current))
-                }
-            }
-        }
-    }
-    LaunchedEffect(state.bookMode.isEnabled, webViewInstance, bookModeDocumentGeneration) {
-        if (!state.bookMode.isEnabled) return@LaunchedEffect
-        val view = webViewInstance ?: return@LaunchedEffect
-        if (!view.settings.javaScriptEnabled) return@LaunchedEffect
-        view.post {
-            view.registerBookRelocateBridge(bookModeRelocateHandler)
-            view.installBookRelocateBridgeScript()
-        }
-    }
-    // A freshly loaded document is empty, so the book has to be put back into it: skeleton, resident
-    // sections and reading position.
-    LaunchedEffect(state.bookMode.isEnabled, bookModeDocumentGeneration) {
-        if (!state.bookMode.isEnabled) return@LaunchedEffect
-        if (bookModeDocumentGeneration <= 0) return@LaunchedEffect
-        // The fresh document is empty and scrolled to the top. Hold its position reports back until
-        // the book has been seeded and the reading position re-applied.
-        bookModeWebScrollGuard[0] = System.currentTimeMillis() + BOOK_MODE_SCROLL_RESTORE_GUARD_MS
-        onBookModeDocumentReady()
-        webViewInstance?.post {
-            webViewInstance?.revealReaderDocumentAndWebView(shouldHideWebViewUntilReveal)
-        }
-    }
+    // Book mode DOM work runs against the renderer's own WebView (NovelBookReader). The legacy
+    // chapter-WebView path below was dead: in book mode that WebView is never mounted
+    // (shouldStartInWebView returns false), so commands and relocate bridges targeting it never
+    // executed and the position only ever arrived through NovelBookEngine/onBookEngineLocationChanged
+    // (scrolled) or the native list relocation.
     // Book mode is renderer independent: the reader settings pick the book renderer, and the WebView
     // adapter only has to switch the document's flow. "Pages" therefore works in book mode too, over
     // the same spine, sections and progress as the scrolled flow.
@@ -1522,16 +1408,6 @@ fun NovelReaderScreen(
                 state.readerSettings.customJS.isNotBlank(),
             richContentUnsupportedFeaturesDetected = state.richContentUnsupportedFeaturesDetected,
         )
-    }
-    val bookView = remember(webViewInstance) {
-        webViewInstance?.let { WebViewNovelBookView(it) }
-    }
-    // Keyed on the renderer only. Keying this on `bookModeCommands` re-ran the flow switch (a full
-    // document reflow) for every append/prune batch, which is what made scrolling stutter.
-    LaunchedEffect(state.bookMode.isEnabled, bookView, bookRenderer, bookModeDocumentGeneration) {
-        if (!state.bookMode.isEnabled) return@LaunchedEffect
-        val view = bookView ?: return@LaunchedEffect
-        view.setFlow(bookRenderer.flow)
     }
     // Native renderer side of book mode. Both renderers consume the same command stream, so the
     // native list folds appends and prunes into its resident sections instead of running JavaScript.
@@ -1623,18 +1499,6 @@ fun NovelReaderScreen(
         }
         val location = resolveNovelBookNativeRelocate(viewportItems) ?: return@LaunchedEffect
         onBookModeScroll(location.sectionIndex, location.sectionFraction)
-    }
-    // Appending, pruning or jumping to a section changes the layout, so ask the document for a single
-    // relocate event once the queued DOM work settled. Installing again is a no-op when already done.
-    LaunchedEffect(state.bookMode.isEnabled, webViewInstance, bookModeCommands) {
-        if (!state.bookMode.isEnabled) return@LaunchedEffect
-        val view = webViewInstance ?: return@LaunchedEffect
-        if (!view.settings.javaScriptEnabled) return@LaunchedEffect
-        kotlinx.coroutines.delay(BOOK_MODE_RELOCATE_SETTLE_DELAY_MS)
-        view.post {
-            view.installBookRelocateBridgeScript()
-            view.requestBookRelocate()
-        }
     }
     val webViewTtsNavigationAdapter = remember(state.chapter.id, scrollContentBlocks.size) {
         WebViewTtsNavigationAdapter(
@@ -2202,17 +2066,13 @@ fun NovelReaderScreen(
     suspend fun moveBackwardByReaderActionWithAnimation(pageAnimationDurationMillis: Int?) {
         if (state.bookMode.isEnabled) {
             // The book is one continuous document, so stepping backwards never leaves it and chapter
-            // navigation must not kick in. The book view knows whether a step is a page (paginated
-            // flow) or a viewport of scroll.
-            val surface = bookScrollSurface
-            if (surface != null) {
-                if (surface.isPaginated()) {
-                    surface.step(forward = false)
-                } else {
-                    surface.scrollBy(-volumeScrollStepPx.roundToInt())
-                }
+            // navigation must not kick in. The mounted book surface knows whether a step is a page
+            // (paginated flow) or a viewport of scroll; before it is mounted there is nothing to move.
+            val surface = bookScrollSurface ?: return
+            if (surface.isPaginated()) {
+                surface.step(forward = false)
             } else {
-                bookView?.previous(activePageTransitionStyle.name)
+                surface.scrollBy(-volumeScrollStepPx.roundToInt())
             }
             return
         }
@@ -2263,15 +2123,11 @@ fun NovelReaderScreen(
 
     suspend fun moveForwardByReaderActionWithAnimation(pageAnimationDurationMillis: Int?) {
         if (state.bookMode.isEnabled) {
-            val surface = bookScrollSurface
-            if (surface != null) {
-                if (surface.isPaginated()) {
-                    surface.step(forward = true)
-                } else {
-                    surface.scrollBy(volumeScrollStepPx.roundToInt())
-                }
+            val surface = bookScrollSurface ?: return
+            if (surface.isPaginated()) {
+                surface.step(forward = true)
             } else {
-                bookView?.next(activePageTransitionStyle.name)
+                surface.scrollBy(volumeScrollStepPx.roundToInt())
             }
             return
         }
@@ -3467,7 +3323,6 @@ fun NovelReaderScreen(
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     webViewPageReadyForAutoScroll = true
-                                    bookModeDocumentGeneration++
                                     view?.applyReaderCss(
                                         fontFaceCss = initialFontFaceCss,
                                         paddingTop = initialPaddingTop,
@@ -3808,15 +3663,9 @@ fun NovelReaderScreen(
                             val fontFaceCss = buildNovelReaderFontFaceCss(selectedReaderFont)
                             val currentTextColorCss = colorToCssHex(textColor)
                             val currentBackgroundCss = colorToCssHex(textBackground)
-                            // In book mode the document also needs the section/divider/placeholder
-                            // styles. Appending them to the user's custom CSS keeps every CSS path
-                            // (initial load, reload and live restyle) in sync automatically.
-                            val bookSectionsCss = if (state.bookMode.isEnabled) buildBookSectionsCss() else ""
-                            val currentCustomCss = if (bookSectionsCss.isEmpty()) {
-                                state.readerSettings.customCSS
-                            } else {
-                                state.readerSettings.customCSS + "\n" + bookSectionsCss
-                            }
+                            // The legacy chapter WebView is not mounted in book mode (the book engine
+                            // owns its own document), so no book section styles are needed here.
+                            val currentCustomCss = state.readerSettings.customCSS
                             val currentCustomJs = state.readerSettings.customJS
                             val currentTextShadowCss = resolveWebReaderTextShadowCss(
                                 textShadowEnabled = state.readerSettings.textShadow,
@@ -3901,7 +3750,6 @@ fun NovelReaderScreen(
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     webViewPageReadyForAutoScroll = true
-                                    bookModeDocumentGeneration++
                                     view?.applyReaderCss(
                                         fontFaceCss = fontFaceCss,
                                         paddingTop = paddingTop,
@@ -5579,7 +5427,6 @@ data class NovelReaderScreenActions(
     val onBookModeScroll: (sectionIndex: Int, sectionFraction: Float) -> Unit = { _, _ -> },
     val onBookModeSectionMeasured: (chapterId: Long, charCount: Int) -> Unit = { _, _ -> },
     val onBookModeRetrySection: (sectionIndex: Int) -> Unit = {},
-    val onBookModeDocumentReady: () -> Unit = {},
     val onPrepareWholeBook: () -> Unit = {},
     /**
      * Pre-compiled blocks of a book section, or null when the compiled book has none.

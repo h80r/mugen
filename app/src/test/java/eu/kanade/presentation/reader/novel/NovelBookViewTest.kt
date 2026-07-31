@@ -96,34 +96,4 @@ class NovelBookViewTest {
             nativeBookRendererAvailable = true,
         ).usesWebView shouldBe false
     }
-
-    @Test
-    fun `flow switching toggles the paginated layout class`() {
-        val paginated = buildBookFlowJavascript(paginated = true)
-        paginated shouldContain "classList.add('$BOOK_PAGINATED_CLASS')"
-        paginated shouldContain "const paginated = true;"
-
-        val scrolled = buildBookFlowJavascript(paginated = false)
-        scrolled shouldContain "classList.remove('$BOOK_PAGINATED_CLASS')"
-        scrolled shouldContain "const paginated = false;"
-    }
-
-    @Test
-    fun `page turns move along the axis of the active flow`() {
-        val forward = buildBookPageTurnJavascript(delta = 1)
-        forward shouldContain "const step = 1;"
-        forward shouldContain "scrollLeft"
-        forward shouldContain "scrollTop"
-
-        buildBookPageTurnJavascript(delta = -1) shouldContain "const step = -1;"
-    }
-
-    @Test
-    fun `the paginated flow breaks the book into pages at chapter boundaries`() {
-        val css = buildBookSectionsCss()
-
-        css shouldContain "html.$BOOK_PAGINATED_CLASS body"
-        css shouldContain "column-width: 100vw !important;"
-        css shouldContain "break-after: column !important;"
-    }
 }

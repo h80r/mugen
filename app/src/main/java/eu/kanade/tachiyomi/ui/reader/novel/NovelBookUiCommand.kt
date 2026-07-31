@@ -7,27 +7,15 @@ import kotlinx.coroutines.flow.update
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * One piece of book-mode work the reader UI has to run against the live WebView document.
+ * One piece of book-mode work the reader UI has to run against the mounted book renderer.
  *
- * The screen model never touches the WebView itself; it queues commands and the reader executes the
- * matching JavaScript, then acknowledges them by id.
+ * The screen model never touches the renderer itself; it queues commands and the reader applies
+ * them (JavaScript for the book engine, resident sections for the native list), then acknowledges
+ * them by id.
  */
 sealed interface NovelBookUiCommand {
     val id: Long
     val sectionIndex: Int
-
-    /**
-     * Seed the document with one placeholder per spine section.
-     *
-     * Book mode used to grow the document only from the sections it rendered, so resuming in the
-     * middle of a novel left nothing above the resume point and scrolling back was impossible. The
-     * skeleton makes the whole book addressable from the first frame.
-     */
-    data class Seed(
-        override val id: Long,
-        val sections: List<SeedSection>,
-        override val sectionIndex: Int = -1,
-    ) : NovelBookUiCommand
 
     /** Append a prepared section to the end (or start) of the document. */
     data class Append(
@@ -51,17 +39,11 @@ sealed interface NovelBookUiCommand {
     ) : NovelBookUiCommand
 }
 
-/** One placeholder of the book skeleton: where a section lives in the spine and which chapter it is. */
-data class SeedSection(
-    val sectionIndex: Int,
-    val chapterId: Long,
-)
-
 /**
  * Ordered queue of pending [NovelBookUiCommand]s.
  *
  * Commands stay pending until the reader acknowledges them, so a recomposition or a short lived
- * WebView detach cannot silently drop DOM work. Only the newest scroll request is kept: older ones
+ * renderer detach cannot silently drop work. Only the newest scroll request is kept: older ones
  * are always obsolete.
  */
 internal class NovelBookUiCommandQueue {
@@ -73,19 +55,6 @@ internal class NovelBookUiCommandQueue {
     val commands: StateFlow<List<NovelBookUiCommand>> = pending.asStateFlow()
 
     val pendingCount: Int get() = pending.value.size
-
-    /**
-     * Queues the book skeleton. Only the newest seed is kept and it always runs before the other
-     * pending work, because appends and scroll requests target the placeholders it creates.
-     */
-    fun enqueueSeed(sections: List<SeedSection>): Long {
-        val id = nextId.getAndIncrement()
-        pending.update { current ->
-            listOf(NovelBookUiCommand.Seed(id = id, sections = sections)) +
-                current.filterNot { it is NovelBookUiCommand.Seed }
-        }
-        return id
-    }
 
     fun enqueueAppend(sectionIndex: Int, html: String, keepScrollAnchored: Boolean = true): Long {
         val id = nextId.getAndIncrement()

@@ -336,7 +336,6 @@ class NovelReaderScreen(
                         onBookModeScroll = screenModel::onBookModeScroll,
                         onBookModeSectionMeasured = screenModel::onBookModeSectionMeasured,
                         onBookModeRetrySection = screenModel::onBookModeRetrySection,
-                        onBookModeDocumentReady = screenModel::onBookModeDocumentReady,
                         onPrepareWholeBook = screenModel::prepareWholeBook,
                         onPrepareAutoScrollHandoff = screenModel::prepareAutoScrollHandoff,
                         onConsumeAutoScrollHandoff = screenModel::consumeAutoScrollHandoffIfMatches,

@@ -1,7 +1,5 @@
 package eu.kanade.presentation.reader.novel
 
-import android.webkit.WebView
-
 /**
  * Renderer-independent view layer for book mode.
  *
@@ -78,56 +76,8 @@ internal data class NovelBookViewLocation(
     val sectionFraction: Float,
 )
 
-/** What every book renderer must be able to do. */
-internal interface NovelBookView {
-    /** Places the reader at [location]. */
-    fun goTo(location: NovelBookViewLocation)
-
-    /** Steps forward: one page in paginated flow, roughly one viewport in scrolled flow. */
-    fun next(transitionStyleName: String = "SLIDE")
-
-    /** Steps backward. */
-    fun previous(transitionStyleName: String = "SLIDE")
-
-    /** Switches between scrolled and paginated flow, keeping the reading position. */
-    fun setFlow(flow: NovelBookFlow)
-
-    /** Asks the renderer to report its current position through the relocate channel. */
-    fun requestRelocate()
-}
-
-/** [NovelBookView] backed by the continuous WebView document. */
-internal class WebViewNovelBookView(private val view: WebView) : NovelBookView {
-
-    override fun goTo(location: NovelBookViewLocation) {
-        evaluate(
-            buildScrollToBookSectionJavascript(
-                sectionIndex = location.sectionIndex,
-                sectionFraction = location.sectionFraction,
-            ),
-        )
-    }
-
-    override fun next(transitionStyleName: String) =
-        evaluate(buildBookPageTurnJavascript(delta = 1, transitionStyleName = transitionStyleName))
-
-    override fun previous(transitionStyleName: String) =
-        evaluate(buildBookPageTurnJavascript(delta = -1, transitionStyleName = transitionStyleName))
-
-    override fun setFlow(flow: NovelBookFlow) =
-        evaluate(buildBookFlowJavascript(paginated = flow == NovelBookFlow.PAGINATED))
-
-    override fun requestRelocate() {
-        view.post {
-            if (!view.settings.javaScriptEnabled) return@post
-            view.requestBookRelocate()
-        }
-    }
-
-    private fun evaluate(script: String) {
-        view.post {
-            if (!view.settings.javaScriptEnabled) return@post
-            view.evaluateJavascript(script, null)
-        }
-    }
-}
+/**
+ * Document identity used while book mode is active. The reader keeps a single document alive for
+ * the whole novel, so it must not be reloaded when the current chapter changes.
+ */
+internal const val BOOK_MODE_DOCUMENT_TAG = "an-book-document"
