@@ -104,6 +104,9 @@ internal fun buildBookRelocateBridgeJavascript(
             window.addEventListener('resize', scheduleRelocate, { passive: true });
             document.addEventListener('visibilitychange', scheduleRelocate, true);
             if (window.ResizeObserver && document.body) {
+                if (window.__anBookRelocateObserver) {
+                    window.__anBookRelocateObserver.disconnect();
+                }
                 const observer = new ResizeObserver(scheduleRelocate);
                 observer.observe(document.body);
                 window.__anBookRelocateObserver = observer;

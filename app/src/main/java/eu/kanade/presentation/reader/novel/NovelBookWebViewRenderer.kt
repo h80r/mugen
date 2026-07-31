@@ -1,5 +1,7 @@
 package eu.kanade.presentation.reader.novel
 
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
@@ -8,6 +10,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import eu.kanade.tachiyomi.data.book.novel.NovelBookImageExtractor
 import eu.kanade.tachiyomi.source.novel.NovelPluginImage
 import eu.kanade.tachiyomi.source.novel.NovelPluginImageResolver
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookDocument
@@ -22,6 +25,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonPrimitive
 import java.io.ByteArrayInputStream
+import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 
@@ -70,6 +74,17 @@ internal class NovelBookWebViewRenderer(
             }
         }
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?,
+            ): Boolean {
+                val url = request?.url ?: return false
+                // Only the about:blank shell and the document's own data/base URL are app-side
+                // navigation; anything else belongs to the outer world.
+                if (url.scheme == "about" || url.scheme == "data") return false
+                return openExternally(url)
+            }
+
             override fun shouldInterceptRequest(
                 view: WebView?,
                 request: WebResourceRequest?,
@@ -77,9 +92,11 @@ internal class NovelBookWebViewRenderer(
                 val requestUrl = request?.url?.toString().orEmpty()
                 resolveResource(requestUrl)?.let { return it }
                 if (requestUrl.startsWith("file://")) {
+                    // The book only needs the images the builder externalized next to the artifact.
+                    // Serving arbitrary file:// URLs would let a crafted chapter read any app file.
                     runCatching {
                         val file = java.io.File(java.net.URI.create(requestUrl))
-                        if (file.exists() && file.isFile) {
+                        if (file.isFile && file.isUnderBookImagesDirectory()) {
                             val mimeType = when (file.extension.lowercase()) {
                                 "png" -> "image/png"
                                 "jpg", "jpeg" -> "image/jpeg"
@@ -106,6 +123,26 @@ internal class NovelBookWebViewRenderer(
                 )
             }
         }
+    }
+
+    /** True when [file] lives inside the artifact's `images/` directory. */
+    private fun File.isUnderBookImagesDirectory(): Boolean {
+        if (!exists() || !isFile) return false
+        return runCatching {
+            canonicalFile.parentFile?.name == NovelBookImageExtractor.IMAGES_DIRECTORY_NAME
+        }.getOrDefault(false)
+    }
+
+    /** Hands a URL to an external viewer, returning true when the request was consumed. */
+    private fun openExternally(url: Uri): Boolean {
+        return runCatching {
+            val context = webView.context
+            val intent = Intent(Intent.ACTION_VIEW, url).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            true
+        }.getOrDefault(false)
     }
 
     override suspend fun open(

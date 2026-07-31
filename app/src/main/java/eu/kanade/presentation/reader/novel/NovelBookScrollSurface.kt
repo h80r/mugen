@@ -135,10 +135,12 @@ internal class ViewNovelBookScrollSurface(
                 engineCanScrollForward = report.canScrollForward
             }
         }
-        // The round trip is asynchronous: the frame that starts it reports the request, every later
-        // frame reports what the engine really moved. Reporting 0 here would make the very first
-        // auto-scroll frame look like the end of the book.
-        return if (lastConsumedPx == 0 && engineCanScrollForward) distancePx else lastConsumedPx
+        // The round trip is asynchronous, so the frame that starts it cannot know how much the
+        // engine really moved. Returning the full requested distance here would make auto-scroll
+        // believe it progressed even at the very end of the book (where the engine moves nothing),
+        // so the end was never detected. Returning 0 keeps the first frame conservative: auto-scroll
+        // just asks again next frame, and every later frame reports what the engine actually moved.
+        return lastConsumedPx
     }
 
     override fun step(forward: Boolean) = onStep(forward)

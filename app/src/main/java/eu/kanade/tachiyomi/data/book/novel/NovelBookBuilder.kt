@@ -161,8 +161,20 @@ class NovelBookBuilder(
             chapterSetHash = result.meta.chapterSetHash,
             totalChars = result.meta.totalChars.toLong(),
             chapterCount = result.meta.chapterCount,
-            charOffset = 0L,
-            lastChapterId = result.index.chapters.first().chapterId,
+            // A rebuild rewrites the body file, so an old character offset can point into different
+            // text. When the chapter set is unchanged the offset stays valid and the reading position
+            // is preserved; otherwise the book starts at its beginning instead of resuming mid-way
+            // through a chapter that no longer matches the stored position.
+            charOffset = if (result.meta.chapterSetHash == previous?.chapterSetHash) {
+                previous?.charOffset ?: 0L
+            } else {
+                0L
+            },
+            lastChapterId = if (result.meta.chapterSetHash == previous?.chapterSetHash) {
+                previous?.lastChapterId ?: result.index.chapters.first().chapterId
+            } else {
+                result.index.chapters.first().chapterId
+            },
             complete = result.meta.complete,
             builtAt = result.meta.builtAt,
             updatedAt = timestamp,

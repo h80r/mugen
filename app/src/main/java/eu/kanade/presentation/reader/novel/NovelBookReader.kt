@@ -100,12 +100,17 @@ internal fun NovelBookReader(
             isHorizontalScrollBarEnabled = false
             isVerticalScrollBarEnabled = false
             overScrollMode = WebView.OVER_SCROLL_NEVER
+            // The book document is loaded from a string over a non-file origin, so JS can never
+            // read file:// directly: cross-origin file access needs the two deprecated flags below,
+            // and they stay off. allowFileAccess only lets <img src="file://..."> load the images
+            // the builder externalized next to the artifact, and the renderer's interceptor serves
+            // those from the artifact images directory instead of opening the file system.
             settings.allowFileAccess = true
-            settings.allowContentAccess = true
+            settings.allowContentAccess = false
             @Suppress("DEPRECATION")
-            settings.allowFileAccessFromFileURLs = true
+            settings.allowFileAccessFromFileURLs = false
             @Suppress("DEPRECATION")
-            settings.allowUniversalAccessFromFileURLs = true
+            settings.allowUniversalAccessFromFileURLs = false
         }
     }
     // Every location the engine reports travels up to the screen model and comes straight back
@@ -322,6 +327,9 @@ internal fun NovelBookReader(
         }
         onDispose {
             webView.setOnTouchListener(null)
+            // The renderer is disposed from AndroidView.onRelease, which runs before this effect's
+            // onDispose on composition removal. dispose() is idempotent, so calling it here as well
+            // covers the case where the effect is torn down without the view being released.
             renderer.dispose()
         }
     }
@@ -332,6 +340,9 @@ internal fun NovelBookReader(
             modifier = Modifier.fillMaxSize(),
             onRelease = { view ->
                 view.clearFocus()
+                // dispose() is the single place that tears the book document down and destroys the
+                // WebView; AndroidView must not call destroy() again on its own.
+                renderer.dispose()
             },
         )
         if (loading && !opened) {

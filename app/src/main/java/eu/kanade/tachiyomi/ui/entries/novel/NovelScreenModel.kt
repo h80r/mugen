@@ -302,7 +302,7 @@ class NovelScreenModel(
 
     fun getResumeOrNextChapter(): NovelChapter? {
         val state = successState ?: return null
-        return resolveNovelResumeChapter(state.chapters, state.resumeChapterId)
+        return resolveNovelResumeChapter(state.chapters, state.resumeChapterId, state.bookState)
     }
 
     suspend fun getContinueChapter(): NovelChapter? = withIOContext {
@@ -310,12 +310,12 @@ class NovelScreenModel(
         val historyChapterId = novelHistoryRepository.getHistoryByNovelId(novelId)
             .maxByOrNull { it.readAt?.time ?: Long.MIN_VALUE }
             ?.chapterId
-        resolveNovelResumeChapter(state.chapters, historyChapterId)
+        resolveNovelResumeChapter(state.chapters, historyChapterId, state.bookState)
     }
 
     fun getNextUnreadChapter(): NovelChapter? {
         val state = successState ?: return null
-        return resolveNovelResumeChapter(state.processedChapters)
+        return resolveNovelResumeChapter(state.processedChapters, null, state.bookState)
     }
 
     init {

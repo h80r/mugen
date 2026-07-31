@@ -59,6 +59,23 @@ class NovelBookReadMarkingPolicyTest {
     }
 
     @Test
+    fun `the current section counts as read only past the default 90 percent threshold`() {
+        val spine = spine(3, charCount = 1_000)
+
+        // 89% of the current section: not read yet.
+        NovelBookReadMarkingPolicy.sectionsToMarkRead(
+            spine = spine,
+            location = NovelBookLocation(sectionIndex = 1, charOffset = 890),
+        ) shouldBe listOf(1L)
+
+        // 90% (the DEFAULT_READ_THRESHOLD the per-chapter reader also uses): read.
+        NovelBookReadMarkingPolicy.sectionsToMarkRead(
+            spine = spine,
+            location = NovelBookLocation(sectionIndex = 1, charOffset = 900),
+        ) shouldBe listOf(1L, 2L)
+    }
+
+    @Test
     fun `a location survives an encode and decode round trip`() {
         val spine = spine(5)
         val location = NovelBookLocation(sectionIndex = 3, charOffset = 400)

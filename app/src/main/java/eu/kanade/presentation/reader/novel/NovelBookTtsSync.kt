@@ -70,7 +70,14 @@ internal fun buildBookTtsSyncJavascript(
     ).joinToString("\n")
 }
 
-private const val BOOK_TTS_SNIPPET_MAX_CHARS = 160
+/**
+ * Upper bound for the TTS snippet sent into the book document.
+ *
+ * The snippet has to match the DOM text node by node; truncating it to a short prefix meant long
+ * utterances never matched (`not-found`) and the highlight/scroll silently did nothing. The cap now
+ * covers the longest utterances the TTS model builds while staying small enough for the bridge call.
+ */
+private const val BOOK_TTS_SNIPPET_MAX_CHARS = 600
 
 /**
  * [NovelTtsNavigationAdapter] for book mode.

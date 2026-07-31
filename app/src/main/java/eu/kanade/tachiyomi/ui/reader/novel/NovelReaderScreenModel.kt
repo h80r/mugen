@@ -37,7 +37,6 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderOverride
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTheme
-import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReadingMode
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTranslationProvider
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTranslationStylePreset
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTtsHighlightMode
@@ -417,8 +416,18 @@ class NovelReaderScreenModel(
             isGoogleTranslationVisible -> "google"
             else -> "raw"
         }
-        return "novel$novelId-$translation"
+        val bookVersion = bookStateVersion?.takeIf { it > 0 }?.let { "v$it-" } ?: ""
+        return "novel$novelId-$bookVersion$translation"
     }
+
+    /**
+     * Version of the compiled book whose sections are being cached.
+     *
+     * A rebuilt artifact can hold different text for the same chapter ids, so the prepared-section
+     * cache has to be scoped to the book version; without it a rebuild would keep serving sections
+     * compiled from the old chapters.
+     */
+    private var bookStateVersion: Long? = null
 
     /** Opened compiled-book artifact, non-null while this novel is read as one continuous book. */
     private var artifactSource: NovelBookArtifactSource? = null
@@ -513,9 +522,14 @@ class NovelReaderScreenModel(
      */
     private val bookModeTraceLoggingEnabled = true
 
-    /** True when the reader should present the whole novel as one continuous document. */
-    private fun isBookModeEnabled(): Boolean =
-        novelReaderPreferences.readingMode().get() == NovelReadingMode.BOOK || artifactSource != null
+    /**
+     * True when the reader should present the whole novel as one continuous document.
+     *
+     * Only the per-title compiled artifact enables book mode: the global "book reading mode"
+     * setting was removed by [RemoveNovelBookReadingModeMigration], so a leftover BOOK value must
+     * not silently put a title into the live (unbuilt) book path.
+     */
+    private fun isBookModeEnabled(): Boolean = artifactSource != null
 
     /** Watches the reading-mode preference so book mode can be switched on without a reload. */
     private var readingModeJob: kotlinx.coroutines.Job? = null
@@ -534,9 +548,9 @@ class NovelReaderScreenModel(
             novelReaderPreferences.readingMode().changes()
                 .distinctUntilChanged()
                 .collect {
-                    val shouldBeActive = isBookModeEnabled()
-                    if (shouldBeActive == bookModeRuntime.isActive) return@collect
-                    if (shouldBeActive) {
+                    // The global book reading mode is gone: only the per-title artifact decides.
+                    if (isBookModeEnabled() == bookModeRuntime.isActive) return@collect
+                    if (isBookModeEnabled()) {
                         maybeStartBookMode(currentChapter ?: loadedChapter)
                     } else {
                         bookEnginePrefetchJob?.cancel()
@@ -589,6 +603,7 @@ class NovelReaderScreenModel(
      */
     private suspend fun maybeStartBookMode(chapter: NovelChapter) {
         val bookState = currentNovel?.let { novel -> getNovelBookState.await(novel.id) }
+        bookStateVersion = bookState?.bookVersion
         artifactSource = if (bookState?.enabled == true) {
             currentNovel?.let { novel ->
                 NovelBookArtifactSource.open(
@@ -984,22 +999,42 @@ class NovelReaderScreenModel(
         // the whole-book character offset instead, which is the exact same signal the position is
         // persisted from.
         val artifact = artifactSource
+        val activeChapter = bookModeChapterAtReadingPosition() ?: currentChapter
+        val activeChapterId = activeChapter?.id
         val crossedChapterIds = if (artifact != null) {
             val charOffset = artifact.charOffsetOf(bookModeRuntime.location)
-            artifact
+            val crossed = artifact
                 .chaptersFullyReadBetween(
                     fromCharOffset = bookModeSessionStartCharOffset,
                     toCharOffset = charOffset,
                 )
                 .filterNot { it in alreadyRead }
+                .toMutableList()
+            // The chapter under the caret is still being read, but it counts as read once the
+            // reader is past the same threshold the per-chapter reader uses (90%). Without this,
+            // a chapter the reader stopped in the middle of stayed unread until 99% of the WHOLE
+            // book, and "novel completed" / the series interstitial never fired.
+            artifact.chapterAt(charOffset)?.let { current ->
+                val progressInside = if (current.charLength > 0) {
+                    ((charOffset - current.charStart).toFloat() / current.charLength.toFloat())
+                } else {
+                    0f
+                }
+                if (progressInside >= NovelBookReadMarkingPolicy.DEFAULT_READ_THRESHOLD &&
+                    current.chapterId !in alreadyRead
+                ) {
+                    crossed += current.chapterId
+                }
+            }
+            crossed
         } else {
+            // The live spine's policy already includes the current section once it passes the
+            // threshold, so the current chapter must not be filtered out below.
             bookModeRuntime.chaptersToMarkRead(alreadyRead)
         }
         if (crossedChapterIds.isEmpty()) return
-        val activeChapterId = currentChapter?.id
+        val encodedProgress = bookModeRuntime.encodedProgress()
         crossedChapterIds.forEach { chapterId ->
-            // The section being read keeps using the regular progress path, which owns its read state.
-            if (chapterId == activeChapterId) return@forEach
             val chapter = chapterOrderList.firstOrNull { it.id == chapterId }
                 ?: fullChapterOrderList.firstOrNull { it.id == chapterId }
                 ?: return@forEach
@@ -1015,7 +1050,13 @@ class NovelReaderScreenModel(
                     novelId = chapter.novelId,
                     chapterNumber = chapter.chapterNumber.toInt(),
                     read = true,
-                    lastPageRead = chapter.lastPageRead,
+                    // The chapter under the caret keeps its book location so a later resume lands
+                    // on the same text; fully passed chapters keep their own stored progress.
+                    lastPageRead = if (chapterId == activeChapterId) {
+                        encodedProgress ?: chapter.lastPageRead
+                    } else {
+                        chapter.lastPageRead
+                    },
                     emitReadEvent = becameRead,
                     emitNovelCompleted = becameRead && chapterOrderList.all { it.read },
                     sessionReadDurationMs = 0L,
@@ -1044,8 +1085,11 @@ class NovelReaderScreenModel(
 
     /**
      * Persists the reading position as a book location so the reader can resume anywhere in the
-     * novel. The section fraction is reused as the in-chapter percentage, which keeps the existing
-     * read threshold and history behaviour untouched.
+     * novel.
+     *
+     * The global percent is used for the position only. The "read" flag of the chapter under the
+     * caret is NOT derived from the whole-book percentage (that would require 99% of the entire
+     * book); [markBookModeCrossedChaptersRead] owns the read flag with the per-chapter threshold.
      */
     private fun persistBookModeProgress(sectionFraction: Float) {
         persistBookArtifactProgress()
@@ -1316,6 +1360,7 @@ class NovelReaderScreenModel(
 
     @Volatile
     private var progressPersistenceScheduled = false
+
     private val structuredJson = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -2807,6 +2852,12 @@ class NovelReaderScreenModel(
                                     progressPersistenceScheduled =
                                         pendingProgressPersistenceByChapterId.isNotEmpty()
                                 }
+                                // The flush may have stopped at its per-run budget while the reader
+                                // is still streaming positions; drain the rest instead of leaving the
+                                // tail until the next enqueue.
+                                if (progressPersistenceScheduled) {
+                                    scheduleProgressPersistenceFlush()
+                                }
                             }
                         }
                     }
@@ -2843,8 +2894,18 @@ class NovelReaderScreenModel(
             }
         }
     }
+
+    /**
+     * Drains pending progress writes, bounded per run.
+     *
+     * A reader that streams positions can keep enqueueing while this loop runs; without a budget the
+     * loop never yielded and held the DB and history writer busy for the whole session. One pass
+     * flushes at most [MAX_PENDING_PROGRESS_FLUSH_PER_RUN] chapters and lets the caller reschedule
+     * the tail (see [scheduleProgressPersistenceFlush]).
+     */
     private suspend fun flushPendingProgressPersistence() {
-        while (true) {
+        var flushed = 0
+        while (flushed < MAX_PENDING_PROGRESS_FLUSH_PER_RUN) {
             val nextUpdate = progressPersistenceMutex.withLock {
                 val iterator = pendingProgressPersistenceByChapterId.entries.iterator()
                 if (!iterator.hasNext()) return
@@ -2852,6 +2913,7 @@ class NovelReaderScreenModel(
                 iterator.remove()
                 next
             }
+            flushed += 1
 
             if (getIncognitoState.shouldPauseHistory(currentNovel?.source, currentNovel?.favorite == true)) {
                 return
@@ -2901,6 +2963,29 @@ class NovelReaderScreenModel(
                 flushPendingHistorySnapshot(nextUpdate.chapterId)
             }
             chapterReadStartTimeMs = now
+        }
+    }
+
+    /** Starts another bounded flush when the previous one stopped at its per-run budget. */
+    private suspend fun scheduleProgressPersistenceFlush() {
+        progressPersistenceMutex.withLock {
+            if (progressPersistenceJob?.isActive == true) return
+            if (pendingProgressPersistenceByChapterId.isEmpty()) return
+            progressPersistenceJob = screenModelScope.launch {
+                withContext(NonCancellable) {
+                    try {
+                        flushPendingProgressPersistence()
+                    } finally {
+                        progressPersistenceMutex.withLock {
+                            progressPersistenceJob = null
+                            progressPersistenceScheduled = pendingProgressPersistenceByChapterId.isNotEmpty()
+                        }
+                        if (progressPersistenceScheduled) {
+                            scheduleProgressPersistenceFlush()
+                        }
+                    }
+                }
+            }
         }
     }
     private fun maybePrefetchNextChapterOnProgress(
@@ -5571,6 +5656,12 @@ class NovelReaderScreenModel(
         val nextChapterName: String?,
     )
     companion object {
+        /**
+         * Upper bound of chapters one progress-flush run writes before yielding to the caller.
+         * Streaming readers can enqueue positions faster than the DB drains them; without the budget
+         * the flush loop held the persistence pipeline busy for the whole reading session.
+         */
+        private const val MAX_PENDING_PROGRESS_FLUSH_PER_RUN = 16
         private const val JAOMIX_PAGE_SOURCE_ORDER_STRIDE = 1_000L
         private const val MAX_DEEPSEEK_CONCURRENCY = 32
         private const val PRIVATE_FALLBACK_CHUNK_SIZE = 40
