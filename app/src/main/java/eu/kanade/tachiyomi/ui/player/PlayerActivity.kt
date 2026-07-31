@@ -464,7 +464,9 @@ class PlayerActivity : BaseActivity() {
             }
         }
         copyAssets(mpvDir)
-        copyFontsDirectory(mpvDir)
+        // Stage the user fonts synchronously so they are on disk before MPV initializes its
+        // subtitle renderer; the fonts directory is registered right after initialize below.
+        val fontsDirectory = PlayerFontBridge.copyFontsDirectory(storageManager, mpvDir)
 
         MPVLib.setOptionString("sub-ass-force-margins", "yes")
         MPVLib.setOptionString("sub-use-margins", "yes")
@@ -474,6 +476,7 @@ class PlayerActivity : BaseActivity() {
             cacheDir = applicationContext.cacheDir.path,
             logLvl = logLevel,
         )
+        PlayerFontBridge.setFontsDirectories(fontsDirectory)
         MPVLib.addLogObserver(playerObserver)
         MPVLib.addObserver(playerObserver)
     }
@@ -583,12 +586,6 @@ class PlayerActivity : BaseActivity() {
                 ins?.close()
                 out?.close()
             }
-        }
-    }
-
-    private fun copyFontsDirectory(mpvDir: UniFile) {
-        lifecycleScope.launchIO {
-            PlayerFontBridge.copyFontsDirectory(storageManager, mpvDir)
         }
     }
 

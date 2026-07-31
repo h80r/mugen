@@ -1806,6 +1806,65 @@ fun NovelScreenAuroraImpl(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false },
                         ) {
+                            val isBookBuilt = state.bookState != null
+                            val isBookBuilding = state.bookBuildProgress != null
+                            val appendableChapterCount = (
+                                state.chapters.size - (state.bookState?.chapterCount ?: 0)
+                                ).coerceAtLeast(0)
+                            if (onMakeBookClicked != null) {
+                                AuroraEntryDropdownMenuItem(
+                                    text = stringResource(
+                                        when {
+                                            isBookBuilding -> AYMR.strings.novel_book_building
+                                            isBookBuilt -> AYMR.strings.novel_book_rebuild
+                                            else -> AYMR.strings.novel_book_make
+                                        },
+                                    ),
+                                    enabled = !isBookBuilding,
+                                    onClick = {
+                                        if (!isBookBuilding) onMakeBookClicked()
+                                        showMenu = false
+                                    },
+                                )
+                            }
+                            if (onAppendBookClicked != null && isBookBuilt && appendableChapterCount > 0) {
+                                AuroraEntryDropdownMenuItem(
+                                    text = stringResource(
+                                        AYMR.strings.novel_book_append_available,
+                                        appendableChapterCount,
+                                    ),
+                                    enabled = !isBookBuilding,
+                                    onClick = {
+                                        if (!isBookBuilding) onAppendBookClicked()
+                                        showMenu = false
+                                    },
+                                )
+                            }
+                            if (onToggleReadAsBook != null && isBookBuilt) {
+                                val readAsBook = state.bookState.enabled
+                                AuroraEntryDropdownMenuItem(
+                                    text = stringResource(
+                                        if (readAsBook) {
+                                            AYMR.strings.novel_book_read_as_chapters
+                                        } else {
+                                            AYMR.strings.novel_book_read_as_book
+                                        },
+                                    ),
+                                    onClick = {
+                                        onToggleReadAsBook(!readAsBook)
+                                        showMenu = false
+                                    },
+                                )
+                            }
+                            if (onDeleteBookClicked != null && isBookBuilt) {
+                                AuroraEntryDropdownMenuItem(
+                                    text = stringResource(AYMR.strings.novel_book_delete),
+                                    onClick = {
+                                        onDeleteBookClicked()
+                                        showMenu = false
+                                    },
+                                )
+                            }
                             AuroraEntryDropdownMenuItem(
                                 text = autoJumpToNextLabel,
                                 onClick = {
