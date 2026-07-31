@@ -330,8 +330,7 @@ actual class LocalMangaSource(
                 if (c == 0) c2.name.compareToCaseInsensitiveNaturalOrder(c1.name) else c
             }
 
-        // Copy the cover from the first chapter found if not available
-        if (manga.thumbnail_url.isNullOrBlank()) {
+        applyLocalMangaCover(manga, coverManager.find(manga.url)?.uri?.toString()) {
             chapters.lastOrNull()?.let { chapter ->
                 updateCover(chapter, manga)
             }
@@ -427,6 +426,18 @@ actual class LocalMangaSource(
         const val HELP_URL = "https://aniyomi.org/help/guides/local-manga/"
 
         private val LATEST_THRESHOLD = TimeUnit.MILLISECONDS.convert(7, TimeUnit.DAYS)
+    }
+}
+
+internal fun applyLocalMangaCover(
+    manga: SManga,
+    existingCoverUrl: String?,
+    generateCover: () -> Unit,
+) {
+    if (existingCoverUrl != null) {
+        manga.thumbnail_url = existingCoverUrl
+    } else if (manga.thumbnail_url.isNullOrBlank()) {
+        generateCover()
     }
 }
 
