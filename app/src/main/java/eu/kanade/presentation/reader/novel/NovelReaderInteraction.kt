@@ -608,14 +608,16 @@ internal fun resolveReaderVerticalSeekbarValue(
     pageTurnHasPreviousChapter: Boolean = composePagerHasPreviousChapter,
     seekbarItemsCount: Int,
     readingProgressPercent: Int,
+    nativeFirstVisibleItemIndex: Int = 0,
+    nativeCanScrollForward: Boolean = true,
     bookModeEnabled: Boolean = false,
 ): Float {
     return when {
-        bookModeEnabled || !usePageReader -> {
+        bookModeEnabled -> {
             readingProgressPercent.coerceIn(0, 100) / 100f
         }
         showWebView -> webProgressPercent.coerceIn(0, 100) / 100f
-        else -> {
+        usePageReader -> {
             val max = (seekbarItemsCount - 1).coerceAtLeast(1)
             val current = resolvePageReaderCurrentPage(
                 pageReaderRendererRoute = pageReaderRendererRoute,
@@ -627,6 +629,14 @@ internal fun resolveReaderVerticalSeekbarValue(
                 pageTurnHasPreviousChapter = pageTurnHasPreviousChapter,
             )
             current.toFloat() / max.toFloat()
+        }
+        else -> {
+            val max = (seekbarItemsCount - 1).coerceAtLeast(1)
+            if (!nativeCanScrollForward) {
+                1f
+            } else {
+                nativeFirstVisibleItemIndex.coerceIn(0, max).toFloat() / max.toFloat()
+            }
         }
     }
 }

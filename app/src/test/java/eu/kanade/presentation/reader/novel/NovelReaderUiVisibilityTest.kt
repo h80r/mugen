@@ -3095,6 +3095,113 @@ class NovelReaderUiVisibilityTest {
     }
 
     @Test
+    fun `vertical seekbar drag deltas accumulate from the latest scrub position`() {
+        val first = resolveVerticalSeekbarDragProgress(
+            currentProgress = 0.2f,
+            deltaPx = 10f,
+            trackHeightPx = 100f,
+        )
+        val second = resolveVerticalSeekbarDragProgress(
+            currentProgress = first,
+            deltaPx = 25f,
+            trackHeightPx = 100f,
+        )
+
+        assertEquals(0.3f, first, 0.0001f)
+        assertEquals(0.55f, second, 0.0001f)
+    }
+
+    @Test
+    fun `vertical seekbar drag supports reverse movement and clamps to track bounds`() {
+        assertEquals(
+            0.25f,
+            resolveVerticalSeekbarDragProgress(0.75f, -50f, 100f),
+            0.0001f,
+        )
+        assertEquals(
+            0f,
+            resolveVerticalSeekbarDragProgress(0.1f, -50f, 100f),
+            0.0001f,
+        )
+        assertEquals(
+            1f,
+            resolveVerticalSeekbarDragProgress(0.9f, 50f, 100f),
+            0.0001f,
+        )
+    }
+
+    @Test
+    fun `vertical seekbar value prioritizes book then web then active reader position`() {
+        val bookValue = resolveReaderVerticalSeekbarValue(
+            showWebView = true,
+            webProgressPercent = 80,
+            usePageReader = false,
+            pageReaderRendererRoute = NovelPageReaderRendererRoute.NONE,
+            pagerCurrentPage = 0,
+            pageTurnCurrentPage = 0,
+            composePagerContentPageCount = 1,
+            composePagerHasPreviousChapter = false,
+            seekbarItemsCount = 101,
+            readingProgressPercent = 42,
+            nativeFirstVisibleItemIndex = 70,
+            nativeCanScrollForward = true,
+            bookModeEnabled = true,
+        )
+        val webValue = resolveReaderVerticalSeekbarValue(
+            showWebView = true,
+            webProgressPercent = 73,
+            usePageReader = false,
+            pageReaderRendererRoute = NovelPageReaderRendererRoute.NONE,
+            pagerCurrentPage = 0,
+            pageTurnCurrentPage = 0,
+            composePagerContentPageCount = 1,
+            composePagerHasPreviousChapter = false,
+            seekbarItemsCount = 101,
+            readingProgressPercent = 10,
+            nativeFirstVisibleItemIndex = 5,
+            nativeCanScrollForward = true,
+        )
+        val nativeValue = resolveReaderVerticalSeekbarValue(
+            showWebView = false,
+            webProgressPercent = 0,
+            usePageReader = false,
+            pageReaderRendererRoute = NovelPageReaderRendererRoute.NONE,
+            pagerCurrentPage = 0,
+            pageTurnCurrentPage = 0,
+            composePagerContentPageCount = 1,
+            composePagerHasPreviousChapter = false,
+            seekbarItemsCount = 11,
+            readingProgressPercent = 90,
+            nativeFirstVisibleItemIndex = 3,
+            nativeCanScrollForward = true,
+        )
+
+        assertEquals(0.42f, bookValue, 0.0001f)
+        assertEquals(0.73f, webValue, 0.0001f)
+        assertEquals(0.3f, nativeValue, 0.0001f)
+    }
+
+    @Test
+    fun `native seekbar reports track end when list cannot scroll forward`() {
+        val seekbarValue = resolveReaderVerticalSeekbarValue(
+            showWebView = false,
+            webProgressPercent = 0,
+            usePageReader = false,
+            pageReaderRendererRoute = NovelPageReaderRendererRoute.NONE,
+            pagerCurrentPage = 0,
+            pageTurnCurrentPage = 0,
+            composePagerContentPageCount = 1,
+            composePagerHasPreviousChapter = false,
+            seekbarItemsCount = 11,
+            readingProgressPercent = 0,
+            nativeFirstVisibleItemIndex = 8,
+            nativeCanScrollForward = false,
+        )
+
+        assertEquals(1f, seekbarValue, 0.0001f)
+    }
+
+    @Test
     fun `book and curl resolve to distinct page turn presets`() {
         val bookPreset = resolveNovelPageTurnPreset(
             style = NovelPageTransitionStyle.BOOK,

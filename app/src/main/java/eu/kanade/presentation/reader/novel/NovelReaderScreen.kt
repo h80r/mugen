@@ -4151,6 +4151,8 @@ fun NovelReaderScreen(
                             pageTurnHasPreviousChapter = composePagerHasPreviousChapter,
                             seekbarItemsCount = seekbarItemsCount,
                             readingProgressPercent = readingProgressPercent,
+                            nativeFirstVisibleItemIndex = textListState.firstVisibleItemIndex,
+                            nativeCanScrollForward = textListState.canScrollForward,
                             bookModeEnabled = state.bookMode.isEnabled,
                         )
                     }
@@ -4174,6 +4176,81 @@ fun NovelReaderScreen(
                     resolveReaderVerticalSeekbarTickFractions(pageReaderItemsCount)
                 } else {
                     emptyList()
+                }
+                var seekJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+                fun seekToVerticalProgress(value: Float, isFinal: Boolean) {
+                    val clampedValue = value.coerceIn(0f, 1f)
+                    if (state.bookMode.isEnabled) {
+                        onSeekBookModeProgress(clampedValue)
+                    } else if (showWebView) {
+                        val targetPercent = (clampedValue * 100f).roundToInt().coerceIn(0, 100)
+                        webProgressPercent = targetPercent
+                        val webView = webViewInstance
+                        if (webView != null) {
+                            val totalScrollable = resolveWebViewTotalScrollablePx(
+                                contentHeightPx = webView.resolveWebViewContentHeightPx(),
+                                viewHeightPx = webView.height,
+                            )
+                            val targetY = if (totalScrollable > 0) {
+                                ((targetPercent.toFloat() / 100f) * totalScrollable.toFloat())
+                                    .roundToInt()
+                                    .coerceIn(0, totalScrollable)
+                            } else {
+                                0
+                            }
+                            webView.scrollTo(0, targetY)
+                            if (isFinal) {
+                                webView.post {
+                                    val finalTotalScrollable = resolveWebViewTotalScrollablePx(
+                                        contentHeightPx = webView.resolveWebViewContentHeightPx(),
+                                        viewHeightPx = webView.height,
+                                    )
+                                    val finalPercent = resolveWebViewScrollProgressPercent(
+                                        scrollY = webView.scrollY,
+                                        totalScrollable = finalTotalScrollable,
+                                    )
+                                    webProgressPercent = finalPercent
+                                    reportReadingProgress(
+                                        finalPercent,
+                                        100,
+                                        encodeWebScrollProgressPercent(finalPercent),
+                                    )
+                                }
+                            }
+                        }
+                        reportReadingProgress(
+                            targetPercent,
+                            100,
+                            encodeWebScrollProgressPercent(targetPercent),
+                        )
+                    } else {
+                        val maxIndex = (seekbarItemsCount - 1).coerceAtLeast(0)
+                        val target = (clampedValue * maxIndex.toFloat())
+                            .roundToInt()
+                            .coerceIn(0, maxIndex)
+                        if (usePageReader) {
+                            pageTurnCurrentPage = target
+                            if (pageReaderRendererRoute == NovelPageReaderRendererRoute.PAGE_TURN_RENDERER) {
+                                pageTurnRequestedPage = target
+                            } else {
+                                val virtualTarget = resolveComposePagerVirtualPageIndex(
+                                    actualPageIndex = target,
+                                    hasPreviousChapter = composePagerHasPreviousChapter,
+                                )
+                                seekJob?.cancel()
+                                seekJob = coroutineScope.launch {
+                                    pagerState.scrollToPage(
+                                        virtualTarget.coerceIn(0, (pagerState.pageCount - 1).coerceAtLeast(0)),
+                                    )
+                                }
+                            }
+                        } else {
+                            seekJob?.cancel()
+                            seekJob = coroutineScope.launch {
+                                textListState.scrollToItem(target)
+                            }
+                        }
+                    }
                 }
                 Column(
                     modifier = Modifier
@@ -4355,55 +4432,8 @@ fun NovelReaderScreen(
                         topLabel = pageRailTopLabel,
                         bottomLabel = pageRailBottomLabel,
                         tickFractions = pageSeekbarTickFractions,
-                        onProgressChange = { value ->
-                            if (state.bookMode.isEnabled) {
-                                onSeekBookModeProgress(value)
-                            } else if (showWebView) {
-                                val targetPercent = (value * 100f).roundToInt().coerceIn(0, 100)
-                                webProgressPercent = targetPercent
-                                val webView = webViewInstance
-                                if (webView != null) {
-                                    val totalScrollable = resolveWebViewTotalScrollablePx(
-                                        contentHeightPx = webView.resolveWebViewContentHeightPx(),
-                                        viewHeightPx = webView.height,
-                                    )
-                                    if (totalScrollable > 0) {
-                                        val targetY = ((targetPercent.toFloat() / 100f) * totalScrollable.toFloat())
-                                            .roundToInt()
-                                            .coerceIn(0, totalScrollable)
-                                        webView.scrollTo(0, targetY)
-                                    } else {
-                                        webView.scrollTo(0, 0)
-                                    }
-                                }
-                                reportReadingProgress(targetPercent, 100, encodeWebScrollProgressPercent(targetPercent))
-                            } else {
-                                val maxIndex = (seekbarItemsCount - 1).coerceAtLeast(0)
-                                val target = (value * maxIndex.toFloat())
-                                    .roundToInt()
-                                    .coerceIn(0, maxIndex)
-                                if (usePageReader) {
-                                    pageTurnCurrentPage = target
-                                    if (pageReaderRendererRoute == NovelPageReaderRendererRoute.PAGE_TURN_RENDERER) {
-                                        pageTurnRequestedPage = target
-                                    } else {
-                                        val virtualTarget = resolveComposePagerVirtualPageIndex(
-                                            actualPageIndex = target,
-                                            hasPreviousChapter = composePagerHasPreviousChapter,
-                                        )
-                                        coroutineScope.launch {
-                                            pagerState.scrollToPage(
-                                                virtualTarget.coerceIn(0, (pagerState.pageCount - 1).coerceAtLeast(0)),
-                                            )
-                                        }
-                                    }
-                                } else {
-                                    coroutineScope.launch {
-                                        textListState.scrollToItem(target)
-                                    }
-                                }
-                            }
-                        },
+                        onProgressChange = { value -> seekToVerticalProgress(value, isFinal = false) },
+                        onProgressChangeFinished = { value -> seekToVerticalProgress(value, isFinal = true) },
                         modifier = Modifier
                             .fillMaxSize(),
                     )
