@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.ui.reader.model.JoinedReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.model.shouldShowChapterTransitionInfo
 import eu.kanade.tachiyomi.ui.reader.viewer.calculateVisibleChapterGap
 import eu.kanade.tachiyomi.util.system.createReaderThemeContext
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
@@ -72,7 +73,17 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
 
         // Skip transition page if the chapter is loaded & current page is not a transition page
         if (prevHasMissingChapters || forceTransition || chapters.prevChapter?.state !is ReaderChapter.State.Loaded) {
-            newItems.add(ChapterTransition.Prev(chapters.currChapter, chapters.prevChapter))
+            newItems.add(
+                ChapterTransition.Prev(
+                    from = chapters.currChapter,
+                    to = chapters.prevChapter,
+                    showInfo = shouldShowChapterTransitionInfo(
+                        alwaysShowChapterTransition = forceTransition,
+                        hasMissingChapters = prevHasMissingChapters,
+                        destinationChapter = chapters.prevChapter,
+                    ),
+                ),
+            )
         }
 
         var insertPageLastPage: InsertPage? = null
@@ -113,7 +124,15 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
         currentChapter = chapters.currChapter
 
         // Add next chapter transition and pages.
-        nextTransition = ChapterTransition.Next(chapters.currChapter, chapters.nextChapter)
+        nextTransition = ChapterTransition.Next(
+            from = chapters.currChapter,
+            to = chapters.nextChapter,
+            showInfo = shouldShowChapterTransitionInfo(
+                alwaysShowChapterTransition = forceTransition,
+                hasMissingChapters = nextHasMissingChapters,
+                destinationChapter = chapters.nextChapter,
+            ),
+        )
             .also {
                 if (nextHasMissingChapters ||
                     forceTransition ||

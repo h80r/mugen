@@ -12,6 +12,7 @@ import androidx.core.view.isVisible
 import com.google.android.material.progressindicator.CircularProgressIndicator
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
+import eu.kanade.tachiyomi.ui.reader.model.shouldShowChapterTransitionLoading
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderTransitionView
 import eu.kanade.tachiyomi.util.system.dpToPx
 import kotlinx.coroutines.Job
@@ -65,13 +66,12 @@ class WebtoonTransitionHolder(
      * Binds the given [transition] with this view holder, subscribing to its state.
      */
     fun bind(transition: ChapterTransition) {
-        transitionView.bind(transition, viewer.downloadManager, viewer.activity.viewModel.manga)
+        stateJob?.cancel()
+        pagesContainer.removeAllViews()
+        pagesContainer.isVisible = false
 
-        if (!viewer.config.alwaysShowChapterTransition && transition.to != null) {
-            // Setting disabled: do not display the intermediate info screen with prev/next chapter details.
-            // The structural item remains so swipes can cross chapters and trigger loading.
-            transitionView.visibility = View.GONE
-        }
+        transitionView.bind(transition, viewer.downloadManager, viewer.activity.viewModel.manga)
+        transitionView.visibility = if (transition.showInfo) View.VISIBLE else View.GONE
 
         transition.to?.let { observeStatus(it, transition) }
     }
@@ -94,11 +94,8 @@ class WebtoonTransitionHolder(
                 .collectLatest { state ->
                     pagesContainer.removeAllViews()
                     when (state) {
-                        is ReaderChapter.State.Loading -> setLoading()
                         is ReaderChapter.State.Error -> setError(state.error, transition)
-                        is ReaderChapter.State.Wait, is ReaderChapter.State.Loaded -> {
-                            // No additional view is added
-                        }
+                        else -> if (shouldShowChapterTransitionLoading(transition.showInfo, state)) setLoading()
                     }
                     pagesContainer.isVisible = pagesContainer.isNotEmpty()
                 }
