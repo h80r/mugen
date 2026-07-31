@@ -15,10 +15,8 @@ class NovelPluginRepoUpdateInteractor(
         return withIOContext {
             val available = repoUrls
                 .groupBy { repoGroupKey(it) }
-                .values
-                .flatMap { groupedUrls ->
-                    groupedUrls
-                        .flatMap { repoService.fetch(it) }
+                .flatMap { (repoBase, _) ->
+                    repoService.fetchFirstAvailable(repoBase)
                 }
                 .groupBy { it.id }
                 .mapNotNull { (_, entries) ->

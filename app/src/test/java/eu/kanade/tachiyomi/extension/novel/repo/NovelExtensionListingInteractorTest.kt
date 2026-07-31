@@ -57,9 +57,8 @@ class NovelExtensionListingInteractorTest {
                 hasSettings = false,
                 sha256 = "bbb",
             )
-            coEvery { repoService.fetch("https://example.org/index.min.json") } returns listOf(availableUpdate)
-            coEvery { repoService.fetch("https://example.org/plugins.min.json") } returns listOf(availableNew)
-            coEvery { repoService.fetch("https://example.org/plugins.json") } returns emptyList()
+            coEvery { repoService.fetchFirstAvailable("https://example.org") } returns
+                listOf(availableUpdate, availableNew)
 
             val installed = NovelPluginRepoEntry(
                 id = "source-1",
@@ -103,9 +102,7 @@ class NovelExtensionListingInteractorTest {
             listing.updates.shouldContainExactly(availableUpdate)
             listing.installed.shouldContainExactly(installed)
             listing.available.shouldContainExactly(availableNew)
-            coVerify(exactly = 1) { repoService.fetch("https://example.org/index.min.json") }
-            coVerify(exactly = 1) { repoService.fetch("https://example.org/plugins.min.json") }
-            coVerify(exactly = 1) { repoService.fetch("https://example.org/plugins.json") }
+            coVerify(exactly = 1) { repoService.fetchFirstAvailable("https://example.org") }
         }
     }
 
@@ -125,19 +122,6 @@ class NovelExtensionListingInteractorTest {
             )
             coEvery { getRepos.getAll() } returns listOf(repo)
 
-            val duplicateFromIndex = NovelPluginRepoEntry(
-                id = "source-dup",
-                name = "Source Dup",
-                site = "Example",
-                lang = "en",
-                version = 1,
-                url = "https://example.org/source-dup-v1.js",
-                iconUrl = null,
-                customJsUrl = null,
-                customCssUrl = null,
-                hasSettings = false,
-                sha256 = "dup-v1",
-            )
             val duplicateFromPlugins = NovelPluginRepoEntry(
                 id = "source-dup",
                 name = "Source Dup",
@@ -165,10 +149,8 @@ class NovelExtensionListingInteractorTest {
                 sha256 = "unique",
             )
 
-            coEvery { repoService.fetch("https://example.org/index.min.json") } returns
-                listOf(duplicateFromIndex, unique)
-            coEvery { repoService.fetch("https://example.org/plugins.min.json") } returns listOf(duplicateFromPlugins)
-            coEvery { repoService.fetch("https://example.org/plugins.json") } returns emptyList()
+            coEvery { repoService.fetchFirstAvailable("https://example.org") } returns
+                listOf(duplicateFromPlugins, unique)
             coEvery { repository.getAll() } returns emptyList()
 
             val interactor = NovelExtensionListingInteractor(
@@ -236,12 +218,8 @@ class NovelExtensionListingInteractorTest {
                 sha256 = "two",
             )
 
-            coEvery { repoService.fetch("https://repo-one.example/index.min.json") } returns listOf(fromFirstRepo)
-            coEvery { repoService.fetch("https://repo-one.example/plugins.min.json") } returns emptyList()
-            coEvery { repoService.fetch("https://repo-one.example/plugins.json") } returns emptyList()
-            coEvery { repoService.fetch("https://repo-two.example/index.min.json") } returns listOf(fromSecondRepo)
-            coEvery { repoService.fetch("https://repo-two.example/plugins.min.json") } returns emptyList()
-            coEvery { repoService.fetch("https://repo-two.example/plugins.json") } returns emptyList()
+            coEvery { repoService.fetchFirstAvailable("https://repo-one.example") } returns listOf(fromFirstRepo)
+            coEvery { repoService.fetchFirstAvailable("https://repo-two.example") } returns listOf(fromSecondRepo)
             coEvery { repository.getAll() } returns emptyList()
 
             val interactor = NovelExtensionListingInteractor(
@@ -281,7 +259,7 @@ class NovelExtensionListingInteractorTest {
             listing.updates shouldBe emptyList()
             listing.installed shouldBe emptyList()
             listing.available shouldBe emptyList()
-            coVerify(exactly = 0) { repoService.fetch(any<String>()) }
+            coVerify(exactly = 0) { repoService.fetchFirstAvailable(any<String>()) }
         }
     }
 
@@ -300,7 +278,7 @@ class NovelExtensionListingInteractorTest {
                 signingKeyFingerprint = "ABC",
             )
             coEvery { getRepos.getAll() } returns listOf(repo)
-            coEvery { repoService.fetch("https://example.org/index.min.json") } returns emptyList()
+            coEvery { repoService.fetchFirstAvailable("https://example.org/index.min.json") } returns emptyList()
             coEvery { repository.getAll() } returns emptyList()
 
             val interactor = NovelExtensionListingInteractor(
@@ -315,7 +293,7 @@ class NovelExtensionListingInteractorTest {
             listing.updates shouldBe emptyList()
             listing.installed shouldBe emptyList()
             listing.available shouldBe emptyList()
-            coVerify(exactly = 1) { repoService.fetch("https://example.org/index.min.json") }
+            coVerify(exactly = 1) { repoService.fetchFirstAvailable("https://example.org/index.min.json") }
         }
     }
 }

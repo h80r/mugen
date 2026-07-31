@@ -102,11 +102,7 @@ class NovelExtensionApiTest {
             coEvery { getExtensionRepo.getAll() } returns listOf(repo)
             coEvery {
                 repoUpdateInteractor.findUpdates(
-                    listOf(
-                        "https://example.org/index.min.json",
-                        "https://example.org/plugins.min.json",
-                        "https://example.org/plugins.json",
-                    ),
+                    listOf("https://example.org"),
                 )
             } returns listOf(entry)
             coJustRun { updateExtensionRepo.awaitAll() }
@@ -117,11 +113,7 @@ class NovelExtensionApiTest {
             coVerify { updateExtensionRepo.awaitAll() }
             coVerify {
                 repoUpdateInteractor.findUpdates(
-                    listOf(
-                        "https://example.org/index.min.json",
-                        "https://example.org/plugins.min.json",
-                        "https://example.org/plugins.json",
-                    ),
+                    listOf("https://example.org"),
                 )
             }
             verify { lastCheckPreference.set(nowMs) }
