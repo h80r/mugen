@@ -7,7 +7,9 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
+import io.mockk.Runs
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.data.extension.novel.NovelPluginKeyValueStore
+import java.util.zip.GZIPOutputStream
 
 class NovelJsRuntimeFactoryTest {
 
@@ -537,6 +540,15 @@ class NovelJsRuntimeFactoryTest {
         @ProtoNumber(1) val value: String? = null,
     )
 
+    @Serializable
+    private data class TestJsFetchResponse(
+        val status: Int,
+        val url: String,
+        val headers: Map<String, String>,
+        val body: String?,
+        val bodyBase64: String? = null,
+    )
+
     // Golden-plugin regression tests for webStorageUtilized behavior
 
     @Test
@@ -608,5 +620,87 @@ class NovelJsRuntimeFactoryTest {
         store.get("plugin2", "key") shouldBe null
         store.keys("plugin1").shouldBeEmpty()
         store.keys("plugin2").shouldBeEmpty()
+    }
+
+    @Test
+    fun `fetch decompresses gzip response when plugin explicitly requests gzip`() {
+        val payload = """{"status":"success","response":[{"t_title":"Ранобэ Тест","id":1}]}"""
+        val gzipBuffer = Buffer()
+        GZIPOutputStream(gzipBuffer.outputStream()).use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+        val gzipBytes = gzipBuffer.readByteArray()
+
+        val headers = mockk<okhttp3.Headers>()
+        every { headers.toMultimap() } returns mapOf(
+            "Content-Type" to listOf("application/json; charset=utf-8"),
+            "Content-Encoding" to listOf("gzip"),
+        )
+        every { headers.values("Set-Cookie") } returns emptyList()
+
+        val requestUrl = mockk<okhttp3.HttpUrl>()
+        every { requestUrl.toString() } returns "http://localhost/api3/searchBooks"
+
+        val request = mockk<okhttp3.Request>()
+        every { request.url } returns requestUrl
+
+        val body = mockk<okhttp3.ResponseBody>()
+        every { body.bytes() } returns gzipBytes
+        every { body.contentType() } returns null
+
+        val response = mockk<okhttp3.Response>()
+        every { response.code } returns 200
+        every { response.headers } returns headers
+        every { response.request } returns request
+        every { response.body } returns body
+        every { response.isSuccessful } returns true
+        every { response.header("Content-Encoding", null) } returns "gzip"
+        every { response.close() } just Runs
+
+        val call = mockk<okhttp3.Call>()
+        every { call.execute() } returns response
+
+        val client = mockk<okhttp3.OkHttpClient>()
+        every { client.newCall(any()) } returns call
+
+        val networkHelper = mockk<NetworkHelper>(relaxed = true)
+        every { networkHelper.client } returns client
+
+        val nativeApiClass = Class.forName(
+            "eu.kanade.tachiyomi.extension.novel.runtime.NovelJsRuntimeFactory\$NativeApiImpl",
+        )
+        val constructor = nativeApiClass.getDeclaredConstructor(
+            String::class.java,
+            NetworkHelper::class.java,
+            NovelPluginKeyValueStore::class.java,
+            Json::class.java,
+            NovelDomainAliasResolver::class.java,
+        ).apply {
+            isAccessible = true
+        }
+        val nativeApi = constructor.newInstance(
+            "rulate-api",
+            networkHelper,
+            InMemoryStore(),
+            Json { ignoreUnknownKeys = true },
+            NovelDomainAliasResolver(NovelPluginRuntimeOverrides()),
+        )
+
+        val fetchMethod = nativeApiClass.getDeclaredMethod(
+            "fetch",
+            String::class.java,
+            String::class.java,
+        ).apply {
+            isAccessible = true
+        }
+
+        val result = fetchMethod.invoke(
+            nativeApi,
+            "https://tl.rulate.ru/api3/searchBooks",
+            """{"method":"GET","headers":{"accept-encoding":"gzip"}}""",
+        ) as String
+
+        val decoded = Json.decodeFromString<TestJsFetchResponse>(result)
+        decoded.body shouldBe payload
+        decoded.status shouldBe 200
+        decoded.headers.keys.none { it.equals("Content-Encoding", ignoreCase = true) } shouldBe true
     }
 }
