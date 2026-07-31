@@ -126,7 +126,6 @@ internal fun resolveComposePagerTransitionSpec(
                 )
             }
         }
-        else -> ComposePagerTransitionSpec()
     }
 }
 

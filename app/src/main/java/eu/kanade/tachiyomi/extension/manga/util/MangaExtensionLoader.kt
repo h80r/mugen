@@ -345,6 +345,7 @@ internal object MangaExtensionLoader {
         // Validate lib version. MetaData values can be stored as Float, Double or String
         // depending on how the extension manifest declares them; typed Bundle getters throw
         // (and log a warning) on a mismatch, so read the raw value and convert explicitly.
+        @Suppress("DEPRECATION") // Bundle.get(String) is deprecated in API 33; no raw-value replacement exists
         val rawLibVersion = when (val value = appInfo.metaData?.get(METADATA_EXTENSION_LIB)) {
             is Number -> value.toDouble().takeUnless { it == 0.0 }
             is String -> value.toDoubleOrNull()?.takeUnless { it == 0.0 }

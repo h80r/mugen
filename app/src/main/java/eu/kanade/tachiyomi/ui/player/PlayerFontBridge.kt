@@ -47,8 +47,9 @@ internal object PlayerFontBridge {
             targetFontsDirectory.mkdirs()
         }
         sourceFonts.forEach { font ->
+            val fontName = font.name ?: return@forEach
             runCatching {
-                val outFile = File(targetFontsDirectory, font.name)
+                val outFile = File(targetFontsDirectory, fontName)
                 font.openInputStream().use { input ->
                     outFile.outputStream().use { output ->
                         input.copyTo(output)
@@ -57,7 +58,7 @@ internal object PlayerFontBridge {
             }.onFailure { error ->
                 if (error is IOException) {
                     logcat(LogPriority.WARN, error) {
-                        "Skipping unreadable MPV font: ${font.name}"
+                        "Skipping unreadable MPV font: $fontName"
                     }
                 } else {
                     throw error
