@@ -68,6 +68,7 @@ import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import eu.kanade.tachiyomi.ui.entries.mergeNewItemIds
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
+import eu.kanade.tachiyomi.util.manga.MangaMemoRepairHelper
 import eu.kanade.tachiyomi.util.removeCovers
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.ImmutableList
@@ -698,7 +699,7 @@ class MangaScreenModel(
             withIOContext {
                 sourceUpdateMutex.withLock {
                     state.source.getMangaUpdate(
-                        manga = state.manga.toSMangaUpdateRequest(),
+                        manga = MangaMemoRepairHelper.getOrRepairMangaRequest(state.manga, state.source, updateManga),
                         chapters = emptyList(),
                         fetchDetails = true,
                         fetchChapters = true,
@@ -727,7 +728,7 @@ class MangaScreenModel(
                 // getMangaDetails), and works for 1.6 extensions that only implement this one.
                 val networkManga = prefetched?.manga ?: sourceUpdateMutex.withLock {
                     state.source.getMangaUpdate(
-                        manga = state.manga.toSMangaUpdateRequest(),
+                        manga = MangaMemoRepairHelper.getOrRepairMangaRequest(state.manga, state.source, updateManga),
                         chapters = emptyList(),
                         fetchDetails = true,
                         fetchChapters = false,
@@ -1177,7 +1178,7 @@ class MangaScreenModel(
                 // 1.6 extension implements - calling getChapterList there throws.
                 val sourceChapters = prefetched?.chapters ?: sourceUpdateMutex.withLock {
                     state.source.getMangaUpdate(
-                        manga = state.manga.toSManga(),
+                        manga = MangaMemoRepairHelper.getOrRepairMangaRequest(state.manga, state.source, updateManga),
                         chapters = emptyList(),
                         fetchDetails = false,
                         fetchChapters = true,

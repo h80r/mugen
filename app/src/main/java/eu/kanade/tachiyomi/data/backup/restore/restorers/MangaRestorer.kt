@@ -300,6 +300,7 @@ class MangaRestorer(
                 dateAdded = manga.dateAdded,
                 updateStrategy = manga.updateStrategy,
                 version = manga.version,
+                memo = manga.memo,
             )
             val mangaId = db.mangasQueries.selectLastInsertedRowId().executeAsOne()
             db.mangasQueries.updateMetadata(

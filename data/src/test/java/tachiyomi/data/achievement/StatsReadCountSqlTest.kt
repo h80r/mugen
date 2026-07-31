@@ -129,6 +129,7 @@ class StatsReadCountSqlTest {
             calculateInterval = 0L,
             version = 0L,
             rating = -1.0,
+            memo = kotlinx.serialization.json.JsonObject(emptyMap()),
         )
     }
 

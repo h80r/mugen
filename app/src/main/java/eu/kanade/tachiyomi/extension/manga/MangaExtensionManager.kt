@@ -106,6 +106,15 @@ class MangaExtensionManager(
         return sourceIdToPackageName[sourceId]
     }
 
+    /**
+     * Returns the extensions-lib version of the installed extension serving [sourceId],
+     * or null when the source is not backed by an installed extension.
+     */
+    fun getLibVersionForSource(sourceId: Long): Double? {
+        val pkgName = getExtensionPackage(sourceId) ?: return null
+        return installedExtensionsMapFlow.value[pkgName]?.libVersion
+    }
+
     fun getExtensionPackageAsFlow(sourceId: Long): Flow<String?> {
         return installedExtensionsFlow.map { extensions ->
             extensions.find { extension ->

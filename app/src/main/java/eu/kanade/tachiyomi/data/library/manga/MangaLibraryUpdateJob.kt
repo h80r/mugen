@@ -29,6 +29,7 @@ import eu.kanade.tachiyomi.data.library.updateerror.LibraryUpdateErrorStore
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import eu.kanade.tachiyomi.util.manga.MangaMemoRepairHelper
 import eu.kanade.tachiyomi.util.storage.getUriCompat
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
 import eu.kanade.tachiyomi.util.system.isCharging
@@ -483,7 +484,7 @@ class MangaLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
         // single request instead of failing on the legacy entry points it no longer implements.
         val fetchDetails = libraryPreferences.autoUpdateMetadata().get()
         val update = source.getMangaUpdate(
-            manga = manga.toSMangaUpdateRequest(),
+            manga = MangaMemoRepairHelper.getOrRepairMangaRequest(manga, source, updateManga),
             chapters = emptyList(),
             fetchDetails = fetchDetails,
             fetchChapters = true,
