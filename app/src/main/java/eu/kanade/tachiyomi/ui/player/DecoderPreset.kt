@@ -41,12 +41,11 @@ enum class DecoderPreset(
         )
         decoderPreferences.motionInterpolationMode().set(
             when (this) {
-                Device -> if (supportsGpuNext) MotionInterpolationMode.Auto else MotionInterpolationMode.Off
-                Low -> MotionInterpolationMode.Off
+                Device, Low -> MotionInterpolationMode.Off
                 Mid -> MotionInterpolationMode.Auto
                 High -> MotionInterpolationMode.Always
             },
         )
-        decoderPreferences.useYUV420P().set(this != High)
+        decoderPreferences.useYUV420P().set(false)
     }
 }

@@ -37,6 +37,13 @@ class DecoderPreferencesTest {
     }
 
     @Test
+    fun `useYUV420P defaults to off`() {
+        val prefs = DecoderPreferences(MutablePreferenceStore())
+
+        prefs.useYUV420P().get() shouldBe false
+    }
+
+    @Test
     fun `low preset disables all optional decoder features`() {
         val prefs = DecoderPreferences(MutablePreferenceStore())
 
@@ -47,7 +54,7 @@ class DecoderPreferencesTest {
         prefs.videoDebanding().get() shouldBe Debanding.None
         prefs.anime4kShaderPreset().get() shouldBe Anime4KShaderPreset.Off
         prefs.motionInterpolationMode().get() shouldBe MotionInterpolationMode.Off
-        prefs.useYUV420P().get() shouldBe true
+        prefs.useYUV420P().get() shouldBe false
     }
 
     @Test
@@ -61,6 +68,16 @@ class DecoderPreferencesTest {
         prefs.videoDebanding().get() shouldBe Debanding.GPU
         prefs.anime4kShaderPreset().get() shouldBe Anime4KShaderPreset.Quality
         prefs.motionInterpolationMode().get() shouldBe MotionInterpolationMode.Always
+        prefs.useYUV420P().get() shouldBe false
+    }
+
+    @Test
+    fun `device preset keeps interpolation and yuv420p off`() {
+        val prefs = DecoderPreferences(MutablePreferenceStore())
+
+        DecoderPreset.Device.applyTo(prefs)
+
+        prefs.motionInterpolationMode().get() shouldBe MotionInterpolationMode.Off
         prefs.useYUV420P().get() shouldBe false
     }
 

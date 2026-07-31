@@ -19,7 +19,7 @@ class DecoderPreferences(
         "pref_motion_interpolation_mode",
         MotionInterpolationMode.Off,
     )
-    fun useYUV420P() = preferenceStore.getBoolean("use_yuv420p", true)
+    fun useYUV420P() = preferenceStore.getBoolean("use_yuv420p", false)
 
     // Non-preferences
 

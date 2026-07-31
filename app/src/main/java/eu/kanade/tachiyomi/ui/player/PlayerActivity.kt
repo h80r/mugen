@@ -1355,8 +1355,11 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun endFile(eofReached: Boolean) {
-        if (eofReached && playerPreferences.autoplayEnabled().get()) {
+        if (!eofReached) return
+        if (playerPreferences.autoplayEnabled().get()) {
             viewModel.changeEpisode(previous = false, autoPlay = true)
+        } else {
+            viewModel.pause()
         }
     }
 }

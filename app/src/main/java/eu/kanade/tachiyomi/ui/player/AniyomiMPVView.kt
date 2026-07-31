@@ -116,15 +116,14 @@ class AniyomiMPVView(context: Context, attributes: AttributeSet) : BaseMPVView(c
         MPVLib.setPropertyBoolean("pause", true)
         MPVLib.setOptionString("profile", "fast")
         MPVLib.setOptionString("hwdec", if (decoderPreferences.tryHWDecoding().get()) "auto" else "no")
-        when (decoderPreferences.videoDebanding().get()) {
-            Debanding.None -> {}
-            Debanding.CPU -> MPVLib.setOptionString("vf", "gradfun=radius=12")
-            Debanding.GPU -> MPVLib.setOptionString("deband", "yes")
+        val debanding = decoderPreferences.videoDebanding().get()
+        if (debanding == Debanding.GPU) {
+            MPVLib.setOptionString("deband", "yes")
         }
-
-        if (decoderPreferences.useYUV420P().get()) {
-            MPVLib.setOptionString("vf", "format=yuv420p")
-        }
+        buildVideoFilterChain(
+            debanding = debanding,
+            useYuv420p = decoderPreferences.useYUV420P().get(),
+        )?.let { MPVLib.setOptionString("vf", it) }
         MPVLib.setOptionString("msg-level", "all=" + if (networkPreferences.verboseLogging().get()) "v" else "warn")
 
         MPVLib.setPropertyBoolean("keep-open", true)

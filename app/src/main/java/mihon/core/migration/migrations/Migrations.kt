@@ -61,4 +61,5 @@ val migrations: List<Migration>
         ExtensionStoreUrlRepairMigration(),
         ForceMissedMigrations187(),
         RemoveNovelBookReadingModeMigration(),
+        ResetPlayerDecoderPrefsMigration(),
     )
