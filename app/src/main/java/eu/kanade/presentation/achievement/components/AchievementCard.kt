@@ -73,6 +73,12 @@ fun AchievementCard(
     val managerState by manager.state.collectAsState()
     val isAuroraHeart = achievement.id == "aurora_heart"
 
+    // Canonical unlock state. After restoring a backup the stored progress can say the achievement
+    // is unlocked while the local quest manager has no state for it, because the encrypted quest
+    // payload is deliberately never included in a backup. Trusting only the manager would hide an
+    // achievement the user has genuinely earned, so either source is enough.
+    val auroraUnlocked = isUnlocked || managerState.unlocked
+
     val payload = remember(managerState.unlocked) { manager.unlockedPayload() }
     val spec = remember(payload) { AuroraMaterialSpec.from(payload) }
     val cardBackgroundModifier = if (isAuroraHeart && spec != null) {
@@ -87,8 +93,9 @@ fun AchievementCard(
     val scope = rememberCoroutineScope()
 
     // Авто-открытие только ОДИН РАЗ на этап -- теперь через centralized manager
-    LaunchedEffect(managerState.stageIndex, managerState.hintRevealed) {
-        if (isAuroraHeart && !managerState.unlocked && manager.currentRiddle() != null) {
+    LaunchedEffect(managerState.stageIndex, managerState.hintRevealed, auroraUnlocked) {
+        // Never re-open the riddle for an achievement that is already unlocked.
+        if (isAuroraHeart && !auroraUnlocked && manager.currentRiddle() != null) {
             if (manager.shouldAutoShowRiddleForCurrentStage() && !showCodexDialog) {
                 manager.requestAutoShowForAchievements()
                 // mark now centralized inside requestAutoShowForAchievements for browse one-time
@@ -96,12 +103,16 @@ fun AchievementCard(
         }
     }
 
-    val displayName = remember(achievement, progress, managerState, payload) {
+    val displayName = remember(achievement, progress, managerState, payload, auroraUnlocked) {
         if (isAuroraHeart) {
             val title = when {
-                managerState.unlocked && payload != null -> payload.achievementTitle ?: "Сердце Авроры"
+                // Unlocked: always show a real name. The payload only supplies a nicer themed
+                // title; without it (typical right after a restore) fall back to the achievement's
+                // own title rather than masking an earned achievement as "???".
+                auroraUnlocked ->
+                    payload?.achievementTitle
+                        ?: achievement.title.ifBlank { "Сердце Авроры" }
                 managerState.stageIndex > 0 -> "Сердце Авроры"
-                managerState.hintRevealed -> "???"
                 else -> "???"
             }
             if (title == "???") title else AuroraLocalization.translate(title).orEmpty()
@@ -128,8 +139,9 @@ fun AchievementCard(
         ) {
             if (isAuroraHeart) {
                 val desc = when {
-                    managerState.unlocked && payload != null ->
-                        payload.achievementDescription
+                    auroraUnlocked ->
+                        payload?.achievementDescription
+                            ?: achievement.description
                             ?: "Скрыто северным сиянием"
                     else -> "Скрыто северным сиянием"
                 }
@@ -150,12 +162,12 @@ fun AchievementCard(
             }
         }
 
-    val customIsUnlocked = if (isAuroraHeart) managerState.unlocked else isUnlocked
+    val customIsUnlocked = if (isAuroraHeart) auroraUnlocked else isUnlocked
 
     val cardClick = {
         if (isAuroraHeart) {
-            val hasActiveRiddle = !managerState.unlocked && manager.currentRiddle() != null
-            if (managerState.unlocked) {
+            val hasActiveRiddle = !auroraUnlocked && manager.currentRiddle() != null
+            if (auroraUnlocked) {
                 // Полностью пройден — показываем архив + возможность пережить финал
                 showCodexDialog = true
             } else if (hasActiveRiddle || managerState.hintRevealed) {

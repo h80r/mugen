@@ -78,13 +78,19 @@ class RestoreBackupScreen(
                     item {
                         BackupSection(MR.strings.backup_restore_preview_title) {
                             BackupOriginChip(
-                                text = stringResource(
-                                    when (inspection.origin) {
-                                        BackupOrigin.TADAMI -> AYMR.strings.backup_restore_origin_tadami
-                                        BackupOrigin.MIHON -> MR.strings.backup_restore_origin_mihon
-                                        BackupOrigin.LEGACY_ANIYOMI -> AYMR.strings.backup_restore_origin_legacy
-                                    },
-                                ),
+                                text = when (inspection.origin) {
+                                    BackupOrigin.TADAMI,
+                                    BackupOrigin.TADAMI_SISTER,
+                                    ->
+                                        stringResource(AYMR.strings.backup_restore_origin_tadami)
+                                    BackupOrigin.LNREADER -> "LNReader"
+                                    BackupOrigin.MIHON ->
+                                        stringResource(MR.strings.backup_restore_origin_mihon)
+                                    BackupOrigin.TACHIYOMI_SY -> "TachiyomiSY"
+                                    BackupOrigin.KOMIKKU -> "Komikku"
+                                    BackupOrigin.LEGACY_ANIYOMI ->
+                                        stringResource(AYMR.strings.backup_restore_origin_legacy)
+                                },
                             )
                             Spacer(Modifier.height(8.dp))
                             if (inspection.isEmpty) {
@@ -133,12 +139,49 @@ class RestoreBackupScreen(
                         }
                     }
 
-                    if (inspection.origin == BackupOrigin.MIHON) {
+                    if (inspection.origin.isMihonDerived) {
                         item {
                             BackupStatusBanner(
                                 tone = BackupBannerTone.Info,
                                 message = stringResource(MR.strings.backup_restore_origin_mihon_info),
                             )
+                        }
+                    }
+
+                    // Some entries use a source id that also belongs to a novel or anime source.
+                    // We refuse to guess, so the user is told rather than silently surprised.
+                    if (inspection.ambiguousSourceIds > 0) {
+                        item {
+                            BackupStatusBanner(
+                                tone = BackupBannerTone.Warning,
+                                message = stringResource(
+                                    AYMR.strings.backup_restore_ambiguous_sources,
+                                    inspection.ambiguousSourceIds,
+                                ),
+                            )
+                        }
+                    }
+
+                    // Opt-in only, and only for a markerless file that could be an old export of
+                    // our own sister app. This is the single place where installed sources are
+                    // allowed to influence how entries are split.
+                    if (inspection.canOfferLegacySisterImport) {
+                        item {
+                            BackupSection {
+                                LabeledCheckbox(
+                                    label = stringResource(
+                                        AYMR.strings.backup_restore_legacy_sister_option,
+                                    ),
+                                    checked = state.options.legacySisterFallback,
+                                    onCheckedChange = model::setLegacySisterFallback,
+                                )
+                                Text(
+                                    text = stringResource(
+                                        AYMR.strings.backup_restore_legacy_sister_info,
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
                         }
                     }
                 }
@@ -245,6 +288,15 @@ private class RestoreBackupScreenModel(
         }
     }
 
+    /**
+     * Re-validates, because this claim about the file changes how its entries are split and
+     * therefore what the preview must show.
+     */
+    fun setLegacySisterFallback(enabled: Boolean) {
+        mutableState.update { it.copy(options = it.options.copy(legacySisterFallback = enabled)) }
+        validate(uri.toUri())
+    }
+
     fun startRestore() {
         BackupRestoreJob.start(
             context = context,
@@ -255,7 +307,7 @@ private class RestoreBackupScreenModel(
 
     private fun validate(uri: Uri) {
         val results = try {
-            BackupFileValidator(context).validate(uri)
+            BackupFileValidator(context).validate(uri, state.value.options.importPolicy())
         } catch (e: Exception) {
             mutableState.update {
                 it.copy(

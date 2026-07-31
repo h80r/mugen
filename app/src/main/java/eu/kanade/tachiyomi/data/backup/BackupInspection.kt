@@ -3,20 +3,28 @@ package eu.kanade.tachiyomi.data.backup
 import eu.kanade.tachiyomi.data.backup.models.Backup
 
 /**
- * Where a backup file came from, as detected by [BackupDecoder].
- */
-enum class BackupOrigin {
-    TADAMI,
-    MIHON,
-    LEGACY_ANIYOMI,
-}
-
-/**
- * A decoded backup together with its detected origin.
+ * A decoded backup together with its detected origin and the policy that produced it.
+ *
+ * [ambiguousSourceIds] counts entries whose media type could not be established without guessing.
+ * It is shown in the restore preview so the user can see, before anything is written, that a file
+ * cannot be fully classified.
  */
 data class DecodedBackup(
     val backup: Backup,
     val origin: BackupOrigin,
+    val policy: BackupImportPolicy = BackupImportPolicy.Default,
+    val ambiguousSourceIds: Int = 0,
+) {
+    val summary: BackupContentSummary
+        get() = backup.contentSummary()
+}
+
+/** Exact per media type counts of a decoded backup. */
+fun Backup.contentSummary(): BackupContentSummary = BackupContentSummary(
+    mangaCount = backupManga.size,
+    animeCount = backupAnime.size,
+    novelCount = backupNovel.size,
+    categoriesCount = backupCategories.size + backupAnimeCategories.size + backupNovelCategories.size,
 )
 
 /**
@@ -35,6 +43,7 @@ data class BackupInspection(
     val hasExtensions: Boolean,
     val hasAchievements: Boolean,
     val hasExtensionRepos: Boolean,
+    val ambiguousSourceIds: Int = 0,
 ) {
 
     val isEmpty: Boolean
@@ -48,10 +57,21 @@ data class BackupInspection(
             !hasAchievements &&
             !hasExtensionRepos
 
-    companion object {
-        fun of(decoded: DecodedBackup): BackupInspection = of(decoded.backup, decoded.origin)
+    /**
+     * Whether the "this is an old Tadami sister backup" opt-in may be offered for this file.
+     *
+     * Only a markerless Mihon shaped payload qualifies: a native, legacy, LNReader or
+     * manifest-carrying sister backup already knows its own media types, so re-routing them by
+     * source id could only corrupt an otherwise correct restore.
+     */
+    val canOfferLegacySisterImport: Boolean
+        get() = origin.isMihonDerived && mangaCount > 0
 
-        fun of(backup: Backup, origin: BackupOrigin): BackupInspection {
+    companion object {
+        fun of(decoded: DecodedBackup): BackupInspection =
+            of(decoded.backup, decoded.origin, decoded.ambiguousSourceIds)
+
+        fun of(backup: Backup, origin: BackupOrigin, ambiguousSourceIds: Int = 0): BackupInspection {
             return BackupInspection(
                 origin = origin,
                 mangaCount = backup.backupManga.size,
@@ -70,6 +90,7 @@ data class BackupInspection(
                     backup.backupMangaExtensionStore.isNotEmpty() ||
                     backup.backupAnimeExtensionStore.isNotEmpty() ||
                     backup.backupNovelExtensionStore.isNotEmpty(),
+                ambiguousSourceIds = ambiguousSourceIds,
             )
         }
     }

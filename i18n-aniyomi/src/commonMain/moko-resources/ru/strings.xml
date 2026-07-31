@@ -291,7 +291,7 @@
     <string name="timer_title">Автоотключение</string>
     <string name="timer_remaining">%s осталось</string>
     <string name="timer_picker_enter_timer">Введите длительность</string>
-    <string name="timer_picker_pick_time">Выбор длительности</string>
+    <string name="timer_picker_pick_time">��ыбор длительности</string>
     <string name="timer_cancel_timer">Отмена текущего таймера</string>
     <string name="player_sheets_speed_slider_label">Скорость</string>
     <string name="player_sheets_speed_make_default">Задать нормальную скорость</string>
@@ -447,7 +447,7 @@
     <string name="novel_reader_prefer_webview_renderer_summary">По умолчанию открывать главу в WebView. Отключите, чтобы вернуться к нативному рендереру.</string>
     <string name="novel_reader_rich_native_renderer_experimental">Расширенный нативный режим(рекомендуется)</string>
     <string name="novel_reader_rich_native_renderer_experimental_summary">Сохранять базовые HTML-стили в нативном ридере с автоматическим переходом в WebView для неподдерживаемого содержимого.</string>
-    <string name="novel_reader_renderer_disabled_page_mode_summary">Недоступно, пока включён постраничный режим.</string>
+    <string name="novel_reader_renderer_disabled_page_mode_summary">��едоступно, пока включён постраничный режим.</string>
     <string name="novel_reader_renderer_disabled_webview_summary">Недоступно, пока глава открыта в WebView.</string>
     <string name="novel_reader_renderer_disabled_bionic_summary">Недоступно, пока включено Bionic Reading.</string>
     <string name="novel_reader_settings_surface_strategy">Доступность настроек</string>
@@ -511,7 +511,7 @@
     <string name="novel_reader_dictionary_quick_access">История словаря в читалке</string>
     <string name="novel_reader_dictionary_quick_access_summary">Показывать кнопку истории словаря в нижней панели читалки ранобэ</string>
     <string name="novel_reader_dictionary_history">История словаря</string>
-    <string name="novel_reader_dictionary_history_summary">Ваши слова: поиск, избранное, повторение</string>
+    <string name="novel_reader_dictionary_history_summary">Ваши слов��: поиск, избранное, повторение</string>
     <string name="novel_reader_dictionary_history_search_hint">Поиск слов</string>
     <string name="novel_reader_dictionary_history_stats">%1$s слов &#8226; %2$s сегодня</string>
     <string name="novel_reader_dictionary_history_top_language">топ %1$s</string>
@@ -1012,7 +1012,7 @@
     <string name="pref_download_new_unseen_episodes_only">Пропуск загрузки дублированных просмотренных эпизодов</string>
     <string name="pref_download_new_unread_novel_chapters_only">Пропуск загрузки дублированных прочитанных глав ранобэ</string>
     <string name="auto_download_while_watching">Автоматическая загрузка во время просмотра</string>
-    <string name="download_ahead_info_anime">Работает только для эпизодов в библиотеке и если текущий и следующий эпизоды уже загружены</string>
+    <string name="download_ahead_info_anime">Работает только для эпизодов в библиотеке и если текущий и следующий эп��зоды уже загружены</string>
     <string name="pref_track_on_add_library">Открывать меню отслеживания при добавлении в библиотеку</string>
     <string name="pref_show_next_episode_airing_time">Показать время показа следующего эпизода</string>
     <string name="pref_backup_flags_summary">Какую информацию следует включить в файл резервной копии</string>
@@ -1052,7 +1052,7 @@
     <string name="also_set_novel_chapter_settings_for_library">Также применить ко всем ранобэ в моей библиотеке</string>
     <string name="no_episodes_error">Эпизоды не найдены</string>
     <string name="watching">Смотрю</string>
-    <string name="currently_reading">Сейчас читается</string>
+    <string name="currently_reading">Сейчас читае��ся</string>
     <string name="currently_watching">Сейчас смотрю</string>
     <string name="plan_to_watch">Планирую смотреть</string>
     <string name="not_interesting">Не интересно</string>
@@ -1313,7 +1313,7 @@
     <string name="aurora_episode_progress">Эпизод %d</string>
     <string name="aurora_tap_to_change">Нажмите для изменения</string>
     <string name="aurora_nothing_to_continue">Нечего продолжать</string>
-    <string name="aurora_add_anime_to_library">Добавьте аниме в библиотеку, чтобы увидеть их здесь</string>
+    <string name="aurora_add_anime_to_library">Добавьте ан��ме в библиотеку, чтобы увидеть их здесь</string>
 
     <!-- Dynamic Greetings -->
     <string name="aurora_greeting_ready">Запасы вкусняшек готовы? Начинаем!</string>
@@ -1457,7 +1457,7 @@
     <string name="aurora_greeting_absence_amnesia">Ты помнишь, на чём остановился, или у нас арка амнезии? 🤕</string>
     <string name="aurora_greeting_frequent_touch_grass">Говорят, на улице есть такая штука... «трава». Не хочешь потрогать? 🌱</string>
     <string name="aurora_greeting_frequent_coffee_iv">Тебе чайник по венам пустить или сам нальёшь? ☕🩸</string>
-    <string name="aurora_greeting_frequent_resident">Твоя виртуальная 2D-комната уже готова. Заходи! 🚪</string>
+    <string name="aurora_greeting_frequent_resident">Твоя виртуальная 2D-комната уже ��отова. Заходи! 🚪</string>
     <string name="aurora_greeting_streak_30">Месяц без перерывов. Настоящий хикки-профессионал! 🏆</string>
     <string name="aurora_greeting_streak_100">100 дней?! Ты познал дзен и слился с 2D миром 🧘‍♂️</string>
     <string name="aurora_greeting_streak_dedication">Твоей целеустремлённости позавидует любой сёнэн-герой! 💪</string>
@@ -1605,7 +1605,7 @@
     <string name="download_folder_not_set">Папка загрузок не задана</string>
     <string name="no_file_manager_found">Файловый менеджер не найден</string>
     <string name="aurora_updating_library">Обновление всей библиотеки</string>
-    <string name="aurora_update_already_running">Обновление уже запущено</string>
+    <string name="aurora_update_already_running">Обновление уже за��ущено</string>
 
     <!-- Statistics Screen -->
     <string name="aurora_anime_statistics">Статистика аниме</string>
@@ -1901,10 +1901,13 @@
     <string name="backup_compat_drops_warning">Совместимый формат сохраняет мангу и новеллы (новеллы превращаются в записи манги). Аниме, достижения, статистика, ленты и пользовательские кнопки в этом режиме не экспортируются.</string>
     <string name="backup_restore_origin_tadami">Резервная копия Tadami</string>
     <string name="backup_restore_origin_legacy">Старая резервная копия Aniyomi</string>
+    <string name="backup_restore_legacy_sister_option">Файл создан в старом приложении, совместимом с Tadami</string>
+    <string name="backup_restore_legacy_sister_info">Включайте только если вы сами выгрузили этот файл из старой сборки. Записи будут распределены в ранобэ по установленным источникам; всё неоднозначное останется в манге.</string>
+    <string name="backup_restore_ambiguous_sources">У %d записей идентификатор источника принадлежит сразу нескольким библиотекам. Они будут восстановлены как манга, чтобы ничего не угадывать.</string>
     <string name="achievement_settings_explorer_title">Исследователь настроек</string>
     <string name="achievement_settings_explorer_desc">Откройте настройки 15 раз</string>
     <string name="achievement_stats_viewer_title">Просмотрщик статистики</string>
-    <string name="achievement_stats_viewer_desc">Откройте статистику 5 раз</string>
+    <string name="achievement_stats_viewer_desc">Откройте стати��тику 5 раз</string>
     <string name="achievement_theme_changer_title">Сменщик тем</string>
     <string name="achievement_theme_changer_desc">Измените тему 10 раз</string>
     <string name="achievement_persistent_clicker_title">Настойчивый кликер</string>
@@ -2385,7 +2388,7 @@
     <string name="pref_disable_aniskip_chapter">Отключать AniSkip, если видео уже содержит главы</string>
     <!-- Subtitle exact match -->
     <string name="pref_player_subtitle_exact_match">Предпочитать точное совпадение языка субтитров</string>
-    <string name="pref_player_subtitle_exact_match_summary">Выбирать субтитры с точным совпадением метки языка до перехода к более широким совпадениям</string>
+    <string name="pref_player_subtitle_exact_match_summary">Выбирать субтитры с точным совпадением метки языка до перехода �� более широким совпадениям</string>
     <string name="pref_player_subtitle_invalid_lang">Неверный код: \"%s\"</string>
     <!-- Skip button text -->
     <string name="player_skip_action">Пропустить %1$s</string>
@@ -2833,7 +2836,7 @@
     <string name="lattice_frame_whisper">ОБНАРУЖЕН ДРЕЙФ КАРКАСА</string>
     <string name="lattice_breach_line1">ОБОЛОЧКА СНЯТА</string>
     <string name="lattice_breach_line2">ПРОВЕДИ СИГНАЛ ОТ ПОРТА К ЯДРУ</string>
-    <string name="lattice_routing_line1">РЕЖИМ ТРАССИРОВКИ</string>
+    <string name="lattice_routing_line1">РЕЖИМ ТР��ССИРОВКИ</string>
     <string name="lattice_track_hint">ЗАМКНИ ТРАССУ ЧЕРЕЗ ВСЕ УЗЛЫ</string>
     <string name="lattice_track_closed_title">ТРАССА ЗАМКНУТА</string>
     <string name="lattice_track_closed_sub">ЯДРО ОНЛАЙН · СВЕТ-ЦИКЛ НА КОНТУРЕ</string>

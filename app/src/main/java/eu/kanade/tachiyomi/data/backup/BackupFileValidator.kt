@@ -20,13 +20,26 @@ class BackupFileValidator(
     /**
      * Checks for critical backup file data.
      *
+     * @param policy import rules chosen by the user; affects how entries are split.
+     * @param expected when set, the content the caller believes the file holds. Used right after
+     * writing a backup to prove nothing was lost or truncated on the way to storage.
      * @return Missing sources/trackers plus a content summary for preview UI.
      */
-    fun validate(uri: Uri): Results {
+    fun validate(
+        uri: Uri,
+        policy: BackupImportPolicy = BackupImportPolicy.Default,
+        expected: BackupContentSummary? = null,
+    ): Results {
         val decoded = try {
-            BackupDecoder(context).decodeDetailed(uri)
+            BackupDecoder(context).decodeDetailed(uri, policy)
         } catch (e: Exception) {
             throw IllegalStateException(e)
+        }
+        if (expected != null) {
+            val actual = decoded.backup.contentSummary()
+            check(actual == expected) {
+                "Backup content mismatch: expected $expected but the stored file contains $actual"
+            }
         }
         val backup = decoded.backup
 

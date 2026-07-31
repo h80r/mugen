@@ -5,7 +5,8 @@ import android.net.Uri
 import com.hippo.unifile.UniFile
 import com.tadami.aurora.BuildConfig
 import eu.kanade.tachiyomi.data.backup.BackupDiagnosticLog
-import eu.kanade.tachiyomi.data.backup.BackupFileValidator
+import eu.kanade.tachiyomi.data.backup.BackupOrigin
+import eu.kanade.tachiyomi.data.backup.contentSummary
 import eu.kanade.tachiyomi.data.backup.create.creators.AchievementBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.AnimeBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.AnimeCategoriesBackupCreator
@@ -46,9 +47,6 @@ import eu.kanade.tachiyomi.data.backup.models.toMihonBackup
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.protobuf.ProtoBuf
 import logcat.LogPriority
-import okio.buffer
-import okio.gzip
-import okio.sink
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.achievement.handler.AchievementHandler
@@ -65,7 +63,6 @@ import tachiyomi.domain.entries.novel.repository.NovelRepository
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.util.Date
@@ -110,22 +107,17 @@ class BackupCreator(
 
     suspend fun backup(uri: Uri, options: BackupOptions): String {
         var file: UniFile? = null
+        // Only the file this run created may be deleted on failure; a file the user picked is not
+        // ours to remove.
+        var createdFile: UniFile? = null
         try {
             file = BackupDiagnosticLog.measure(context, "prepare_file") {
                 if (isAutoBackup) {
                     // Get dir of file and create
                     val dir = UniFile.fromUri(context, uri)
-                    // Delete older backups
-                    val limit = backupPreferences.numberOfBackupsToKeep().get()
-                    if (limit > 0) {
-                        dir?.listFiles { _, filename -> FILENAME_REGEX.matches(filename) }
-                            .orEmpty()
-                            .sortedByDescending { it.name }
-                            .drop(limit - 1)
-                            .forEach { it.delete() }
-                    }
-                    // Create new file to place backup
-                    dir?.createFile(getFilename())
+                    // Older backups are pruned only after the new one is written and verified,
+                    // so a failure here can never leave the user with fewer backups than before.
+                    dir?.createFile(getFilename())?.also { createdFile = it }
                 } else {
                     UniFile.fromUri(context, uri)
                 }
@@ -275,24 +267,29 @@ class BackupCreator(
             }
             BackupDiagnosticLog.log(context, "serialize_size", "bytes=${byteArray.size}")
 
-            BackupDiagnosticLog.measure(context, "write_gzip") {
-                file.openOutputStream()
-                    .also {
-                        // Force overwrite old file
-                        (it as? FileOutputStream)?.channel?.truncate(0)
-                    }
-                    .sink().gzip().buffer().use {
-                        it.write(byteArray)
-                    }
+            val expectedOrigin = if (options.sisterAppCompatible) {
+                BackupOrigin.TADAMI_SISTER
+            } else {
+                BackupOrigin.TADAMI
             }
+            // In sister mode novels travel inside the shared manga section, so the expected split
+            // is the one the file itself declares, not the one we started from.
+            val expectedSummary = backup.contentSummary().let {
+                if (options.sisterAppCompatible) it.copy(novelCount = 0, animeCount = 0) else it
+            }
+
+            // Writes to a staging file, verifies it decodes back to exactly this content, and only
+            // then replaces the destination.
+            BackupWriter(context).write(
+                destination = file,
+                payload = byteArray,
+                expected = expectedSummary,
+                expectedOrigin = expectedOrigin,
+            )
             val fileUri = file.uri
 
-            // Make sure it's a valid backup file
-            BackupDiagnosticLog.measure(context, "validate") {
-                BackupFileValidator(context).validate(fileUri)
-            }
-
             if (isAutoBackup) {
+                pruneOldAutoBackups(uri, keep = file)
                 backupPreferences.lastAutoBackupTimestamp().set(Instant.now().toEpochMilli())
             }
 
@@ -301,17 +298,37 @@ class BackupCreator(
                 achievementHandler.trackFeatureUsed(AchievementEvent.Feature.BACKUP)
             }
 
+            BackupDiagnosticLog.log(context, "creator_done", "origin=$expectedOrigin")
+
             return fileUri.toString()
         } catch (e: CancellationException) {
             BackupDiagnosticLog.log(context, "creator_cancelled")
-            file?.delete()
+            createdFile?.delete()
             throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             BackupDiagnosticLog.logError(context, "creator_failed", e)
-            file?.delete()
+            createdFile?.delete()
             throw e
         }
+    }
+
+    /**
+     * Drop the oldest auto backups, keeping the freshly written one.
+     *
+     * Runs only after a verified write: an aborted or corrupt backup must never cost the user a
+     * known-good older file.
+     */
+    private fun pruneOldAutoBackups(dirUri: Uri, keep: UniFile?) {
+        val limit = backupPreferences.numberOfBackupsToKeep().get()
+        if (limit <= 0) return
+        val dir = UniFile.fromUri(context, dirUri) ?: return
+        dir.listFiles { _, filename -> FILENAME_REGEX.matches(filename) }
+            .orEmpty()
+            .filter { it.uri != keep?.uri }
+            .sortedByDescending { it.name }
+            .drop(limit - 1)
+            .forEach { it.delete() }
     }
 
     private suspend fun backupAnimeCategories(options: BackupOptions, includeType: Boolean): List<BackupCategory> {

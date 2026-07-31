@@ -2830,6 +2830,9 @@
     <string name="backup_compat_drops_warning">Compatible format keeps manga and novels (novels are flattened into manga entries). Anime, achievements, statistics, feeds and custom buttons are not exported in this mode.</string>
     <string name="backup_restore_origin_tadami">Tadami backup</string>
     <string name="backup_restore_origin_legacy">Legacy Aniyomi backup</string>
+    <string name="backup_restore_legacy_sister_option">This file came from an older Tadami-compatible app</string>
+    <string name="backup_restore_legacy_sister_info">Only enable this if you exported the file yourself from an older build. Entries will be sorted into novels using your installed sources; anything unclear stays in manga.</string>
+    <string name="backup_restore_ambiguous_sources">%d entries use a source ID that belongs to more than one library. They will be restored as manga so nothing is guessed.</string>
     <!-- Lattice Resonance (hidden) -->
     <string name="theme_lattice_protocol">Lattice Protocol</string>
     <string name="treasury_tagline_lattice_protocol">The frame beneath the shell</string>

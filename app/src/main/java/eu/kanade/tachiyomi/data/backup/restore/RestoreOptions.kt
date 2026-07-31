@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.data.backup.restore
 
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.tachiyomi.data.backup.BackupImportPolicy
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.aniyomi.AYMR
@@ -18,11 +19,22 @@ data class RestoreOptions(
     val extensions: Boolean = false,
     val achievements: Boolean = true,
     val stats: Boolean = true,
+    /**
+     * Explicit user statement that a markerless, Mihon shaped file is an old Tadami sister export.
+     *
+     * Deliberately not part of [options]: it is not a "what to restore" toggle but a claim about
+     * the file itself, it is only offered when such a file is actually selected, and it is the only
+     * way installed sources are ever allowed to influence how entries are split.
+     */
+    val legacySisterFallback: Boolean = false,
 ) {
 
     private fun hasAnySelectedLibraryType(): Boolean {
         return restoreManga || restoreAnime || restoreNovel
     }
+
+    /** Import rules handed to the decoder. */
+    fun importPolicy() = BackupImportPolicy(legacySisterFallback = legacySisterFallback)
 
     fun asBooleanArray() = booleanArrayOf(
         libraryEntries,
@@ -37,6 +49,7 @@ data class RestoreOptions(
         restoreManga,
         restoreAnime,
         restoreNovel,
+        legacySisterFallback,
     )
 
     fun canRestore(): Boolean {
@@ -132,6 +145,7 @@ data class RestoreOptions(
             restoreManga = array.getOrNull(9) ?: true,
             restoreAnime = array.getOrNull(10) ?: true,
             restoreNovel = array.getOrNull(11) ?: true,
+            legacySisterFallback = array.getOrNull(12) ?: false,
         )
     }
 
