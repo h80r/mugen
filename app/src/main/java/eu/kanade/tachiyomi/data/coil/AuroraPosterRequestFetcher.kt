@@ -10,6 +10,7 @@ import coil3.key.Keyer
 import coil3.request.Options
 import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.network.interceptor.CoverRequestPolicy
+import eu.kanade.tachiyomi.network.toAsciiUrl
 import okhttp3.Call
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
@@ -192,7 +193,7 @@ internal suspend fun loadAuroraPosterSource(
         )
 
         request.refererUrl?.trim()?.takeIf { it.isNotBlank() }?.let { referer ->
-            requestBuilder.addHeader("Referer", referer.trimEnd('/') + "/")
+            requestBuilder.addHeader("Referer", referer.toAsciiUrl().trimEnd('/') + "/")
         }
 
         val response = try {

@@ -8,6 +8,7 @@ import kotlinx.serialization.json.okio.decodeFromBufferedSource
 import kotlinx.serialization.serializer
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -21,6 +22,17 @@ import kotlin.coroutines.resumeWithException
 
 // Keep OkHttp call adapters and JSON response decoding centralized in one networking helper file.
 val jsonMime = "application/json; charset=utf-8".toMediaType()
+
+/**
+ * Returns this URL with any internationalized domain name (IDN) host converted
+ * to its ASCII punycode form (e.g. "https://ранобэ.рф/" -> "https://xn--.../"),
+ * so it can be used in header values, which OkHttp restricts to ASCII.
+ * Non-URL or already-ASCII values are returned unchanged.
+ */
+fun String.toAsciiUrl(): String {
+    val trimmed = trim()
+    return trimmed.toHttpUrlOrNull()?.toString() ?: trimmed
+}
 
 @PublishedApi
 internal val defaultJsonParser = Json {

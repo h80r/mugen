@@ -19,6 +19,7 @@ import okhttp3.Request
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -336,5 +337,21 @@ class NovelCoverFetcherTest {
         result as SourceFetchResult
         assertEquals(DataSource.DISK, result.dataSource)
         assertEquals(tempFile.toOkioPath(), result.source.file())
+    }
+
+    @Test
+    fun `buildNovelCoverRequest converts IDN site url to punycode in referer and origin`() {
+        val request = buildNovelCoverRequest(
+            url = "https://ранобэ.рф/images/books/4260/vertical-73.jpeg",
+            siteUrl = "https://ранобэ.рф",
+            readFromNetwork = true,
+        )
+
+        val referer = request.header("Referer")!!
+        val origin = request.header("Origin")!!
+        assertFalse(referer.contains("ранобэ"))
+        assertFalse(origin.contains("ранобэ"))
+        assertTrue(referer.startsWith("https://xn--"))
+        assertTrue(origin.startsWith("https://xn--"))
     }
 }

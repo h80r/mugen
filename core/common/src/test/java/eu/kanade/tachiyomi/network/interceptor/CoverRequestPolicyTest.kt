@@ -35,4 +35,17 @@ class CoverRequestPolicyTest {
         assertEquals("https://fallback.example.org/poster.jpg", CoverRequestPolicy.coverFallbackUrl(request))
         assertEquals(1, CoverRequestPolicy.coverAttempt(request))
     }
+
+    @Test
+    fun `cover request policy converts IDN fallback url to punycode`() {
+        val request = CoverRequestPolicy.markCoverRequest(
+            Request.Builder().url("https://example.org/poster.jpg"),
+            fallbackUrl = "https://ранобэ.рф/images/books/4260/vertical-73.jpeg",
+        ).build()
+
+        val fallback = CoverRequestPolicy.coverFallbackUrl(request)
+        assertFalse(fallback!!.contains("ранобэ"))
+        assertTrue(fallback.startsWith("https://xn--"))
+        assertTrue(fallback.contains("xn--"))
+    }
 }
