@@ -1536,6 +1536,21 @@ fun NovelReaderScreen(
     // Native renderer side of book mode. Both renderers consume the same command stream, so the
     // native list folds appends and prunes into its resident sections instead of running JavaScript.
     val useNativeBookScroll = state.bookMode.isEnabled && !bookRenderer.usesWebView
+    // The native renderer hosts the book in the reader's LazyColumn, so the book chrome (auto-scroll,
+    // volume keys, TTS follow-along) has to be pointed at that list. The WebView renderer publishes
+    // its own surface from NovelBookReader; the native one publishes here.
+    if (useNativeBookScroll) {
+        DisposableEffect(textListState) {
+            val previous = bookScrollSurface
+            bookScrollSurface = LazyListNovelBookScrollSurface(textListState)
+            onDispose {
+                // Only clear the surface if this effect still owns it.
+                if (bookScrollSurface is LazyListNovelBookScrollSurface) {
+                    bookScrollSurface = previous
+                }
+            }
+        }
+    }
     // `bookScrollSurface` is declared next to auto-scroll readiness above, which needs it.
     var bookModeNativeSections by remember(state.novel.id) {
         mutableStateOf<NovelBookNativeSections>(emptyList())
@@ -1643,10 +1658,15 @@ fun NovelReaderScreen(
     }
     // Book mode renders its own document, so neither the WebView adapter (chapter WebView) nor the
     // native adapter (per-chapter lazy list) can follow the voice there.
-    val bookTtsNavigationAdapter = remember(state.novel.id) {
+    val bookTtsNavigationAdapter = remember(state.novel.id, bookEngineSpine) {
         BookTtsNavigationAdapter(
             surface = { bookScrollSurface },
-            sectionIndexForSpeech = { null },
+            // A spine built from chapters (live book) maps the segment's chapter directly to its
+            // section. A compiled book slices chapters into blocks, so the chapter is not in the
+            // spine and the document falls back to a whole-content snippet search.
+            sectionIndexForChapter = { chapterId ->
+                bookEngineSpine.indexOf(chapterId).takeIf { it >= 0 }
+            },
         )
     }
     SideEffect {
@@ -2413,7 +2433,10 @@ fun NovelReaderScreen(
                     BookSurfaceAutoScrollTarget(
                         surface = surface,
                         hasSectionsLeft = {
-                            state.bookMode.currentSectionIndex < state.bookMode.sectionCount - 1
+                            // Over a compiled book the spine sections are blocks, not chapters, so
+                            // "sections left" would report true far past the real end; whole-book
+                            // progress is the honest "is there still text below" signal.
+                            state.bookMode.bookProgressFraction < 1f
                         },
                     )
                 }
@@ -2731,6 +2754,7 @@ fun NovelReaderScreen(
                                 onLocationChanged = onBookEngineLocationChanged,
                                 onSectionMeasured = onBookEngineSectionMeasured,
                                 onToggleReaderUi = { onSetShowReaderUi(!showReaderUi) },
+                                onShortTap = latestReaderShortTapHandler,
                                 onSurfaceChanged = { surface -> bookScrollSurface = surface },
                                 readerCss = bookReaderCss,
                                 resolveResource = { requestUrl ->

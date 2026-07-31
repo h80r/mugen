@@ -150,3 +150,44 @@ internal class ViewNovelBookScrollSurface(
         webView.post { webView.evaluateJavascript(script, null) }
     }
 }
+
+/**
+ * [NovelBookScrollSurface] backed by the native book list ([LazyListState]).
+ *
+ * The native renderer hosts the resident book sections in the reader's LazyColumn, so the chrome
+ * (auto-scroll, volume keys, TTS follow-along) used to find no surface there and silently did
+ * nothing. This surface translates the same calls onto the list state the native renderer already
+ * owns.
+ */
+internal class LazyListNovelBookScrollSurface(
+    private val listState: androidx.compose.foundation.lazy.LazyListState,
+) : NovelBookScrollSurface {
+
+    override fun isPaginated(): Boolean = false
+
+    override fun canScrollForward(): Boolean = listState.canScrollForward
+
+    override fun scrollBy(distancePx: Int): Int {
+        if (distancePx == 0) return 0
+        // dispatchRawDelta moves the list synchronously without a coroutine, which keeps this
+        // surface usable from the auto-scroll frame loop. The list exposes its real scrollability
+        // through canScrollForward, so "moved" is reported only while there was actually room: at
+        // the end of the book the list stops moving, canScrollForward turns false and auto-scroll
+        // reads the end instead of looping forever.
+        val couldMove = listState.canScrollForward
+        if (couldMove) {
+            runCatching { listState.dispatchRawDelta(distancePx.toFloat()) }
+        }
+        return if (couldMove) distancePx else 0
+    }
+
+    override fun step(forward: Boolean) {
+        // One "page" in the native list is roughly one viewport, mirroring the WebView flow where a
+        // step scrolls ~90% of the viewport. dispatchRawDelta keeps this synchronous.
+        val viewportSize = listState.layoutInfo.viewportEndOffset
+        val distance = if (forward) viewportSize.coerceAtLeast(1) else -viewportSize.coerceAtLeast(1)
+        runCatching { listState.dispatchRawDelta(distance.toFloat()) }
+    }
+
+    override fun evaluate(script: String) = Unit
+}

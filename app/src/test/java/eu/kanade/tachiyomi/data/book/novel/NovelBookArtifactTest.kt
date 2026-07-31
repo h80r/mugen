@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.data.book.novel
 
+import eu.kanade.tachiyomi.ui.reader.novel.NovelBookArtifactSource
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -115,6 +116,27 @@ class NovelBookArtifactTest {
         NovelBookBlockPlanner.chapterById(result.index, 3L)?.chapterId shouldBe 3L
         NovelBookBlockPlanner.progressOf(result.meta, 0) shouldBe 0f
         NovelBookBlockPlanner.progressOf(result.meta, result.meta.totalChars) shouldBe 1f
+    }
+
+    @Test
+    fun `section chapters resolve per block for translation safety`(@TempDir root: File) {
+        // Each chapter body is ~40k chars, so a default 40k block contains exactly one chapter.
+        val chapters = (1L..4L).map { id -> chapter(id) }
+        val result = NovelBookArtifactWriter(root).build(
+            request = request(chapters),
+            chapters = chapters,
+            loadHtml = { chapter -> body("Chapter ${chapter.id} " + "text ".repeat(8_000)) },
+        )
+
+        val source = NovelBookArtifactSource.open(root)
+            ?: throw AssertionError("artifact should open")
+        val blocks = source.blocks
+
+        blocks.forEachIndexed { index, block ->
+            val chaptersOfSection = source.chaptersOfSection(index)
+            chaptersOfSection.size shouldBe 1
+            chaptersOfSection.first() shouldBe block.firstChapterId
+        }
     }
 
     @Test

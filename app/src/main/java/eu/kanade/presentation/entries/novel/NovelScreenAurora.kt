@@ -1026,6 +1026,13 @@ fun NovelScreenAuroraImpl(
                                         },
                                     )
                                 }
+                                if (isBookBuilt && state.bookIsStale) {
+                                    AuroraEntryDropdownMenuItem(
+                                        text = stringResource(AYMR.strings.novel_book_outdated),
+                                        enabled = false,
+                                        onClick = {},
+                                    )
+                                }
                                 if (onToggleReadAsBook != null && isBookBuilt) {
                                     val readAsBook = state.bookState.enabled
                                     AuroraEntryDropdownMenuItem(

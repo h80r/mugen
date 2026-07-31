@@ -460,7 +460,26 @@ class NovelReaderScreenModel(
     internal suspend fun loadBookEngineDocument(section: NovelBookSection): NovelBookDocument {
         val document = bookModeRuntime.loadEngineDocument(section)
         scheduleBookEnginePrefetch(section.index)
-        return document
+        // Compiled-book sections come straight out of the artifact body, bypassing the section
+        // pipeline where applyBookSectionTranslation lives, so translations were computed, cached
+        // and then never shown. Sections that cover exactly one chapter can be translated safely;
+        // sections straddling a chapter boundary are left untranslated rather than misaligning the
+        // per-chapter block indices.
+        val translated = if (artifactSource != null) {
+            val chapters = artifactSource?.chaptersOfSection(section.index).orEmpty()
+            if (chapters.size == 1) {
+                applyBookSectionTranslation(chapterId = chapters.first(), bodyHtml = document.html)
+            } else {
+                document.html
+            }
+        } else {
+            document.html
+        }
+        return if (translated == document.html) {
+            document
+        } else {
+            document.copy(html = translated)
+        }
     }
 
     private var bookEnginePrefetchJob: kotlinx.coroutines.Job? = null

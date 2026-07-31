@@ -155,6 +155,30 @@ internal class NovelBookSectionDiskCache(
         }
     }
 
+    /**
+     * Drops the oldest entries until the cache fits into [targetBytes].
+     *
+     * The global cache coordinator calls this when the whole reader cache exceeds its budget; the
+     * limit-based trim above would only enforce this cache's own caps and could leave it oversized.
+     */
+    fun trimToTargetBytes(targetBytes: Long) {
+        if (targetBytes <= 0L) {
+            clear()
+            return
+        }
+        synchronized(lock) {
+            val files = sectionFilesLocked()
+                .sortedWith(compareBy<File> { it.lastModified() }.thenBy { it.name })
+                .toMutableList()
+            var totalBytes = files.sumOf { it.length().coerceAtLeast(0L) }
+            while (totalBytes > targetBytes) {
+                val oldest = files.removeFirstOrNull() ?: break
+                totalBytes -= oldest.length().coerceAtLeast(0L)
+                oldest.delete()
+            }
+        }
+    }
+
     private fun ensureDirectory() {
         if (!directory.exists()) {
             directory.mkdirs()
@@ -254,7 +278,7 @@ internal object NovelBookSectionDiskCacheStore {
             override fun cacheId(): String = "novel-book-section-disk"
             override fun currentBytes(): Long = cache.stats().totalBytes
             override fun trimToTargetBytes(targetBytes: Long) {
-                cache.trimToLimits(config())
+                cache.trimToTargetBytes(targetBytes)
             }
         })
     }

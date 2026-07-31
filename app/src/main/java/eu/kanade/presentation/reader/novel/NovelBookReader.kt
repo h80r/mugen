@@ -61,6 +61,14 @@ internal fun NovelBookReader(
     onSectionMeasured: (chapterId: Long, charCount: Int) -> Unit,
     onToggleReaderUi: () -> Unit,
     /**
+     * Routes a short tap through the reader's configured tap zones instead of the hardcoded
+     * left/center/right zones below.
+     *
+     * The book WebView has no access to the reader's tap-zone settings; without this the custom
+     * zones (and tap-to-scroll) silently did nothing over a book.
+     */
+    onShortTap: ((tapX: Float, tapY: Float, width: Float, height: Float) -> Unit)? = null,
+    /**
      * Publishes the mounted surface so the reader chrome can drive the book.
      *
      * Auto-scroll, volume keys and tap zones used to address the chapter WebView, which book mode
@@ -83,6 +91,7 @@ internal fun NovelBookReader(
     val latestOnLocationChanged = rememberUpdatedState(onLocationChanged)
     val latestOnSectionMeasured = rememberUpdatedState(onSectionMeasured)
     val latestOnToggleReaderUi = rememberUpdatedState(onToggleReaderUi)
+    val latestOnShortTap = rememberUpdatedState(onShortTap)
     val latestReaderCss = rememberUpdatedState(readerCss)
     val latestOnSurfaceChanged = rememberUpdatedState(onSurfaceChanged)
     val latestResolveResource = rememberUpdatedState(resolveResource)
@@ -314,10 +323,21 @@ internal fun NovelBookReader(
                         event.eventTime - downAt <= TAP_TIMEOUT_MILLIS &&
                             abs(deltaX) <= touchSlop &&
                             abs(deltaY) <= touchSlop -> {
-                            when {
-                                event.x < view.width * PREVIOUS_TAP_ZONE_FRACTION -> navigate(false)
-                                event.x > view.width * NEXT_TAP_ZONE_FRACTION -> navigate(true)
-                                else -> latestOnToggleReaderUi.value()
+                            val handler = latestOnShortTap.value
+                            if (handler != null) {
+                                // The reader's configured tap zones (or tap-to-scroll) decide.
+                                handler(
+                                    event.x,
+                                    event.y,
+                                    view.width.toFloat(),
+                                    view.height.toFloat(),
+                                )
+                            } else {
+                                when {
+                                    event.x < view.width * PREVIOUS_TAP_ZONE_FRACTION -> navigate(false)
+                                    event.x > view.width * NEXT_TAP_ZONE_FRACTION -> navigate(true)
+                                    else -> latestOnToggleReaderUi.value()
+                                }
                             }
                         }
                     }

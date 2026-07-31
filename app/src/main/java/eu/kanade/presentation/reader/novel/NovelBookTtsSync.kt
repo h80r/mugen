@@ -84,10 +84,15 @@ private const val BOOK_TTS_SNIPPET_MAX_CHARS = 600
  *
  * Book mode used to fall through to the native-scroll adapter, which drives the per-chapter lazy
  * list. That list is empty over a book, so "follow along with the voice" moved nothing at all.
+ *
+ * The section of the spoken text is resolved from the segment's chapter id when the spine is built
+ * from chapters (live book). A compiled book slices chapters into blocks, so its spine cannot name
+ * the chapter; [sectionIndexForChapter] then returns null and the document falls back to searching
+ * the whole content for the snippet.
  */
 internal class BookTtsNavigationAdapter(
     private val surface: () -> NovelBookScrollSurface?,
-    private val sectionIndexForSpeech: () -> Int?,
+    private val sectionIndexForChapter: (Long) -> Int?,
 ) : NovelTtsNavigationAdapter {
 
     override suspend fun syncToSegment(segment: NovelTtsSegment) {
@@ -95,7 +100,7 @@ internal class BookTtsNavigationAdapter(
         target.evaluate(
             buildBookTtsSyncJavascript(
                 snippet = segment.text,
-                sectionIndex = sectionIndexForSpeech(),
+                sectionIndex = sectionIndexForChapter(segment.chapterId),
             ),
         )
     }

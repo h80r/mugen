@@ -74,6 +74,7 @@ import eu.kanade.tachiyomi.ui.entries.mergeNewItemIds
 import eu.kanade.tachiyomi.ui.entries.novel.NovelChapterActionStateResolver
 import eu.kanade.tachiyomi.ui.entries.novel.NovelChapterActionUiState
 import eu.kanade.tachiyomi.ui.novel.resolveNovelResumeChapter
+import eu.kanade.tachiyomi.ui.novel.sortedByNovelReadingOrder
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelReaderTranslationDiskCacheStore
@@ -3030,6 +3031,29 @@ class NovelScreenModel(
             /** Set when a build was refused because some chapters are not downloaded yet. */
             val bookMissingChapterCount: Int? = null,
         ) : State {
+            /**
+             * True when the compiled book was built from a different chapter set than the title
+             * currently has, so the UI can tell the user the book is outdated until it is rebuilt.
+             */
+            val bookIsStale: Boolean
+                get() = bookState
+                    ?.takeIf { it.enabled }
+                    ?.let { book ->
+                        val sourceChapters = chapters
+                            .sortedByNovelReadingOrder()
+                            .map { chapter ->
+                                eu.kanade.tachiyomi.data.book.novel.NovelBookSourceChapter(
+                                    id = chapter.id,
+                                    name = chapter.name,
+                                    url = chapter.url,
+                                )
+                            }
+                        val currentHash = eu.kanade.tachiyomi.data.book.novel.NovelBookArtifact
+                            .chapterSetHash(sourceChapters)
+                        book.isStale(currentHash)
+                    }
+                    ?: false
+
             val scanlatorFilterActive: Boolean
                 get() = excludedScanlators.intersect(availableScanlators).isNotEmpty()
 

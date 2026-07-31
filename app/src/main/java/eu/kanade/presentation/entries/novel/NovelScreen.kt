@@ -455,6 +455,7 @@ fun NovelScreen(
             )
             val deleteTitle = stringResource(AYMR.strings.novel_book_delete)
             val deleteSourceChaptersTitle = stringResource(AYMR.strings.novel_book_cleanup_source_chapters)
+            val outdatedTitle = stringResource(AYMR.strings.novel_book_outdated)
 
             val overflowActions = remember(
                 bookTitle,
@@ -462,10 +463,12 @@ fun NovelScreen(
                 toggleTitle,
                 deleteTitle,
                 deleteSourceChaptersTitle,
+                outdatedTitle,
                 isBookBuilt,
                 isBookBuilding,
                 appendableChapterCount,
                 readAsBook,
+                state.bookIsStale,
                 onMakeBookClicked,
                 onAppendBookClicked,
                 onToggleReadAsBook,
@@ -488,6 +491,15 @@ fun NovelScreen(
                                 title = appendTitle,
                                 enabled = !isBookBuilding,
                                 onClick = { if (!isBookBuilding) onAppendBookClicked() },
+                            ),
+                        )
+                    }
+                    if (isBookBuilt && state.bookIsStale) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = outdatedTitle,
+                                enabled = false,
+                                onClick = {},
                             ),
                         )
                     }

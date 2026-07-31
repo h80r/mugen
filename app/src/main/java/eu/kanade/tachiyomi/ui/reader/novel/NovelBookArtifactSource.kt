@@ -123,6 +123,24 @@ class NovelBookArtifactSource(
         NovelBookBlockPlanner.chapterAt(index, charOffset)
 
     /**
+     * Chapters whose text overlaps the section at [sectionIndex].
+     *
+     * Compiled blocks are windows over the continuous body and usually cover exactly one chapter;
+     * blocks that straddle a chapter boundary cover two. Translation mapping is indexed per
+     * chapter, so only single-chapter sections can be translated safely.
+     */
+    fun chaptersOfSection(sectionIndex: Int): List<Long> {
+        val block = blocks.getOrNull(sectionIndex) ?: return emptyList()
+        val sectionStart = block.charStart
+        val sectionEnd = block.charStart + block.charLength
+        return index.chapters
+            .filter { chapter ->
+                chapter.charStart < sectionEnd && chapter.charStart + chapter.charLength > sectionStart
+            }
+            .map { it.chapterId }
+    }
+
+    /**
      * Chapters whose text ends before [charOffset], i.e. the ones the reader scrolled completely
      * past. In book mode nothing is ever "closed", so this offset comparison replaces the
      * per-chapter read threshold; the chapter under the caret is intentionally excluded because it
