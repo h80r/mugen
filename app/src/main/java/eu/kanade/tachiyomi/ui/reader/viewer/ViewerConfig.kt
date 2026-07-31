@@ -38,8 +38,6 @@ abstract class ViewerConfig(
     var customTapZoneActions = readerPreferences.customTapZoneActions().get()
         protected set
 
-    var forceNavigationOverlay = false
-
     var navigationOverlayOnStart = false
 
     var dualPageSplit = false
@@ -91,11 +89,6 @@ abstract class ViewerConfig(
 
         readerPreferences.preloadNextChapter()
             .register({ preloadNextChapter = it })
-
-        forceNavigationOverlay = readerPreferences.showNavigationOverlayNewUser().get()
-        if (forceNavigationOverlay) {
-            readerPreferences.showNavigationOverlayNewUser().set(false)
-        }
 
         readerPreferences.showNavigationOverlayOnStart()
             .register({ navigationOverlayOnStart = it })

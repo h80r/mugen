@@ -232,8 +232,7 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
         }
 
         config.navigationModeChangedListener = {
-            val showOnStart = config.navigationOverlayOnStart || config.forceNavigationOverlay
-            activity.binding.navigationOverlay.setNavigation(config.navigator, showOnStart)
+            activity.binding.navigationOverlay.setNavigation(config.navigator, config.navigationOverlayOnStart)
         }
 
         // Monitor zoom state and pause auto-scroll when zoomed in

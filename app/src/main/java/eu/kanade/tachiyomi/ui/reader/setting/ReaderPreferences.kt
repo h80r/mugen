@@ -308,11 +308,6 @@ class ReaderPreferences(
         TappingInvertMode.NONE,
     )
 
-    fun showNavigationOverlayNewUser() = preferenceStore.getBoolean(
-        "reader_navigation_overlay_new_user",
-        true,
-    )
-
     fun showNavigationOverlayOnStart() = preferenceStore.getBoolean(
         "reader_navigation_overlay_on_start",
         false,
