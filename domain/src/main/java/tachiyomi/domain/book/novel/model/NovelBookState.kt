@@ -29,6 +29,14 @@ data class NovelBookState(
     val blockIndex: Int = 0,
     /** Character offset inside [lastChapterId]; the part of the position that survives a rebuild. */
     val chapterCharOffset: Int = 0,
+    /**
+     * Whether the stored position is already expressed as a locator.
+     *
+     * Rows written by versions that only knew the whole-book [charOffset] (or that kept the position
+     * encoded in the chapter row) are converted once, the first time the book is opened; this flag
+     * records that the conversion ran so it never repeats and never overwrites a newer position.
+     */
+    val progressMigrated: Boolean = false,
 ) {
 
     /** Whole book progress in the 0f..1f range. */
@@ -54,6 +62,8 @@ data class NovelBookState(
             updatedAt = 0L,
             blockIndex = 0,
             chapterCharOffset = 0,
+            // A row created by the current version starts out in the locator format.
+            progressMigrated = true,
         )
     }
 }

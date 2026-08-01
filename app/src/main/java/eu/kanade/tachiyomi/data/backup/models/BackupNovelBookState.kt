@@ -31,4 +31,10 @@ data class BackupNovelBookState(
      */
     @ProtoNumber(12) var blockIndex: Int = 0,
     @ProtoNumber(13) var chapterCharOffset: Int = 0,
+    /**
+     * Whether [charOffset] was already converted into the locator fields above. Backups written by
+     * older versions default to `false`, so the position they carry is converted once on the device
+     * that restores them instead of being read as a locator it never was.
+     */
+    @ProtoNumber(14) var progressMigrated: Boolean = false,
 )

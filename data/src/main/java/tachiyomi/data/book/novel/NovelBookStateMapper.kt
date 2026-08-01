@@ -15,6 +15,7 @@ val novelBookStateMapper: (
     Long,
     Long,
     Boolean,
+    Boolean,
     Long,
     Long,
 ) -> NovelBookState =
@@ -30,6 +31,7 @@ val novelBookStateMapper: (
             lastChapterId,
             blockIndex,
             chapterCharOffset,
+            progressMigrated,
             complete,
             builtAt,
             updatedAt,
@@ -49,5 +51,6 @@ val novelBookStateMapper: (
             updatedAt = updatedAt,
             blockIndex = blockIndex.toInt(),
             chapterCharOffset = chapterCharOffset.toInt(),
+            progressMigrated = progressMigrated,
         )
     }

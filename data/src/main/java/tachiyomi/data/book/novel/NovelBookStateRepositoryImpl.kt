@@ -39,6 +39,7 @@ class NovelBookStateRepositoryImpl(
                 lastChapterId = state.lastChapterId,
                 blockIndex = state.blockIndex.toLong(),
                 chapterCharOffset = state.chapterCharOffset.toLong(),
+                progressMigrated = state.progressMigrated,
                 complete = state.complete,
                 builtAt = state.builtAt,
                 updatedAt = state.updatedAt,

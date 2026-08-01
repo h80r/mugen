@@ -336,6 +336,7 @@ class NovelRestorer(
                 updatedAt = bookState.updatedAt,
                 blockIndex = bookState.blockIndex,
                 chapterCharOffset = bookState.chapterCharOffset,
+                progressMigrated = bookState.progressMigrated,
             ),
         )
     }

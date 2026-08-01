@@ -409,7 +409,12 @@ internal class NovelBookReaderController(
         // Stored position as a locator: the chapter plus the offset inside it survives a rebuild of
         // the artifact, while the whole-book offset alone would silently shift by every character
         // added or removed before it.
-        val storedLocator = bookState?.let { state ->
+        // Rows written before the locator existed are converted here, once, before anything reads
+        // them: their whole-book offset (or the position the classic reader packed into the chapter
+        // row) is turned into a locator and written back, so the upgrade does not lose the position.
+        val migratedLocator = bookState
+            ?.let { state -> migrateBookProgressIfNeeded(state, chapter, chapters, artifact) }
+        val storedLocator = migratedLocator ?: bookState?.let { state ->
             state.lastChapterId?.let { lastChapterId ->
                 BookLocator(
                     chapterId = lastChapterId,
@@ -421,7 +426,8 @@ internal class NovelBookReaderController(
         val storedLocation = storedLocator
             ?.let { artifact.locationOf(it) }
             ?: artifact.locationOf((bookState?.charOffset ?: 0L).toInt())
-        val resumeLocation = if (bookState?.lastChapterId == chapter.id) {
+        val resumeChapterId = storedLocator?.chapterId ?: bookState?.lastChapterId
+        val resumeLocation = if (resumeChapterId == chapter.id) {
             storedLocation
         } else {
             artifact.locationOfChapter(chapter.id) ?: storedLocation
@@ -790,6 +796,55 @@ internal class NovelBookReaderController(
      */
     private fun persistBookModeProgress(@Suppress("UNUSED_PARAMETER") sectionFraction: Float) {
         persistBookArtifactProgress()
+    }
+
+    /**
+     * Converts a position stored by an older version into a locator, once per book.
+     *
+     * Runs before the resume location is computed, so the very first open after the upgrade already
+     * lands on the migrated position, and writes the result back immediately: the row is then in the
+     * new format and the conversion never runs again, even if the reader is closed right away.
+     * Returns the migrated locator, or null when the row is already migrated or nothing could be
+     * recovered, in which case the stored values are left untouched.
+     */
+    private suspend fun migrateBookProgressIfNeeded(
+        bookState: tachiyomi.domain.book.novel.model.NovelBookState,
+        chapter: NovelChapter,
+        chapters: List<NovelChapter>,
+        artifact: NovelBookArtifactSource,
+    ): BookLocator? {
+        val plan = planBookProgressMigration(
+            alreadyMigrated = bookState.progressMigrated,
+            storedCharOffset = bookState.charOffset,
+            storedChapterId = bookState.lastChapterId,
+            // The classic reader packed a book position into the chapter row it was reading.
+            legacyChapterProgress = chapter.lastPageRead,
+            chapterIdsInReadingOrder = chapters.map { it.id },
+            openedChapterId = chapter.id,
+            locatorOfGlobalOffset = { offset -> artifact.locatorOf(offset) },
+            locatorInChapter = { chapterId, fraction ->
+                eu.kanade.tachiyomi.data.book.novel.NovelBookBlockPlanner
+                    .chapterById(artifact.index, chapterId)
+                    ?.let { entry ->
+                        val inside = ((entry.charLength - 1).coerceAtLeast(0) * fraction).toInt()
+                        artifact.locatorOf(entry.charStart + inside)
+                    }
+            },
+        ) ?: return null
+
+        val charOffset = artifact.globalCharOffsetOf(plan.locator)
+        setNovelBookProgress.await(
+            novelId = bookState.novelId,
+            charOffset = charOffset.toLong(),
+            lastChapterId = plan.locator.chapterId.takeIf { it != BookLocator.NO_CHAPTER_ID },
+            blockIndex = plan.locator.blockIndex,
+            chapterCharOffset = plan.locator.charOffset,
+        )
+        logBookModeMetric(
+            "progress-migrated novel=${bookState.novelId} source=${plan.source} " +
+                "chapter=${plan.locator.chapterId} offset=$charOffset",
+        )
+        return plan.locator
     }
 
     /**

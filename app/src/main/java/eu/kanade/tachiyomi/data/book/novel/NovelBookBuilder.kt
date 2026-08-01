@@ -185,6 +185,13 @@ class NovelBookBuilder(
             } else {
                 result.index.chapters.first().chapterId
             },
+            // A position kept from an older row still has to be converted once; a position that was
+            // just reset to the start of the book has nothing left to migrate.
+            progressMigrated = if (result.meta.chapterSetHash == previous?.chapterSetHash) {
+                previous?.progressMigrated ?: true
+            } else {
+                true
+            },
             complete = result.meta.complete,
             builtAt = result.meta.builtAt,
             updatedAt = timestamp,
@@ -302,6 +309,9 @@ class NovelBookBuilder(
             charOffset = previous?.charOffset ?: 0L,
             blockIndex = previous?.blockIndex ?: 0,
             chapterCharOffset = previous?.chapterCharOffset ?: 0,
+            // A row that never existed has nothing to migrate; an existing one keeps its flag so a
+            // position stored by an older version is still converted on the next open.
+            progressMigrated = previous?.progressMigrated ?: true,
             lastChapterId = previous?.lastChapterId ?: result.index.chapters.first().chapterId,
             complete = result.meta.complete,
             builtAt = result.meta.builtAt,
