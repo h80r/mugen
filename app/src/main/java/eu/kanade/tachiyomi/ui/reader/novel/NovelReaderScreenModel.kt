@@ -153,7 +153,6 @@ import uy.kohesive.injekt.api.get
 import java.util.LinkedHashMap
 import java.util.Locale
 import java.util.concurrent.TimeUnit
-import kotlin.math.roundToInt
 
 enum class ProviderApiTestStatus {
     Idle,
@@ -1249,7 +1248,7 @@ class NovelReaderScreenModel(
         }
         val displayContent = when {
             geminiVisibleInUi && !translationHolder.isEmpty("gemini") -> normalizeHtml(
-                rawHtml = buildTranslatedRawHtmlForDisplay(
+                rawHtml = NovelContentHtmlMapper.buildTranslatedRawHtmlForDisplay(
                     templateHtml = html,
                     fallbackBlocks = displayContentBlocks,
                     translatedByIndex = translationHolder.map("gemini"),
@@ -1259,7 +1258,7 @@ class NovelReaderScreenModel(
                 customJs = pluginJs,
             )
             googleVisibleInUi && !translationHolder.isEmpty("google") -> normalizeHtml(
-                rawHtml = buildTranslatedRawHtmlForDisplay(
+                rawHtml = NovelContentHtmlMapper.buildTranslatedRawHtmlForDisplay(
                     templateHtml = html,
                     fallbackBlocks = displayContentBlocks,
                     translatedByIndex = translationHolder.map("google"),
@@ -2130,7 +2129,7 @@ class NovelReaderScreenModel(
                         block
                     } else {
                         block.copy(
-                            segments = projectTranslatedTextOntoRichSegments(
+                            segments = NovelContentHtmlMapper.projectTranslatedTextOntoRichSegments(
                                 originalSegments = block.segments,
                                 translatedText = replacement,
                             ),
@@ -2144,7 +2143,7 @@ class NovelReaderScreenModel(
                         block
                     } else {
                         block.copy(
-                            segments = projectTranslatedTextOntoRichSegments(
+                            segments = NovelContentHtmlMapper.projectTranslatedTextOntoRichSegments(
                                 originalSegments = block.segments,
                                 translatedText = replacement,
                             ),
@@ -2160,7 +2159,7 @@ class NovelReaderScreenModel(
                         block
                     } else {
                         block.copy(
-                            segments = projectTranslatedTextOntoRichSegments(
+                            segments = NovelContentHtmlMapper.projectTranslatedTextOntoRichSegments(
                                 originalSegments = block.segments,
                                 translatedText = replacement,
                             ),
@@ -2192,7 +2191,7 @@ class NovelReaderScreenModel(
                     } else {
                         replacedCount += 1
                         block.copy(
-                            segments = projectTranslatedTextOntoRichSegments(
+                            segments = NovelContentHtmlMapper.projectTranslatedTextOntoRichSegments(
                                 originalSegments = block.segments,
                                 translatedText = replacement,
                             ),
@@ -2207,7 +2206,7 @@ class NovelReaderScreenModel(
                     } else {
                         replacedCount += 1
                         block.copy(
-                            segments = projectTranslatedTextOntoRichSegments(
+                            segments = NovelContentHtmlMapper.projectTranslatedTextOntoRichSegments(
                                 originalSegments = block.segments,
                                 translatedText = replacement,
                             ),
@@ -2224,7 +2223,7 @@ class NovelReaderScreenModel(
                     } else {
                         replacedCount += 1
                         block.copy(
-                            segments = projectTranslatedTextOntoRichSegments(
+                            segments = NovelContentHtmlMapper.projectTranslatedTextOntoRichSegments(
                                 originalSegments = block.segments,
                                 translatedText = replacement,
                             ),
@@ -2243,238 +2242,6 @@ class NovelReaderScreenModel(
         )
         return updated
     }
-    private fun buildRawHtmlFromContentBlocks(blocks: List<ContentBlock>): String {
-        return buildString {
-            blocks.forEach { block ->
-                when (block) {
-                    is ContentBlock.Image -> {
-                        append("<img src=\"")
-                        append(block.url.escapeHtmlAttribute())
-                        append("\" alt=\"")
-                        append((block.alt ?: "").escapeHtmlAttribute())
-                        append("\" />")
-                    }
-                    is ContentBlock.Text -> {
-                        append("<p>")
-                        append(block.text.escapeHtml())
-                        append("</p>")
-                    }
-                }
-            }
-        }
-    }
-    private fun buildTranslatedRawHtmlForDisplay(
-        templateHtml: String,
-        fallbackBlocks: List<ContentBlock>,
-        translatedByIndex: Map<Int, String>,
-    ): String {
-        if (translatedByIndex.isEmpty()) return buildRawHtmlFromContentBlocks(fallbackBlocks)
-        return buildTranslatedHtmlFromTemplate(
-            templateHtml = templateHtml,
-            translatedByIndex = translatedByIndex,
-        ) ?: buildRawHtmlFromContentBlocks(fallbackBlocks)
-    }
-
-    private fun buildTranslatedHtmlFromTemplate(
-        templateHtml: String,
-        translatedByIndex: Map<Int, String>,
-    ): String? {
-        if (templateHtml.isBlank() || translatedByIndex.isEmpty()) return null
-        return runCatching {
-            val document = Jsoup.parse(templateHtml)
-            document.outputSettings().prettyPrint(false)
-            val textBlocks = document.select(PARAGRAPH_LIKE_SELECTOR)
-                .filterNot { element ->
-                    element.tagName().equals("p", ignoreCase = true) &&
-                        element.parent()?.tagName()?.equals("li", ignoreCase = true) == true
-                }
-            if (textBlocks.isEmpty()) return@runCatching null
-
-            var textIndex = 0
-            var replacedCount = 0
-            textBlocks.forEach { element ->
-                val originalText = element.text().sanitizeTextBlock()
-                if (originalText.isBlank()) return@forEach
-                val translated = translatedByIndex[textIndex]
-                textIndex += 1
-                if (translated.isNullOrBlank()) return@forEach
-                replaceElementTextPreservingInlineMarkup(
-                    element = element,
-                    translatedText = translated.normalizedForHtmlElement(element),
-                )
-                replacedCount += 1
-            }
-            if (replacedCount <= 0) return@runCatching null
-            if (templateHtml.contains("<html", ignoreCase = true)) {
-                document.outerHtml()
-            } else {
-                document.body().html()
-            }
-        }.getOrNull()
-    }
-
-    private fun replaceElementTextPreservingInlineMarkup(
-        element: Element,
-        translatedText: String,
-    ) {
-        val cleanedText = translatedText.sanitizeTranslatedDisplayText()
-        if (cleanedText.isBlank()) return
-
-        val textNodes = mutableListOf<TextNode>()
-        collectInlineTextNodes(element, textNodes)
-        if (textNodes.isEmpty()) {
-            element.text(cleanedText)
-            return
-        }
-
-        val pieces = splitTranslatedTextBySourceWeights(
-            sourceParts = textNodes.map { it.text() },
-            translatedText = cleanedText,
-        )
-        textNodes.forEachIndexed { index, textNode ->
-            textNode.text(pieces.getOrNull(index).orEmpty())
-        }
-    }
-
-    private fun collectInlineTextNodes(
-        node: Node,
-        out: MutableList<TextNode>,
-    ) {
-        when (node) {
-            is TextNode -> {
-                if (node.text().isNotBlank()) {
-                    out += node
-                }
-            }
-            is Element -> {
-                val tag = node.tagName().lowercase()
-                if (tag == "script" || tag == "style" || tag == "noscript") return
-                node.childNodes().forEach { child ->
-                    collectInlineTextNodes(child, out)
-                }
-            }
-        }
-    }
-
-    private fun projectTranslatedTextOntoRichSegments(
-        originalSegments: List<NovelRichTextSegment>,
-        translatedText: String,
-    ): List<NovelRichTextSegment> {
-        val cleanedText = translatedText.sanitizeTranslatedDisplayText()
-        if (cleanedText.isBlank()) return originalSegments
-        if (originalSegments.isEmpty()) return listOf(NovelRichTextSegment(cleanedText))
-        if (originalSegments.size == 1) return listOf(originalSegments.first().copy(text = cleanedText))
-
-        val pieces = splitTranslatedTextBySourceWeights(
-            sourceParts = originalSegments.map { it.text },
-            translatedText = cleanedText,
-        )
-        return originalSegments.mapIndexedNotNull { index, segment ->
-            val piece = pieces.getOrNull(index).orEmpty()
-            when {
-                piece.isEmpty() && segment.text.isNotEmpty() -> null
-                else -> segment.copy(text = piece)
-            }
-        }.ifEmpty {
-            listOf(originalSegments.first().copy(text = cleanedText))
-        }
-    }
-
-    private fun splitTranslatedTextBySourceWeights(
-        sourceParts: List<String>,
-        translatedText: String,
-    ): List<String> {
-        if (sourceParts.isEmpty()) return emptyList()
-        val cleanedText = translatedText.sanitizeTranslatedDisplayText()
-        if (sourceParts.size == 1) return listOf(cleanedText)
-        if (cleanedText.isEmpty()) return List(sourceParts.size) { "" }
-
-        val weights = sourceParts.map { part ->
-            part.count { char -> !char.isWhitespace() }.coerceAtLeast(0)
-        }
-        val totalWeight = weights.sum()
-        if (totalWeight <= 0) {
-            return List(sourceParts.size) { index -> if (index == 0) cleanedText else "" }
-        }
-
-        val boundaries = mutableListOf<Int>()
-        var cumulativeWeight = 0
-        var previousBoundary = 0
-        weights.dropLast(1).forEach { weight ->
-            cumulativeWeight += weight
-            val preferred = ((cleanedText.length.toFloat() * cumulativeWeight.toFloat()) / totalWeight.toFloat())
-                .roundToInt()
-                .coerceIn(previousBoundary, cleanedText.length)
-            val boundary = findNearestTranslatedTextBoundary(
-                text = cleanedText,
-                preferred = preferred,
-                min = previousBoundary,
-            )
-            boundaries += boundary
-            previousBoundary = boundary
-        }
-
-        val pieces = mutableListOf<String>()
-        var start = 0
-        boundaries.forEach { boundary ->
-            pieces += cleanedText.substring(start, boundary)
-            start = boundary
-        }
-        pieces += cleanedText.substring(start)
-        return pieces
-    }
-
-    private fun findNearestTranslatedTextBoundary(
-        text: String,
-        preferred: Int,
-        min: Int,
-    ): Int {
-        if (preferred <= min) return min
-        if (preferred >= text.length) return text.length
-        val radius = maxOf(8, text.length / 32)
-        var best = preferred
-        var bestScore = boundaryScore(text, preferred) * 100
-        val start = maxOf(min, preferred - radius)
-        val end = minOf(text.length, preferred + radius)
-        for (candidate in start..end) {
-            val score = boundaryScore(text, candidate) * 100 + kotlin.math.abs(candidate - preferred)
-            if (score < bestScore) {
-                best = candidate
-                bestScore = score
-            }
-        }
-        return best.coerceIn(min, text.length)
-    }
-
-    private fun boundaryScore(text: String, index: Int): Int {
-        if (index <= 0 || index >= text.length) return 0
-        val before = text[index - 1]
-        val after = text[index]
-        return when {
-            before.isWhitespace() || after.isWhitespace() -> 0
-            before in TRANSLATED_TEXT_STRONG_BOUNDARY_CHARS -> 1
-            after in TRANSLATED_TEXT_OPENING_BOUNDARY_CHARS -> 1
-            before in TRANSLATED_TEXT_SOFT_BOUNDARY_CHARS -> 2
-            else -> 8
-        }
-    }
-
-    private fun String.normalizedForHtmlElement(element: Element): String {
-        val cleaned = sanitizeTranslatedDisplayText()
-        if (!element.tagName().equals("li", ignoreCase = true)) return cleaned
-        return cleaned
-            .removePrefix("•")
-            .removePrefix("-")
-            .removePrefix("*")
-            .trimStart()
-    }
-
-    private fun String.sanitizeTranslatedDisplayText(): String {
-        return replace('\u00A0', ' ')
-            .replace("\r", "")
-            .trim()
-    }
-
     private fun currentParsedTextBlocks(): List<String> {
         return contentModel?.textBlocks ?: emptyList()
     }
@@ -2542,7 +2309,7 @@ class NovelReaderScreenModel(
             cached.translatedByIndex
         }
         if (translatedByIndex.isEmpty()) return bodyHtml
-        return buildTranslatedHtmlFromTemplate(bodyHtml, translatedByIndex) ?: bodyHtml
+        return NovelContentHtmlMapper.buildTranslatedHtmlFromTemplate(bodyHtml, translatedByIndex) ?: bodyHtml
     }
 
     /**
@@ -3085,10 +2852,6 @@ class NovelReaderScreenModel(
         private const val DEEPSEEK_TOP_P_MAX = 0.95f
         private const val DEEPSEEK_DEFAULT_PRESENCE_PENALTY = 0.15f
         private const val DEEPSEEK_DEFAULT_FREQUENCY_PENALTY = 0.15f
-        private const val PARAGRAPH_LIKE_SELECTOR = "p, li, blockquote, h1, h2, h3, h4, h5, h6, pre"
-        private const val TRANSLATED_TEXT_STRONG_BOUNDARY_CHARS = ".,!?;:…)]}»”’"
-        private const val TRANSLATED_TEXT_OPENING_BOUNDARY_CHARS = "([{«“‘"
-        private const val TRANSLATED_TEXT_SOFT_BOUNDARY_CHARS = "—–-"
         private val STRUCTURED_NODE_TYPES = setOf(
             "doc",
             "paragraph",
