@@ -110,6 +110,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.tts.SharedNovelTtsSessionStore
 import eu.kanade.tachiyomi.ui.reader.novel.tts.resolveNovelTtsVoiceSelection
 import eu.kanade.tachiyomi.util.system.isNightMode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -357,7 +358,10 @@ class NovelReaderScreenModel(
         GoogleTranslationService(client = networkHelper.client)
     },
     private val translationQueueManager: TranslationQueueManager = Injekt.get(),
-) : StateScreenModel<NovelReaderScreenModel.State>(State.Loading()) {
+) : StateScreenModel<NovelReaderScreenModel.State>(State.Loading()),
+    NovelBookReaderHost,
+    NovelTtsHost,
+    NovelAiProviderHost {
     private val contentPrefetchService = ContentPrefetchService(
         environment = runCatching {
             AndroidContentPrefetchEnvironment(Injekt.get<Application>())
@@ -368,569 +372,102 @@ class NovelReaderScreenModel(
     private val application = Injekt.get<Application>()
 
     /**
-     * Book mode runtime. It is created eagerly but stays inert until [startBookMode] builds a spine,
-     * so the chapter-by-chapter reader behaves exactly as before while the setting is off.
+     * Book-mode subsystem, extracted into its own controller so the screen model stays focused on
+     * the chapter-by-chapter reader. The controller reaches the shared reader state through
+     * [NovelBookReaderHost] implemented below.
      */
-    private val bookModeRuntime = NovelBookModeRuntime(
-        loadRawSection = { sectionChapterId ->
-            val snapshot = ttsChapterRepository.loadChapterSnapshot(sectionChapterId)
-            NovelBookRawSection(
-                chapterId = sectionChapterId,
-                chapterName = snapshot.chapter.name,
-                rawHtml = snapshot.rawHtml,
-                chapterWebUrl = snapshot.chapterWebUrl,
-            )
-        },
-        normalizeHtml = { sectionChapterId, rawHtml, chapterName ->
-            withContext(Dispatchers.Default) {
-                val withHeading = prependChapterHeadingIfMissing(
-                    rawHtml = rawHtml.normalizeStructuredChapterPayload(),
-                    chapterName = chapterName,
-                )
-                val sanitized = sanitizeChapterHtmlForReader(withHeading)
-                val bodyHtml = if (sanitized.isBlank()) withHeading else sanitized
-                applyBookSectionTranslation(chapterId = sectionChapterId, bodyHtml = bodyHtml)
-            }
-        },
-        showChapterHeadings = { novelReaderPreferences.bookModeShowChapterHeadings().get() },
-        prepareAhead = { novelReaderPreferences.bookModePrepareAhead().get() },
-        sectionCacheScope = { bookSectionCacheScope() },
-        readCachedSection = { key -> NovelBookSectionDiskCacheStore.read(key) },
-        writeCachedSection = { key, section -> NovelBookSectionDiskCacheStore.write(key, section) },
-        deleteCachedSection = { key -> NovelBookSectionDiskCacheStore.remove(key) },
-    )
-
-    /**
-     * Scope prepared book sections are cached under.
-     *
-     * Section HTML is normalized, heading-wrapped and possibly translated, so it may only be reused
-     * for the same novel and the same visible translation. Mixing those would show a translated
-     * section after the translation was hidden (or the other way round), which is why the translation
-     * state is part of the scope instead of being invalidated on every toggle. Null before a novel is
-     * known, which keeps sections in memory only.
-     */
-    private fun bookSectionCacheScope(): String? {
-        val novelId = currentNovel?.id ?: return null
-        val translation = when {
-            isGeminiTranslationVisible -> "gemini"
-            isGoogleTranslationVisible -> "google"
-            else -> "raw"
-        }
-        val bookVersion = bookStateVersion?.takeIf { it > 0 }?.let { "v$it-" } ?: ""
-        return "novel$novelId-$bookVersion$translation"
-    }
-
-    /**
-     * Version of the compiled book whose sections are being cached.
-     *
-     * A rebuilt artifact can hold different text for the same chapter ids, so the prepared-section
-     * cache has to be scoped to the book version; without it a rebuild would keep serving sections
-     * compiled from the old chapters.
-     */
-    private var bookStateVersion: Long? = null
-
-    /** Opened compiled-book artifact, non-null while this novel is read as one continuous book. */
-    private var artifactSource: NovelBookArtifactSource? = null
-
-    /**
-     * Pre-compiled native blocks of a book section, or null when this book has none.
-     *
-     * The native renderer asks for them before parsing the section HTML, so a book compiled with the
-     * native stream renders without touching Jsoup (and without touching WebView) at scroll time.
-     * Books compiled by an older app version return null here and keep parsing as before.
-     */
-    fun nativeBookBlocksForSection(sectionIndex: Int): List<NovelRichContentBlock>? =
-        artifactSource
-            ?.nativeBlocksFor(sectionIndex)
-            ?.toRichContentBlocks()
-            ?.takeIf { it.isNotEmpty() }
+    private val bookController = NovelBookReaderController(host = this)
 
     /** Pending book-mode DOM work, consumed and acknowledged by the reader UI. */
-    private val bookModeCommandQueue = NovelBookUiCommandQueue()
-
     internal val bookModeCommands: kotlinx.coroutines.flow.StateFlow<List<NovelBookUiCommand>> =
-        bookModeCommandQueue.commands
+        bookController.bookModeCommands
 
     internal val bookEngineSpine: NovelBookSpine
-        get() = bookModeRuntime.engineSpine
+        get() = bookController.bookEngineSpine
 
     internal val bookEngineLocation: NovelBookLocation
-        get() = bookModeRuntime.location
+        get() = bookController.bookEngineLocation
 
-    internal suspend fun loadBookEngineDocument(section: NovelBookSection): NovelBookDocument {
-        val document = bookModeRuntime.loadEngineDocument(section)
-        scheduleBookEnginePrefetch(section.index)
-        // Compiled-book sections come straight out of the artifact body, bypassing the section
-        // pipeline where applyBookSectionTranslation lives, so translations were computed, cached
-        // and then never shown. Sections that cover exactly one chapter can be translated safely;
-        // sections straddling a chapter boundary are left untranslated rather than misaligning the
-        // per-chapter block indices.
-        val translated = if (artifactSource != null) {
-            val chapters = artifactSource?.chaptersOfSection(section.index).orEmpty()
-            if (chapters.size == 1) {
-                applyBookSectionTranslation(chapterId = chapters.first(), bodyHtml = document.html)
-            } else {
-                document.html
-            }
-        } else {
-            document.html
-        }
-        return if (translated == document.html) {
-            document
-        } else {
-            document.copy(html = translated)
+    internal suspend fun loadBookEngineDocument(section: NovelBookSection): NovelBookDocument =
+        bookController.loadBookEngineDocument(section)
+
+    fun nativeBookBlocksForSection(sectionIndex: Int): List<NovelRichContentBlock>? =
+        bookController.nativeBookBlocksForSection(sectionIndex)
+
+    // ---------------------------------------------------------------------------------------------
+    // Book mode delegates. All book-mode logic lives in [bookController]; the screen model only
+    // forwards the reader's calls and hosts the shared state through [NovelBookReaderHost].
+    // ---------------------------------------------------------------------------------------------
+
+    fun observeReadingModeChanges(loadedChapter: NovelChapter) {
+        bookController.observeReadingModeChanges(loadedChapter)
+    }
+
+    internal fun onBookModeDocumentReady() = bookController.onBookModeDocumentReady()
+
+    internal fun onBookModeScroll(sectionIndex: Int, sectionFraction: Float) =
+        bookController.onBookModeScroll(sectionIndex, sectionFraction)
+
+    internal fun onBookEngineLocationChanged(location: NovelBookLocation) =
+        bookController.onBookEngineLocationChanged(location)
+
+    internal fun seekBookModeToProgress(fraction: Float) = bookController.seekBookModeToProgress(fraction)
+
+    internal fun onBookEngineSectionMeasured(chapterId: Long, charCount: Int) =
+        bookController.onBookEngineSectionMeasured(chapterId, charCount)
+
+    internal fun onBookModeSectionMeasured(chapterId: Long, heightPx: Int) =
+        bookController.onBookModeSectionMeasured(chapterId, heightPx)
+
+    internal fun onBookModeChapterSelected(chapterId: Long): Boolean =
+        bookController.onBookModeChapterSelected(chapterId)
+
+    internal fun onBookModeCommandsExecuted(commandIds: List<Long>) =
+        bookController.onBookModeCommandsExecuted(commandIds)
+
+    internal fun onBookModeRetrySection(sectionIndex: Int) =
+        bookController.onBookModeRetrySection(sectionIndex)
+
+    internal fun prepareWholeBook() = bookController.prepareWholeBook()
+
+    // ---------------------------------------------------------------------------------------------
+    // NovelBookReaderHost implementation: the book controller reaches the shared reader state here.
+    // ---------------------------------------------------------------------------------------------
+
+    override val bookScope: CoroutineScope get() = screenModelScope
+
+    override fun bookCurrentNovel(): Novel? = currentNovel
+
+    override fun bookCurrentChapter(): NovelChapter? = currentChapter
+
+    override fun bookChapterOrderList(): List<NovelChapter> = chapterOrderList
+
+    override fun bookFullChapterOrderList(): List<NovelChapter> = fullChapterOrderList
+
+    override fun bookMarkChapterReadInMemory(chapterId: Long) {
+        val chapterIndex = chapterOrderList.indexOfFirst { it.id == chapterId }
+        if (chapterIndex >= 0 && !chapterOrderList[chapterIndex].read) {
+            chapterOrderList[chapterIndex] = chapterOrderList[chapterIndex].copy(read = true)
         }
     }
 
-    private var bookEnginePrefetchJob: kotlinx.coroutines.Job? = null
-
-    private var lastBookEnginePrefetchSectionIndex = -1
-
-    private var bookModeSyncJob: kotlinx.coroutines.Job? = null
-
-    /** Set while a sync round runs, to request exactly one more round with the latest position. */
-    private var bookModeSyncPending = false
-
-    private var bookModeProgressJob: kotlinx.coroutines.Job? = null
-    private var bookModeResumeGuardJob: kotlinx.coroutines.Job? = null
-
-    private var lastPersistedBookModeSectionIndex = -1
-
-    /**
-     * Position this book session resumed at, kept until the renderer actually reports it.
-     *
-     * A freshly loaded document reports its own start (section 0, offset 0) before the queued resume
-     * scroll lands. That echo used to be persisted immediately - the stored whole-book offset was
-     * overwritten with zero on every open, which is why the scrolled flow always reopened at the very
-     * beginning of the novel. Positions before the resume point are ignored while this is set.
-     */
-    private var bookModeResumeLocation: NovelBookLocation? = null
-
-    /** Hard expiry for the resume guard, so a never-arriving resume cannot freeze persistence. */
-    private var bookModeResumeGuardUntilMs = 0L
-
-    /** Whole-book offset this session started from; earlier chapters are not this session's doing. */
-    private var bookModeSessionStartCharOffset = 0
-
-    /** Chapter under the reading caret, tracked to notice chapter changes inside one block. */
-    private var lastBookModeChapterId: Long? = null
-
-    /** Mirrors [State.ReaderBookModeState.isRestoringPosition] for the UI snapshot. */
-    private var bookModeRestoringPosition = false
-
-    /** Slack when comparing a reported position with the resume position. */
-    private val bookModeResumeToleranceChars = 400
-
-    /** Upper bound for the resume guard window. */
-    private val bookModeResumeGuardMillis = 1_200L
-
-    /** Chapters this book-mode session already reported as read, to avoid duplicate write-through. */
-    private val bookModeMarkedReadChapterIds = mutableSetOf<Long>()
-
-    private var lastBookModeFailureLogAtMs = 0L
-
-    /** Idle delay before a book-mode position is written through the progress pipeline. */
-    private val bookModeProgressDebounceMs = 1_500L
-
-    /** Minimum gap between book-mode failure logs, so a failing source cannot flood logcat. */
-    private val bookModeFailureLogThrottleMs = 5_000L
-
-    /**
-     * Gate for book-mode trace logging. Book mode logged only failures before, so a device run could
-     * not be diagnosed; traces are emitted on append/prune only, never from the scroll path.
-     */
-    private val bookModeTraceLoggingEnabled = true
-
-    /**
-     * True when the reader should present the whole novel as one continuous document.
-     *
-     * Only the per-title compiled artifact enables book mode: the global "book reading mode"
-     * setting was removed by [RemoveNovelBookReadingModeMigration], so a leftover BOOK value must
-     * not silently put a title into the live (unbuilt) book path.
-     */
-    private fun isBookModeEnabled(): Boolean = artifactSource != null
-
-    /** Watches the reading-mode preference so book mode can be switched on without a reload. */
-    private var readingModeJob: kotlinx.coroutines.Job? = null
-
-    /**
-     * Applies reading-mode switches while the reader is open.
-     *
-     * Book mode used to be evaluated only while a chapter was being loaded, so turning it on from the
-     * settings screen or the quick settings sheet changed nothing until the reader was reopened - the
-     * setting simply looked broken. The reader now starts and stops the book runtime live, and the
-     * renderer follows because it is derived from the book state.
-     */
-    private fun observeReadingModeChanges(loadedChapter: NovelChapter) {
-        readingModeJob?.cancel()
-        readingModeJob = screenModelScope.launch {
-            novelReaderPreferences.readingMode().changes()
-                .distinctUntilChanged()
-                .collect {
-                    // The global book reading mode is gone: only the per-title artifact decides.
-                    if (isBookModeEnabled() == bookModeRuntime.isActive) return@collect
-                    if (isBookModeEnabled()) {
-                        maybeStartBookMode(currentChapter ?: loadedChapter)
-                    } else {
-                        bookEnginePrefetchJob?.cancel()
-                        lastBookEnginePrefetchSectionIndex = -1
-                        bookModeRuntime.stop()
-                        bookModeCommandQueue.clear()
-                    }
-                    refreshBookModeState()
-                }
-        }
-    }
-
-    /**
-     * Builds the native block stream of an older book in the background.
-     *
-     * The book stays fully readable while this runs: sections keep being parsed on the fly until the
-     * stream is ready. Only then is the artifact re-opened, so the sections rendered after that point
-     * come from pre-compiled blocks. Nothing is re-downloaded and no offset changes, which is why
-     * swapping the source mid-read is safe.
-     */
-    private fun scheduleNativeBookStreamUpgrade() {
-        val novel = currentNovel ?: return
-        val source = artifactSource ?: return
-        if (source.hasNativeBlocks) return
-        screenModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val migrated = runCatching {
-                eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder().ensureNativeStream(novel)
-            }.getOrDefault(false)
-            if (!migrated || currentNovel?.id != novel.id) return@launch
-            val upgraded = runCatching {
-                NovelBookArtifactSource.open(
-                    directory = eu.kanade.tachiyomi.data.book.novel.NovelBookArtifact.directoryFor(
-                        root = eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder
-                            .defaultRootDirectory(),
-                        sourceId = novel.source,
-                        novelId = novel.id,
-                    ),
-                )
-            }.getOrNull() ?: return@launch
-            if (currentNovel?.id == novel.id) {
-                artifactSource = upgraded
-                logcat(LogPriority.INFO) { "Native book stream ready: novel=${novel.id}" }
-            }
-        }
-    }
-
-    /**
-     * Starts book mode for the currently loaded chapter, or keeps the runtime inert when the reader
-     * is in the classic chapter-by-chapter mode.
-     */
-    private suspend fun maybeStartBookMode(chapter: NovelChapter) {
-        val bookState = currentNovel?.let { novel -> getNovelBookState.await(novel.id) }
-        bookStateVersion = bookState?.bookVersion
-        artifactSource = if (bookState?.enabled == true) {
-            currentNovel?.let { novel ->
-                NovelBookArtifactSource.open(
-                    directory = eu.kanade.tachiyomi.data.book.novel.NovelBookArtifact.directoryFor(
-                        root = eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder
-                            .defaultRootDirectory(),
-                        sourceId = novel.source,
-                        novelId = novel.id,
-                    ),
-                )
-            }
-        } else {
-            null
-        }
-        scheduleNativeBookStreamUpgrade()
-        if (!isBookModeEnabled()) {
-            if (bookModeRuntime.isActive) {
-                bookEnginePrefetchJob?.cancel()
-                lastBookEnginePrefetchSectionIndex = -1
-                bookModeRuntime.stop()
-            }
-            return
-        }
-        val chapters = fullChapterOrderList.ifEmpty { chapterOrderList }
-        if (chapters.isEmpty()) return
-        val artifact = artifactSource
-        if (artifact != null) {
-            // Opening the chapter the stored position belongs to means "continue reading", so the
-            // exact offset is restored. Any other chapter comes from a table-of-contents tap and
-            // must land on that chapter's first character instead.
-            val storedLocation = artifact.locationOf((bookState?.charOffset ?: 0L).toInt())
-            val resumeLocation = if (bookState?.lastChapterId == chapter.id) {
-                storedLocation
-            } else {
-                artifact.locationOfChapter(chapter.id) ?: storedLocation
-            }
-            bookModeRuntime.startWithSpine(
-                spine = artifact.spine,
-                resumeLocation = resumeLocation,
-                windowConfig = NovelBookWindowConfig.forBlockChars(
-                    eu.kanade.tachiyomi.data.book.novel.NovelBookBlockPlanner.DEFAULT_TARGET_CHARS,
-                ),
-                fetchSectionHtml = { sectionKey ->
-                    artifact.documentFor(-(sectionKey.toInt() + 1))?.html.orEmpty()
-                },
-            )
-        } else {
-            bookModeRuntime.start(
-                chapters = chapters,
-                resumeProgress = chapter.lastPageRead,
-                resumeChapterId = chapter.id,
-            )
-        }
-        bookEnginePrefetchJob?.cancel()
-        lastBookEnginePrefetchSectionIndex = -1
-        bookModeCommandQueue.clear()
-        val resumeState = bookModeRuntime.uiState()
-        val resumedLocation = bookModeRuntime.location
-        bookModeResumeLocation = resumedLocation
-        bookModeResumeGuardUntilMs = System.currentTimeMillis() + bookModeResumeGuardMillis
-        bookModeRestoringPosition = resumedLocation.sectionIndex > 0 || resumedLocation.charOffset > 0
-        bookModeResumeGuardJob?.cancel()
-        if (bookModeRestoringPosition) {
-            bookModeResumeGuardJob = screenModelScope.launch {
-                kotlinx.coroutines.delay(bookModeResumeGuardMillis)
-                releaseBookModeResumeGuard()
-            }
-        }
-        bookModeSessionStartCharOffset = artifactSource
-            ?.let { it.chapterStartAt(it.charOffsetOf(resumedLocation)) }
-            ?: 0
-        lastPersistedBookModeSectionIndex = resumedLocation.sectionIndex
-        lastBookModeChapterId = bookModeChapterAtReadingPosition()?.id
-        bookModeMarkedReadChapterIds.clear()
-        // The native renderer has no document-ready hook to place the reader, so the resume position
-        // is queued as a regular scroll command. Both renderers therefore open the book where the
-        // reader left off instead of at the top of the resident window.
-        bookModeCommandQueue.enqueueScrollTo(
-            sectionIndex = resumeState.currentSectionIndex,
-            sectionFraction = resumeState.currentSectionFraction,
-        )
-        logcat(LogPriority.INFO) {
-            "Book mode started: sections=${resumeState.sectionCount}, " +
-                "resumeSection=${resumeState.currentSectionIndex}, " +
-                "resumeFraction=${resumeState.currentSectionFraction}, chapterId=${chapter.id}"
-        }
-    }
-
-    /**
-     * Rebuilds the whole book document after the reader (re)loaded it.
-     *
-     * The reader document is loaded asynchronously, so every piece of DOM work that book mode had
-     * already executed - the spine skeleton, the appended sections, the paginated flow class and the
-     * relocate listeners - was thrown away when the fresh document committed. The commands had been
-     * acknowledged by then, so nothing was ever re-sent: the document stayed almost empty, the
-     * paginated flow class was never present (which is why paging did nothing and the document just
-     * panned horizontally), and no relocate event ever arrived, so progress was neither advanced nor
-     * persisted. The reader now calls this once per loaded document.
-     */
-    internal fun onBookModeDocumentReady() {
-        if (!bookModeRuntime.isActive) return
-        bookModeCommandQueue.clear()
-        bookModeRuntime.forgetRenderedSections()
-        val current = bookModeRuntime.uiState()
-        // The legacy WebView used to be re-seeded with one placeholder per section here; the book
-        // engine and the native list rebuild their resident window from the sync round instead, so
-        // only the reading position is re-applied.
-        bookModeCommandQueue.enqueueScrollTo(
-            sectionIndex = current.currentSectionIndex,
-            sectionFraction = current.currentSectionFraction,
-        )
-        logcat(LogPriority.INFO) {
-            "Book mode document ready: section=${current.currentSectionIndex}, " +
-                "fraction=${current.currentSectionFraction}"
-        }
-        scheduleBookModeSync()
-    }
-
-    /**
-     * Runs book-mode rounds strictly one at a time: a round queues the sections to append/prune for
-     * the current position and prepares the sections around it.
-     *
-     * Callers that arrive while a round is running only mark the runtime dirty, and the running job
-     * replans once before finishing. The previous version rescheduled itself from `prepareSection`,
-     * which spawned nested jobs and turned into an endless plan -> prepare -> plan storm (the source
-     * of the scroll jank and the logcat flood).
-     */
-    private fun scheduleBookModeSync() {
-        if (!bookModeRuntime.isActive) return
-        if (bookModeSyncJob?.isActive == true) {
-            bookModeSyncPending = true
-            return
-        }
-        bookModeSyncJob = screenModelScope.launch {
-            do {
-                val replan = runBookModeSyncRound()
-            } while (replan && bookModeRuntime.isActive)
-            refreshBookModeState()
-        }
-    }
-
-    /**
-     * One planning round. Returns true when a section finished preparing during the round, so the
-     * window should be recomputed immediately; a failed preparation never asks for a replan, which
-     * keeps a broken chapter from looping forever.
-     */
-    private suspend fun runBookModeSyncRound(): Boolean {
-        bookModeSyncPending = false
-        runCatching {
-            bookModeRuntime.sync(
-                renderSection = { section, html ->
-                    bookModeCommandQueue.enqueueAppend(sectionIndex = section.index, html = html)
-                    logBookModeTrace { "append section=${section.index} chars=${html.length}" }
-                },
-                releaseSection = { section ->
-                    bookModeCommandQueue.enqueuePrune(sectionIndex = section.index)
-                    logBookModeTrace { "prune section=${section.index}" }
-                },
-                prepareSection = { section ->
-                    val prepared = withContext(Dispatchers.IO) {
-                        runCatching { bookModeRuntime.prepareChapter(section.chapterId) }
-                            .onFailure { error ->
-                                logBookModeFailure("prepare section ${section.chapterId}", error)
-                            }
-                            .isSuccess
-                    }
-                    if (prepared) {
-                        bookModeSyncPending = true
-                    }
-                },
-            )
-        }.onFailure { error ->
-            logBookModeFailure("sync sections", error)
-        }
-        refreshBookModeState()
-        return bookModeSyncPending
-    }
-
-    /** Throttled book-mode logging: repeated failures collapse into one entry per few seconds. */
-    private fun logBookModeFailure(what: String, error: Throwable) {
-        val now = System.currentTimeMillis()
-        if (now - lastBookModeFailureLogAtMs < bookModeFailureLogThrottleMs) return
-        lastBookModeFailureLogAtMs = now
-        logcat(LogPriority.WARN, error) { "Book mode failed to $what" }
-    }
-
-    /**
-     * Debug-only book-mode trace. Book mode used to log nothing but failures, so a device run could
-     * not be diagnosed at all; these lines stay out of release builds and out of the hot scroll path.
-     */
-    private inline fun logBookModeTrace(message: () -> String) {
-        if (!bookModeTraceLoggingEnabled) return
-        logcat(LogPriority.DEBUG) { "Book mode: ${message()}" }
-    }
-
-    private fun refreshBookModeState() {
+    override fun bookUpdateSuccessState(
+        transform: (NovelReaderScreenModel.State.Success) -> NovelReaderScreenModel.State.Success,
+    ) {
         val successState = mutableState.value as? State.Success ?: return
-        // The prepare-book action is owned by the screen model, so its progress is merged into the
-        // runtime snapshot instead of adding a second state holder for the UI to read.
-        val chapterCount = bookPrepareTotalCount.takeIf { it > 0 }
-            ?: fullChapterOrderList.ifEmpty { chapterOrderList }.size
-        mutableState.value = successState.copy(
-            bookMode = bookModeRuntime.uiState().copy(
-                isPreparingWholeBook = bookPrepareRunning,
-                preparedChapterCount = bookPreparedChapterCount,
-                totalChapterCount = chapterCount,
-                isRestoringPosition = bookModeRestoringPosition,
-            ),
-        )
+        mutableState.value = transform(successState)
     }
 
-    /** Reports the reader position inside the book after a scroll update from the WebView. */
-    internal fun onBookModeScroll(sectionIndex: Int, sectionFraction: Float) {
-        if (!bookModeRuntime.isActive) return
-        bookModeRuntime.moveTo(sectionIndex = sectionIndex, sectionFraction = sectionFraction)
-        scheduleBookModeSync()
-        refreshBookModeState()
-        onBookModePositionChanged(sectionFraction)
-    }
-
-    /** Receives the dedicated renderer's exact section/text location without touching the legacy DOM sync. */
-    internal fun onBookEngineLocationChanged(location: NovelBookLocation) {
-        if (!bookModeRuntime.isActive) return
-        bookModeRuntime.moveTo(location)
-        refreshBookModeState()
-        val currentLocation = bookModeRuntime.location
-        scheduleBookEnginePrefetch(currentLocation.sectionIndex)
-        onBookModePositionChanged(bookModeRuntime.uiState().currentSectionFraction)
-    }
-
-    /**
-     * Turns a new reading position into read marking and persistence.
-     *
-     * Both renderers funnel through here so the rules cannot drift apart. Read marking used to be
-     * bound to block changes, but a block holds tens of thousands of characters: two short chapters
-     * that follow each other inside one block never produced a block change, so the first of them was
-     * never marked read. The chapter under the caret is tracked instead, which is the signal the user
-     * actually sees.
-     */
-    private fun onBookModePositionChanged(sectionFraction: Float) {
-        val location = bookModeRuntime.location
-        if (isBookModeResumeEcho(location)) return
-        val chapterId = bookModeChapterAtReadingPosition()?.id
-        if (chapterId != null && chapterId != lastBookModeChapterId) {
-            lastBookModeChapterId = chapterId
-            adoptBookModeChapter(chapterId)
-            markBookModeCrossedChaptersRead()
-        } else if (location.sectionIndex != lastPersistedBookModeSectionIndex) {
-            markBookModeCrossedChaptersRead()
-        }
-        scheduleBookModeProgressPersistence(
-            sectionIndex = location.sectionIndex,
-            sectionFraction = sectionFraction,
-        )
-    }
-
-    /**
-     * True while the renderer is still reporting positions from before the resume point.
-     *
-     * The guard is released as soon as the resume position is reached, and always after
-     * [bookModeResumeGuardMillis], so a renderer that never reaches it cannot block persistence for
-     * the rest of the session.
-     */
-    private fun isBookModeResumeEcho(location: NovelBookLocation): Boolean {
-        val pending = bookModeResumeLocation ?: return false
-        if (System.currentTimeMillis() > bookModeResumeGuardUntilMs) {
-            releaseBookModeResumeGuard()
-            return false
-        }
-        val artifact = artifactSource
-        val reached = if (artifact != null) {
-            artifact.charOffsetOf(location) + bookModeResumeToleranceChars >=
-                artifact.charOffsetOf(pending)
-        } else {
-            location.sectionIndex > pending.sectionIndex ||
-                (
-                    location.sectionIndex == pending.sectionIndex &&
-                        location.charOffset + bookModeResumeToleranceChars >= pending.charOffset
-                    )
-        }
-        if (!reached) return true
-        releaseBookModeResumeGuard()
-        return false
-    }
-
-    /** Drops the resume guard and uncovers the reader once the saved position is on screen. */
-    private fun releaseBookModeResumeGuard() {
-        bookModeResumeGuardJob?.cancel()
-        bookModeResumeGuardJob = null
-        bookModeResumeLocation = null
-        if (bookModeRestoringPosition) {
-            bookModeRestoringPosition = false
-            refreshBookModeState()
-        }
-    }
+    override fun bookAdoptBookModeChapter(chapterId: Long) = adoptBookModeChapter(chapterId)
 
     /**
      * Moves the session's chapter anchor to the chapter under the caret.
      *
      * Over a book the reader never opens a new chapter, so the anchor stayed on the chapter the
      * session was entered from: history, the exit snapshot and the read threshold all described
-     * chapter one no matter how far the reader had scrolled. "Continue" from the home screen then
-     * resolved that stale chapter, found it did not match the stored book position, and opened the
-     * book at that chapter's first character. The anchor now follows the text, so the stored position
-     * and the history entry describe the same chapter and resuming lands where reading stopped.
-     *
-     * Only the model-side anchor moves; the reader UI keeps rendering the continuous document, so no
-     * chapter-change effects are triggered.
+     * chapter one no matter how far the reader had scrolled. The anchor now follows the text, so
+     * the stored position and the history entry describe the same chapter and resuming lands where
+     * reading stopped.
      */
     private fun adoptBookModeChapter(chapterId: Long) {
         val chapter = chapterOrderList.firstOrNull { it.id == chapterId }
@@ -953,329 +490,157 @@ class NovelReaderScreenModel(
         }
     }
 
-    internal fun seekBookModeToProgress(fraction: Float) {
-        if (!bookModeRuntime.isActive) return
-        val artifact = artifactSource
-        val location = if (artifact != null) {
-            val charOffset = (fraction.coerceIn(0f, 1f) * artifact.totalChars).toInt()
-            artifact.locationOf(charOffset)
-        } else {
-            val totalSections = bookModeRuntime.uiState().sectionCount
-            val sectionIndex = (fraction.coerceIn(0f, 1f) * (totalSections - 1).coerceAtLeast(0)).toInt()
-            NovelBookLocation(sectionIndex = sectionIndex, charOffset = 0)
-        }
-        onBookEngineLocationChanged(location)
+    override fun bookEnqueueProgressPersistence(update: PendingProgressPersistence) =
+        enqueueProgressPersistence(update)
+
+    override fun bookUpdateReadingProgress(currentIndex: Int, totalItems: Int, persistedProgress: Long?) =
+        updateReadingProgress(currentIndex, totalItems, persistedProgress)
+
+    override fun bookApplyBookSectionTranslation(chapterId: Long, bodyHtml: String): String =
+        applyBookSectionTranslation(chapterId, bodyHtml)
+
+    override fun bookGeminiTranslationVisible(): Boolean = isGeminiTranslationVisible
+
+    override fun bookGoogleTranslationVisible(): Boolean = isGoogleTranslationVisible
+
+    override fun bookTtsChapterRepository(): NovelTtsChapterRepository = ttsChapterRepository
+
+    // ---------------------------------------------------------------------------------------------
+    // NovelTtsHost implementation.
+    // ---------------------------------------------------------------------------------------------
+
+    override val ttsScope: CoroutineScope get() = screenModelScope
+
+    override fun ttsCurrentNovel(): Novel? = currentNovel
+
+    override fun ttsCurrentChapter(): NovelChapter? = currentChapter
+
+    override fun ttsReaderSettings(): NovelReaderSettings? =
+        (mutableState.value as? State.Success)?.readerSettings
+
+    override fun ttsUpdateSuccessState(
+        transform: (NovelReaderScreenModel.State.Success) -> NovelReaderScreenModel.State.Success,
+    ) {
+        val successState = mutableState.value as? State.Success ?: return
+        mutableState.value = transform(successState)
     }
 
-    private fun scheduleBookEnginePrefetch(sectionIndex: Int) {
-        if (!bookModeRuntime.isActive || sectionIndex == lastBookEnginePrefetchSectionIndex) return
-        lastBookEnginePrefetchSectionIndex = sectionIndex
-        bookEnginePrefetchJob?.cancel()
-        bookEnginePrefetchJob = screenModelScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { bookModeRuntime.prefetchAround(sectionIndex) }
-            }
-            result.onFailure { error ->
-                logBookModeFailure("prefetch around section $sectionIndex", error)
-            }
-            refreshBookModeState()
-        }
-    }
-
-    /** Replaces a section estimate with the dedicated renderer's stabilized DOM text length. */
-    internal fun onBookEngineSectionMeasured(chapterId: Long, charCount: Int) {
-        if (!bookModeRuntime.isActive || charCount <= 0) return
-        bookModeRuntime.measureSection(chapterId = chapterId, charCount = charCount)
-        refreshBookModeState()
-    }
-
-    /**
-     * Chapter that currently sits under the reading position when the session runs over a book
-     * artifact. Returns null in the per-chapter reader, where `currentChapter` is already correct.
-     */
-    private fun bookModeChapterAtReadingPosition() = artifactSource
-        ?.takeIf { bookModeRuntime.isActive }
-        ?.let { artifact ->
-            val chapterId = artifact.chapterAt(artifact.charOffsetOf(bookModeRuntime.location))?.chapterId
-            chapterId?.let { id ->
-                chapterOrderList.firstOrNull { it.id == id }
-                    ?: fullChapterOrderList.firstOrNull { it.id == id }
-            }
-        }
-
-    private fun markBookModeCrossedChaptersRead() {
-        if (!bookModeRuntime.isActive) return
-        val alreadyRead = buildSet {
-            addAll(bookModeMarkedReadChapterIds)
-            chapterOrderList.forEach { if (it.read) add(it.id) }
-        }
-        // Over an artifact the spine sections are fixed-size blocks with synthetic ids, so the
-        // spine's read-marking policy cannot name real chapters. Crossed chapters are derived from
-        // the whole-book character offset instead, which is the exact same signal the position is
-        // persisted from.
-        val artifact = artifactSource
-        val activeChapter = bookModeChapterAtReadingPosition() ?: currentChapter
-        val activeChapterId = activeChapter?.id
-        val crossedChapterIds = if (artifact != null) {
-            val charOffset = artifact.charOffsetOf(bookModeRuntime.location)
-            val crossed = artifact
-                .chaptersFullyReadBetween(
-                    fromCharOffset = bookModeSessionStartCharOffset,
-                    toCharOffset = charOffset,
-                )
-                .filterNot { it in alreadyRead }
-                .toMutableList()
-            // The chapter under the caret is still being read, but it counts as read once the
-            // reader is past the same threshold the per-chapter reader uses (90%). Without this,
-            // a chapter the reader stopped in the middle of stayed unread until 99% of the WHOLE
-            // book, and "novel completed" / the series interstitial never fired.
-            artifact.chapterAt(charOffset)?.let { current ->
-                val progressInside = if (current.charLength > 0) {
-                    ((charOffset - current.charStart).toFloat() / current.charLength.toFloat())
-                } else {
-                    0f
-                }
-                if (progressInside >= NovelBookReadMarkingPolicy.DEFAULT_READ_THRESHOLD &&
-                    current.chapterId !in alreadyRead
-                ) {
-                    crossed += current.chapterId
-                }
-            }
-            crossed
-        } else {
-            // The live spine's policy already includes the current section once it passes the
-            // threshold, so the current chapter must not be filtered out below.
-            bookModeRuntime.chaptersToMarkRead(alreadyRead)
-        }
-        if (crossedChapterIds.isEmpty()) return
-        val encodedProgress = bookModeRuntime.encodedProgress()
-        crossedChapterIds.forEach { chapterId ->
-            val chapter = chapterOrderList.firstOrNull { it.id == chapterId }
-                ?: fullChapterOrderList.firstOrNull { it.id == chapterId }
-                ?: return@forEach
-            bookModeMarkedReadChapterIds += chapterId
-            val becameRead = !chapter.read
-            val chapterIndex = chapterOrderList.indexOfFirst { it.id == chapterId }
-            if (chapterIndex >= 0 && !chapterOrderList[chapterIndex].read) {
-                chapterOrderList[chapterIndex] = chapterOrderList[chapterIndex].copy(read = true)
-            }
-            enqueueProgressPersistence(
-                PendingProgressPersistence(
-                    chapterId = chapter.id,
-                    novelId = chapter.novelId,
-                    chapterNumber = chapter.chapterNumber.toInt(),
-                    read = true,
-                    // The chapter under the caret keeps its book location so a later resume lands
-                    // on the same text; fully passed chapters keep their own stored progress.
-                    lastPageRead = if (chapterId == activeChapterId) {
-                        encodedProgress ?: chapter.lastPageRead
-                    } else {
-                        chapter.lastPageRead
-                    },
-                    emitReadEvent = becameRead,
-                    emitNovelCompleted = becameRead && chapterOrderList.all { it.read },
-                    sessionReadDurationMs = 0L,
-                ),
-            )
+    override fun ttsRefreshTtsUiState(uiState: NovelReaderTtsUiState) {
+        val state = mutableState.value
+        if (state is State.Success) {
+            mutableState.value = state.copy(ttsUiState = uiState)
         }
     }
 
-    /**
-     * Writes the position through the progress pipeline at most once per idle window, and right away
-     * when the reader crosses into another section. Persisting on every position update kept the
-     * database and the history writer busy for the whole reading session.
-     */
-    private fun scheduleBookModeProgressPersistence(sectionIndex: Int, sectionFraction: Float) {
-        bookModeProgressJob?.cancel()
-        if (sectionIndex != lastPersistedBookModeSectionIndex) {
-            lastPersistedBookModeSectionIndex = sectionIndex
-            persistBookModeProgress(sectionFraction)
-            return
-        }
-        bookModeProgressJob = screenModelScope.launch {
-            kotlinx.coroutines.delay(bookModeProgressDebounceMs)
-            persistBookModeProgress(sectionFraction)
-        }
+    override fun ttsSetTtsUiState(uiState: NovelReaderTtsUiState) {
+        ttsController.setTtsUiStateFromReader(uiState)
     }
 
-    /**
-     * Persists the reading position as a book location so the reader can resume anywhere in the
-     * novel.
-     *
-     * The global percent is used for the position only. The "read" flag of the chapter under the
-     * caret is NOT derived from the whole-book percentage (that would require 99% of the entire
-     * book); [markBookModeCrossedChaptersRead] owns the read flag with the per-chapter threshold.
-     */
-    private fun persistBookModeProgress(sectionFraction: Float) {
-        persistBookArtifactProgress()
-        val encodedProgress = bookModeRuntime.encodedProgress() ?: return
-        val artifact = artifactSource
-        val globalPercent = if (artifact != null) {
-            val charOffset = artifact.charOffsetOf(bookModeRuntime.location)
-            (artifact.progressOf(charOffset) * 100f).toInt().coerceIn(0, 100)
-        } else {
-            (sectionFraction * 100f).toInt().coerceIn(0, 100)
-        }
-        updateReadingProgress(
-            currentIndex = globalPercent,
-            totalItems = 100,
-            persistedProgress = encodedProgress,
+    override fun ttsBookChapterAtReadingPosition(): NovelChapter? =
+        bookController.bookModeChapterAtReadingPosition()
+
+    override fun ttsActiveTranslationChapterId(): Long? = activeTranslationChapterId()
+
+    override fun ttsIsGeminiTranslating(): Boolean = isGeminiTranslating
+
+    override fun ttsGeminiTranslationJob(): Job? = geminiTranslationJob
+
+    override fun ttsIsGeminiTranslationVisible(): Boolean = isGeminiTranslationVisible
+
+    override fun ttsIsGoogleTranslationVisible(): Boolean = isGoogleTranslationVisible
+
+    override fun ttsTranslationHolderEmpty(provider: String): Boolean = translationHolder.isEmpty(provider)
+
+    override fun ttsApplyGeminiTranslationToContentBlocks(
+        blocks: List<ContentBlock>,
+        forceTranslation: Boolean,
+    ): List<ContentBlock> = applyGeminiTranslationToContentBlocks(blocks, forceTranslation)
+
+    override fun ttsApplyGoogleTranslationToContentBlocks(
+        blocks: List<ContentBlock>,
+    ): List<ContentBlock> = applyGoogleTranslationToContentBlocks(blocks)
+
+    override fun ttsUpdateGeminiSetting(
+        setGlobal: () -> Unit,
+        setOverride: (NovelReaderOverride) -> NovelReaderOverride,
+    ) = updateGeminiSetting(setGlobal, setOverride)
+
+    override fun ttsUpdateContent(settings: NovelReaderSettings) = updateContent(settings)
+
+    // ---------------------------------------------------------------------------------------------
+    // NovelAiProviderHost implementation.
+    // ---------------------------------------------------------------------------------------------
+
+    override val providerScope: CoroutineScope get() = screenModelScope
+
+    override fun providerCurrentNovel(): Novel? = currentNovel
+
+    override fun providerReaderSettings(): NovelReaderSettings? =
+        (mutableState.value as? State.Success)?.readerSettings
+
+    override fun providerUpdateContent(settings: NovelReaderSettings) = updateContent(settings)
+
+    override fun providerAddLog(message: String) = addAiTranslationLog(message)
+
+    override suspend fun providerRequestTranslationBatch(
+        segments: List<String>,
+        settings: NovelReaderSettings,
+        onMessage: (String) -> Unit,
+    ): List<String?>? = requestTranslationBatch(segments, settings, onMessage)
+
+    override fun providerApplyAiProvidersState(state: NovelAiProviderState) {
+        val successState = mutableState.value as? State.Success ?: return
+        mutableState.value = successState.copy(
+            aiProviders = State.ReaderAiProvidersState(
+                openRouterModelIds = state.openRouterModelIds,
+                isOpenRouterModelsLoading = state.isOpenRouterModelsLoading,
+                isTestingOpenRouterConnection = state.isTestingOpenRouterConnection,
+                openRouterApiTestStatus = state.openRouterApiTestStatus,
+                openRouterApiTestMessage = state.openRouterApiTestMessage,
+                deepSeekModelIds = state.deepSeekModelIds,
+                isDeepSeekModelsLoading = state.isDeepSeekModelsLoading,
+                isTestingDeepSeekConnection = state.isTestingDeepSeekConnection,
+                deepSeekApiTestStatus = state.deepSeekApiTestStatus,
+                deepSeekApiTestMessage = state.deepSeekApiTestMessage,
+                mistralModelIds = state.mistralModelIds,
+                isMistralModelsLoading = state.isMistralModelsLoading,
+                isTestingMistralConnection = state.isTestingMistralConnection,
+                mistralApiTestStatus = state.mistralApiTestStatus,
+                mistralApiTestMessage = state.mistralApiTestMessage,
+                nvidiaModelIds = state.nvidiaModelIds,
+                isNvidiaModelsLoading = state.isNvidiaModelsLoading,
+                isTestingNvidiaConnection = state.isTestingNvidiaConnection,
+                nvidiaApiTestStatus = state.nvidiaApiTestStatus,
+                nvidiaApiTestMessage = state.nvidiaApiTestMessage,
+                ollamaCloudModelIds = state.ollamaCloudModelIds,
+                isOllamaCloudModelsLoading = state.isOllamaCloudModelsLoading,
+                isTestingOllamaCloudConnection = state.isTestingOllamaCloudConnection,
+                ollamaCloudApiTestStatus = state.ollamaCloudApiTestStatus,
+                ollamaCloudApiTestMessage = state.ollamaCloudApiTestMessage,
+            ),
         )
     }
 
-    /**
-     * Stores the whole-book position of a compiled book as a global character offset.
-     *
-     * Blocks are not chapters, so the per-chapter progress row cannot describe where the reader is
-     * inside the book; the artifact state row keeps the exact offset used to resume.
-     */
-    private fun persistBookArtifactProgress() {
-        val artifact = artifactSource ?: return
-        val novelId = currentNovel?.id ?: return
-        val charOffset = artifact.charOffsetOf(bookModeRuntime.location)
-        val chapterId = artifact.chapterAt(charOffset)?.chapterId
-        screenModelScope.launch {
-            setNovelBookProgress.await(
-                novelId = novelId,
-                charOffset = charOffset.toLong(),
-                lastChapterId = chapterId,
-            )
-        }
-    }
+    override fun providerHasConfiguredTranslationProvider(settings: NovelReaderSettings): Boolean =
+        settings.hasConfiguredTranslationProvider()
 
     /**
-     * Records the pixel height the renderer measured for a section.
-     *
-     * The value used to be written into the section's text weight, which rescaled the whole book on
-     * every re-measure and made progress jump. Section weights now come from the prepared section
-     * text, and heights are kept in their own field for anchoring and placeholder sizing.
+     * TTS subsystem, extracted into its own controller. The screen model hosts the shared state
+     * through [NovelTtsHost] and forwards the reader's `tts*` calls.
      */
-    internal fun onBookModeSectionMeasured(chapterId: Long, heightPx: Int) {
-        if (!bookModeRuntime.isActive) return
-        bookModeRuntime.measureSectionLayoutHeight(chapterId = chapterId, heightPx = heightPx)
-    }
-
-    /**
-     * Jumps to a chapter without leaving the continuous document.
-     * Returns true when book mode handled the jump, so the caller must not reload the screen.
-     */
-    internal fun onBookModeChapterSelected(chapterId: Long): Boolean {
-        if (!bookModeRuntime.moveToChapter(chapterId)) return false
-        refreshBookModeState()
-        return true
-    }
-
-    internal fun onBookModeCommandsExecuted(commandIds: List<Long>) {
-        bookModeCommandQueue.ack(commandIds)
-    }
-
-    /**
-     * Retries a section that failed to load, e.g. after a network drop.
-     *
-     * A broken chapter never asks the planner for a replan, so the book would otherwise keep showing
-     * the failed placeholder until the reader left and came back. The retry goes through the loader,
-     * and a success triggers one sync round that renders the section in place.
-     */
-    internal fun onBookModeRetrySection(sectionIndex: Int) {
-        if (!bookModeRuntime.isActive) return
-        val chapterId = bookModeRuntime.chapterIdOfSection(sectionIndex) ?: return
-        screenModelScope.launch {
-            val retried = withContext(Dispatchers.IO) {
-                runCatching { bookModeRuntime.retryChapter(chapterId) }
-                    .onFailure { error -> logBookModeFailure("retry section $chapterId", error) }
-                    .isSuccess
-            }
-            if (retried) {
-                scheduleBookModeSync()
-            }
-            refreshBookModeState()
-        }
-    }
-
-    /**
-     * Prepares every chapter of the book, so the whole novel can be read offline without waiting for
-     * the sliding window. Sections are prepared one by one to stay friendly to source rate limits.
-     *
-     * The run reports itself through the book-mode state, so the settings sheet can show a live
-     * "prepared X of Y" count and refuse a second run; it used to work silently, which made the entry
-     * look like it did nothing at all.
-     */
-    private var bookPrepareJob: Job? = null
-
-    private var bookPrepareRunning: Boolean = false
-
-    private var bookPreparedChapterCount: Int = 0
-
-    private var bookPrepareTotalCount: Int = 0
-
-    internal fun prepareWholeBook() {
-        if (!bookModeRuntime.isActive || bookPrepareJob?.isActive == true) return
-        val chapters = fullChapterOrderList.ifEmpty { chapterOrderList }
-        if (chapters.isEmpty()) return
-        bookPrepareTotalCount = chapters.size
-        bookPreparedChapterCount = 0
-        bookPrepareRunning = true
-        refreshBookModeState()
-        bookPrepareJob = screenModelScope.launch(Dispatchers.IO) {
-            try {
-                chapters.forEach { chapter ->
-                    runCatching { bookModeRuntime.prepareChapter(chapter.id) }
-                        .onFailure { error ->
-                            logBookModeFailure("prepare chapter ${chapter.id}", error)
-                        }
-                    bookPreparedChapterCount += 1
-                    refreshBookModeState()
-                }
-            } finally {
-                bookPrepareRunning = false
-                refreshBookModeState()
-            }
-        }
-    }
-    private val ttsChapterModelBuilder = NovelTtsChapterModelBuilder(NovelTtsWordTokenizer)
-    private val ttsHighlightEstimator = NovelTtsHighlightEstimator()
-    private val ttsEngineRegistry = NovelTtsEngineRegistry(AndroidNovelTtsEngineInfoSource(application))
-    private val ttsEngine = NovelTtsEngine(AndroidNovelTtsPlatformFactory(application))
-    private val ttsAudioFocusManager = NovelTtsAudioFocusManager(
-        bridge = AndroidNovelTtsAudioFocusBridge(application),
-        onPauseRequested = {
-            screenModelScope.launch {
-                ttsSessionController.pause()
-            }
-        },
+    private val ttsController = NovelTtsController(
+        host = this,
+        application = application,
+        novelReaderPreferences = novelReaderPreferences,
+        ttsChapterRepository = ttsChapterRepository,
+        sourceManager = sourceManager,
     )
-    private val ttsSessionStore = SharedNovelTtsSessionStore
-    private val ttsSessionController = NovelTtsSessionController(
-        chapterSource = object : eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsChapterSource {
-            override suspend fun loadChapter(chapterId: Long): NovelTtsResolvedChapter? {
-                return resolveTtsChapter(chapterId)
-            }
-        },
-        speaker = object : eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackSpeaker {
-            override suspend fun speak(
-                utterance: eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsUtterance,
-                flushQueue: Boolean,
-                startWordIndex: Int,
-            ) {
-                val resumedText = utterance.wordRanges
-                    .getOrNull(startWordIndex.coerceAtLeast(0))
-                    ?.startChar
-                    ?.let { startChar -> utterance.text.substring(startChar) }
-                    ?: utterance.text
-                ttsEngine.speak(utterance.id, resumedText, flushQueue)
-            }
 
-            override fun stop() {
-                ttsEngine.stop()
-            }
-        },
-        sessionStore = ttsSessionStore,
-    )
+    /** Snapshot of the TTS UI state, merged into the reader state by the screen model. */
+    private val ttsUiState: NovelReaderTtsUiState
+        get() = ttsController.snapshot()
+
     private var settingsJob: Job? = null
-    private var ttsWordProgressJob: Job? = null
-
-    /** True once the current utterance received exact word offsets from the engine. */
-    private var ttsExactWordProgressActive = false
     private var contentModel: NovelReaderContentModel? = null
     private var currentNovel: Novel? = null
     private var currentChapter: NovelChapter? = null
@@ -1327,37 +692,28 @@ class NovelReaderScreenModel(
     private var googleRateLimited: Boolean = false
     private var translationPhase: TranslationPhase = TranslationPhase.IDLE
     private val googleSessionCache = GoogleTranslationSessionCache()
-    private var ttsUiState: NovelReaderTtsUiState = NovelReaderTtsUiState()
     private var seriesInterstitialState: SeriesInterstitialState? = null
     private var seriesInterstitialShownForChapterId: Long? = null
-    private var initializedTtsEnginePackage: String? = null
-    private var pendingTtsStartRequest: eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackStartRequest? = null
 
-    private var openRouterModelIds: List<String> = emptyList()
-    private var isOpenRouterModelsLoading: Boolean = false
-    private var isTestingOpenRouterConnection: Boolean = false
-    private var openRouterApiTestStatus: ProviderApiTestStatus = ProviderApiTestStatus.Idle
-    private var openRouterApiTestMessage: String? = null
-    private var deepSeekModelIds: List<String> = emptyList()
-    private var isDeepSeekModelsLoading: Boolean = false
-    private var isTestingDeepSeekConnection: Boolean = false
-    private var deepSeekApiTestStatus: ProviderApiTestStatus = ProviderApiTestStatus.Idle
-    private var deepSeekApiTestMessage: String? = null
-    private var mistralModelIds: List<String> = emptyList()
-    private var isMistralModelsLoading: Boolean = false
-    private var isTestingMistralConnection: Boolean = false
-    private var mistralApiTestStatus: ProviderApiTestStatus = ProviderApiTestStatus.Idle
-    private var mistralApiTestMessage: String? = null
-    private var nvidiaModelIds: List<String> = emptyList()
-    private var isNvidiaModelsLoading: Boolean = false
-    private var isTestingNvidiaConnection: Boolean = false
-    private var nvidiaApiTestStatus: ProviderApiTestStatus = ProviderApiTestStatus.Idle
-    private var nvidiaApiTestMessage: String? = null
-    private var ollamaCloudModelIds: List<String> = emptyList()
-    private var isOllamaCloudModelsLoading: Boolean = false
-    private var isTestingOllamaCloudConnection: Boolean = false
-    private var ollamaCloudApiTestStatus: ProviderApiTestStatus = ProviderApiTestStatus.Idle
-    private var ollamaCloudApiTestMessage: String? = null
+    /**
+     * AI translation providers subsystem (model lists, connection tests). Owns its state and
+     * pushes it into the reader state through [NovelAiProviderHost].
+     */
+    private val aiProviderController = NovelAiProviderController(
+        host = this,
+        application = application,
+        novelReaderPreferences = novelReaderPreferences,
+        openRouterModelsService = openRouterModelsService,
+        deepSeekModelsService = deepSeekModelsService,
+        mistralModelsService = mistralModelsService,
+        nvidiaModelsService = nvidiaModelsService,
+        ollamaCloudModelsService = ollamaCloudModelsService,
+    )
+
+    /** Snapshot of the AI provider UI state, merged into the reader state by the screen model. */
+    private val aiProvidersState: NovelAiProviderState
+        get() = aiProviderController.snapshot()
+
     private var selectedTextTranslationSelection: NovelSelectedTextSelection? = null
     private var selectedTextTranslationUiState: NovelSelectedTextTranslationUiState =
         NovelSelectedTextTranslationUiState.Idle
@@ -1367,8 +723,6 @@ class NovelReaderScreenModel(
     private var novelDictionaryJob: Job? = null
     private val novelDictionarySessionCache = NovelDictionarySessionCache()
     private val progressPersistenceMutex = Mutex()
-    private val ttsRuntimeMutex = Mutex()
-    private var ttsRuntimeGeneration: Long = 0L
     private val pendingProgressPersistenceByChapterId = linkedMapOf<Long, PendingProgressPersistence>()
     private var progressPersistenceJob: Job? = null
     private var incognitoObservationJob: Job? = null
@@ -1384,58 +738,7 @@ class NovelReaderScreenModel(
         historyRepository ?: runCatching { Injekt.get<NovelHistoryRepository>() }.getOrNull()
     }
     init {
-        ttsEngine.setProgressListener(
-            object : NovelTtsPlaybackProgressListener {
-                override fun onUtteranceStart(utteranceId: String) {
-                    screenModelScope.launch {
-                        handleTtsUtteranceStarted(utteranceId)
-                    }
-                }
-
-                override fun onUtteranceRangeStart(
-                    utteranceId: String,
-                    startChar: Int,
-                    endCharExclusive: Int,
-                ) {
-                    screenModelScope.launch {
-                        handleTtsUtteranceRangeStart(utteranceId, startChar)
-                    }
-                }
-
-                override fun onUtteranceDone(utteranceId: String) {
-                    screenModelScope.launch {
-                        if (utteranceId == TTS_PREVIEW_UTTERANCE_ID) {
-                            clearTtsVoicePreview(restoreSelectedVoice = true)
-                            return@launch
-                        }
-                        ttsWordProgressJob?.cancel()
-                        ttsSessionController.onUtteranceCompleted(utteranceId)
-                    }
-                }
-
-                override fun onUtteranceError(utteranceId: String) {
-                    screenModelScope.launch {
-                        if (utteranceId == TTS_PREVIEW_UTTERANCE_ID) {
-                            clearTtsVoicePreview(restoreSelectedVoice = true)
-                            return@launch
-                        }
-                        ttsWordProgressJob?.cancel()
-                        ttsUiState = ttsUiState.copy(
-                            errorMessage = application.stringResource(MR.strings.novel_tts_error_speak),
-                        )
-                        refreshTtsUiState()
-                    }
-                }
-            },
-        )
-        screenModelScope.launch {
-            refreshTtsEngines()
-        }
-        screenModelScope.launch {
-            ttsSessionController.state.collect { sessionState ->
-                onTtsSessionStateChanged(sessionState)
-            }
-        }
+        ttsController.attach()
         screenModelScope.launch {
             loadChapter()
         }
@@ -1497,7 +800,7 @@ class NovelReaderScreenModel(
         }
         if (contentModel == null) return setError("Chapter content is empty")
         chapterReadStartTimeMs = System.currentTimeMillis()
-        maybeStartBookMode(chapter)
+        bookController.startForChapter(chapter)
         observeReadingModeChanges(chapter)
         restoreGeminiTranslationFromCache(
             chapterId = chapter.id,
@@ -1516,7 +819,7 @@ class NovelReaderScreenModel(
                     }
                     skippedInitialEmission = true
                     updateContent(settings)
-                    initializeTtsRuntime()
+                    ttsController.initializeTtsRuntimePublic()
                     maybeAutoStartGeminiTranslation(settings)
                     maybeAutoStartGoogleTranslation()
                 }
@@ -1532,8 +835,8 @@ class NovelReaderScreenModel(
             }
         }
         updateContent(initialSettings)
-        initializeTtsRuntime()
-        maybeRestoreTtsAfterChapterHandoff(
+        ttsController.initializeTtsRuntimePublic()
+        ttsController.restoreTtsAfterChapterHandoff(
             chapterId = chapter.id,
             settings = initialSettings,
         )
@@ -1565,13 +868,10 @@ class NovelReaderScreenModel(
             // Book mode builds its spine from the full chapter list. When the reader opened before
             // that list was available, the spine only covered the loaded window, so the resume
             // position mapped to the wrong section and everything above it was missing from the
-            // document. Rebuild the spine (and reseed the skeleton) once the real list arrives.
-            if (bookModeRuntime.isActive && fullChapterOrderList.isNotEmpty()) {
-                val chapter = currentChapter
-                if (chapter != null && bookModeRuntime.uiState().sectionCount != fullChapterOrderList.size) {
-                    maybeStartBookMode(chapter)
-                    refreshBookModeState()
-                }
+            // document. Rebuild the spine once the real list arrives.
+            val chapter = currentChapter
+            if (chapter != null && fullChapterOrderList.isNotEmpty()) {
+                bookController.rebuildSpineIfNeeded(chapter, fullChapterOrderList)
             }
         }
     }
@@ -1957,9 +1257,9 @@ class NovelReaderScreenModel(
             )
             else -> baseContent
         }
-        ttsSessionController.setPreferredTranslatedText(shouldPreferTranslatedTts(settings))
-        maybeSyncActiveTtsSessionOptions(settings)
-        maybeSwitchActiveTtsTextSource(settings)
+        ttsController.setPreferredTranslatedText(settings)
+        ttsController.syncActiveTtsSessionOptions(settings)
+        ttsController.switchActiveTtsTextSource(settings)
         mutableState.value = State.Success(
             novel = novel,
             chapter = chapter,
@@ -2007,7 +1307,7 @@ class NovelReaderScreenModel(
                 googleLogs = googleLogs,
                 translationPhase = translationPhase,
             ),
-            ttsUiState = ttsUiState.copy(
+            ttsUiState = ttsController.snapshot().copy(
                 enabled = settings.ttsEnabled,
                 selectedEnginePackage = settings.ttsEnginePackage,
                 selectedVoiceId = settings.ttsVoiceId,
@@ -2016,442 +1316,33 @@ class NovelReaderScreenModel(
                 pitch = settings.ttsPitch,
             ),
             aiProviders = State.ReaderAiProvidersState(
-                openRouterModelIds = openRouterModelIds,
-                isOpenRouterModelsLoading = isOpenRouterModelsLoading,
-                isTestingOpenRouterConnection = isTestingOpenRouterConnection,
-                openRouterApiTestStatus = openRouterApiTestStatus,
-                openRouterApiTestMessage = openRouterApiTestMessage,
-                deepSeekModelIds = deepSeekModelIds,
-                isDeepSeekModelsLoading = isDeepSeekModelsLoading,
-                isTestingDeepSeekConnection = isTestingDeepSeekConnection,
-                deepSeekApiTestStatus = deepSeekApiTestStatus,
-                deepSeekApiTestMessage = deepSeekApiTestMessage,
-                mistralModelIds = mistralModelIds,
-                isMistralModelsLoading = isMistralModelsLoading,
-                isTestingMistralConnection = isTestingMistralConnection,
-                mistralApiTestStatus = mistralApiTestStatus,
-                mistralApiTestMessage = mistralApiTestMessage,
-                nvidiaModelIds = nvidiaModelIds,
-                isNvidiaModelsLoading = isNvidiaModelsLoading,
-                isTestingNvidiaConnection = isTestingNvidiaConnection,
-                nvidiaApiTestStatus = nvidiaApiTestStatus,
-                nvidiaApiTestMessage = nvidiaApiTestMessage,
-                ollamaCloudModelIds = ollamaCloudModelIds,
-                isOllamaCloudModelsLoading = isOllamaCloudModelsLoading,
-                isTestingOllamaCloudConnection = isTestingOllamaCloudConnection,
-                ollamaCloudApiTestStatus = ollamaCloudApiTestStatus,
-                ollamaCloudApiTestMessage = ollamaCloudApiTestMessage,
+                openRouterModelIds = aiProvidersState.openRouterModelIds,
+                isOpenRouterModelsLoading = aiProvidersState.isOpenRouterModelsLoading,
+                isTestingOpenRouterConnection = aiProvidersState.isTestingOpenRouterConnection,
+                openRouterApiTestStatus = aiProvidersState.openRouterApiTestStatus,
+                openRouterApiTestMessage = aiProvidersState.openRouterApiTestMessage,
+                deepSeekModelIds = aiProvidersState.deepSeekModelIds,
+                isDeepSeekModelsLoading = aiProvidersState.isDeepSeekModelsLoading,
+                isTestingDeepSeekConnection = aiProvidersState.isTestingDeepSeekConnection,
+                deepSeekApiTestStatus = aiProvidersState.deepSeekApiTestStatus,
+                deepSeekApiTestMessage = aiProvidersState.deepSeekApiTestMessage,
+                mistralModelIds = aiProvidersState.mistralModelIds,
+                isMistralModelsLoading = aiProvidersState.isMistralModelsLoading,
+                isTestingMistralConnection = aiProvidersState.isTestingMistralConnection,
+                mistralApiTestStatus = aiProvidersState.mistralApiTestStatus,
+                mistralApiTestMessage = aiProvidersState.mistralApiTestMessage,
+                nvidiaModelIds = aiProvidersState.nvidiaModelIds,
+                isNvidiaModelsLoading = aiProvidersState.isNvidiaModelsLoading,
+                isTestingNvidiaConnection = aiProvidersState.isTestingNvidiaConnection,
+                nvidiaApiTestStatus = aiProvidersState.nvidiaApiTestStatus,
+                nvidiaApiTestMessage = aiProvidersState.nvidiaApiTestMessage,
+                ollamaCloudModelIds = aiProvidersState.ollamaCloudModelIds,
+                isOllamaCloudModelsLoading = aiProvidersState.isOllamaCloudModelsLoading,
+                isTestingOllamaCloudConnection = aiProvidersState.isTestingOllamaCloudConnection,
+                ollamaCloudApiTestStatus = aiProvidersState.ollamaCloudApiTestStatus,
+                ollamaCloudApiTestMessage = aiProvidersState.ollamaCloudApiTestMessage,
             ),
-            bookMode = bookModeRuntime.uiState(),
-        )
-    }
-    private suspend fun refreshTtsEngines() {
-        val engines = runCatching { ttsEngineRegistry.listEngines() }
-            .getOrElse { emptyList() }
-        ttsUiState = ttsUiState.copy(availableEngines = engines)
-        refreshTtsUiState()
-        initializeTtsRuntime()
-    }
-
-    private fun readRecentTtsLanguageTags(): List<String> {
-        return novelReaderPreferences.ttsRecentLanguageTags().get()
-            .split('|')
-            .map(String::trim)
-            .filter(String::isNotBlank)
-            .distinct()
-    }
-
-    private fun rememberRecentTtsLanguage(localeTag: String) {
-        if (localeTag.isBlank()) return
-        val updatedTags = buildList {
-            add(localeTag)
-            addAll(readRecentTtsLanguageTags().filterNot { it.equals(localeTag, ignoreCase = true) })
-        }.take(5)
-        novelReaderPreferences.ttsRecentLanguageTags().set(updatedTags.joinToString("|"))
-        ttsUiState = ttsUiState.copy(recentLanguageTags = updatedTags)
-        refreshTtsUiState()
-    }
-
-    private suspend fun initializeTtsRuntime() = ttsRuntimeMutex.withLock {
-        val generation = ++ttsRuntimeGeneration
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: currentNovel?.source
-            ?.let(novelReaderPreferences::resolveSettings)
-            ?: return@withLock
-        val recentLanguageTags = readRecentTtsLanguageTags()
-        val preferredEngine = ttsEngineRegistry.resolvePreferredEngine(
-            settings.ttsEnginePackage.takeIf { it.isNotBlank() },
-        )
-        if (!settings.ttsEnabled) {
-            ttsWordProgressJob?.cancel()
-            ttsWordProgressJob = null
-            pendingTtsStartRequest = null
-            ttsAudioFocusManager.abandonPlaybackFocus()
-            ttsSessionController.stop()
-            ttsEngine.shutdown()
-            initializedTtsEnginePackage = null
-            ttsUiState = ttsUiState.copy(
-                enabled = false,
-                playbackState = NovelTtsPlaybackState.IDLE,
-                activeSession = null,
-                activeHighlightMode = NovelTtsHighlightMode.OFF,
-                activeWordRange = null,
-                activeUtteranceText = null,
-                activeSourceBlockIndex = null,
-                availableVoices = emptyList(),
-                availableLocales = emptyList(),
-                recentLanguageTags = recentLanguageTags,
-                isLoadingVoices = false,
-                selectedEnginePackage = "",
-                selectedVoiceId = "",
-                selectedLocaleTag = "",
-                speechRate = settings.ttsSpeechRate,
-                pitch = settings.ttsPitch,
-                errorMessage = null,
-            )
-            refreshTtsUiState()
-            return@withLock
-        }
-
-        val targetEnginePackage = preferredEngine?.packageName
-        val enginePackageChanged = initializedTtsEnginePackage != targetEnginePackage
-        if (enginePackageChanged || ttsUiState.availableVoices.isEmpty()) {
-            ttsUiState = ttsUiState.copy(
-                enabled = true,
-                availableVoices = emptyList(),
-                availableLocales = emptyList(),
-                recentLanguageTags = recentLanguageTags,
-                isLoadingVoices = true,
-                selectedEnginePackage = targetEnginePackage.orEmpty(),
-                selectedVoiceId = "",
-                selectedLocaleTag = settings.ttsLocaleTag,
-                speechRate = settings.ttsSpeechRate,
-                pitch = settings.ttsPitch,
-                errorMessage = null,
-            )
-            refreshTtsUiState()
-        }
-
-        runCatching {
-            ttsEngine.initialize(targetEnginePackage)
-            ttsEngine.setSpeechRate(settings.ttsSpeechRate)
-            ttsEngine.setPitch(settings.ttsPitch)
-            val capabilities = ttsEngine.capabilities()
-            val availableVoices = ttsEngine.availableVoices()
-            val availableLocales = ttsEngine.availableLocales()
-            val selection = resolveNovelTtsVoiceSelection(
-                availableVoices = availableVoices,
-                availableLocales = availableLocales,
-                capabilities = capabilities,
-                preferredVoiceId = settings.ttsVoiceId,
-                preferredLocaleTag = settings.ttsLocaleTag,
-            )
-            ttsEngine.setLocale(selection.selectedLocaleTag.takeIf { it.isNotBlank() })
-            ttsEngine.setVoice(selection.selectedVoiceId.takeIf { it.isNotBlank() })
-            if (generation != ttsRuntimeGeneration) return@withLock
-            initializedTtsEnginePackage = targetEnginePackage
-            ttsUiState = ttsUiState.copy(
-                enabled = true,
-                availableVoices = availableVoices,
-                availableLocales = availableLocales,
-                recentLanguageTags = recentLanguageTags,
-                isLoadingVoices = false,
-                selectedEnginePackage = targetEnginePackage.orEmpty(),
-                selectedVoiceId = selection.selectedVoiceId,
-                selectedLocaleTag = selection.selectedLocaleTag,
-                speechRate = settings.ttsSpeechRate,
-                pitch = settings.ttsPitch,
-                capabilities = capabilities,
-                activeHighlightMode = capabilities.resolveHighlightMode(settings.ttsHighlightMode),
-                errorMessage = null,
-            )
-        }.onFailure { error ->
-            logcat(LogPriority.WARN, error) { "Failed to initialize novel reader TTS" }
-            initializedTtsEnginePackage = null
-            ttsUiState = ttsUiState.copy(
-                enabled = settings.ttsEnabled,
-                availableVoices = emptyList(),
-                availableLocales = emptyList(),
-                recentLanguageTags = recentLanguageTags,
-                isLoadingVoices = false,
-                selectedEnginePackage = targetEnginePackage.orEmpty(),
-                selectedVoiceId = settings.ttsVoiceId,
-                selectedLocaleTag = settings.ttsLocaleTag,
-                speechRate = settings.ttsSpeechRate,
-                pitch = settings.ttsPitch,
-                errorMessage = error.message,
-            )
-        }
-        refreshTtsUiState()
-    }
-
-    private suspend fun maybeRestoreTtsAfterChapterHandoff(
-        chapterId: Long,
-        settings: NovelReaderSettings,
-    ) {
-        if (!settings.ttsEnabled) return
-        if (!NovelReaderTtsChapterHandoffPolicy.consumePendingRestore(chapterId)) return
-        if (!ttsAudioFocusManager.requestPlaybackFocus()) return
-        ttsSessionController.restoreFromCheckpoint()
-    }
-
-    private suspend fun resolveTtsChapter(targetChapterId: Long): NovelTtsResolvedChapter? {
-        val snapshot = ttsChapterRepository.loadChapterSnapshot(targetChapterId)
-        val source = sourceManager.getOrStub(snapshot.novel.source)
-        val normalizedHtml = withContext(Dispatchers.Default) {
-            val withHeading = prependChapterHeadingIfMissing(
-                rawHtml = snapshot.rawHtml.normalizeStructuredChapterPayload(),
-                chapterName = snapshot.chapter.name,
-            )
-            val sanitized = sanitizeChapterHtmlForReader(withHeading)
-            if (sanitized.isBlank()) withHeading else sanitized
-        }
-        val chapterWebUrl = resolveChapterWebUrl(
-            source = source,
-            chapterUrl = snapshot.chapter.url,
-            novelUrl = snapshot.novel.url,
-            pluginSite = snapshot.pluginSite,
-        )
-        val parsedBlocks = withContext(Dispatchers.Default) {
-            extractContentBlocks(
-                rawHtml = normalizedHtml,
-                chapterWebUrl = chapterWebUrl,
-                novelUrl = snapshot.novel.url,
-                pluginSite = snapshot.pluginSite,
-            ).ifEmpty {
-                extractTextBlocks(normalizedHtml).map(ContentBlock::Text)
-            }
-        }
-        val normalizedContent = normalizeHtml(
-            rawHtml = normalizedHtml,
-            settings = novelReaderPreferences.resolveSettings(snapshot.novel.source),
-            customCss = snapshot.customCss,
-            customJs = snapshot.customJs,
-        )
-        val richBlocks = parseNovelRichContent(normalizedContent)
-            .let { parsed ->
-                resolveRichContentBlocks(
-                    blocks = parsed.blocks,
-                    chapterWebUrl = chapterWebUrl,
-                    novelUrl = snapshot.novel.url,
-                    pluginSite = snapshot.pluginSite,
-                )
-            }
-        val currentSettings = novelReaderPreferences.resolveSettings(snapshot.novel.source)
-        val originalModel = ttsChapterModelBuilder.build(
-            chapterId = snapshot.chapter.id,
-            chapterTitle = snapshot.chapter.name,
-            contentBlocks = parsedBlocks,
-            richContentBlocks = richBlocks,
-            options = NovelTtsChapterModelBuildOptions(
-                includeChapterTitle = currentSettings.ttsReadChapterTitle,
-            ),
-        )
-        val translatedModel = resolveTranslatedTtsChapterModel(
-            chapterId = targetChapterId,
-            chapterTitle = snapshot.chapter.name,
-            originalContentBlocks = parsedBlocks,
-            richContentBlocks = richBlocks,
-            settings = currentSettings,
-        )
-        val nextChapterId = snapshot.chapterOrderList
-            .indexOfFirst { it.id == snapshot.chapter.id }
-            .takeIf { it >= 0 }
-            ?.let { snapshot.chapterOrderList.getOrNull(it + 1)?.id }
-        return NovelTtsResolvedChapter(
-            chapterId = snapshot.chapter.id,
-            nextChapterId = nextChapterId,
-            originalModel = originalModel,
-            translatedModel = translatedModel,
-        )
-    }
-
-    private fun resolveTranslatedTtsChapterModel(
-        chapterId: Long,
-        chapterTitle: String,
-        originalContentBlocks: List<ContentBlock>,
-        richContentBlocks: List<NovelRichContentBlock>,
-        settings: NovelReaderSettings,
-    ): eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsChapterModel? {
-        if (!shouldPreferTranslatedTts(settings)) return null
-        val translatedBlocks = if (chapterId == currentChapter?.id) {
-            // Current chapter: use in-memory translation holder (fast path)
-            when {
-                settings.geminiEnabled && !translationHolder.isEmpty("gemini") -> {
-                    applyGeminiTranslationToContentBlocks(originalContentBlocks, forceTranslation = true)
-                }
-                settings.googleTranslationEnabled && !translationHolder.isEmpty("google") -> {
-                    applyGoogleTranslationToContentBlocks(originalContentBlocks)
-                }
-                else -> return null
-            }
-        } else {
-            // Non-current chapter (e.g. next chapter during TTS auto-advance):
-            // The in-memory holder belongs to the current chapter only.
-            // Check the disk cache — the prefetch job may have already written a translation here.
-            if (!settings.geminiEnabled) return null
-            val cached = NovelReaderTranslationDiskCacheStore.get(chapterId) ?: return null
-            val settingsMatch = NovelReaderTranslationCacheResolver.matches(
-                cached = cached,
-                requirements = settings.toTranslationCacheRequirements(),
-            )
-            if (!settingsMatch) return null
-            applyTranslationMapToContentBlocks(originalContentBlocks, cached.translatedByIndex)
-        }
-        return ttsChapterModelBuilder.build(
-            chapterId = chapterId,
-            chapterTitle = chapterTitle,
-            contentBlocks = translatedBlocks,
-            richContentBlocks = emptyList(),
-            options = NovelTtsChapterModelBuildOptions(
-                includeChapterTitle = settings.ttsReadChapterTitle,
-            ),
-        )
-    }
-
-    /**
-     * Applies a pre-built translation map (block index -> translated text) directly to a list of
-     * content blocks without going through the in-memory [translationHolder].
-     *
-     * Used when resolving translated TTS content for a chapter that is not the one currently
-     * displayed (e.g. the next chapter during TTS auto-advance), where the translation lives only
-     * in the disk cache rather than in the in-memory holder.
-     */
-    private fun applyTranslationMapToContentBlocks(
-        blocks: List<ContentBlock>,
-        translationMap: Map<Int, String>,
-    ): List<ContentBlock> {
-        var textIndex = 0
-        return blocks.map { block ->
-            when (block) {
-                is ContentBlock.Image -> block
-                is ContentBlock.Text -> {
-                    val translated = translationMap[textIndex]
-                    textIndex += 1
-                    if (translated.isNullOrBlank()) block else ContentBlock.Text(translated)
-                }
-            }
-        }
-    }
-
-    private suspend fun onTtsSessionStateChanged(sessionState: NovelTtsSessionUiState) {
-        val session = sessionState.session
-        val activeUtterance = session?.utterance
-        ttsUiState = ttsUiState.copy(
-            playbackState = sessionState.playbackState,
-            activeSession = session,
-            pendingChapterHandoffId = sessionState.pendingChapterHandoffId,
-            activeUtteranceText = activeUtterance?.text,
-            activeSourceBlockIndex = activeUtterance?.sourceBlockIndex,
-            activeWordRange = activeUtterance?.wordRanges?.getOrNull(session.wordIndex),
-        )
-        refreshTtsUiState()
-    }
-
-    private suspend fun handleTtsUtteranceStarted(utteranceId: String) {
-        val session = ttsSessionController.state.value.session ?: return
-        if (session.utterance.id != utteranceId) return
-        ttsWordProgressJob?.cancel()
-        ttsExactWordProgressActive = false
-        startEstimatedTtsWordProgress(session)
-    }
-
-    /**
-     * Exact word progress reported by the platform engine (onRangeStart).
-     * The first event for an utterance permanently switches that utterance from
-     * estimated to exact highlighting by cancelling the estimator ticker.
-     */
-    private suspend fun handleTtsUtteranceRangeStart(utteranceId: String, startChar: Int) {
-        if (ttsUiState.activeHighlightMode == NovelTtsHighlightMode.OFF) return
-        val sessionState = ttsSessionController.state.value
-        val utterance = sessionState.session?.utterance ?: return
-        if (utterance.id != utteranceId) return
-        val wordIndex = utterance.wordIndexForCharOffset(startChar) ?: return
-        if (!ttsExactWordProgressActive) {
-            ttsExactWordProgressActive = true
-            ttsWordProgressJob?.cancel()
-            ttsWordProgressJob = null
-        }
-        if (sessionState.playbackState != NovelTtsPlaybackState.PLAYING) return
-        ttsSessionController.updateWordProgress(wordIndex)
-        ttsUiState = ttsUiState.copy(activeWordRange = utterance.wordRanges.getOrNull(wordIndex))
-        refreshTtsUiState()
-    }
-
-    private fun startEstimatedTtsWordProgress(session: NovelTtsSession) {
-        val highlightMode = ttsUiState.activeHighlightMode
-        if (highlightMode == NovelTtsHighlightMode.OFF) return
-        if (ttsExactWordProgressActive) return
-        ttsWordProgressJob = screenModelScope.launch {
-            val utterance = session.utterance
-            val estimatedDurationMs = estimateTtsUtteranceDurationMs(
-                utterance = utterance,
-                speechRate = ttsUiState.speechRate,
-            )
-            val startTimeMs = SystemClock.elapsedRealtime()
-            while (isActive) {
-                val elapsedMs = (SystemClock.elapsedRealtime() - startTimeMs).coerceAtLeast(0L)
-                val selection = ttsHighlightEstimator.estimateWordRange(
-                    utterance = utterance,
-                    elapsedMs = elapsedMs,
-                    durationMs = estimatedDurationMs,
-                    mode = highlightMode,
-                    startWordIndex = session.wordIndex,
-                )
-                if (selection != null) {
-                    val currentSession = ttsSessionController.state.value.session
-                    if (currentSession?.utterance?.id != utterance.id) break
-                    if (ttsSessionController.state.value.playbackState != NovelTtsPlaybackState.PLAYING) break
-                    ttsSessionController.updateWordProgress(selection.wordIndex)
-                    ttsUiState = ttsUiState.copy(activeWordRange = selection.wordRange)
-                    refreshTtsUiState()
-                }
-                if (elapsedMs >= estimatedDurationMs) break
-                delay(TTS_WORD_PROGRESS_UPDATE_INTERVAL_MS)
-            }
-        }
-    }
-
-    private fun estimateTtsUtteranceDurationMs(
-        utterance: eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsUtterance,
-        speechRate: Float,
-    ): Long {
-        val words = utterance.wordRanges.size.coerceAtLeast(1)
-        val effectiveRate = speechRate.coerceAtLeast(0.5f)
-        val millisPerWord = (TTS_BASE_MILLIS_PER_WORD / effectiveRate).roundToInt()
-        return (words * millisPerWord)
-            .coerceAtLeast(TTS_MIN_UTTERANCE_DURATION_MS.toInt())
-            .toLong()
-    }
-
-    private fun refreshTtsUiState() {
-        val state = mutableState.value
-        if (state is State.Success) {
-            mutableState.value = state.copy(ttsUiState = ttsUiState)
-        }
-    }
-
-    private suspend fun resolveChapterWebUrl(
-        source: eu.kanade.tachiyomi.novelsource.NovelSource,
-        chapterUrl: String,
-        novelUrl: String,
-        pluginSite: String?,
-    ): String? {
-        val sourceResolved = (source as? NovelWebUrlSource)
-            ?.getChapterWebUrl(chapterPath = chapterUrl, novelPath = novelUrl)
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-        if (sourceResolved != null) {
-            sourceResolved.toHttpUrlOrNull()?.let { return it.toString() }
-            resolveNovelChapterWebUrl(
-                chapterUrl = sourceResolved,
-                pluginSite = pluginSite,
-                novelUrl = novelUrl,
-            )?.let { return it }
-        }
-        return resolveNovelChapterWebUrl(
-            chapterUrl = chapterUrl,
-            pluginSite = pluginSite,
-            novelUrl = novelUrl,
+            bookMode = bookController.bookModeUiState(),
         )
     }
     fun updateReadingProgress(
@@ -2529,322 +1420,45 @@ class NovelReaderScreenModel(
         if (currentIndex <= 0) return null
         return resolvedPersistedProgress
     }
+    // ---------------------------------------------------------------------------------------------
+    // TTS delegates. All TTS logic lives in [ttsController]; the screen model forwards the
+    // reader's calls and hosts the shared state through [NovelTtsHost].
+    // ---------------------------------------------------------------------------------------------
+
     fun toggleTtsPlayback(
         startRequest: eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackStartRequest =
             eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackStartRequest(),
-    ) {
-        val state = mutableState.value as? State.Success ?: return
-        if (!state.readerSettings.ttsEnabled) return
-        screenModelScope.launch {
-            initializeTtsRuntime()
-            val playbackState = ttsSessionController.state.value.playbackState
-            when (playbackState) {
-                eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackState.PLAYING -> {
-                    pendingTtsStartRequest = null
-                    ttsWordProgressJob?.cancel()
-                    ttsWordProgressJob = null
-                    ttsSessionController.pause()
-                }
-                eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackState.PAUSED -> {
-                    val pendingRequest = pendingTtsStartRequest
-                    if (!ttsAudioFocusManager.requestPlaybackFocus()) return@launch
-                    if (pendingRequest != null) {
-                        startTtsFromRequest(pendingRequest, state.readerSettings)
-                    } else {
-                        ttsSessionController.resume()
-                    }
-                    pendingTtsStartRequest = null
-                }
-                else -> {
-                    if (!ttsAudioFocusManager.requestPlaybackFocus()) return@launch
-                    startTtsFromRequest(startRequest, state.readerSettings)
-                    pendingTtsStartRequest = null
-                }
-            }
-        }
-    }
+    ) = ttsController.toggleTtsPlayback(startRequest)
 
-    fun stopTtsPlayback() {
-        screenModelScope.launch {
-            ttsWordProgressJob?.cancel()
-            ttsWordProgressJob = null
-            ttsAudioFocusManager.abandonPlaybackFocus()
-            ttsSessionController.stop()
-        }
-    }
+    fun stopTtsPlayback() = ttsController.stopTtsPlayback()
 
-    fun skipToNextTtsSegment() {
-        screenModelScope.launch {
-            ttsWordProgressJob?.cancel()
-            ttsWordProgressJob = null
-            ttsSessionController.skipNext()
-        }
-    }
+    fun skipToNextTtsSegment() = ttsController.skipToNextTtsSegment()
 
-    fun skipToPreviousTtsSegment() {
-        screenModelScope.launch {
-            ttsWordProgressJob?.cancel()
-            ttsWordProgressJob = null
-            ttsSessionController.skipPrevious()
-        }
-    }
+    fun skipToPreviousTtsSegment() = ttsController.skipToPreviousTtsSegment()
 
     fun pauseTtsForManualNavigation(
         startRequest: eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackStartRequest,
-    ) {
-        val state = mutableState.value as? State.Success ?: return
-        if (!state.readerSettings.ttsPauseOnManualNavigation) return
-        if (ttsSessionController.state.value.playbackState !=
-            eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackState.PLAYING
-        ) {
-            pendingTtsStartRequest = startRequest
-            return
-        }
-        screenModelScope.launch {
-            pendingTtsStartRequest = startRequest
-            ttsWordProgressJob?.cancel()
-            ttsWordProgressJob = null
-            ttsSessionController.pause()
-        }
-    }
+    ) = ttsController.pauseTtsForManualNavigation(startRequest)
 
-    fun setTtsEnginePackage(value: String) = updateTtsSetting(
-        setGlobal = { novelReaderPreferences.ttsEnginePackage().set(value) },
-        setOverride = { it.copy(ttsEnginePackage = value) },
-        restartPlayback = true,
-    )
+    fun setTtsEnginePackage(value: String) = ttsController.setTtsEnginePackage(value)
 
-    fun setTtsVoiceId(value: String) {
-        val localeTag = ttsUiState.availableVoices
-            .firstOrNull { it.id == value }
-            ?.localeTag
-            ?: ttsUiState.selectedLocaleTag
-        updateTtsSetting(
-            setGlobal = {
-                novelReaderPreferences.ttsVoiceId().set(value)
-                if (localeTag.isNotBlank()) {
-                    novelReaderPreferences.ttsLocaleTag().set(localeTag)
-                }
-            },
-            setOverride = {
-                it.copy(
-                    ttsVoiceId = value,
-                    ttsLocaleTag = localeTag.takeIf(String::isNotBlank) ?: it.ttsLocaleTag,
-                )
-            },
-            restartPlayback = true,
-        )
-        rememberRecentTtsLanguage(localeTag)
-    }
+    fun setTtsVoiceId(value: String) = ttsController.setTtsVoiceId(value)
 
-    fun setTtsLocaleTag(value: String) {
-        // Switching the language must also drop a voice that belongs to another
-        // language, otherwise the stored voice wins during the next runtime
-        // initialization and the language silently snaps back.
-        val selectedVoiceLocale = ttsUiState.availableVoices
-            .firstOrNull { it.id == ttsUiState.selectedVoiceId }
-            ?.localeTag
-        val clearVoice = selectedVoiceLocale != null && !selectedVoiceLocale.equals(value, ignoreCase = true)
-        updateTtsSetting(
-            setGlobal = {
-                novelReaderPreferences.ttsLocaleTag().set(value)
-                if (clearVoice) {
-                    novelReaderPreferences.ttsVoiceId().set("")
-                }
-            },
-            setOverride = {
-                it.copy(
-                    ttsLocaleTag = value,
-                    ttsVoiceId = if (clearVoice) "" else it.ttsVoiceId,
-                )
-            },
-            restartPlayback = true,
-        )
-        rememberRecentTtsLanguage(value)
-    }
+    fun setTtsLocaleTag(value: String) = ttsController.setTtsLocaleTag(value)
 
-    fun setTtsSpeechRate(value: Float) = updateTtsSetting(
-        setGlobal = { novelReaderPreferences.ttsSpeechRate().set(value) },
-        setOverride = { it.copy(ttsSpeechRate = value) },
-    )
+    fun setTtsSpeechRate(value: Float) = ttsController.setTtsSpeechRate(value)
 
-    fun setTtsPitch(value: Float) = updateTtsSetting(
-        setGlobal = { novelReaderPreferences.ttsPitch().set(value) },
-        setOverride = { it.copy(ttsPitch = value) },
-    )
+    fun setTtsPitch(value: Float) = ttsController.setTtsPitch(value)
 
-    /**
-     * Speaks a short locale-aware sample with [voiceId] without advancing chapter TTS.
-     * Empty [voiceId] previews the engine default voice for the selected language.
-     */
-    fun previewTtsVoice(voiceId: String) {
-        screenModelScope.launch {
-            try {
-                if (ttsSessionController.state.value.playbackState == NovelTtsPlaybackState.PLAYING) {
-                    ttsSessionController.pause()
-                }
-                ttsEngine.stop()
-                ttsEngine.setSpeechRate(ttsUiState.speechRate)
-                ttsEngine.setPitch(ttsUiState.pitch)
-                ttsEngine.setLocale(ttsUiState.selectedLocaleTag.takeIf { it.isNotBlank() })
-                ttsEngine.setVoice(voiceId.takeIf { it.isNotBlank() })
-                ttsUiState = ttsUiState.copy(previewingVoiceId = voiceId)
-                refreshTtsUiState()
-                ttsEngine.speak(
-                    utteranceId = TTS_PREVIEW_UTTERANCE_ID,
-                    text = ttsPreviewSampleText(ttsUiState.selectedLocaleTag),
-                    flushQueue = true,
-                )
-            } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "TTS voice preview failed" }
-                clearTtsVoicePreview(restoreSelectedVoice = true)
-            }
-        }
-    }
+    fun previewTtsVoice(voiceId: String) = ttsController.previewTtsVoice(voiceId)
 
-    fun stopTtsVoicePreview() {
-        screenModelScope.launch {
-            if (ttsUiState.previewingVoiceId == null) return@launch
-            ttsEngine.stop()
-            clearTtsVoicePreview(restoreSelectedVoice = true)
-        }
-    }
+    fun stopTtsVoicePreview() = ttsController.stopTtsVoicePreview()
 
-    private suspend fun clearTtsVoicePreview(restoreSelectedVoice: Boolean) {
-        if (ttsUiState.previewingVoiceId == null) return
-        ttsUiState = ttsUiState.copy(previewingVoiceId = null)
-        if (restoreSelectedVoice) {
-            runCatching {
-                ttsEngine.setLocale(ttsUiState.selectedLocaleTag.takeIf { it.isNotBlank() })
-                ttsEngine.setVoice(ttsUiState.selectedVoiceId.takeIf { it.isNotBlank() })
-            }
-        }
-        refreshTtsUiState()
-    }
+    fun disableTts() = ttsController.disableTts()
 
-    private fun ttsPreviewSampleText(localeTag: String): String {
-        val lang = localeTag.substringBefore('-').substringBefore('_').lowercase()
-        return if (lang == "ru") {
-            application.stringResource(AYMR.strings.novel_reader_tts_preview_sample_ru)
-        } else {
-            application.stringResource(AYMR.strings.novel_reader_tts_preview_sample)
-        }
-    }
+    fun createTtsPlaybackServiceRuntime(): NovelTtsPlaybackServiceRuntime =
+        ttsController.createTtsPlaybackServiceRuntime()
 
-    fun disableTts() {
-        val currentState = mutableState.value as? State.Success ?: return
-        if (!currentState.readerSettings.ttsEnabled) return
-        val sourceId = currentNovel?.source ?: return
-        screenModelScope.launch {
-            ttsWordProgressJob?.cancel()
-            ttsWordProgressJob = null
-            pendingTtsStartRequest = null
-            ttsAudioFocusManager.abandonPlaybackFocus()
-            ttsSessionController.stop()
-            if (novelReaderPreferences.getSourceOverride(sourceId) != null) {
-                novelReaderPreferences.updateSourceOverride(sourceId) {
-                    it.copy(ttsEnabled = false)
-                }
-            } else {
-                novelReaderPreferences.ttsEnabled().set(false)
-            }
-            updateContent(currentState.readerSettings.copy(ttsEnabled = false))
-        }
-    }
-
-    fun createTtsPlaybackServiceRuntime(): NovelTtsPlaybackServiceRuntime {
-        return NovelTtsPlaybackServiceRuntime(
-            controller = ttsSessionController,
-            audioFocusManager = ttsAudioFocusManager,
-        )
-    }
-
-    private suspend fun startTtsFromRequest(
-        startRequest: eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackStartRequest,
-        settings: NovelReaderSettings,
-    ) {
-        // Fix: if translation of the current chapter is still in progress and TTS prefers
-        // translated text, wait briefly for it to finish before building the utterance list.
-        // Without this wait the in-memory translation holder may be empty at snapshot time,
-        // causing TTS to fall back to the original untranslated text.
-        if (shouldPreferTranslatedTts(settings) && isGeminiTranslating) {
-            withTimeoutOrNull(5_000) {
-                geminiTranslationJob?.join()
-            }
-        }
-        // Over a compiled book `currentChapter` is only the session entry point, so playback has to
-        // start from the chapter under the reading position instead of the one the reader opened.
-        val ttsStartChapterId = bookModeChapterAtReadingPosition()?.id ?: currentChapter?.id ?: return
-        val resolvedChapter = resolveTtsChapter(targetChapterId = ttsStartChapterId) ?: return
-        val useTranslatedText = shouldPreferTranslatedTts(settings) &&
-            resolvedChapter.translatedModel != null
-        val sessionModel = if (useTranslatedText) {
-            resolvedChapter.translatedModel
-        } else {
-            resolvedChapter.originalModel
-        }
-        ttsSessionController.setPreferredTranslatedText(useTranslatedText)
-        val utteranceId = startRequest.pageReaderPosition?.let { pageReaderPosition ->
-            val utteranceAnchors = eu.kanade.tachiyomi.ui.reader.novel.tts.resolvePlainPageReaderTtsAnchors(
-                textBlocks = pageReaderPosition.blockTexts,
-                pages = pageReaderPosition.pages,
-                chapterModel = sessionModel,
-            )
-            eu.kanade.tachiyomi.ui.reader.novel.tts.resolvePageReaderTtsStartUtteranceId(
-                pageIndex = pageReaderPosition.pageIndex,
-                fallbackBlockIndex = startRequest.fallbackBlockIndex,
-                chapterModel = sessionModel,
-                utteranceAnchors = utteranceAnchors,
-            )
-        } ?: sessionModel.utterances
-            .firstOrNull { it.sourceBlockIndex >= startRequest.fallbackBlockIndex }
-            ?.id
-            ?: sessionModel.utterances.firstOrNull()?.id
-        ttsSessionController.startFromCurrentPosition(
-            chapterId = resolvedChapter.chapterId,
-            utteranceId = utteranceId,
-            preferTranslatedText = useTranslatedText,
-            autoAdvanceChapter = settings.ttsAutoAdvanceChapter,
-        )
-    }
-
-    private fun shouldPreferTranslatedTts(settings: NovelReaderSettings): Boolean {
-        return settings.ttsPreferTranslatedText ||
-            isGeminiTranslationVisible ||
-            isGoogleTranslationVisible
-    }
-
-    private fun hasCurrentTranslatedTtsContent(settings: NovelReaderSettings): Boolean {
-        return (settings.geminiEnabled && !translationHolder.isEmpty("gemini")) ||
-            (settings.googleTranslationEnabled && !translationHolder.isEmpty("google"))
-    }
-
-    private fun maybeSyncActiveTtsSessionOptions(settings: NovelReaderSettings) {
-        val session = ttsSessionController.state.value.session ?: return
-        if (session.autoAdvanceChapter == settings.ttsAutoAdvanceChapter) return
-        screenModelScope.launch {
-            ttsSessionController.setAutoAdvanceChapter(settings.ttsAutoAdvanceChapter)
-        }
-    }
-
-    private fun maybeSwitchActiveTtsTextSource(settings: NovelReaderSettings) {
-        val session = ttsSessionController.state.value.session ?: return
-        // The TTS session is started for the chapter under the reading position (book mode included),
-        // so comparing it against `currentChapter` silently skipped every original/translated switch
-        // while reading a book.
-        val activeChapterId = activeTranslationChapterId() ?: return
-        if (session.chapterId != activeChapterId) return
-        val preferTranslated = shouldPreferTranslatedTts(settings) && hasCurrentTranslatedTtsContent(settings)
-        val targetTextSource = if (preferTranslated) {
-            NovelTtsTextSource.TRANSLATED
-        } else {
-            NovelTtsTextSource.ORIGINAL
-        }
-        if (session.textSource == targetTextSource) return
-        screenModelScope.launch {
-            ttsSessionController.switchToPreferredTextSource(preferTranslated)
-        }
-    }
     private fun enqueueProgressPersistence(update: PendingProgressPersistence) {
         progressPersistenceScheduled = true
         // NonCancellable must wrap the block via withContext — passing it to launch() is
@@ -3230,7 +1844,7 @@ class NovelReaderScreenModel(
         // Over an artifact the reader never switches chapters, so `currentChapter` stays the entry
         // point of the session while the reader is already deep inside another chapter. Bookmarking
         // has to follow the character offset instead, or it would flag the wrong chapter.
-        val scrolledChapter = bookModeChapterAtReadingPosition()
+        val scrolledChapter = bookController.bookModeChapterAtReadingPosition()
         if (scrolledChapter != null && scrolledChapter.id != currentChapter?.id) {
             val scrolledBookmarked = !scrolledChapter.bookmark
             val scrolledIndex = chapterOrderList.indexOfFirst { it.id == scrolledChapter.id }
@@ -3285,35 +1899,14 @@ class NovelReaderScreenModel(
         progressPersistenceJob?.cancel()
         pendingProgressPersistenceByChapterId.clear()
         progressPersistenceScheduled = false
-        bookModeSyncJob?.cancel()
-        bookModeSyncJob = null
         // Flush the debounced book-mode position before the jobs die: leaving the reader mid-section
         // would otherwise lose up to one debounce window of reading progress, and chapters the reader
         // scrolled past would never be marked read.
-        if (bookModeRuntime.isActive) {
-            markBookModeCrossedChaptersRead()
-            persistBookModeProgress(bookModeRuntime.uiState().currentSectionFraction)
-        }
-        bookModeProgressJob?.cancel()
-        bookModeProgressJob = null
-        bookModeResumeGuardJob?.cancel()
-        bookModeResumeGuardJob = null
-        bookModeSyncPending = false
-        lastPersistedBookModeSectionIndex = -1
-        bookModeResumeLocation = null
-        bookModeResumeGuardUntilMs = 0L
-        bookModeRestoringPosition = false
-        bookModeSessionStartCharOffset = 0
-        lastBookModeChapterId = null
-        bookModeMarkedReadChapterIds.clear()
-        bookModeRuntime.stop()
-        bookModeCommandQueue.clear()
-        ttsWordProgressJob?.cancel()
+        bookController.flushAndStop()
+        ttsController.shutdown()
         incognitoObservationJob?.cancel()
         NovelReaderIncognitoState.set(false)
         clearChapterTransientState()
-        ttsAudioFocusManager.abandonPlaybackFocus()
-        ttsEngine.shutdown()
         super.onDispose()
     }
 
@@ -3373,21 +1966,8 @@ class NovelReaderScreenModel(
         geminiLogs = emptyList()
         googleLogs = emptyList()
         googleRateLimited = false
-        isOpenRouterModelsLoading = false
-        isTestingOpenRouterConnection = false
-        openRouterApiTestStatus = ProviderApiTestStatus.Idle
-        openRouterApiTestMessage = null
-        isDeepSeekModelsLoading = false
-        isTestingDeepSeekConnection = false
-        deepSeekApiTestStatus = ProviderApiTestStatus.Idle
-        deepSeekApiTestMessage = null
-        isMistralModelsLoading = false
-        isTestingMistralConnection = false
-        mistralApiTestStatus = ProviderApiTestStatus.Idle
-        mistralApiTestMessage = null
-        ttsWordProgressJob?.cancel()
-        ttsWordProgressJob = null
-        pendingTtsStartRequest = null
+        aiProviderController.resetTransientState()
+        ttsController.resetTransientState()
         seriesInterstitialState = null
         seriesInterstitialShownForChapterId = null
         chapterReadStartTimeMs = System.currentTimeMillis()
@@ -3498,16 +2078,7 @@ class NovelReaderScreenModel(
         setGlobal = { novelReaderPreferences.translationProvider().set(value) },
         setOverride = { it.copy(translationProvider = value) },
     ).also {
-        openRouterApiTestStatus = ProviderApiTestStatus.Idle
-        openRouterApiTestMessage = null
-        deepSeekApiTestStatus = ProviderApiTestStatus.Idle
-        deepSeekApiTestMessage = null
-        mistralApiTestStatus = ProviderApiTestStatus.Idle
-        mistralApiTestMessage = null
-        nvidiaApiTestStatus = ProviderApiTestStatus.Idle
-        nvidiaApiTestMessage = null
-        ollamaCloudApiTestStatus = ProviderApiTestStatus.Idle
-        ollamaCloudApiTestMessage = null
+        aiProviderController.resetAllApiTestStates()
         when (value) {
             NovelTranslationProvider.GEMINI -> Unit
             NovelTranslationProvider.GEMINI_PRIVATE -> Unit
@@ -3518,476 +2089,81 @@ class NovelReaderScreenModel(
             NovelTranslationProvider.OLLAMA_CLOUD -> refreshOllamaCloudModels()
         }
     }
-    private fun setProviderApiTestState(
-        provider: NovelTranslationProvider,
-        status: ProviderApiTestStatus,
-        message: String? = null,
-    ) {
-        when (provider) {
-            NovelTranslationProvider.OPENROUTER -> {
-                openRouterApiTestStatus = status
-                openRouterApiTestMessage = message
-            }
-            NovelTranslationProvider.DEEPSEEK -> {
-                deepSeekApiTestStatus = status
-                deepSeekApiTestMessage = message
-            }
-            NovelTranslationProvider.MISTRAL -> {
-                mistralApiTestStatus = status
-                mistralApiTestMessage = message
-            }
-            NovelTranslationProvider.NVIDIA -> {
-                nvidiaApiTestStatus = status
-                nvidiaApiTestMessage = message
-            }
-            NovelTranslationProvider.OLLAMA_CLOUD -> {
-                ollamaCloudApiTestStatus = status
-                ollamaCloudApiTestMessage = message
-            }
-            NovelTranslationProvider.GEMINI,
-            NovelTranslationProvider.GEMINI_PRIVATE,
-            -> Unit
-        }
-    }
+    // ---------------------------------------------------------------------------------------------
+    // AI provider delegates. Model lists, connection tests and provider settings live in
+    // [aiProviderController]; the screen model forwards the reader's calls.
+    // ---------------------------------------------------------------------------------------------
+
+    fun setOpenRouterBaseUrl(value: String) = aiProviderController.setOpenRouterBaseUrl(value)
+
+    fun setOpenRouterApiKey(value: String) = aiProviderController.setOpenRouterApiKey(value)
+
+    fun setOpenRouterModel(value: String) = aiProviderController.setOpenRouterModel(value)
+
+    fun setDeepSeekBaseUrl(value: String) = aiProviderController.setDeepSeekBaseUrl(value)
+
+    fun setDeepSeekApiKey(value: String) = aiProviderController.setDeepSeekApiKey(value)
+
+    fun setDeepSeekModel(value: String) = aiProviderController.setDeepSeekModel(value)
+
+    fun setMistralBaseUrl(value: String) = aiProviderController.setMistralBaseUrl(value)
+
+    fun setMistralApiKey(value: String) = aiProviderController.setMistralApiKey(value)
+
+    fun setMistralModel(value: String) = aiProviderController.setMistralModel(value)
+
+    fun setNvidiaBaseUrl(value: String) = aiProviderController.setNvidiaBaseUrl(value)
+
+    fun setNvidiaApiKey(value: String) = aiProviderController.setNvidiaApiKey(value)
+
+    fun setNvidiaModel(value: String) = aiProviderController.setNvidiaModel(value)
+
+    fun setOllamaCloudBaseUrl(value: String) = aiProviderController.setOllamaCloudBaseUrl(value)
+
+    fun setOllamaCloudApiKey(value: String) = aiProviderController.setOllamaCloudApiKey(value)
+
+    fun setOllamaCloudModel(value: String) = aiProviderController.setOllamaCloudModel(value)
+
+    fun refreshOpenRouterModels() = aiProviderController.refreshOpenRouterModels()
+
+    fun refreshNvidiaModels() = aiProviderController.refreshNvidiaModels()
+
+    fun testNvidiaConnection() = aiProviderController.testNvidiaConnection()
+
+    fun refreshOllamaCloudModels() = aiProviderController.refreshOllamaCloudModels()
+
+    fun testOllamaCloudConnection() = aiProviderController.testOllamaCloudConnection()
+
+    fun testOpenRouterConnection() = aiProviderController.testOpenRouterConnection()
+
+    fun refreshDeepSeekModels() = aiProviderController.refreshDeepSeekModels()
+
+    fun testDeepSeekConnection() = aiProviderController.testDeepSeekConnection()
+
+    fun refreshMistralModels() = aiProviderController.refreshMistralModels()
+
+    fun testMistralConnection() = aiProviderController.testMistralConnection()
+
     fun setGoogleTranslationEnabled(value: Boolean) {
         novelReaderPreferences.googleTranslationEnabled().set(value)
     }
+
     fun setGoogleTranslationAutoStart(value: Boolean) {
         novelReaderPreferences.googleTranslationAutoStart().set(value)
     }
+
     fun setGoogleTranslationSourceLang(value: String) {
         novelReaderPreferences.googleTranslationSourceLang().set(value)
     }
+
     fun setGoogleTranslationTargetLang(value: String) {
         novelReaderPreferences.googleTranslationTargetLang().set(value)
     }
-    fun setOpenRouterBaseUrl(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.openRouterBaseUrl().set(value) },
-        setOverride = { it.copy(openRouterBaseUrl = value) },
-    )
-    fun setOpenRouterApiKey(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.openRouterApiKey().set(value) },
-        setOverride = { it.copy(openRouterApiKey = value) },
-    )
-    fun setOpenRouterModel(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.openRouterModel().set(value) },
-        setOverride = { it.copy(openRouterModel = value) },
-    )
-    fun setDeepSeekBaseUrl(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.deepSeekBaseUrl().set(value) },
-        setOverride = { it.copy(deepSeekBaseUrl = value) },
-    )
-    fun setDeepSeekApiKey(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.deepSeekApiKey().set(value) },
-        setOverride = { it.copy(deepSeekApiKey = value) },
-    )
-    fun setDeepSeekModel(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.deepSeekModel().set(value) },
-        setOverride = { it.copy(deepSeekModel = value) },
-    )
-    fun setMistralBaseUrl(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.mistralBaseUrl().set(value) },
-        setOverride = { it.copy(mistralBaseUrl = value) },
-    )
-    fun setMistralApiKey(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.mistralApiKey().set(value) },
-        setOverride = { it.copy(mistralApiKey = value) },
-    )
-    fun setMistralModel(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.mistralModel().set(value) },
-        setOverride = { it.copy(mistralModel = value) },
-    )
-    fun setNvidiaBaseUrl(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.nvidiaBaseUrl().set(value) },
-        setOverride = { it.copy(nvidiaBaseUrl = value) },
-    )
-    fun setNvidiaApiKey(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.nvidiaApiKey().set(value) },
-        setOverride = { it.copy(nvidiaApiKey = value) },
-    )
-    fun setNvidiaModel(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.nvidiaModel().set(value) },
-        setOverride = { it.copy(nvidiaModel = value) },
-    )
-    fun setOllamaCloudBaseUrl(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.ollamaCloudBaseUrl().set(value) },
-        setOverride = { it.copy(ollamaCloudBaseUrl = value) },
-    )
-    fun setOllamaCloudApiKey(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.ollamaCloudApiKey().set(value) },
-        setOverride = { it.copy(ollamaCloudApiKey = value) },
-    )
-    fun setOllamaCloudModel(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.ollamaCloudModel().set(value) },
-        setOverride = { it.copy(ollamaCloudModel = value) },
-    )
-    fun refreshOpenRouterModels() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (settings.translationProvider != NovelTranslationProvider.OPENROUTER) return
-        if (settings.openRouterApiKey.isBlank()) return
-        if (settings.openRouterBaseUrl.isBlank()) return
-        isOpenRouterModelsLoading = true
-        updateContent(settings)
-        screenModelScope.launch(Dispatchers.IO) {
-            val fetched = runCatching {
-                openRouterModelsService.fetchModels(
-                    baseUrl = settings.openRouterBaseUrl,
-                    apiKey = settings.openRouterApiKey,
-                )
-            }.getOrElse { error ->
-                addAiTranslationLog("? OpenRouter models load failed: ${formatAiTranslationThrowableForLog(error)}")
-                emptyList()
-            }
-            openRouterModelIds = fetched
-            isOpenRouterModelsLoading = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun refreshNvidiaModels() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (settings.translationProvider != NovelTranslationProvider.NVIDIA) return
-        if (settings.nvidiaBaseUrl.isBlank()) return
-        if (settings.nvidiaApiKey.isBlank()) return
-        isNvidiaModelsLoading = true
-        updateContent(settings)
-        screenModelScope.launch(Dispatchers.IO) {
-            val fetched = runCatching {
-                nvidiaModelsService.fetchModels(
-                    baseUrl = settings.nvidiaBaseUrl,
-                    apiKey = settings.nvidiaApiKey,
-                )
-            }.getOrElse { error ->
-                addAiTranslationLog("? NVIDIA models load failed: ${formatAiTranslationThrowableForLog(error)}")
-                emptyList()
-            }
-            nvidiaModelIds = fetched
-            isNvidiaModelsLoading = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun testNvidiaConnection() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (isTestingNvidiaConnection) return
-        if (settings.translationProvider != NovelTranslationProvider.NVIDIA) return
-        if (!settings.hasConfiguredTranslationProvider()) {
-            addAiTranslationLog("? NVIDIA config invalid: fill Base URL, API key and Model")
-            setProviderApiTestState(
-                provider = NovelTranslationProvider.NVIDIA,
-                status = ProviderApiTestStatus.Error,
-                message = application.stringResource(AYMR.strings.novel_reader_ai_translator_api_invalid_config),
-            )
-            updateContent(settings)
-            return
-        }
-        isTestingNvidiaConnection = true
-        setProviderApiTestState(
-            provider = NovelTranslationProvider.NVIDIA,
-            status = ProviderApiTestStatus.Loading,
-        )
-        updateContent(settings)
-        screenModelScope.launch {
-            runCatching {
-                val result = requestTranslationBatch(
-                    segments = listOf("Connection test"),
-                    settings = settings,
-                ) { message ->
-                    addAiTranslationLog("?? Test: $message")
-                }
-                if (result.isNullOrEmpty() || result.firstOrNull().isNullOrBlank()) {
-                    error(application.stringResource(AYMR.strings.novel_reader_ai_translator_api_empty_response))
-                }
-            }.onSuccess {
-                addAiTranslationLog("? NVIDIA connection OK")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.NVIDIA,
-                    status = ProviderApiTestStatus.Success,
-                )
-            }.onFailure { error ->
-                addAiTranslationLog("? NVIDIA connection failed: ${formatAiTranslationThrowableForLog(error)}")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.NVIDIA,
-                    status = ProviderApiTestStatus.Error,
-                    message = formatAiTranslationThrowableForLog(error),
-                )
-            }
-            isTestingNvidiaConnection = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun refreshOllamaCloudModels() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (settings.translationProvider != NovelTranslationProvider.OLLAMA_CLOUD) return
-        if (settings.ollamaCloudBaseUrl.isBlank()) return
-        if (settings.ollamaCloudApiKey.isBlank()) return
-        isOllamaCloudModelsLoading = true
-        updateContent(settings)
-        screenModelScope.launch(Dispatchers.IO) {
-            val fetched = runCatching {
-                ollamaCloudModelsService.fetchModels(
-                    baseUrl = settings.ollamaCloudBaseUrl,
-                    apiKey = settings.ollamaCloudApiKey,
-                )
-            }.getOrElse { error ->
-                addAiTranslationLog("? Ollama Cloud models load failed: ${formatAiTranslationThrowableForLog(error)}")
-                emptyList()
-            }
-            ollamaCloudModelIds = fetched
-            isOllamaCloudModelsLoading = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun testOllamaCloudConnection() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (isTestingOllamaCloudConnection) return
-        if (settings.translationProvider != NovelTranslationProvider.OLLAMA_CLOUD) return
-        if (!settings.hasConfiguredTranslationProvider()) {
-            addAiTranslationLog("? Ollama Cloud config invalid: fill Base URL, API key and Model")
-            setProviderApiTestState(
-                provider = NovelTranslationProvider.OLLAMA_CLOUD,
-                status = ProviderApiTestStatus.Error,
-                message = application.stringResource(AYMR.strings.novel_reader_ai_translator_api_invalid_config),
-            )
-            updateContent(settings)
-            return
-        }
-        isTestingOllamaCloudConnection = true
-        setProviderApiTestState(
-            provider = NovelTranslationProvider.OLLAMA_CLOUD,
-            status = ProviderApiTestStatus.Loading,
-        )
-        updateContent(settings)
-        screenModelScope.launch {
-            runCatching {
-                val result = requestTranslationBatch(
-                    segments = listOf("Connection test"),
-                    settings = settings,
-                ) { message ->
-                    addAiTranslationLog("?? Test: $message")
-                }
-                if (result.isNullOrEmpty() || result.firstOrNull().isNullOrBlank()) {
-                    error(application.stringResource(AYMR.strings.novel_reader_ai_translator_api_empty_response))
-                }
-            }.onSuccess {
-                addAiTranslationLog("? Ollama Cloud connection OK")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.OLLAMA_CLOUD,
-                    status = ProviderApiTestStatus.Success,
-                )
-            }.onFailure { error ->
-                addAiTranslationLog("? Ollama Cloud connection failed: ${formatAiTranslationThrowableForLog(error)}")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.OLLAMA_CLOUD,
-                    status = ProviderApiTestStatus.Error,
-                    message = formatAiTranslationThrowableForLog(error),
-                )
-            }
-            isTestingOllamaCloudConnection = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun testOpenRouterConnection() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (isTestingOpenRouterConnection) return
-        if (settings.translationProvider != NovelTranslationProvider.OPENROUTER) return
-        if (!settings.hasConfiguredTranslationProvider()) {
-            addAiTranslationLog("? OpenRouter config invalid: fill Base URL, API key and Model")
-            setProviderApiTestState(
-                provider = NovelTranslationProvider.OPENROUTER,
-                status = ProviderApiTestStatus.Error,
-                message = application.stringResource(
-                    AYMR.strings.novel_reader_ai_translator_api_invalid_openrouter_config,
-                ),
-            )
-            updateContent(settings)
-            return
-        }
-        isTestingOpenRouterConnection = true
-        setProviderApiTestState(
-            provider = NovelTranslationProvider.OPENROUTER,
-            status = ProviderApiTestStatus.Loading,
-        )
-        updateContent(settings)
-        screenModelScope.launch {
-            runCatching {
-                val result = requestTranslationBatch(
-                    segments = listOf("Connection test"),
-                    settings = settings,
-                ) { message ->
-                    addAiTranslationLog("?? Test: $message")
-                }
-                if (result.isNullOrEmpty() || result.firstOrNull().isNullOrBlank()) {
-                    error(application.stringResource(AYMR.strings.novel_reader_ai_translator_api_empty_response))
-                }
-            }.onSuccess {
-                addAiTranslationLog("? OpenRouter connection OK")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.OPENROUTER,
-                    status = ProviderApiTestStatus.Success,
-                )
-            }.onFailure { error ->
-                addAiTranslationLog("? OpenRouter connection failed: ${formatAiTranslationThrowableForLog(error)}")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.OPENROUTER,
-                    status = ProviderApiTestStatus.Error,
-                    message = formatAiTranslationThrowableForLog(error),
-                )
-            }
-            isTestingOpenRouterConnection = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun refreshDeepSeekModels() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (settings.translationProvider != NovelTranslationProvider.DEEPSEEK) return
-        if (settings.deepSeekApiKey.isBlank()) return
-        if (settings.deepSeekBaseUrl.isBlank()) return
-        isDeepSeekModelsLoading = true
-        updateContent(settings)
-        screenModelScope.launch(Dispatchers.IO) {
-            val fetched = runCatching {
-                deepSeekModelsService.fetchModels(
-                    baseUrl = settings.deepSeekBaseUrl,
-                    apiKey = settings.deepSeekApiKey,
-                )
-            }.getOrElse { error ->
-                addAiTranslationLog("? DeepSeek models load failed: ${formatAiTranslationThrowableForLog(error)}")
-                emptyList()
-            }
-            deepSeekModelIds = fetched
-            isDeepSeekModelsLoading = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun testDeepSeekConnection() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (isTestingDeepSeekConnection) return
-        if (settings.translationProvider != NovelTranslationProvider.DEEPSEEK) return
-        if (!settings.hasConfiguredTranslationProvider()) {
-            addAiTranslationLog("? DeepSeek config invalid: fill Base URL, API key and Model")
-            setProviderApiTestState(
-                provider = NovelTranslationProvider.DEEPSEEK,
-                status = ProviderApiTestStatus.Error,
-                message = application.stringResource(AYMR.strings.novel_reader_ai_translator_api_invalid_config),
-            )
-            updateContent(settings)
-            return
-        }
-        isTestingDeepSeekConnection = true
-        setProviderApiTestState(
-            provider = NovelTranslationProvider.DEEPSEEK,
-            status = ProviderApiTestStatus.Loading,
-        )
-        updateContent(settings)
-        screenModelScope.launch {
-            runCatching {
-                val result = requestTranslationBatch(
-                    segments = listOf("Connection test"),
-                    settings = settings,
-                ) { message ->
-                    addAiTranslationLog("?? Test: $message")
-                }
-                if (result.isNullOrEmpty() || result.firstOrNull().isNullOrBlank()) {
-                    error(application.stringResource(AYMR.strings.novel_reader_ai_translator_api_empty_response))
-                }
-            }.onSuccess {
-                addAiTranslationLog("? DeepSeek connection OK")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.DEEPSEEK,
-                    status = ProviderApiTestStatus.Success,
-                )
-            }.onFailure { error ->
-                addAiTranslationLog("? DeepSeek connection failed: ${formatAiTranslationThrowableForLog(error)}")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.DEEPSEEK,
-                    status = ProviderApiTestStatus.Error,
-                    message = formatAiTranslationThrowableForLog(error),
-                )
-            }
-            isTestingDeepSeekConnection = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun refreshMistralModels() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (settings.translationProvider != NovelTranslationProvider.MISTRAL) return
-        if (settings.mistralApiKey.isBlank()) return
-        if (settings.mistralBaseUrl.isBlank()) return
-        isMistralModelsLoading = true
-        updateContent(settings)
-        screenModelScope.launch(Dispatchers.IO) {
-            val fetched = runCatching {
-                mistralModelsService.fetchModels(
-                    baseUrl = settings.mistralBaseUrl,
-                    apiKey = settings.mistralApiKey,
-                )
-            }.getOrElse { error ->
-                addAiTranslationLog("? Mistral models load failed: ${formatAiTranslationThrowableForLog(error)}")
-                emptyList()
-            }
-            mistralModelIds = fetched
-            isMistralModelsLoading = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun testMistralConnection() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (isTestingMistralConnection) return
-        if (settings.translationProvider != NovelTranslationProvider.MISTRAL) return
-        if (!settings.hasConfiguredTranslationProvider()) {
-            addAiTranslationLog("? Mistral config invalid: fill Base URL, API key and Model")
-            setProviderApiTestState(
-                provider = NovelTranslationProvider.MISTRAL,
-                status = ProviderApiTestStatus.Error,
-                message = application.stringResource(AYMR.strings.novel_reader_ai_translator_api_invalid_config),
-            )
-            updateContent(settings)
-            return
-        }
-        isTestingMistralConnection = true
-        setProviderApiTestState(
-            provider = NovelTranslationProvider.MISTRAL,
-            status = ProviderApiTestStatus.Loading,
-        )
-        updateContent(settings)
-        screenModelScope.launch {
-            runCatching {
-                val result = requestTranslationBatch(
-                    segments = listOf("Connection test"),
-                    settings = settings,
-                ) { message ->
-                    addAiTranslationLog("?? Test: $message")
-                }
-                if (result.isNullOrEmpty() || result.firstOrNull().isNullOrBlank()) {
-                    error(application.stringResource(AYMR.strings.novel_reader_ai_translator_api_empty_response))
-                }
-            }.onSuccess {
-                addAiTranslationLog("? Mistral connection OK")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.MISTRAL,
-                    status = ProviderApiTestStatus.Success,
-                )
-            }.onFailure { error ->
-                addAiTranslationLog("? Mistral connection failed: ${formatAiTranslationThrowableForLog(error)}")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.MISTRAL,
-                    status = ProviderApiTestStatus.Error,
-                    message = formatAiTranslationThrowableForLog(error),
-                )
-            }
-            isTestingMistralConnection = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
+
+    /**
+     * Writes a reader setting either into the source override (when this novel has one) or into the
+     * global preference. Shared by the Gemini setters and the TTS controller.
+     */
     private fun updateGeminiSetting(
         setGlobal: () -> Unit,
         setOverride: (NovelReaderOverride) -> NovelReaderOverride,
@@ -3999,25 +2175,7 @@ class NovelReaderScreenModel(
             setGlobal()
         }
     }
-    private fun updateTtsSetting(
-        setGlobal: () -> Unit,
-        setOverride: (NovelReaderOverride) -> NovelReaderOverride,
-        restartPlayback: Boolean = false,
-    ) {
-        updateGeminiSetting(setGlobal, setOverride)
-        ttsWordProgressJob?.cancel()
-        ttsWordProgressJob = null
-        val wasPlaying = ttsSessionController.state.value.playbackState == NovelTtsPlaybackState.PLAYING
-        screenModelScope.launch {
-            if (restartPlayback && wasPlaying) {
-                ttsSessionController.pause()
-            }
-            initializeTtsRuntime()
-            if (restartPlayback && wasPlaying && ttsAudioFocusManager.requestPlaybackFocus()) {
-                ttsSessionController.resume()
-            }
-        }
-    }
+
     fun updateSelectedTextSelection(selection: NovelSelectedTextSelection?) {
         val currentSettings = (mutableState.value as? State.Success)?.readerSettings
         val translationEnabled = currentSettings?.selectedTextTranslationEnabled == true
@@ -4309,7 +2467,7 @@ class NovelReaderScreenModel(
         val translationChapterId = activeTranslationChapterId() ?: return
         // The content model belongs to the entry chapter and is empty over a book, so it cannot gate
         // the queue there: the worker resolves the chapter payload itself.
-        if (!bookModeRuntime.isActive && currentParsedTextBlocks().isEmpty()) return
+        if (!bookController.isBookRuntimeActive() && currentParsedTextBlocks().isEmpty()) return
         val settings = currentState.readerSettings
         if (!settings.geminiEnabled) {
             addAiTranslationLog("AI translation is disabled.")
@@ -5036,7 +3194,7 @@ class NovelReaderScreenModel(
      * a chapter the user is not reading, which is why the translators looked like they did nothing.
      */
     private fun activeTranslationChapterId(): Long? =
-        bookModeChapterAtReadingPosition()?.id ?: currentChapter?.id
+        bookController.bookModeChapterAtReadingPosition()?.id ?: currentChapter?.id
 
     /**
      * Source text blocks for [chapterId].
@@ -5045,7 +3203,7 @@ class NovelReaderScreenModel(
      * any other spine chapter have to be parsed from its own payload.
      */
     private suspend fun translationSourceTextBlocks(chapterId: Long): List<String> {
-        if (!bookModeRuntime.isActive || chapterId == currentChapter?.id) return currentParsedTextBlocks()
+        if (!bookController.isBookRuntimeActive() || chapterId == currentChapter?.id) return currentParsedTextBlocks()
         return runCatching {
             val snapshot = ttsChapterRepository.loadChapterSnapshot(chapterId)
             withContext(Dispatchers.Default) {
@@ -5100,11 +3258,7 @@ class NovelReaderScreenModel(
      * was mounted would otherwise only appear after leaving and re-entering the book.
      */
     private fun refreshBookModeSection(chapterId: Long) {
-        if (!bookModeRuntime.isActive) return
-        screenModelScope.launch {
-            runCatching { bookModeRuntime.retryChapter(chapterId) }
-            onBookModeDocumentReady()
-        }
+        bookController.refreshSectionAfterTranslation(chapterId)
     }
 
     private fun currentParsedContentBlocks(): List<ContentBlock> {
@@ -5641,7 +3795,7 @@ class NovelReaderScreenModel(
         data class Text(val text: String) : ContentBlock
         data class Image(val url: String, val alt: String?) : ContentBlock
     }
-    private data class PendingProgressPersistence(
+    data class PendingProgressPersistence(
         val chapterId: Long,
         val novelId: Long,
         val chapterNumber: Int,

@@ -884,8 +884,9 @@ class NovelReaderScreenModelTest {
                 settings = state.readerSettings.copy(googleTranslationEnabled = true),
             )
 
-            val ttsController = getPrivateField<Any>(screenModel, "ttsSessionController")
-            getPrivateField<Boolean>(ttsController, "preferredTranslatedText") shouldBe true
+            val ttsController = getPrivateField<Any>(screenModel, "ttsController")
+            val ttsSessionController = getPrivateField<Any>(ttsController, "ttsSessionController")
+            getPrivateField<Boolean>(ttsSessionController, "preferredTranslatedText") shouldBe true
         }
     }
 
@@ -2652,24 +2653,14 @@ class NovelReaderScreenModelTest {
         richContentBlocks: List<NovelRichContentBlock>,
         settings: NovelReaderSettings,
     ): eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsChapterModel? {
-        val method = target.javaClass.getDeclaredMethod(
-            "resolveTranslatedTtsChapterModel",
-            Long::class.javaPrimitiveType,
-            String::class.java,
-            List::class.java,
-            List::class.java,
-            NovelReaderSettings::class.java,
+        val ttsController = getPrivateField<NovelTtsController>(target, "ttsController")
+        return ttsController.resolveTranslatedTtsChapterModel(
+            chapterId = chapterId,
+            chapterTitle = chapterTitle,
+            originalContentBlocks = originalContentBlocks,
+            richContentBlocks = richContentBlocks,
+            settings = settings,
         )
-        method.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        return method.invoke(
-            target,
-            chapterId,
-            chapterTitle,
-            originalContentBlocks,
-            richContentBlocks,
-            settings,
-        ) as eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsChapterModel?
     }
 
     private class FakeNovelChapterRepository(
