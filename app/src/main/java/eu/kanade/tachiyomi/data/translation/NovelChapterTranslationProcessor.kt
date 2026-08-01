@@ -4,27 +4,25 @@ import android.app.Application
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTranslationProvider
+import eu.kanade.tachiyomi.ui.reader.novel.translation.DEEPSEEK_DEFAULT_FREQUENCY_PENALTY
+import eu.kanade.tachiyomi.ui.reader.novel.translation.DEEPSEEK_DEFAULT_PRESENCE_PENALTY
 import eu.kanade.tachiyomi.ui.reader.novel.translation.DeepSeekPromptResolver
-import eu.kanade.tachiyomi.ui.reader.novel.translation.DeepSeekTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.DeepSeekTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiPrivateBridge
-import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiPromptModifiers
 import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiPromptResolver
-import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.MistralPromptResolver
-import eu.kanade.tachiyomi.ui.reader.novel.translation.MistralTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.MistralTranslationService
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelTranslationPromptFamily
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelTranslationStylePresets
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NvidiaTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NvidiaTranslationService
-import eu.kanade.tachiyomi.ui.reader.novel.translation.OllamaCloudTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OllamaCloudTranslationService
-import eu.kanade.tachiyomi.ui.reader.novel.translation.OpenRouterTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OpenRouterTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.normalizeTranslationReasoningEffort
-import eu.kanade.tachiyomi.ui.reader.novel.translation.resolveNovelTranslationPromptFamily
+import eu.kanade.tachiyomi.ui.reader.novel.translation.toDeepSeekTranslationParams
+import eu.kanade.tachiyomi.ui.reader.novel.translation.toGeminiTranslationParams
+import eu.kanade.tachiyomi.ui.reader.novel.translation.toMistralTranslationParams
+import eu.kanade.tachiyomi.ui.reader.novel.translation.toNvidiaTranslationParams
+import eu.kanade.tachiyomi.ui.reader.novel.translation.toOllamaCloudTranslationParams
+import eu.kanade.tachiyomi.ui.reader.novel.translation.toOpenRouterTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.translationCacheModelId
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -392,152 +390,6 @@ private fun NovelTranslationProvider.supportsGranularFallback(): Boolean {
         this == NovelTranslationProvider.OLLAMA_CLOUD
 }
 
-private fun NovelReaderSettings.translationPromptFamily(): NovelTranslationPromptFamily {
-    return when (translationProvider) {
-        NovelTranslationProvider.GEMINI_PRIVATE,
-        -> NovelTranslationPromptFamily.RUSSIAN
-        NovelTranslationProvider.GEMINI,
-        NovelTranslationProvider.OPENROUTER,
-        NovelTranslationProvider.DEEPSEEK,
-        NovelTranslationProvider.MISTRAL,
-        NovelTranslationProvider.NVIDIA,
-        NovelTranslationProvider.OLLAMA_CLOUD,
-        ->
-            resolveNovelTranslationPromptFamily(geminiTargetLang)
-    }
-}
-
-private fun NovelReaderSettings.resolveTranslationPromptModifiers(
-    family: NovelTranslationPromptFamily = NovelTranslationPromptFamily.RUSSIAN,
-): String {
-    val modifierText = GeminiPromptModifiers.buildPromptText(
-        enabledIds = geminiEnabledPromptModifiers,
-        customModifier = geminiCustomPromptModifier,
-        family = family,
-    )
-    val styleDirective = NovelTranslationStylePresets.promptDirective(
-        geminiStylePreset,
-        family = family,
-    ).trim()
-    return listOf(
-        styleDirective,
-        modifierText,
-        geminiPromptModifiers.trim(),
-    ).filter { it.isNotBlank() }
-        .joinToString("\n\n")
-}
-
-private fun NovelReaderSettings.toGeminiTranslationParams(): GeminiTranslationParams {
-    return GeminiTranslationParams(
-        apiKey = geminiApiKey,
-        model = geminiModel.normalizeGeminiModelId(),
-        sourceLang = geminiSourceLang,
-        targetLang = geminiTargetLang,
-        reasoningEffort = geminiReasoningEffort,
-        budgetTokens = geminiBudgetTokens,
-        temperature = geminiTemperature,
-        topP = geminiTopP,
-        topK = geminiTopK,
-        promptMode = geminiPromptMode,
-        promptModifiers = resolveTranslationPromptModifiers(family = translationPromptFamily()),
-        provider = translationProvider,
-        privateUnlocked = geminiPrivateUnlocked,
-        privatePythonLikeMode = geminiPrivatePythonLikeMode,
-    )
-}
-
-private fun NovelReaderSettings.toOpenRouterTranslationParams(): OpenRouterTranslationParams {
-    return OpenRouterTranslationParams(
-        baseUrl = openRouterBaseUrl,
-        apiKey = openRouterApiKey,
-        model = openRouterModel,
-        sourceLang = geminiSourceLang,
-        targetLang = geminiTargetLang,
-        promptMode = geminiPromptMode,
-        promptModifiers = resolveTranslationPromptModifiers(family = translationPromptFamily()),
-        temperature = geminiTemperature,
-        topP = geminiTopP,
-        reasoningEffort = normalizeTranslationReasoningEffort(
-            provider = NovelTranslationProvider.OPENROUTER,
-            model = openRouterModel,
-            value = geminiReasoningEffort,
-        ),
-    )
-}
-
-private fun NovelReaderSettings.toDeepSeekTranslationParams(): DeepSeekTranslationParams {
-    return DeepSeekTranslationParams(
-        baseUrl = deepSeekBaseUrl,
-        apiKey = deepSeekApiKey,
-        model = deepSeekModel,
-        sourceLang = geminiSourceLang,
-        targetLang = geminiTargetLang,
-        promptMode = geminiPromptMode,
-        promptModifiers = resolveTranslationPromptModifiers(family = translationPromptFamily()),
-        temperature = geminiTemperature.coerceIn(DEEPSEEK_TEMPERATURE_MIN, DEEPSEEK_TEMPERATURE_MAX),
-        topP = geminiTopP.coerceIn(DEEPSEEK_TOP_P_MIN, DEEPSEEK_TOP_P_MAX),
-        reasoningEffort = normalizeTranslationReasoningEffort(
-            provider = NovelTranslationProvider.DEEPSEEK,
-            model = deepSeekModel,
-            value = geminiReasoningEffort,
-        ) ?: "none",
-        presencePenalty = DEEPSEEK_DEFAULT_PRESENCE_PENALTY,
-        frequencyPenalty = DEEPSEEK_DEFAULT_FREQUENCY_PENALTY,
-    )
-}
-
-private fun NovelReaderSettings.toMistralTranslationParams(): MistralTranslationParams {
-    return MistralTranslationParams(
-        baseUrl = mistralBaseUrl,
-        apiKey = mistralApiKey,
-        model = mistralModel,
-        sourceLang = geminiSourceLang,
-        targetLang = geminiTargetLang,
-        promptMode = geminiPromptMode,
-        promptModifiers = resolveTranslationPromptModifiers(family = translationPromptFamily()),
-        temperature = geminiTemperature,
-        topP = geminiTopP,
-        reasoningEffort = normalizeTranslationReasoningEffort(
-            provider = NovelTranslationProvider.MISTRAL,
-            model = mistralModel,
-            value = geminiReasoningEffort,
-        ),
-    )
-}
-
-private fun NovelReaderSettings.toNvidiaTranslationParams(): NvidiaTranslationParams {
-    return NvidiaTranslationParams(
-        baseUrl = nvidiaBaseUrl,
-        apiKey = nvidiaApiKey,
-        model = nvidiaModel,
-        sourceLang = geminiSourceLang,
-        targetLang = geminiTargetLang,
-        promptMode = geminiPromptMode,
-        promptModifiers = resolveTranslationPromptModifiers(family = translationPromptFamily()),
-        temperature = geminiTemperature,
-        topP = geminiTopP,
-    )
-}
-
-private fun NovelReaderSettings.toOllamaCloudTranslationParams(): OllamaCloudTranslationParams {
-    return OllamaCloudTranslationParams(
-        baseUrl = ollamaCloudBaseUrl,
-        apiKey = ollamaCloudApiKey,
-        model = ollamaCloudModel,
-        sourceLang = geminiSourceLang,
-        targetLang = geminiTargetLang,
-        promptMode = geminiPromptMode,
-        promptModifiers = resolveTranslationPromptModifiers(family = translationPromptFamily()),
-        temperature = geminiTemperature,
-        topP = geminiTopP,
-        reasoningEffort = normalizeTranslationReasoningEffort(
-            provider = NovelTranslationProvider.OLLAMA_CLOUD,
-            model = ollamaCloudModel,
-            value = geminiReasoningEffort,
-        ),
-    )
-}
-
 private fun NovelReaderSettings.hasConfiguredTranslationProvider(): Boolean {
     if (!geminiEnabled) return false
     return when (translationProvider) {
@@ -671,20 +523,6 @@ private fun NovelReaderSettings.translationRequestConfigLog(): String {
 
 private fun Float.toLogFloat(): String = String.format(Locale.US, "%.3f", this)
 
-private fun String.normalizeGeminiModelId(): String {
-    return when (trim()) {
-        "gemini-3-flash" -> "gemini-3-flash-preview"
-        "gemini-2.5-flash" -> "gemini-3.1-flash-lite-preview"
-        else -> this
-    }
-}
-
 private const val MAX_DEEPSEEK_CONCURRENCY = 32
 private const val PRIVATE_FALLBACK_CHUNK_SIZE = 40
 private const val PRIVATE_FALLBACK_CONCURRENCY = 1
-private const val DEEPSEEK_TEMPERATURE_MIN = 1.3f
-private const val DEEPSEEK_TEMPERATURE_MAX = 1.5f
-private const val DEEPSEEK_TOP_P_MIN = 0.9f
-private const val DEEPSEEK_TOP_P_MAX = 0.95f
-private const val DEEPSEEK_DEFAULT_PRESENCE_PENALTY = 0.15f
-private const val DEEPSEEK_DEFAULT_FREQUENCY_PENALTY = 0.15f
