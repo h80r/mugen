@@ -979,7 +979,6 @@ class PlayerViewModel @JvmOverloads constructor(
         _paused.update { false }
     }
 
-    private val showStatusBar = playerPreferences.showSystemStatusBar().get()
     fun showControls() {
         if (sheetShown.value != Sheets.None ||
             panelShown.value != Panels.None ||
@@ -987,7 +986,7 @@ class PlayerViewModel @JvmOverloads constructor(
         ) {
             return
         }
-        if (showStatusBar) {
+        if (playerPreferences.showSystemStatusBar().get()) {
             activity.windowInsetsController.show(WindowInsetsCompat.Type.statusBars())
         }
         _controlsShown.update { true }
@@ -1149,8 +1148,10 @@ class PlayerViewModel @JvmOverloads constructor(
         }
         MPVLib.setPropertyDouble("panscan", pan)
         MPVLib.setPropertyDouble("video-aspect-override", ratio)
-        playerPreferences.aspectState().set(aspect)
-        playerUpdate.update { PlayerUpdates.AspectRatio }
+        if (playerPreferences.aspectState().get() != aspect) {
+            playerPreferences.aspectState().set(aspect)
+            playerUpdate.update { PlayerUpdates.AspectRatio }
+        }
     }
 
     fun cycleScreenRotations() {
