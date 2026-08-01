@@ -29,7 +29,6 @@ import eu.kanade.tachiyomi.source.novel.NovelWebUrlSource
 import eu.kanade.tachiyomi.ui.novel.resolveNovelResumeChapter
 import eu.kanade.tachiyomi.ui.novel.sortedByNovelReadingOrder
 import eu.kanade.tachiyomi.ui.reader.novel.dictionary.CompositeNovelDictionaryProvider
-import eu.kanade.tachiyomi.ui.reader.novel.dictionary.NovelDictionaryHistory
 import eu.kanade.tachiyomi.ui.reader.novel.dictionary.OfflineStarDictDictionaryProvider
 import eu.kanade.tachiyomi.ui.reader.novel.setting.GeminiPromptMode
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderOverride
@@ -57,13 +56,9 @@ import eu.kanade.tachiyomi.ui.reader.novel.translation.MistralPromptResolver
 import eu.kanade.tachiyomi.ui.reader.novel.translation.MistralTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.MistralTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelDictionaryProvider
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelDictionaryProviderOutcome
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelDictionaryRequest
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelReaderTranslationCacheResolver
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelReaderTranslationDiskCacheStore
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelSelectedTextTranslationProvider
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelSelectedTextTranslationProviderOutcome
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelSelectedTextTranslationRequest
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelTranslationPromptFamily
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelTranslationStylePresets
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NvidiaModelsService
@@ -77,7 +72,6 @@ import eu.kanade.tachiyomi.ui.reader.novel.translation.OpenRouterModelsService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OpenRouterTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OpenRouterTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.TranslationPhase
-import eu.kanade.tachiyomi.ui.reader.novel.translation.buildNovelSelectedTextTranslationRequestKey
 import eu.kanade.tachiyomi.ui.reader.novel.translation.formatAiTranslationThrowableForLog
 import eu.kanade.tachiyomi.ui.reader.novel.translation.normalizeGeminiModelId
 import eu.kanade.tachiyomi.ui.reader.novel.translation.normalizeTranslationReasoningEffort
@@ -356,7 +350,8 @@ class NovelReaderScreenModel(
     NovelTtsHost,
     NovelAiProviderHost,
     NovelTranslationHost,
-    NovelProgressPersistenceHost {
+    NovelProgressPersistenceHost,
+    NovelSelectionTranslationHost {
     private val contentPrefetchService = ContentPrefetchService(
         environment = runCatching {
             AndroidContentPrefetchEnvironment(Injekt.get<Application>())
@@ -679,6 +674,25 @@ class NovelReaderScreenModel(
 
     override fun progressCurrentNovel(): Novel? = currentNovel
 
+    // ---------------------------------------------------------------------------------------------
+    // NovelSelectionTranslationHost implementation: the selected-text translation + dictionary
+    // controller reaches the shared reader state here.
+    // ---------------------------------------------------------------------------------------------
+
+    override val selectionScope: CoroutineScope get() = screenModelScope
+
+    override fun selectionReaderSettings(): NovelReaderSettings? =
+        (mutableState.value as? State.Success)?.readerSettings
+
+    override fun selectionNovel(): Novel? = currentNovel
+
+    override fun selectionChapter(): NovelChapter? = currentChapter
+
+    override fun selectionSourceLanguage(): String? =
+        currentNovel?.source?.let { sourceManager.get(it)?.lang }
+
+    override fun selectionUpdateContent(settings: NovelReaderSettings) = updateContent(settings)
+
     /**
      * TTS subsystem, extracted into its own controller. The screen model hosts the shared state
      * through [NovelTtsHost] and forwards the reader's `tts*` calls.
@@ -784,14 +798,17 @@ class NovelReaderScreenModel(
         historyRepository = historyRepository,
     )
 
-    private var selectedTextTranslationSelection: NovelSelectedTextSelection? = null
-    private var selectedTextTranslationUiState: NovelSelectedTextTranslationUiState =
-        NovelSelectedTextTranslationUiState.Idle
-    private var selectedTextTranslationJob: Job? = null
-    private val selectedTextTranslationSessionCache = NovelSelectedTextTranslationSessionCache()
-    private var novelDictionaryUiState: NovelDictionaryUiState = NovelDictionaryUiState.Idle
-    private var novelDictionaryJob: Job? = null
-    private val novelDictionarySessionCache = NovelDictionarySessionCache()
+    private val selectionTranslationController = NovelSelectionTranslationController(
+        host = this,
+        application = application,
+        novelReaderPreferences = novelReaderPreferences,
+        selectedTextTranslationProvider = selectedTextTranslationProvider,
+        novelDictionaryProvider = novelDictionaryProvider,
+    )
+
+    /** Snapshot of the selection/dictionary UI state, merged into the reader state below. */
+    private val selectionTranslationSnapshot: NovelSelectionTranslationSnapshot
+        get() = selectionTranslationController.snapshot()
     private var incognitoObservationJob: Job? = null
 
     private val structuredJson = Json {
@@ -1133,7 +1150,7 @@ class NovelReaderScreenModel(
     }
     private fun updateContent(settings: NovelReaderSettings) {
         if (!settings.selectedTextTranslationEnabled && !settings.novelDictionaryEnabled) {
-            clearSelectedTextTranslationSelection(refreshUi = false)
+            selectionTranslationController.clearSelection(refreshUi = false)
         }
         val model = contentModel ?: return
         val html = model.canonicalHtml
@@ -1283,9 +1300,9 @@ class NovelReaderScreenModel(
             nextChapterName = chapterNavigation.nextChapterName,
             seriesInterstitialState = seriesInterstitialState,
             chapterWebUrl = chapterWebUrl,
-            selectedTextTranslationSelection = selectedTextTranslationSelection,
-            selectedTextTranslationUiState = selectedTextTranslationUiState,
-            novelDictionaryUiState = novelDictionaryUiState,
+            selectedTextTranslationSelection = selectionTranslationSnapshot.selection,
+            selectedTextTranslationUiState = selectionTranslationSnapshot.translationUiState,
+            novelDictionaryUiState = selectionTranslationSnapshot.dictionaryUiState,
             novelDictionaryEnabled = novelReaderPreferences.novelDictionaryEnabled().get(),
             novelDictionaryTargetLanguage = novelReaderPreferences.novelDictionaryTargetLanguage().get(),
             geminiTranslation = State.ReaderGeminiState(
@@ -1739,12 +1756,7 @@ class NovelReaderScreenModel(
         nextChapterPrefetchJob?.cancel()
         nextChapterGeminiPrefetchJob?.cancel()
         adjacentJaomixPageJob?.cancel()
-        selectedTextTranslationJob?.cancel()
-        novelDictionaryJob?.cancel()
-        novelDictionaryJob = null
-        dictionaryTts?.stop()
-        dictionaryTts?.shutdown()
-        dictionaryTts = null
+        selectionTranslationController.dispose()
         progressPersistenceController.dispose()
         // Flush the debounced book-mode position before the jobs die: leaving the reader mid-section
         // would otherwise lose up to one debounce window of reading progress, and chapters the reader
@@ -1791,8 +1803,7 @@ class NovelReaderScreenModel(
         nextChapterGeminiPrefetchJob?.cancel()
         nextChapterGeminiPrefetchJob = null
         translationController.resetTransientState()
-        clearSelectedTextTranslationSelection(refreshUi = false)
-        selectedTextTranslationSessionCache.clear()
+        selectionTranslationController.clearChapterScopedState()
         attemptedJaomixPages.clear()
         translationHolder.clear("gemini")
         translationHolder.clear("google")
@@ -1993,277 +2004,33 @@ class NovelReaderScreenModel(
         }
     }
 
-    fun updateSelectedTextSelection(selection: NovelSelectedTextSelection?) {
-        val currentSettings = (mutableState.value as? State.Success)?.readerSettings
-        val translationEnabled = currentSettings?.selectedTextTranslationEnabled == true
-        val dictionaryEnabled = novelReaderPreferences.novelDictionaryEnabled().get()
-        if (!translationEnabled && !dictionaryEnabled) {
-            clearSelectedTextTranslationSelection(refreshUi = false)
-            return
-        }
-        selectedTextTranslationJob?.cancel()
-        selectedTextTranslationJob = null
-        novelDictionaryJob?.cancel()
-        novelDictionaryJob = null
-        selectedTextTranslationSelection = selection
-        // Selecting text no longer shows an intermediate card: the selection toolbar carries an
-        // explicit trigger action, so the state stays Idle until that action starts its own work.
-        selectedTextTranslationUiState = NovelSelectedTextTranslationUiState.Idle
-        novelDictionaryUiState = NovelDictionaryUiState.Idle
-        refreshSelectedTextTranslationUi()
+    // ---------------------------------------------------------------------------------------------
+    // Selected-text translation + dictionary delegates. Selection state, jobs and caches live in
+    // [selectionTranslationController]; the screen model forwards the reader's calls.
+    // ---------------------------------------------------------------------------------------------
 
-        if (selection != null) {
-            when (selection.triggerAction) {
-                SelectedTextAction.DICTIONARY -> lookupSelectedTextDefinition()
-                SelectedTextAction.TRANSLATION -> translateSelectedText()
-                null -> {}
-            }
-        }
-    }
+    fun updateSelectedTextSelection(selection: NovelSelectedTextSelection?) =
+        selectionTranslationController.updateSelectedTextSelection(selection)
 
-    fun translateSelectedText() {
-        val selection = selectedTextTranslationSelection ?: return
-        val currentState = mutableState.value as? State.Success ?: return
-        val settings = currentState.readerSettings
-        if (!settings.selectedTextTranslationEnabled) return
-        if (selectedTextTranslationJob?.isActive == true) return
+    fun translateSelectedText() = selectionTranslationController.translateSelectedText()
 
-        // Respect the language of the selected text: detect it (using the source's declared
-        // language as a tiebreaker for Han characters) and pass it as a hint so the provider can
-        // send an explicit `sl` instead of always relying on auto-detection.
-        val sourceLanguage = currentNovel?.source?.let { sourceManager.get(it)?.lang }
-        val request = NovelSelectedTextTranslationRequest(
-            selectedText = selection.text,
-            targetLanguage = settings.selectedTextTranslationTargetLanguage,
-            sourceLanguageHint = detectNovelTextLanguage(selection.text, sourceLanguage),
-        )
-        val cacheKey = buildNovelSelectedTextTranslationRequestKey(
-            providerFingerprint = selectedTextTranslationProvider.fingerprint,
-            request = request,
-        )
-        selectedTextTranslationSessionCache.get(cacheKey)?.let { cached ->
-            selectedTextTranslationUiState = NovelSelectedTextTranslationUiState.Result(
-                selection = selection,
-                translationResult = cached,
-            )
-            refreshSelectedTextTranslationUi()
-            return
-        }
+    fun retrySelectedTextTranslation() = selectionTranslationController.retrySelectedTextTranslation()
 
-        selectedTextTranslationUiState = NovelSelectedTextTranslationUiState.Translating(selection)
-        refreshSelectedTextTranslationUi()
-        selectedTextTranslationJob?.cancel()
-        selectedTextTranslationJob = screenModelScope.launch {
-            val outcome = selectedTextTranslationProvider.translate(request)
-            if (isNovelSelectedTextTranslationResponseStale(selectedTextTranslationSelection, selection.sessionId)) {
-                return@launch
-            }
-            when (outcome) {
-                is NovelSelectedTextTranslationProviderOutcome.Success -> {
-                    selectedTextTranslationSessionCache.put(cacheKey, outcome.result)
-                    selectedTextTranslationUiState = NovelSelectedTextTranslationUiState.Result(
-                        selection = selection,
-                        translationResult = outcome.result,
-                    )
-                }
-                is NovelSelectedTextTranslationProviderOutcome.Unavailable -> {
-                    selectedTextTranslationUiState = when (outcome.reason) {
-                        is NovelSelectedTextTranslationErrorReason.Cooldown,
-                        NovelSelectedTextTranslationErrorReason.EmptySelection,
-                        NovelSelectedTextTranslationErrorReason.TooLongSelection,
-                        NovelSelectedTextTranslationErrorReason.WebViewUnavailable,
-                        is NovelSelectedTextTranslationErrorReason.BackendUnavailable,
-                        -> {
-                            NovelSelectedTextTranslationUiState.Unavailable(outcome.reason)
-                        }
-                        is NovelSelectedTextTranslationErrorReason.NetworkFailure,
-                        NovelSelectedTextTranslationErrorReason.ParserFailure,
-                        -> {
-                            NovelSelectedTextTranslationUiState.Error(
-                                selection = selection,
-                                reason = outcome.reason,
-                            )
-                        }
-                    }
-                }
-            }
-            refreshSelectedTextTranslationUi()
-        }
-    }
+    fun dismissSelectedTextTranslation() = selectionTranslationController.dismissSelectedTextTranslation()
 
-    fun retrySelectedTextTranslation() {
-        translateSelectedText()
-    }
+    fun resetSelectedTextTranslationForChapter() =
+        selectionTranslationController.resetSelectedTextTranslationForChapter()
 
-    fun dismissSelectedTextTranslation() {
-        clearSelectedTextTranslationSelection()
-    }
+    fun lookupSelectedTextDefinition() = selectionTranslationController.lookupSelectedTextDefinition()
 
-    fun resetSelectedTextTranslationForChapter() {
-        clearSelectedTextTranslationSelection()
-        selectedTextTranslationSessionCache.clear()
-    }
+    fun retryNovelDictionary() = selectionTranslationController.retryNovelDictionary()
 
-    fun lookupSelectedTextDefinition() {
-        val enabled = novelReaderPreferences.novelDictionaryEnabled().get()
-        if (!enabled) return
-        val selection = selectedTextTranslationSelection ?: return
-        if (novelDictionaryJob?.isActive == true) return
+    fun dismissNovelDictionary() = selectionTranslationController.dismissNovelDictionary()
 
-        val term = selection.text
-        val sourceLanguage = currentNovel?.source?.let { sourceManager.get(it)?.lang }
-        val wordLang = detectNovelTextLanguage(term, sourceLanguage)
-        val targetLangCode = novelReaderPreferences.novelDictionaryTargetLanguage().get()
+    fun resetNovelDictionaryForChapter() = selectionTranslationController.resetNovelDictionaryForChapter()
 
-        val cacheKey = buildNovelDictionaryCacheKey(
-            backendFingerprint = novelDictionaryProvider.fingerprint,
-            sourceLanguage = wordLang ?: "",
-            term = term,
-        )
-        novelDictionarySessionCache.get(cacheKey)?.let { cached ->
-            novelDictionaryUiState = NovelDictionaryUiState.Result(selection, cached)
-            recordDictionaryHistory(term, wordLang, targetLangCode, cached)
-            refreshSelectedTextTranslationUi()
-            return
-        }
-
-        novelDictionaryUiState = NovelDictionaryUiState.Looking(selection)
-        refreshSelectedTextTranslationUi()
-        novelDictionaryJob?.cancel()
-        novelDictionaryJob = screenModelScope.launch {
-            val outcome = novelDictionaryProvider.lookup(
-                NovelDictionaryRequest(
-                    term = term,
-                    sourceLanguageHint = wordLang,
-                    targetLanguageCode = targetLangCode,
-                ),
-            )
-            if (isNovelSelectedTextTranslationResponseStale(selectedTextTranslationSelection, selection.sessionId)) {
-                return@launch
-            }
-            when (outcome) {
-                is NovelDictionaryProviderOutcome.Success -> {
-                    novelDictionarySessionCache.put(cacheKey, outcome.result)
-                    recordDictionaryHistory(term, wordLang, targetLangCode, outcome.result)
-                    novelDictionaryUiState = NovelDictionaryUiState.Result(selection, outcome.result)
-                }
-                is NovelDictionaryProviderOutcome.Unavailable -> {
-                    novelDictionaryUiState = when (outcome.reason) {
-                        is NovelSelectedTextTranslationErrorReason.Cooldown,
-                        NovelSelectedTextTranslationErrorReason.EmptySelection,
-                        NovelSelectedTextTranslationErrorReason.TooLongSelection,
-                        NovelSelectedTextTranslationErrorReason.WebViewUnavailable,
-                        is NovelSelectedTextTranslationErrorReason.BackendUnavailable,
-                        -> NovelDictionaryUiState.Unavailable(outcome.reason)
-                        is NovelSelectedTextTranslationErrorReason.NetworkFailure,
-                        NovelSelectedTextTranslationErrorReason.ParserFailure,
-                        -> NovelDictionaryUiState.Error(selection, outcome.reason)
-                    }
-                }
-            }
-            refreshSelectedTextTranslationUi()
-        }
-    }
-
-    fun retryNovelDictionary() {
-        lookupSelectedTextDefinition()
-    }
-
-    fun dismissNovelDictionary() {
-        novelDictionaryJob?.cancel()
-        novelDictionaryJob = null
-        novelDictionaryUiState = NovelDictionaryUiState.Idle
-        refreshSelectedTextTranslationUi()
-    }
-
-    fun resetNovelDictionaryForChapter() {
-        novelDictionaryJob?.cancel()
-        novelDictionaryJob = null
-        novelDictionarySessionCache.clear()
-        novelDictionaryUiState = NovelDictionaryUiState.Idle
-    }
-
-    private fun recordDictionaryHistory(
-        term: String,
-        language: String?,
-        targetLanguage: String?,
-        result: NovelDictionaryResult,
-    ) {
-        val novelTitle = currentNovel?.title
-        val chapterName = currentChapter?.name
-        screenModelScope.launch(Dispatchers.IO) {
-            runCatching {
-                NovelDictionaryHistory.record(
-                    context = Injekt.get<Application>(),
-                    term = term,
-                    language = language,
-                    targetLanguage = targetLanguage,
-                    preview = NovelDictionaryHistory.previewOf(result),
-                    novelTitle = novelTitle,
-                    chapterName = chapterName,
-                    provider = result.attribution,
-                )
-            }
-        }
-    }
-
-    private var dictionaryTts: android.speech.tts.TextToSpeech? = null
-
-    fun playSelectedTextPronunciation(text: String) {
-        val cleanText = text.trim()
-        if (cleanText.isEmpty()) return
-        val sourceLanguage = currentNovel?.source?.let { sourceManager.get(it)?.lang }
-        val lang = detectNovelTextLanguage(cleanText, sourceLanguage) ?: "en"
-        val locale = when (lang) {
-            "ja" -> java.util.Locale.JAPANESE
-            "zh" -> java.util.Locale.CHINESE
-            "ko" -> java.util.Locale.KOREAN
-            "ru" -> java.util.Locale.forLanguageTag("ru")
-            else -> java.util.Locale.ENGLISH
-        }
-
-        val ttsListener = android.speech.tts.TextToSpeech.OnInitListener { status ->
-            if (status == android.speech.tts.TextToSpeech.SUCCESS) {
-                dictionaryTts?.language = locale
-                dictionaryTts?.speak(
-                    cleanText,
-                    android.speech.tts.TextToSpeech.QUEUE_FLUSH,
-                    null,
-                    "dictionary_pronunciation",
-                )
-            }
-        }
-
-        if (dictionaryTts == null) {
-            dictionaryTts = android.speech.tts.TextToSpeech(application, ttsListener)
-        } else {
-            dictionaryTts?.language = locale
-            dictionaryTts?.speak(
-                cleanText,
-                android.speech.tts.TextToSpeech.QUEUE_FLUSH,
-                null,
-                "dictionary_pronunciation",
-            )
-        }
-    }
-
-    private fun clearSelectedTextTranslationSelection(refreshUi: Boolean = true) {
-        selectedTextTranslationJob?.cancel()
-        selectedTextTranslationJob = null
-        selectedTextTranslationSelection = null
-        selectedTextTranslationUiState = NovelSelectedTextTranslationUiState.Idle
-        novelDictionaryJob?.cancel()
-        novelDictionaryJob = null
-        novelDictionaryUiState = NovelDictionaryUiState.Idle
-        if (refreshUi) {
-            refreshSelectedTextTranslationUi()
-        }
-    }
-
-    private fun refreshSelectedTextTranslationUi() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        updateContent(settings)
-    }
+    fun playSelectedTextPronunciation(text: String) =
+        selectionTranslationController.playSelectedTextPronunciation(text)
     // ---------------------------------------------------------------------------------------------
     // Whole-chapter translation delegates. Gemini/Google jobs, visibility and logs live in
     // [translationController]; the screen model forwards the reader's calls.
