@@ -12,7 +12,7 @@ class NovelBookSpineTest {
 
     @Test
     fun `empty chapter list produces an empty spine`() {
-        val spine = NovelBookSpine.fromChapters(emptyList())
+        val spine = testSpineOf(emptyList())
 
         spine.isEmpty shouldBe true
         spine.totalCharCount shouldBe 0
@@ -21,35 +21,35 @@ class NovelBookSpineTest {
     }
 
     @Test
-    fun `unmeasured sections fall back to the default estimate`() {
-        val spine = NovelBookSpine.fromChapters(chapters(3))
+    fun `sections without an explicit length use the fixture default`() {
+        val spine = testSpineOf(chapters(3))
 
         spine.sections.size shouldBe 3
-        spine.measuredSectionCount shouldBe 0
-        spine.totalCharCount shouldBe NovelBookSpine.DEFAULT_ESTIMATED_CHAR_COUNT * 3
+        spine.measuredSectionCount shouldBe 3
+        spine.totalCharCount shouldBe TEST_SECTION_CHAR_COUNT * 3
         spine.sectionAt(1)?.name shouldBe "Chapter 2"
     }
 
     @Test
-    fun `unmeasured sections use the average of measured sections`() {
-        val spine = NovelBookSpine.fromChapters(
+    fun `explicit lengths win over the fixture default`() {
+        val spine = testSpineOf(
             chapters = chapters(4),
-            measuredCharCounts = mapOf(1L to 1_000, 2L to 3_000),
+            charCounts = mapOf(1L to 1_000, 2L to 3_000),
         )
 
         spine.sectionAt(0)?.charCount shouldBe 1_000
         spine.sectionAt(1)?.charCount shouldBe 3_000
-        spine.sectionAt(2)?.charCount shouldBe 2_000
-        spine.sectionAt(2)?.isMeasured shouldBe false
-        spine.measuredSectionCount shouldBe 2
-        spine.totalCharCount shouldBe 8_000
+        spine.sectionAt(2)?.charCount shouldBe TEST_SECTION_CHAR_COUNT
+        spine.sectionAt(2)?.isMeasured shouldBe true
+        spine.measuredSectionCount shouldBe 4
+        spine.totalCharCount shouldBe 1_000 + 3_000 + TEST_SECTION_CHAR_COUNT * 2
     }
 
     @Test
     fun `location and global offset round trip`() {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = chapters(3),
-            measuredCharCounts = mapOf(1L to 100, 2L to 200, 3L to 300),
+            charCounts = mapOf(1L to 100, 2L to 200, 3L to 300),
         )
 
         spine.startOffsetOf(0) shouldBe 0
@@ -66,9 +66,9 @@ class NovelBookSpineTest {
 
     @Test
     fun `out of range values are clamped instead of throwing`() {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = chapters(2),
-            measuredCharCounts = mapOf(1L to 100, 2L to 100),
+            charCounts = mapOf(1L to 100, 2L to 100),
         )
 
         spine.clampLocation(NovelBookLocation(9, 9_999)) shouldBe NovelBookLocation(1, 99)
@@ -79,9 +79,9 @@ class NovelBookSpineTest {
 
     @Test
     fun `progress is measured against the whole book`() {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = chapters(4),
-            measuredCharCounts = mapOf(1L to 100, 2L to 100, 3L to 100, 4L to 100),
+            charCounts = mapOf(1L to 100, 2L to 100, 3L to 100, 4L to 100),
         )
 
         spine.progressOf(NovelBookLocation(0, 0)) shouldBe 0f
@@ -91,37 +91,24 @@ class NovelBookSpineTest {
     }
 
     @Test
-    fun `measuring a section rebuilds the location map`() {
-        val spine = NovelBookSpine.fromChapters(
+    fun `artifact sections carry exact measured lengths`() {
+        val spine = testSpineOf(
             chapters = chapters(3),
-            measuredCharCounts = mapOf(1L to 100, 2L to 100, 3L to 100),
+            charCounts = mapOf(1L to 1_000, 2L to 3_000, 3L to 2_000),
         )
 
-        val measured = spine.withMeasuredSection(chapterId = 1L, charCount = 500)
-
-        measured.sectionAt(0)?.charCount shouldBe 500
-        measured.sectionAt(0)?.isMeasured shouldBe true
-        measured.startOffsetOf(1) shouldBe 500
-        measured.totalCharCount shouldBe 700
-        spine.totalCharCount shouldBe 300
-    }
-
-    @Test
-    fun `measuring an unknown or unchanged section keeps the same spine`() {
-        val spine = NovelBookSpine.fromChapters(
-            chapters = chapters(2),
-            measuredCharCounts = mapOf(1L to 100, 2L to 100),
-        )
-
-        spine.withMeasuredSection(chapterId = 999L, charCount = 500) shouldBe spine
-        spine.withMeasuredSection(chapterId = 1L, charCount = 100) shouldBe spine
+        spine.sectionAt(0)?.charCount shouldBe 1_000
+        spine.sectionAt(0)?.isMeasured shouldBe true
+        spine.startOffsetOf(1) shouldBe 1_000
+        spine.measuredSectionCount shouldBe 3
+        spine.totalCharCount shouldBe 6_000
     }
 
     @Test
     fun `legacy chapter progress maps onto a book location`() {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = chapters(3),
-            measuredCharCounts = mapOf(1L to 100, 2L to 200, 3L to 300),
+            charCounts = mapOf(1L to 100, 2L to 200, 3L to 300),
         )
 
         spine.locationFor(chapterId = 2L) shouldBe NovelBookLocation(1, 0)
@@ -134,7 +121,7 @@ class NovelBookSpineTest {
 
     @Test
     fun `resident window is centered and clamped to the spine`() {
-        val spine = NovelBookSpine.fromChapters(chapters(6))
+        val spine = testSpineOf(chapters(6))
 
         spine.windowAround(sectionIndex = 3, radius = 2) shouldBe listOf(1, 2, 3, 4, 5)
         spine.windowAround(sectionIndex = 0, radius = 2) shouldBe listOf(0, 1, 2)
@@ -146,7 +133,7 @@ class NovelBookSpineTest {
 
     @Test
     fun `index lookups resolve chapter ids`() {
-        val spine = NovelBookSpine.fromChapters(chapters(3))
+        val spine = testSpineOf(chapters(3))
 
         spine.indexOf(2L) shouldBe 1
         spine.indexOf(404L) shouldBe -1
@@ -156,41 +143,14 @@ class NovelBookSpineTest {
 
     @Test
     fun `section fractions describe the whole book in one size domain`() {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = chapters(4),
-            measuredCharCounts = mapOf(1L to 100, 2L to 100, 3L to 100, 4L to 100),
+            charCounts = mapOf(1L to 100, 2L to 100, 3L to 100, 4L to 100),
         )
 
         spine.sectionFractions shouldBe listOf(0f, 0.25f, 0.5f, 0.75f, 1f)
         spine.sectionStartFraction(2) shouldBe 0.5f
         spine.sectionStartFraction(99) shouldBe 0f
         NovelBookSpine.EMPTY.sectionFractions shouldBe listOf(0f)
-    }
-
-    @Test
-    fun `layout heights are remembered without touching book progress`() {
-        val spine = NovelBookSpine.fromChapters(
-            chapters = chapters(3),
-            measuredCharCounts = mapOf(1L to 100, 2L to 100, 3L to 100),
-        )
-
-        val withHeight = spine.withMeasuredLayoutHeight(chapterId = 1L, heightPx = 9_000)
-
-        withHeight.layoutHeightOf(0) shouldBe 9_000
-        withHeight.sectionAt(0)?.charCount shouldBe 100
-        withHeight.totalCharCount shouldBe spine.totalCharCount
-        withHeight.sectionFractions shouldBe spine.sectionFractions
-        withHeight.progressOf(NovelBookLocation(1, 0)) shouldBe spine.progressOf(NovelBookLocation(1, 0))
-        withHeight.withMeasuredLayoutHeight(chapterId = 1L, heightPx = 9_000) shouldBe withHeight
-        spine.withMeasuredLayoutHeight(chapterId = 404L, heightPx = 10) shouldBe spine
-        spine.layoutHeightOf(0) shouldBe null
-    }
-
-    @Test
-    fun `section text length ignores markup and collapses whitespace`() {
-        novelBookSectionTextLength("") shouldBe 0
-        novelBookSectionTextLength("<p>ab</p>") shouldBe 2
-        novelBookSectionTextLength("<p>a  b</p>") shouldBe 3
-        novelBookSectionTextLength("<p class=\"x\">  ab  </p>") shouldBe 3
     }
 }

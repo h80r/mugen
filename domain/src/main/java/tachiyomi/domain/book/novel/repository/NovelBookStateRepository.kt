@@ -17,7 +17,14 @@ interface NovelBookStateRepository {
 
     suspend fun setBookEnabled(novelId: Long, enabled: Boolean, updatedAt: Long)
 
-    suspend fun setBookProgress(novelId: Long, charOffset: Long, lastChapterId: Long?, updatedAt: Long)
+    suspend fun setBookProgress(
+        novelId: Long,
+        charOffset: Long,
+        lastChapterId: Long?,
+        blockIndex: Int,
+        chapterCharOffset: Int,
+        updatedAt: Long,
+    )
 
     suspend fun deleteBookState(novelId: Long)
 

@@ -10,7 +10,7 @@ class NovelBookRenderCoordinatorTest {
         val chapters = (0 until sectionCount).map { index ->
             NovelChapter.create().copy(id = index + 1L, name = "Chapter ${index + 1}")
         }
-        return NovelBookSpine.fromChapters(chapters)
+        return testSpineOf(chapters)
     }
 
     @Test
@@ -31,7 +31,7 @@ class NovelBookRenderCoordinatorTest {
         )
 
         plan.render.map { it.sectionIndex } shouldBe listOf(5, 4)
-        plan.render.map { it.chapterId } shouldBe listOf(6L, 5L)
+        plan.render.map { it.sectionKey } shouldBe listOf(5L, 4L)
     }
 
     @Test
@@ -89,7 +89,7 @@ class NovelBookRenderCoordinatorTest {
             preparedSections = setOf(0, 5),
         )
 
-        plan.commands.first() shouldBe NovelBookRenderCommand.Render(sectionIndex = 5, chapterId = 6L)
+        plan.commands.first() shouldBe NovelBookRenderCommand.Render(sectionIndex = 5, sectionKey = 5L)
         plan.commands.map { it::class.simpleName }.distinct() shouldBe
             listOf("Render", "Release", "Prepare")
         plan.isIdle shouldBe false

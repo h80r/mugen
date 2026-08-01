@@ -369,6 +369,16 @@ class NovelReaderScreenModel(
     internal val bookEngineLocation: NovelBookLocation
         get() = bookController.bookEngineLocation
 
+    /** Explicit renderer moves; the current position is never pushed back into the renderer. */
+    internal val bookSeekRequests: kotlinx.coroutines.flow.StateFlow<BookSeekRequest?> =
+        bookController.bookSeekRequests
+
+    internal fun onBookSeekApplied(seekRequestId: Long) =
+        bookController.onBookSeekApplied(seekRequestId)
+
+    /** Writes the book position through right away, e.g. on ON_STOP or when leaving the reader. */
+    internal fun flushBookModeProgress() = bookController.flushBookModeProgress()
+
     internal suspend fun loadBookEngineDocument(section: NovelBookSection): NovelBookDocument =
         bookController.loadBookEngineDocument(section)
 
@@ -393,12 +403,6 @@ class NovelReaderScreenModel(
         bookController.onBookEngineLocationChanged(location)
 
     internal fun seekBookModeToProgress(fraction: Float) = bookController.seekBookModeToProgress(fraction)
-
-    internal fun onBookEngineSectionMeasured(chapterId: Long, charCount: Int) =
-        bookController.onBookEngineSectionMeasured(chapterId, charCount)
-
-    internal fun onBookModeSectionMeasured(chapterId: Long, heightPx: Int) =
-        bookController.onBookModeSectionMeasured(chapterId, heightPx)
 
     internal fun onBookModeChapterSelected(chapterId: Long): Boolean =
         bookController.onBookModeChapterSelected(chapterId)
@@ -473,9 +477,6 @@ class NovelReaderScreenModel(
 
     override fun bookEnqueueProgressPersistence(update: PendingProgressPersistence) =
         progressPersistenceController.enqueueProgressPersistence(update)
-
-    override fun bookUpdateReadingProgress(currentIndex: Int, totalItems: Int, persistedProgress: Long?) =
-        updateReadingProgress(currentIndex, totalItems, persistedProgress)
 
     override fun bookApplyBookSectionTranslation(chapterId: Long, bodyHtml: String): String =
         applyBookSectionTranslation(chapterId, bodyHtml)
@@ -1465,7 +1466,12 @@ class NovelReaderScreenModel(
     fun toggleTtsPlayback(
         startRequest: eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackStartRequest =
             eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackStartRequest(),
-    ) = ttsController.toggleTtsPlayback(startRequest)
+    ) {
+        // Handing the book over to TTS is a flush point: the reading position at the moment playback
+        // takes over is written through instead of waiting out the debounce window.
+        flushBookModeProgress()
+        ttsController.toggleTtsPlayback(startRequest)
+    }
 
     fun stopTtsPlayback() = ttsController.stopTtsPlayback()
 

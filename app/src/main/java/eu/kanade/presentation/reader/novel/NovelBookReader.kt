@@ -1,7 +1,6 @@
 package eu.kanade.presentation.reader.novel
 
 import android.graphics.Color
-import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.webkit.WebResourceResponse
@@ -31,12 +30,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import eu.kanade.tachiyomi.ui.reader.novel.BookSeekRequest
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookDocument
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookEngine
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookEngineFlow
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookLocation
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSection
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSpine
+import eu.kanade.tachiyomi.ui.reader.novel.shouldApplyBookSeek
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -49,16 +50,30 @@ import kotlin.math.abs
  * and stitches the next chapter in before the reader reaches it, so crossing a chapter boundary is a
  * plain scroll. The paged flow still swaps one document per section. The location stays a
  * section/text offset shared by both layouts.
+ *
+ * The position flows in one direction only: the renderer owns it and reports it upwards through
+ * [onLocationChanged]. The core never pushes the current position back down; it opens the book once
+ * at [initialLocation] and asks for explicit moves through [seekRequest].
  */
 @Composable
 internal fun NovelBookReader(
     spine: NovelBookSpine,
-    location: NovelBookLocation,
+    /**
+     * Where the book is opened. Read once per book: later position changes belong to the renderer,
+     * not to the caller.
+     */
+    initialLocation: NovelBookLocation,
+    /**
+     * Explicit move requested by the core (resume, seek bar, chapter picker, TTS, search).
+     *
+     * Applied at most once, identified by its id; [onSeekApplied] acknowledges it.
+     */
+    seekRequest: BookSeekRequest? = null,
+    onSeekApplied: (Long) -> Unit = {},
     flow: NovelBookEngineFlow,
     transitionStyleName: String = "SLIDE",
     loadDocument: suspend (NovelBookSection) -> NovelBookDocument,
     onLocationChanged: (NovelBookLocation) -> Unit,
-    onSectionMeasured: (chapterId: Long, charCount: Int) -> Unit,
     onToggleReaderUi: () -> Unit,
     /**
      * Routes a short tap through the reader's configured tap zones instead of the hardcoded
@@ -84,12 +99,10 @@ internal fun NovelBookReader(
     val coroutineScope = rememberCoroutineScope()
     val operationMutex = remember { Mutex() }
     val latestSpine = rememberUpdatedState(spine)
-    val latestLocation = rememberUpdatedState(location)
     val latestFlow = rememberUpdatedState(flow)
     val latestTransitionStyleName = rememberUpdatedState(transitionStyleName)
     val latestLoadDocument = rememberUpdatedState(loadDocument)
     val latestOnLocationChanged = rememberUpdatedState(onLocationChanged)
-    val latestOnSectionMeasured = rememberUpdatedState(onSectionMeasured)
     val latestOnToggleReaderUi = rememberUpdatedState(onToggleReaderUi)
     val latestOnShortTap = rememberUpdatedState(onShortTap)
     val latestReaderCss = rememberUpdatedState(readerCss)
@@ -122,11 +135,13 @@ internal fun NovelBookReader(
             settings.allowUniversalAccessFromFileURLs = false
         }
     }
-    // Every location the engine reports travels up to the screen model and comes straight back
-    // down as the [location] parameter. Reopening the document for those echoes is what made the
-    // book flash its first page and repaint the loading spinner while scrolling.
-    val engineEmittedLocation = remember { arrayOfNulls<NovelBookLocation>(1) }
-    val engineEmittedAtMillis = remember { longArrayOf(0L) }
+    // Location the document is (re)opened at: the resume point first, then whatever the renderer
+    // last reported. Kept in a holder so a recomposition can never reopen the book at a stale
+    // coordinate, and keyed by the book itself (its first section) rather than by the spine object,
+    // which is replaced on every window sync of the same book.
+    val openLocation = remember(spine.sections.firstOrNull()?.chapterId) { arrayOf(initialLocation) }
+    // Id of the last applied seek request, so the same request is never applied twice.
+    val lastAppliedSeekId = remember { longArrayOf(0L) }
     val engineHolder = remember { arrayOfNulls<NovelBookEngine>(1) }
     // The renderer is created before the stitching lambda exists, so boundary reports from the
     // document are routed through this holder instead of duplicating the logic.
@@ -137,9 +152,10 @@ internal fun NovelBookReader(
             onRelocated = { charOffset, sectionIndex ->
                 engineHolder[0]?.onRendererRelocated(charOffset, sectionIndex)
             },
-            onDocumentMeasured = { sectionIndex, chapterId, charCount ->
-                engineHolder[0]?.onRendererMeasured(sectionIndex, chapterId, charCount)
-            },
+            // Book mode runs over a compiled artifact whose section weights are already exact, so
+            // DOM text lengths are no longer fed back into the spine. The JS bridge stays in place
+            // for the renderer's own bookkeeping.
+            onDocumentMeasured = { _, _, _ -> },
             onScrollBoundary = { forward ->
                 stitchHolder[0]?.invoke(forward)
             },
@@ -152,12 +168,8 @@ internal fun NovelBookReader(
             loadDocument = { section -> latestLoadDocument.value(section) },
             renderer = renderer,
             onLocationChanged = { nextLocation ->
-                engineEmittedLocation[0] = nextLocation
-                engineEmittedAtMillis[0] = SystemClock.uptimeMillis()
+                openLocation[0] = nextLocation
                 latestOnLocationChanged.value(nextLocation)
-            },
-            onSectionMeasured = { chapterId, charCount ->
-                latestOnSectionMeasured.value(chapterId, charCount)
             },
         )
     }
@@ -193,7 +205,7 @@ internal fun NovelBookReader(
             operationMutex.withLock {
                 engine.open(
                     spine = spine,
-                    location = location,
+                    location = openLocation[0],
                     flow = openingFlow,
                 )
             }
@@ -228,15 +240,13 @@ internal fun NovelBookReader(
         }.onFailure { failure = it }
         loading = false
     }
-    LaunchedEffect(location, opened) {
+    LaunchedEffect(seekRequest, opened) {
         if (!opened) return@LaunchedEffect
-        val isSeek = isExternalBookSeekRequest(
-            requested = location,
-            engineLocation = engine.location,
-            lastEmitted = engineEmittedLocation[0],
-            millisSinceEmit = SystemClock.uptimeMillis() - engineEmittedAtMillis[0],
-        )
-        if (!isSeek) return@LaunchedEffect
+        if (!shouldApplyBookSeek(seekRequest, lastAppliedSeekId[0])) return@LaunchedEffect
+        val request = seekRequest ?: return@LaunchedEffect
+        lastAppliedSeekId[0] = request.id
+        val location = request.location
+        openLocation[0] = location
         val isSameSection = location.sectionIndex == engine.location.sectionIndex
         if (isSameSection) {
             runCatching {
@@ -261,6 +271,9 @@ internal fun NovelBookReader(
             }.onFailure { failure = it }
             loading = false
         }
+        // The core hides the "restoring position" cover on this acknowledgement instead of on a
+        // timer, so it can never uncover the reader before the position actually landed.
+        onSeekApplied(request.id)
     }
 
     val navigate: (Boolean) -> Unit = remember(engine, coroutineScope, operationMutex) {
@@ -378,7 +391,7 @@ internal fun NovelBookReader(
                                 operationMutex.withLock {
                                     engine.open(
                                         spine = latestSpine.value,
-                                        location = latestLocation.value,
+                                        location = openLocation[0],
                                         flow = latestFlow.value,
                                     )
                                 }
@@ -397,32 +410,6 @@ internal fun NovelBookReader(
             }
         }
     }
-}
-
-/** How long a location coming back from the screen model still counts as the engine's own echo. */
-internal const val BOOK_ENGINE_ECHO_WINDOW_MILLIS = 1_500L
-
-/** Text distance below which a same-section location is treated as a rounded echo, not a seek. */
-internal const val BOOK_ENGINE_ECHO_CHAR_TOLERANCE = 2_000
-
-/**
- * Decides whether an incoming location is a real seek (progress bar, chapter picker, resume) or the
- * engine's own position travelling back down through the screen model.
- *
- * The model re-derives the char offset from a fraction of the measured section length, so an echo
- * never compares equal to what the engine holds; without this test every scroll reopened the
- * document.
- */
-internal fun isExternalBookSeekRequest(
-    requested: NovelBookLocation,
-    engineLocation: NovelBookLocation,
-    lastEmitted: NovelBookLocation?,
-    millisSinceEmit: Long,
-): Boolean {
-    if (requested == engineLocation || requested == lastEmitted) return false
-    if (requested.sectionIndex != engineLocation.sectionIndex) return true
-    if (millisSinceEmit in 0..BOOK_ENGINE_ECHO_WINDOW_MILLIS) return false
-    return abs(requested.charOffset - engineLocation.charOffset) > BOOK_ENGINE_ECHO_CHAR_TOLERANCE
 }
 
 private const val TAP_TIMEOUT_MILLIS = 300L

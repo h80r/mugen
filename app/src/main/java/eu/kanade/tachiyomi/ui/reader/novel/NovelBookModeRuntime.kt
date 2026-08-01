@@ -3,10 +3,8 @@ package eu.kanade.tachiyomi.ui.reader.novel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import tachiyomi.domain.items.novelchapter.model.NovelChapter
 
-/** Spine kinds of a session; a compiled book's synthetic section key can collide with a chapter id. */
-private const val SPINE_KIND_CHAPTERS = "chapters"
+/** Spine kind of a session, kept in the cache key so artifacts never read a foreign cache entry. */
 private const val SPINE_KIND_ARTIFACT = "artifact"
 
 /**
@@ -34,28 +32,24 @@ internal class NovelBookModeRuntime(
 
     private var spine: NovelBookSpine = NovelBookSpine.EMPTY
 
-    /** Spine kind of the running session, mirrored into the section cache key. */
-    private var spineCacheKind: String = SPINE_KIND_CHAPTERS
-
     private val store = NovelBookSectionStore(
-        diskReadSection = { chapterId -> sectionCacheKey(chapterId)?.let(readCachedSection) },
-        diskWriteSection = { chapterId, section ->
-            sectionCacheKey(chapterId)?.let { key -> writeCachedSection(key, section) }
+        diskReadSection = { sectionKey -> sectionCacheKey(sectionKey)?.let(readCachedSection) },
+        diskWriteSection = { sectionKey, section ->
+            sectionCacheKey(sectionKey)?.let { key -> writeCachedSection(key, section) }
         },
-        diskDelete = { chapterId -> sectionCacheKey(chapterId)?.let(deleteCachedSection) },
+        diskDelete = { sectionKey -> sectionCacheKey(sectionKey)?.let(deleteCachedSection) },
     )
 
     /**
      * Disk key of one section, or null while no scope is configured.
      *
-     * The spine kind and the heading setting are part of the key on purpose: the same id means a
-     * different section for a compiled book than for a chapter spine, and the same section can be
-     * prepared with or without its chapter heading, so one shared key would serve the wrong markup.
+     * The heading setting is part of the key on purpose: the same section can be prepared with or
+     * without its chapter heading, so one shared key would serve the wrong markup.
      */
-    private fun sectionCacheKey(chapterId: Long): String? {
+    private fun sectionCacheKey(sectionKey: Long): String? {
         val scope = sectionCacheScope()?.takeIf { it.isNotBlank() } ?: return null
         val headings = if (showChapterHeadings()) "h1" else "h0"
-        return "$scope-$spineCacheKind-$headings-$chapterId"
+        return "$scope-$SPINE_KIND_ARTIFACT-$headings-s$sectionKey"
     }
 
     private val resolver = NovelBookSectionHtmlResolver(
@@ -68,7 +62,7 @@ internal class NovelBookModeRuntime(
     private var loader = NovelBookSectionLoader(
         store = store,
         fetchSectionBaseUrl = resolver::resolvedBaseUrl,
-        fetchSectionHtml = { chapterId -> resolver.resolve(chapterId) },
+        fetchSectionHtml = { sectionKey -> resolver.resolve(sectionKey) },
     )
 
     private var session: NovelBookSession? = null
@@ -90,45 +84,6 @@ internal class NovelBookModeRuntime(
 
     val currentChapterId: Long? get() = session?.currentSection()?.chapterId
 
-    /**
-     * Real section text lengths observed while reading. They never change the current session's size
-     * domain; they are meant to be persisted and passed back as `measuredCharCounts` to [start] so the
-     * spine's estimates converge across sessions.
-     */
-    val measuredTextLengths: Map<Long, Int> get() = session?.measuredTextLengths ?: emptyMap()
-
-    /**
-     * Builds the spine for [chapters] and resumes where the reader left off, preferring a stored
-     * book location and falling back to the legacy per-chapter position.
-     */
-    fun start(
-        chapters: List<NovelChapter>,
-        resumeProgress: Long = 0L,
-        resumeChapterId: Long? = null,
-        resumeChapterFraction: Float = 0f,
-        measuredCharCounts: Map<Long, Int> = emptyMap(),
-    ): NovelBookLocation {
-        spine = NovelBookSpine.fromChapters(
-            chapters = chapters,
-            measuredCharCounts = measuredCharCounts,
-        )
-        spineCacheKind = SPINE_KIND_CHAPTERS
-        val resumeLocation = NovelBookReadMarkingPolicy.resolveResumeLocation(
-            spine = spine,
-            progressValue = resumeProgress,
-            fallbackChapterId = resumeChapterId,
-            fallbackChapterFraction = resumeChapterFraction,
-        )
-        activeConfig = NovelBookWindowConfig.DEFAULT.copy(
-            prefetchAhead = prepareAhead().coerceAtLeast(NovelBookWindowConfig.DEFAULT.prefetchAhead),
-        )
-        session = NovelBookSession(
-            loader = loader,
-            config = activeConfig,
-        ).also { it.reset(spine, resumeLocation) }
-        return resumeLocation
-    }
-
     /** Stops book mode and frees every resident section. */
     fun stop() {
         session = null
@@ -137,7 +92,7 @@ internal class NovelBookModeRuntime(
         loader = NovelBookSectionLoader(
             store = store,
             fetchSectionBaseUrl = resolver::resolvedBaseUrl,
-            fetchSectionHtml = { chapterId -> resolver.resolve(chapterId) },
+            fetchSectionHtml = { sectionKey -> resolver.resolve(sectionKey) },
         )
     }
 
@@ -177,22 +132,6 @@ internal class NovelBookModeRuntime(
         return moved
     }
 
-    fun measureSection(chapterId: Long, charCount: Int) {
-        val activeSession = session ?: return
-        activeSession.measureSection(chapterId, charCount)
-        spine = activeSession.spine
-    }
-
-    /**
-     * Records the pixel height the renderer reported for a section. Heights are used for anchoring
-     * and placeholders only; the book's progress domain stays on section text weights.
-     */
-    fun measureSectionLayoutHeight(chapterId: Long, heightPx: Int) {
-        val activeSession = session ?: return
-        activeSession.measureLayoutHeight(chapterId, heightPx)
-        spine = activeSession.spine
-    }
-
     /** Applies one render/prune/prefetch round for the current position. */
     suspend fun sync(
         renderSection: suspend (NovelBookSection, String) -> Unit,
@@ -209,29 +148,11 @@ internal class NovelBookModeRuntime(
         return plan
     }
 
-    /** Prepares a chapter's section HTML, e.g. for the "prepare book" action. */
-    suspend fun prepareChapter(chapterId: Long): NovelBookSectionResult =
-        loader.prepare(chapterId).also { measurePreparedSection(chapterId, it) }
-
-    /**
-     * Replaces a section estimate with its real text length as soon as the section HTML exists.
-     *
-     * Section weights used to stay on the default estimate until the renderer displayed a section, so
-     * the book percentage was only exact around the few chapters that had been shown. Every prepared
-     * chapter now contributes its true weight, which makes whole-book progress exact once the novel is
-     * fully downloaded and prepared.
-     */
-    private fun measurePreparedSection(chapterId: Long, result: NovelBookSectionResult) {
-        val ready = result as? NovelBookSectionResult.Ready ?: return
-        val activeSession = session ?: return
-        val charCount = novelBookSectionTextLength(ready.html)
-        if (charCount <= 0) return
-        activeSession.measureSection(chapterId, charCount)
-        spine = activeSession.spine
-    }
+    /** Prepares one section's HTML by spine index, e.g. for the "prepare book" action. */
+    suspend fun prepareSection(sectionKey: Long): NovelBookSectionResult = loader.prepare(sectionKey)
 
     suspend fun loadEngineDocument(section: NovelBookSection): NovelBookDocument {
-        return when (val result = prepareChapter(section.chapterId)) {
+        return when (val result = prepareSection(section.loaderKey)) {
             is NovelBookSectionResult.Ready -> NovelBookDocument(
                 sectionIndex = section.index,
                 chapterId = section.chapterId,
@@ -239,7 +160,7 @@ internal class NovelBookModeRuntime(
                 baseUrl = result.baseUrl,
             )
             is NovelBookSectionResult.Failed -> error(
-                result.message ?: "Failed to load book section ${section.chapterId}",
+                result.message ?: "Failed to load book section ${section.index}",
             )
         }
     }
@@ -249,12 +170,10 @@ internal class NovelBookModeRuntime(
         if (session == null || spine.isEmpty) return@coroutineScope emptyList()
         val config = activeConfig
         val loadedSections = spine.sections
-            .filter { loader.isPrepared(it.chapterId) }
+            .filter { loader.isPrepared(it.loaderKey) }
             .mapTo(mutableSetOf()) { it.index }
-        val inFlightSections = loader.inFlightChapterIds
-            .mapNotNullTo(mutableSetOf()) { chapterId ->
-                spine.indexOf(chapterId).takeIf { it >= 0 }
-            }
+        val inFlightSections = loader.inFlightSectionKeys
+            .mapTo(mutableSetOf()) { sectionKey -> sectionKey.toInt() }
         val plan = NovelBookPrefetchPlanner.plan(
             spine = spine,
             currentSectionIndex = sectionIndex,
@@ -262,26 +181,16 @@ internal class NovelBookModeRuntime(
             inFlightSections = inFlightSections,
             config = config,
         )
-        val prepared = plan.prefetchQueue
+        plan.prefetchQueue
             .mapNotNull(spine::sectionAt)
-            .map { section ->
-                async { section.chapterId to loader.prepare(section.chapterId) }
-            }
+            .map { section -> async { loader.prepare(section.loaderKey) } }
             .awaitAll()
-        // Measuring mutates the session, so it runs after the parallel loads have joined.
-        prepared.forEach { (chapterId, result) -> measurePreparedSection(chapterId, result) }
-        prepared.map { it.second }
     }
 
-    suspend fun retryChapter(chapterId: Long): NovelBookSectionResult = loader.retry(chapterId)
+    suspend fun retrySection(sectionKey: Long): NovelBookSectionResult = loader.retry(sectionKey)
 
     /** Chapter behind a spine position, so the reader can act on a section it only knows by index. */
     fun chapterIdOfSection(sectionIndex: Int): Long? = spine.sectionAt(sectionIndex)?.chapterId
-
-    fun chaptersToMarkRead(alreadyReadChapterIds: Set<Long> = emptySet()): List<Long> =
-        session?.chaptersToMarkRead(alreadyReadChapterIds) ?: emptyList()
-
-    fun encodedProgress(): Long? = session?.encodedProgress()
 
     fun uiState(): NovelReaderScreenModel.State.ReaderBookModeState =
         session?.uiState(showChapterHeadings = showChapterHeadings())
@@ -289,8 +198,8 @@ internal class NovelBookModeRuntime(
 
     /**
      * Starts book mode from a pre-built [spine] (e.g. from a compiled book artifact) and a custom
-     * section fetcher. The fetcher receives the synthetic section key stored in
-     * [NovelBookSection.chapterId] and must return the HTML for that section.
+     * section fetcher. The fetcher receives [NovelBookSection.loaderKey], i.e. the spine index of
+     * the section, and must return the HTML for that section.
      */
     fun startWithSpine(
         spine: NovelBookSpine,
@@ -303,7 +212,6 @@ internal class NovelBookModeRuntime(
         fetchSectionHtml: suspend (Long) -> String,
     ): NovelBookLocation {
         this.spine = spine
-        spineCacheKind = SPINE_KIND_ARTIFACT
         loader = NovelBookSectionLoader(
             store = store,
             fetchSectionBaseUrl = { null },

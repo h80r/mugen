@@ -10,6 +10,8 @@ CREATE TABLE novel_books (
     chapter_count INTEGER NOT NULL DEFAULT 0,
     char_offset INTEGER NOT NULL DEFAULT 0,
     last_chapter_id INTEGER,
+    block_index INTEGER NOT NULL DEFAULT 0,
+    chapter_char_offset INTEGER NOT NULL DEFAULT 0,
     complete INTEGER AS Boolean NOT NULL DEFAULT 0,
     built_at INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL DEFAULT 0,
@@ -32,8 +34,8 @@ FROM novel_books
 WHERE enabled = 1;
 
 upsert:
-INSERT OR REPLACE INTO novel_books(novel_id, enabled, book_version, source_id, chapter_set_hash, total_chars, chapter_count, char_offset, last_chapter_id, complete, built_at, updated_at)
-VALUES (:novelId, :enabled, :bookVersion, :sourceId, :chapterSetHash, :totalChars, :chapterCount, :charOffset, :lastChapterId, :complete, :builtAt, :updatedAt);
+INSERT OR REPLACE INTO novel_books(novel_id, enabled, book_version, source_id, chapter_set_hash, total_chars, chapter_count, char_offset, last_chapter_id, block_index, chapter_char_offset, complete, built_at, updated_at)
+VALUES (:novelId, :enabled, :bookVersion, :sourceId, :chapterSetHash, :totalChars, :chapterCount, :charOffset, :lastChapterId, :blockIndex, :chapterCharOffset, :complete, :builtAt, :updatedAt);
 
 setEnabled:
 UPDATE novel_books
@@ -45,6 +47,8 @@ setProgress:
 UPDATE novel_books
 SET char_offset = :charOffset,
     last_chapter_id = :lastChapterId,
+    block_index = :blockIndex,
+    chapter_char_offset = :chapterCharOffset,
     updated_at = :updatedAt
 WHERE novel_id = :novelId;
 

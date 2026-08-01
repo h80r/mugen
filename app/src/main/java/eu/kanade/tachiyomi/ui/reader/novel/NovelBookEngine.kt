@@ -70,7 +70,6 @@ internal class NovelBookEngine(
     private val loadDocument: suspend (NovelBookSection) -> NovelBookDocument,
     private val renderer: NovelBookEngineRenderer,
     private val onLocationChanged: (NovelBookLocation) -> Unit = {},
-    private val onSectionMeasured: (Long, Int) -> Unit = { _, _ -> },
 ) {
 
     private var spine: NovelBookSpine = NovelBookSpine.EMPTY
@@ -216,26 +215,6 @@ internal class NovelBookEngine(
                 NovelBookPageTurnResult.Moved(charOffset = charOffset, sectionIndex = sectionIndex),
             ),
         )
-    }
-
-    /**
-     * Records the real text length of a section the renderer holds.
-     *
-     * Any resident section may report, not only the one the viewport is in: a stitched document
-     * measures every chapter it swallowed, which keeps whole-book progress on real lengths instead
-     * of leaving neighbouring chapters on their estimated weight.
-     */
-    fun onRendererMeasured(
-        sectionIndex: Int,
-        chapterId: Long,
-        charCount: Int,
-    ) {
-        if (charCount <= 0) return
-        val section = spine.sectionAt(sectionIndex) ?: return
-        if (section.chapterId != chapterId) return
-        spine = spine.withMeasuredSection(chapterId, charCount)
-        onSectionMeasured(chapterId, charCount)
-        updateLocation(location)
     }
 
     private fun updateLocation(newLocation: NovelBookLocation) {

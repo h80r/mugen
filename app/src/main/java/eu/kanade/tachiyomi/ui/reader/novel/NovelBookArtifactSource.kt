@@ -26,18 +26,33 @@ class NovelBookArtifactSource(
     val blocks: List<NovelBookBlock>,
 ) {
 
-    /** Spine of blocks. Section indices are block indices, not chapter indices. */
+    /**
+     * Spine of blocks. Section indices are block indices, not chapter indices.
+     *
+     * Sections carry the real chapter ids they cover. The synthetic key that used to sit in
+     * [NovelBookSection.chapterId] is gone: it silently broke every `spine.indexOf(chapterId)`
+     * lookup, which is why TTS follow-along and translations never resolved a section over a
+     * compiled book.
+     */
     val spine: NovelBookSpine = NovelBookSpine(
         blocks.map { block ->
+            val blockChapterIds = chaptersOverlapping(block.charStart, block.charStart + block.charLength)
             NovelBookSection(
-                chapterId = sectionKeyOf(block.index),
+                chapterId = blockChapterIds.firstOrNull() ?: block.firstChapterId,
                 index = block.index,
                 name = NovelBookBlockPlanner.chapterById(index, block.firstChapterId)?.title.orEmpty(),
                 charCount = block.charLength.coerceAtLeast(1),
                 isMeasured = true,
+                chapterIds = blockChapterIds,
             )
         },
     )
+
+    private fun chaptersOverlapping(startChar: Int, endChar: Int): List<Long> = index.chapters
+        .asSequence()
+        .filter { chapter -> chapter.charStart < endChar && chapter.charStart + chapter.charLength > startChar }
+        .map { it.chapterId }
+        .toList()
 
     val totalChars: Int get() = meta.totalChars
 
@@ -122,6 +137,57 @@ class NovelBookArtifactSource(
     fun chapterAt(charOffset: Int): NovelBookChapterEntry? =
         NovelBookBlockPlanner.chapterAt(index, charOffset)
 
+    // ---------------------------------------------------------------------------------------------
+    // Locators. BookLocator is the single position type of book mode; everything below converts
+    // between it and the two shapes the renderer and the database still speak: a block location and
+    // a whole-book character offset.
+    // ---------------------------------------------------------------------------------------------
+
+    /** Locator of a whole-book character offset. */
+    fun locatorOf(charOffset: Int): BookLocator {
+        val clamped = charOffset.coerceIn(0, (totalChars - 1).coerceAtLeast(0))
+        val chapter = chapterAt(clamped)
+        val block = NovelBookBlockPlanner.blockAt(blocks, clamped)
+        return BookLocator(
+            chapterId = chapter?.chapterId ?: BookLocator.NO_CHAPTER_ID,
+            blockIndex = block?.index ?: 0,
+            charOffset = (clamped - (chapter?.charStart ?: 0)).coerceAtLeast(0),
+        )
+    }
+
+    /**
+     * Whole-book character offset of a locator.
+     *
+     * The chapter is the anchor and the offset is resolved inside it, so a position stored before
+     * the book was rebuilt still lands on the same paragraph as long as the chapter still exists.
+     * [BookLocator.blockIndex] is never trusted here; it is only a lookup hint.
+     */
+    fun globalCharOffsetOf(locator: BookLocator): Int {
+        val chapter = NovelBookBlockPlanner.chapterById(index, locator.chapterId)
+            ?: return blocks.getOrNull(locator.blockIndex)?.charStart ?: 0
+        val maxInside = (chapter.charLength - 1).coerceAtLeast(0)
+        return chapter.charStart + locator.charOffset.coerceIn(0, maxInside)
+    }
+
+    /** Renderer position of a locator. */
+    fun locationOf(locator: BookLocator): NovelBookLocation = locationOf(globalCharOffsetOf(locator))
+
+    /** Locator of a renderer position. */
+    fun locatorOf(location: NovelBookLocation): BookLocator = locatorOf(charOffsetOf(location))
+
+    /** Whole-book progress of a locator in `0f..1f`. */
+    fun progressOf(locator: BookLocator): Float = progressOf(globalCharOffsetOf(locator))
+
+    /** Locator at the first character of a chapter, for table-of-contents taps. */
+    fun locatorOfChapter(chapterId: Long): BookLocator? {
+        val chapter = NovelBookBlockPlanner.chapterById(index, chapterId) ?: return null
+        return BookLocator(
+            chapterId = chapter.chapterId,
+            blockIndex = NovelBookBlockPlanner.blockAt(blocks, chapter.charStart)?.index ?: 0,
+            charOffset = 0,
+        )
+    }
+
     /**
      * Chapters whose text overlaps the section at [sectionIndex].
      *
@@ -131,13 +197,7 @@ class NovelBookArtifactSource(
      */
     fun chaptersOfSection(sectionIndex: Int): List<Long> {
         val block = blocks.getOrNull(sectionIndex) ?: return emptyList()
-        val sectionStart = block.charStart
-        val sectionEnd = block.charStart + block.charLength
-        return index.chapters
-            .filter { chapter ->
-                chapter.charStart < sectionEnd && chapter.charStart + chapter.charLength > sectionStart
-            }
-            .map { it.chapterId }
+        return chaptersOverlapping(block.charStart, block.charStart + block.charLength)
     }
 
     /**
@@ -174,9 +234,6 @@ class NovelBookArtifactSource(
     fun progressOf(charOffset: Int): Float = NovelBookBlockPlanner.progressOf(meta, charOffset)
 
     companion object {
-        /** Synthetic section key: block indices must not collide with real chapter ids. */
-        fun sectionKeyOf(blockIndex: Int): Long = -(blockIndex.toLong() + 1L)
-
         /**
          * Opens the artifact of a novel, or returns null when no book was compiled for it yet or the
          * artifact belongs to a different source than the one the novel currently uses.

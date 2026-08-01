@@ -52,7 +52,7 @@ class NovelBookSectionLoaderTest {
         first.await() shouldBe NovelBookSectionResult.Ready(3L, "<p>chapter 3</p>")
         second.await() shouldBe NovelBookSectionResult.Ready(3L, "<p>chapter 3</p>")
         fetchCount.get() shouldBe 1
-        loader.inFlightChapterIds shouldBe emptySet()
+        loader.inFlightSectionKeys shouldBe emptySet()
     }
 
     @Test
@@ -62,9 +62,9 @@ class NovelBookSectionLoaderTest {
         val result = loader.prepare(11L)
 
         result shouldBe NovelBookSectionResult.Failed(11L, "boom")
-        loader.failedChapterIds shouldBe setOf(11L)
+        loader.failedSectionKeys shouldBe setOf(11L)
         loader.isPrepared(11L) shouldBe false
-        loader.inFlightChapterIds shouldBe emptySet()
+        loader.inFlightSectionKeys shouldBe emptySet()
     }
 
     @Test
@@ -86,7 +86,7 @@ class NovelBookSectionLoaderTest {
 
         loader.prepare(9L) shouldBe NovelBookSectionResult.Failed(9L, "offline")
         loader.retry(9L) shouldBe NovelBookSectionResult.Ready(9L, "<p>chapter 9</p>")
-        loader.failedChapterIds shouldBe emptySet()
+        loader.failedSectionKeys shouldBe emptySet()
         attempts.get() shouldBe 2
     }
 
@@ -122,7 +122,7 @@ class NovelBookSectionLoaderTest {
         loader.prepare(2L)
         loader.clear()
 
-        loader.failedChapterIds shouldBe emptySet()
+        loader.failedSectionKeys shouldBe emptySet()
         // Prepared sections stay on disk so an offline-prepared book survives a memory reset.
         loader.preparedHtml(1L) shouldBe "<p>chapter 1</p>"
         loader.preparedHtml(2L) shouldBe null

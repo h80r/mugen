@@ -12,6 +12,8 @@ val novelBookStateMapper: (
     Long,
     Long,
     Long?,
+    Long,
+    Long,
     Boolean,
     Long,
     Long,
@@ -26,6 +28,8 @@ val novelBookStateMapper: (
             chapterCount,
             charOffset,
             lastChapterId,
+            blockIndex,
+            chapterCharOffset,
             complete,
             builtAt,
             updatedAt,
@@ -43,5 +47,7 @@ val novelBookStateMapper: (
             complete = complete,
             builtAt = builtAt,
             updatedAt = updatedAt,
+            blockIndex = blockIndex.toInt(),
+            chapterCharOffset = chapterCharOffset.toInt(),
         )
     }

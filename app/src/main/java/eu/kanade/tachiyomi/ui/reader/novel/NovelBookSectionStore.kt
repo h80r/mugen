@@ -44,54 +44,54 @@ internal class NovelBookSectionStore(
         }
     }
 
-    /** Chapter ids currently held in memory, oldest use first. */
-    val residentChapterIds: Set<Long> get() = synchronized(lock) { resident.keys.toSet() }
+    /** Section keys currently held in memory, oldest use first. */
+    val residentSectionKeys: Set<Long> get() = synchronized(lock) { resident.keys.toSet() }
 
     val residentCount: Int get() = synchronized(lock) { resident.size }
 
     fun put(
-        chapterId: Long,
+        sectionKey: Long,
         html: String,
         baseUrl: String? = null,
         persist: Boolean = true,
     ) {
         if (html.isBlank()) return
         synchronized(lock) {
-            resident[chapterId] = NovelBookPreparedSection(html = html, baseUrl = baseUrl)
+            resident[sectionKey] = NovelBookPreparedSection(html = html, baseUrl = baseUrl)
         }
         if (persist) {
             val writeSection = diskWriteSection
             if (writeSection != null) {
                 runCatching {
-                    writeSection(chapterId, NovelBookPreparedSection(html = html, baseUrl = baseUrl))
+                    writeSection(sectionKey, NovelBookPreparedSection(html = html, baseUrl = baseUrl))
                 }
             } else {
-                runCatching { diskWrite(chapterId, html) }
-                runCatching { diskBaseUrlWrite(chapterId, baseUrl) }
+                runCatching { diskWrite(sectionKey, html) }
+                runCatching { diskBaseUrlWrite(sectionKey, baseUrl) }
             }
         }
     }
 
     /** Returns the section HTML from memory, falling back to disk and promoting it back into memory. */
-    fun get(chapterId: Long): String? = getPrepared(chapterId)?.html
+    fun get(sectionKey: Long): String? = getPrepared(sectionKey)?.html
 
-    fun getPrepared(chapterId: Long): NovelBookPreparedSection? {
-        synchronized(lock) { resident[chapterId] }?.let { return it }
-        val prepared = readFromDisk(chapterId) ?: return null
-        synchronized(lock) { resident[chapterId] = prepared }
+    fun getPrepared(sectionKey: Long): NovelBookPreparedSection? {
+        synchronized(lock) { resident[sectionKey] }?.let { return it }
+        val prepared = readFromDisk(sectionKey) ?: return null
+        synchronized(lock) { resident[sectionKey] = prepared }
         return prepared
     }
 
-    fun isResident(chapterId: Long): Boolean = synchronized(lock) { resident.containsKey(chapterId) }
+    fun isResident(sectionKey: Long): Boolean = synchronized(lock) { resident.containsKey(sectionKey) }
 
     /** True when the section can be shown without going back to the source. */
-    fun isPrepared(chapterId: Long): Boolean {
-        if (isResident(chapterId)) return true
-        return readFromDisk(chapterId) != null
+    fun isPrepared(sectionKey: Long): Boolean {
+        if (isResident(sectionKey)) return true
+        return readFromDisk(sectionKey) != null
     }
 
-    fun release(chapterId: Long) {
-        synchronized(lock) { resident.remove(chapterId) }
+    fun release(sectionKey: Long) {
+        synchronized(lock) { resident.remove(sectionKey) }
     }
 
     /**
@@ -101,9 +101,9 @@ internal class NovelBookSectionStore(
      * A forced reload needs this stronger variant: without it the refetched HTML would be shadowed
      * by the stale copy still sitting on disk.
      */
-    fun invalidate(chapterId: Long) {
-        synchronized(lock) { resident.remove(chapterId) }
-        runCatching { diskDelete(chapterId) }
+    fun invalidate(sectionKey: Long) {
+        synchronized(lock) { resident.remove(sectionKey) }
+        runCatching { diskDelete(sectionKey) }
     }
 
     fun clear() {
@@ -111,18 +111,18 @@ internal class NovelBookSectionStore(
     }
 
     /** Long term storage lookup: the combined hook wins, the split chapter-cache hooks follow. */
-    private fun readFromDisk(chapterId: Long): NovelBookPreparedSection? {
-        runCatching { diskReadSection(chapterId) }
+    private fun readFromDisk(sectionKey: Long): NovelBookPreparedSection? {
+        runCatching { diskReadSection(sectionKey) }
             .getOrNull()
             ?.takeIf { it.html.isNotBlank() }
             ?.let { return it }
-        val html = runCatching { diskRead(chapterId) }
+        val html = runCatching { diskRead(sectionKey) }
             .getOrNull()
             ?.takeIf { it.isNotBlank() }
             ?: return null
         return NovelBookPreparedSection(
             html = html,
-            baseUrl = runCatching { diskBaseUrlRead(chapterId) }.getOrNull(),
+            baseUrl = runCatching { diskBaseUrlRead(sectionKey) }.getOrNull(),
         )
     }
 

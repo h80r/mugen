@@ -14,9 +14,9 @@ class NovelBookSessionTest {
         val chapters = (0 until sectionCount).map { index ->
             NovelChapter.create().copy(id = index + 1L, name = "Chapter ${index + 1}")
         }
-        return NovelBookSpine.fromChapters(
+        return testSpineOf(
             chapters = chapters,
-            measuredCharCounts = chapters.associate { it.id to charCount },
+            charCounts = chapters.associate { it.id to charCount },
         )
     }
 
@@ -24,9 +24,11 @@ class NovelBookSessionTest {
         val disk = mutableMapOf<Long, String>()
         val store = NovelBookSectionStore(
             diskRead = { disk[it] },
-            diskWrite = { chapterId, html -> disk[chapterId] = html },
+            diskWrite = { sectionKey, html -> disk[sectionKey] = html },
         )
-        return NovelBookSectionLoader(store = store) { chapterId -> "<p>chapter $chapterId</p>" }
+        // The fetch lambda receives the section key (spine index), not a chapter id. Sections are
+        // built so that section i is chapter i + 1, mirroring the test spine's chapter ids.
+        return NovelBookSectionLoader(store = store) { sectionKey -> "<p>chapter ${sectionKey + 1}</p>" }
     }
 
     private suspend fun NovelBookSession.syncOnce(): NovelBookRenderPlan = sync(
@@ -87,39 +89,6 @@ class NovelBookSessionTest {
     }
 
     @Test
-    fun `measuring a section keeps the position inside the book`() = runTest {
-        val session = NovelBookSession(loader())
-        session.reset(spine(3), NovelBookLocation(sectionIndex = 1, charOffset = 900))
-
-        session.measureSection(chapterId = 2L, charCount = 100)
-
-        // The section shrank below the stored offset, so the position is clamped to its last char.
-        session.location.sectionIndex shouldBe 1
-        session.location.charOffset shouldBe 99
-    }
-
-    @Test
-    fun `crossed sections are reported as read`() = runTest {
-        val session = NovelBookSession(loader())
-        session.reset(spine(5), NovelBookLocation(sectionIndex = 3, charOffset = 0))
-
-        session.chaptersToMarkRead() shouldBe listOf(1L, 2L, 3L)
-        session.chaptersToMarkRead(alreadyReadChapterIds = setOf(1L)) shouldBe listOf(2L, 3L)
-    }
-
-    @Test
-    fun `progress is encoded so it can be restored later`() = runTest {
-        val session = NovelBookSession(loader())
-        val spine = spine(5)
-        session.reset(spine, NovelBookLocation(sectionIndex = 2, charOffset = 250))
-
-        val restored = NovelBookReadMarkingPolicy.decodeLocation(spine, session.encodedProgress())
-
-        restored?.sectionIndex shouldBe 2
-        restored?.charOffset shouldBe 250
-    }
-
-    @Test
     fun `ui state reflects the reading position and rendered sections`() = runTest {
         val session = NovelBookSession(loader())
         session.reset(spine(4), NovelBookLocation(sectionIndex = 1, charOffset = 500))
@@ -139,7 +108,7 @@ class NovelBookSessionTest {
     }
 
     @Test
-    fun `rendering records real text lengths without rescaling the book`() = runTest {
+    fun `rendering never rescales the book size domain`() = runTest {
         val session = NovelBookSession(loader())
         session.reset(spine(4), NovelBookLocation(sectionIndex = 1, charOffset = 500))
         val totalBefore = session.spine.totalCharCount
@@ -151,23 +120,6 @@ class NovelBookSessionTest {
         session.spine.totalCharCount shouldBe totalBefore
         session.spine.sectionFractions shouldBe fractionsBefore
         session.uiState().bookProgressFraction shouldBe 0.375f
-
-        // The real lengths are still observed, ready to seed the next session's spine.
-        session.measuredTextLengths[2L] shouldBe novelBookSectionTextLength("<p>chapter 2</p>")
-    }
-
-    @Test
-    fun `layout heights are recorded outside the progress domain`() = runTest {
-        val session = NovelBookSession(loader())
-        session.reset(spine(3), NovelBookLocation(sectionIndex = 1, charOffset = 500))
-        val progressBefore = session.uiState().bookProgressFraction
-
-        session.measureLayoutHeight(chapterId = 2L, heightPx = 12_345)
-
-        session.spine.layoutHeightOf(1) shouldBe 12_345
-        session.spine.sectionAt(1)?.charCount shouldBe 1_000
-        session.uiState().bookProgressFraction shouldBe progressBefore
-        session.location shouldBe NovelBookLocation(sectionIndex = 1, charOffset = 500)
     }
 
     @Test

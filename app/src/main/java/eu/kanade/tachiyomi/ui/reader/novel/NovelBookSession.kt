@@ -21,18 +21,6 @@ internal class NovelBookSession(
 
     private val renderedSections = linkedSetOf<Int>()
 
-    private val observedTextLengths = mutableMapOf<Long, Int>()
-
-    /**
-     * Real text lengths observed while rendering, keyed by chapter id.
-     *
-     * They are deliberately NOT applied to the live spine: section weights must stay stable for the
-     * whole session, otherwise whole-book progress rescales every time a section renders. They are
-     * meant to be persisted and fed back into [NovelBookSpine.fromChapters] on the next session so
-     * the estimates converge over time.
-     */
-    val measuredTextLengths: Map<Long, Int> get() = observedTextLengths.toMap()
-
     val renderedSectionIndices: List<Int>
         get() = renderedSections.sorted()
 
@@ -44,12 +32,11 @@ internal class NovelBookSession(
         this.spine = spine
         this.location = spine.clampLocation(location)
         renderedSections.clear()
-        observedTextLengths.clear()
     }
 
     /**
-     * Forgets which sections are currently in the reader document, keeping the spine, the reading
-     * position and the observed text lengths.
+     * Forgets which sections are currently in the reader document, keeping the spine and the reading
+     * position.
      *
      * The reader document can be destroyed and rebuilt underneath the session (the WebView reloads
      * its document, e.g. when the reader is opened or the document is replaced). Everything the
@@ -60,21 +47,6 @@ internal class NovelBookSession(
      */
     fun forgetRenderedSections() {
         renderedSections.clear()
-    }
-
-    /** Replaces the estimated text length of a section with its measured length (size domain). */
-    fun measureSection(chapterId: Long, charCount: Int) {
-        spine = spine.withMeasuredSection(chapterId, charCount)
-        location = spine.clampLocation(location)
-    }
-
-    /**
-     * Records the pixel height the renderer gave a section. Kept out of the size domain on purpose:
-     * heights depend on font size, margins and theme, so writing them into the section weight made
-     * whole-book progress rescale on every re-measure.
-     */
-    fun measureLayoutHeight(chapterId: Long, heightPx: Int) {
-        spine = spine.withMeasuredLayoutHeight(chapterId, heightPx)
     }
 
     /** Moves the reading position, e.g. after a scroll metrics update. */
@@ -119,18 +91,15 @@ internal class NovelBookSession(
         val plan = plan()
         plan.render.forEach { command ->
             val section = spine.sectionAt(command.sectionIndex) ?: return@forEach
-            val html = loader.preparedHtml(section.chapterId) ?: return@forEach
+            val html = loader.preparedHtml(section.loaderKey) ?: return@forEach
             renderSection(section, html)
             renderedSections += section.index
-            // Remember the section's real text length without rescaling the live size domain: the
-            // weights the session started with stay fixed, and these values seed the next session.
-            observedTextLengths[section.chapterId] = novelBookSectionTextLength(html)
         }
         plan.release.forEach { command ->
             val section = spine.sectionAt(command.sectionIndex) ?: return@forEach
             releaseSection(section)
             renderedSections -= section.index
-            loader.release(section.chapterId)
+            loader.release(section.loaderKey)
         }
         plan.prepare.forEach { command ->
             val section = spine.sectionAt(command.sectionIndex) ?: return@forEach
@@ -141,19 +110,8 @@ internal class NovelBookSession(
 
     /** Loads a section inline; usable as the `prepareSection` argument of [sync]. */
     suspend fun prepareSectionInline(section: NovelBookSection) {
-        loader.prepare(section.chapterId)
+        loader.prepare(section.loaderKey)
     }
-
-    /** Chapter ids that the current position turned into "read" chapters. */
-    fun chaptersToMarkRead(alreadyReadChapterIds: Set<Long> = emptySet()): List<Long> =
-        NovelBookReadMarkingPolicy.sectionsToMarkRead(
-            spine = spine,
-            location = location,
-            alreadyReadChapterIds = alreadyReadChapterIds,
-        )
-
-    /** The value to persist in the current chapter's `lastPageRead` column. */
-    fun encodedProgress(): Long = NovelBookReadMarkingPolicy.encodeLocation(spine, location)
 
     fun uiState(showChapterHeadings: Boolean = true): NovelReaderScreenModel.State.ReaderBookModeState =
         NovelReaderScreenModel.State.ReaderBookModeState(
@@ -169,15 +127,16 @@ internal class NovelBookSession(
         )
 
     private fun preparedSectionIndices(): Set<Int> = spine.sections
-        .filter { loader.isPrepared(it.chapterId) }
+        .filter { loader.isPrepared(it.loaderKey) }
         .map { it.index }
         .toSet()
 
-    private fun inFlightSectionIndices(): Set<Int> = sectionIndicesOf(loader.inFlightChapterIds)
+    private fun inFlightSectionIndices(): Set<Int> = sectionIndicesOf(loader.inFlightSectionKeys)
 
-    private fun failedSectionIndices(): Set<Int> = sectionIndicesOf(loader.failedChapterIds)
+    private fun failedSectionIndices(): Set<Int> = sectionIndicesOf(loader.failedSectionKeys)
 
-    private fun sectionIndicesOf(chapterIds: Set<Long>): Set<Int> = chapterIds
-        .mapNotNull { chapterId -> spine.indexOf(chapterId).takeIf { it >= 0 } }
+    private fun sectionIndicesOf(sectionKeys: Set<Long>): Set<Int> = sectionKeys
+        .map { it.toInt() }
+        .filter { spine.sectionAt(it) != null }
         .toSet()
 }

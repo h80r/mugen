@@ -64,15 +64,6 @@ internal fun <T> applyNovelBookCommandsToNativeSections(
     return bySectionIndex.values.sortedBy { it.sectionIndex }
 }
 
-/**
- * How long position reports are ignored after the reader was moved programmatically.
- *
- * A programmatic jump lands over several frames. Reporting the intermediate layout back to the book
- * moved the reading position to wherever the list happened to be at that moment, which then queued
- * another window sync and pulled the reader back again.
- */
-internal const val BOOK_MODE_NATIVE_SCROLL_GUARD_MS = 250L
-
 /** A programmatic scroll the native list still has to perform. */
 internal data class NovelBookNativeScrollTarget(
     val commandId: Long,

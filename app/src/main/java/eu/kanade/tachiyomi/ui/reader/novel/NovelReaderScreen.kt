@@ -23,6 +23,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -102,6 +105,18 @@ class NovelReaderScreen(
         val state by screenModel.state.collectAsStateWithLifecycle()
         val currentState = state
         val coroutineScope = rememberCoroutineScope()
+        // The book position is written with a 1.5s debounce while reading. Backgrounding the reader
+        // is the last moment before the process can be killed, so it is flushed synchronously here.
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner, screenModel) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_STOP) {
+                    screenModel.flushBookModeProgress()
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
         var showReaderUi by remember { mutableStateOf(false) }
         val context = LocalContext.current
         var ttsPlaybackService by remember { mutableStateOf<NovelTtsPlaybackService?>(null) }
@@ -228,7 +243,8 @@ class NovelReaderScreen(
                     rawState = successState,
                     showReaderUi = showReaderUi,
                     bookEngineSpine = screenModel.bookEngineSpine,
-                    bookEngineLocation = screenModel.bookEngineLocation,
+                    bookInitialLocation = screenModel.bookEngineLocation,
+                    bookSeekRequest = screenModel.bookSeekRequests.collectAsState().value,
                     bookModeCommands = screenModel.bookModeCommands.collectAsState().value,
                     actions = NovelReaderScreenActions(
                         nativeBookBlocksForSection = screenModel::nativeBookBlocksForSection,
@@ -236,6 +252,9 @@ class NovelReaderScreen(
                         onOpenBottomSheet = screenModel::loadFullChapterOrderList,
                         onBack = {
                             coroutineScope.launch {
+                                // Leaving the reader is a flush point: the debounced book position
+                                // is written through before this screen goes away.
+                                screenModel.flushBookModeProgress()
                                 screenModel.persistCurrentChapterExitState()
                                 navigator.pop()
                             }
@@ -331,10 +350,9 @@ class NovelReaderScreen(
                         onPlaySelectedTextPronunciation = screenModel::playSelectedTextPronunciation,
                         loadBookEngineDocument = screenModel::loadBookEngineDocument,
                         onBookEngineLocationChanged = screenModel::onBookEngineLocationChanged,
-                        onBookEngineSectionMeasured = screenModel::onBookEngineSectionMeasured,
+                        onBookSeekApplied = screenModel::onBookSeekApplied,
                         onBookModeCommandsExecuted = screenModel::onBookModeCommandsExecuted,
                         onBookModeScroll = screenModel::onBookModeScroll,
-                        onBookModeSectionMeasured = screenModel::onBookModeSectionMeasured,
                         onBookModeRetrySection = screenModel::onBookModeRetrySection,
                         onPrepareWholeBook = screenModel::prepareWholeBook,
                         onPrepareAutoScrollHandoff = screenModel::prepareAutoScrollHandoff,

@@ -148,6 +148,7 @@ import eu.kanade.tachiyomi.data.coil.NovelReaderRefererImage
 import eu.kanade.tachiyomi.source.novel.NovelPluginImage
 import eu.kanade.tachiyomi.source.novel.NovelPluginImageResolver
 import eu.kanade.tachiyomi.source.novel.NovelSiteSource
+import eu.kanade.tachiyomi.ui.reader.novel.BookSeekRequest
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookDocument
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookEngineFlow
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookLocation
@@ -348,7 +349,10 @@ fun NovelReaderScreen(
     rawState: NovelReaderScreenModel.State.Success,
     showReaderUi: Boolean,
     bookEngineSpine: NovelBookSpine = NovelBookSpine.EMPTY,
-    bookEngineLocation: NovelBookLocation = NovelBookLocation.START,
+    // Where the book opens. The renderer owns the position afterwards: it is never pushed back down.
+    bookInitialLocation: NovelBookLocation = NovelBookLocation.START,
+    // Explicit move requested by the core (resume, seek bar, chapter picker, TTS, search).
+    bookSeekRequest: BookSeekRequest? = null,
     bookModeCommands: List<NovelBookUiCommand> = emptyList(),
     actions: NovelReaderScreenActions,
 ) {
@@ -453,10 +457,9 @@ fun NovelReaderScreen(
     val onPlaySelectedTextPronunciation = actions.onPlaySelectedTextPronunciation
     val loadBookEngineDocument = actions.loadBookEngineDocument
     val onBookEngineLocationChanged = actions.onBookEngineLocationChanged
-    val onBookEngineSectionMeasured = actions.onBookEngineSectionMeasured
+    val onBookSeekApplied = actions.onBookSeekApplied
     val onBookModeCommandsExecuted = actions.onBookModeCommandsExecuted
     val onBookModeScroll = actions.onBookModeScroll
-    val onBookModeSectionMeasured = actions.onBookModeSectionMeasured
     val onBookModeRetrySection = actions.onBookModeRetrySection
     val onPrepareWholeBook = actions.onPrepareWholeBook
     val nativeBookBlocksForSection = actions.nativeBookBlocksForSection
@@ -1437,9 +1440,11 @@ fun NovelReaderScreen(
             failedSectionIndices = state.bookMode.failedSectionIndices,
         )
     }
-    // [0] = id of the scroll command that was already applied, [1] = when the list was last moved
-    // programmatically. Kept in an array so updating it never triggers a recomposition of the reader.
-    val bookModeScrollGuard = remember(state.novel.id) { longArrayOf(0L, 0L) }
+    // Id of the scroll command that was already applied. Kept in an array so updating it never
+    // triggers a recomposition of the reader. No time-based guard is needed anymore: reported
+    // positions never travel back down into the renderer, so an intermediate frame cannot pull the
+    // reader back.
+    val bookModeAppliedScrollCommandId = remember(state.novel.id) { longArrayOf(0L) }
     LaunchedEffect(useNativeBookScroll, bookModeCommands) {
         if (!useNativeBookScroll) return@LaunchedEffect
         val commands = bookModeCommands
@@ -1457,11 +1462,10 @@ fun NovelReaderScreen(
                 failedSectionIndices = state.bookMode.failedSectionIndices,
             ),
             commands = commands,
-            lastAppliedCommandId = bookModeScrollGuard[0],
+            lastAppliedCommandId = bookModeAppliedScrollCommandId[0],
         )
         if (scrollTarget != null) {
-            bookModeScrollGuard[0] = scrollTarget.commandId
-            bookModeScrollGuard[1] = System.currentTimeMillis()
+            bookModeAppliedScrollCommandId[0] = scrollTarget.commandId
             textListState.scrollToItem(scrollTarget.itemIndex)
             val itemHeight = textListState.layoutInfo.visibleItemsInfo
                 .firstOrNull { it.index == scrollTarget.itemIndex }
@@ -1471,7 +1475,6 @@ fun NovelReaderScreen(
             if (offsetPx > 0) {
                 textListState.scrollToItem(scrollTarget.itemIndex, offsetPx)
             }
-            bookModeScrollGuard[1] = System.currentTimeMillis()
         }
         onBookModeCommandsExecuted(commands.map { it.id })
     }
@@ -1483,11 +1486,6 @@ fun NovelReaderScreen(
         bookModeNativeEntries,
     ) {
         if (!useNativeBookScroll) return@LaunchedEffect
-        // Ignore the frames a programmatic jump produces; reporting them moved the book's position
-        // to the intermediate layout and pulled the reader back.
-        if (System.currentTimeMillis() - bookModeScrollGuard[1] < BOOK_MODE_NATIVE_SCROLL_GUARD_MS) {
-            return@LaunchedEffect
-        }
         val viewportItems = textListState.layoutInfo.visibleItemsInfo.mapNotNull { item ->
             val sectionIndex = bookModeNativeEntries.getOrNull(item.index)?.sectionIndex
                 ?: return@mapNotNull null
@@ -2599,7 +2597,9 @@ fun NovelReaderScreen(
                         androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
                             NovelBookReader(
                                 spine = bookEngineSpine,
-                                location = bookEngineLocation,
+                                initialLocation = bookInitialLocation,
+                                seekRequest = bookSeekRequest,
+                                onSeekApplied = onBookSeekApplied,
                                 flow = if (state.readerSettings.pageReader) {
                                     NovelBookEngineFlow.PAGINATED
                                 } else {
@@ -2608,7 +2608,6 @@ fun NovelReaderScreen(
                                 transitionStyleName = activePageTransitionStyle.name,
                                 loadDocument = loadBookEngineDocument,
                                 onLocationChanged = onBookEngineLocationChanged,
-                                onSectionMeasured = onBookEngineSectionMeasured,
                                 onToggleReaderUi = { onSetShowReaderUi(!showReaderUi) },
                                 onShortTap = latestReaderShortTapHandler,
                                 onSurfaceChanged = { surface -> bookScrollSurface = surface },
@@ -5422,10 +5421,10 @@ data class NovelReaderScreenActions(
     val onPlaySelectedTextPronunciation: (String) -> Unit = {},
     val loadBookEngineDocument: (suspend (NovelBookSection) -> NovelBookDocument)? = null,
     val onBookEngineLocationChanged: (NovelBookLocation) -> Unit = {},
-    val onBookEngineSectionMeasured: (chapterId: Long, charCount: Int) -> Unit = { _, _ -> },
+    /** Acknowledges a [BookSeekRequest] the renderer applied, identified by its id. */
+    val onBookSeekApplied: (Long) -> Unit = {},
     val onBookModeCommandsExecuted: (List<Long>) -> Unit = {},
     val onBookModeScroll: (sectionIndex: Int, sectionFraction: Float) -> Unit = { _, _ -> },
-    val onBookModeSectionMeasured: (chapterId: Long, charCount: Int) -> Unit = { _, _ -> },
     val onBookModeRetrySection: (sectionIndex: Int) -> Unit = {},
     val onPrepareWholeBook: () -> Unit = {},
     /**

@@ -1,26 +1,52 @@
 package eu.kanade.tachiyomi.ui.reader.novel
 
-import tachiyomi.domain.items.novelchapter.model.NovelChapter
-
 /**
- * A single section of the book spine. One section maps to exactly one novel chapter.
+ * A single section of the book spine: one block of the compiled book artifact. A block is a window
+ * over the continuous body, so it usually covers one chapter and sometimes straddles a boundary and
+ * covers two; see [chapterIds].
  *
- * The section carries two independent measurements, and mixing them up is what made book-mode
- * progress drift:
- *  - [charCount] is the sanitized text length and is the ONLY size domain progress is computed in.
- *    Until the section content has been loaded the value is an estimate and [isMeasured] is false.
- *  - [layoutHeightPx] is the height the active renderer gave the section. It changes with font size,
- *    margins and theme, so it must never reach the progress domain; it exists for scroll anchoring
- *    and placeholder sizing only.
+ * [charCount] is the sanitized text length taken from the artifact index and is the ONLY size domain
+ * progress is computed in. Because a spine is only ever built from a compiled artifact, the value is
+ * always exact and [isMeasured] is always true.
+ *
+ * Renderer pixel heights deliberately have no place here: they change with font size, margins and
+ * theme, so letting them reach the progress domain is what made book-mode progress drift.
  */
 data class NovelBookSection(
+    /**
+     * First real chapter this section contains.
+     *
+     * Sections used to carry a synthetic key (`-(blockIndex + 1)`) so that block indices could not
+     * collide with chapter ids. That key is what made [NovelBookSpine.indexOf] fail for TTS and
+     * translations, because no real chapter id was ever found in the spine. Sections are addressed
+     * by [index] everywhere now, so this can be the real chapter id again.
+     */
     val chapterId: Long,
     val index: Int,
     val name: String,
     val charCount: Int,
     val isMeasured: Boolean,
-    val layoutHeightPx: Int? = null,
-)
+    /**
+     * Every chapter whose text overlaps this section, in reading order.
+     *
+     * A compiled block is a window over the continuous body, so it usually covers one chapter and
+     * sometimes straddles a boundary and covers two. Empty means "only [chapterId]".
+     */
+    val chapterIds: List<Long> = emptyList(),
+) {
+    /**
+     * Key this section is cached and loaded under.
+     *
+     * It is the spine index, because that is the only unique address of a section: a block can hold
+     * two chapters and a chapter can span several blocks.
+     */
+    val loaderKey: Long get() = index.toLong()
+
+    /** Chapters of this section, always non-empty for a section built from an artifact. */
+    val coveredChapterIds: List<Long> get() = chapterIds.ifEmpty { listOf(chapterId) }
+
+    fun covers(chapterId: Long): Boolean = coveredChapterIds.contains(chapterId)
+}
 
 /**
  * A stable position inside the book: section plus character offset inside that section.
@@ -47,7 +73,7 @@ data class NovelBookSpine(
     val sections: List<NovelBookSection>,
 ) {
 
-    /** Total sanitized text length of the whole book (estimated for unmeasured sections). */
+    /** Total sanitized text length of the whole book. */
     val totalCharCount: Int = sections.sumOf { it.charCount }
 
     /** Global start offset of every section, used for O(log n) location lookups. */
@@ -81,20 +107,23 @@ data class NovelBookSpine(
         }
     }
 
-    fun indexOf(chapterId: Long): Int = sections.indexOfFirst { it.chapterId == chapterId }
+    /**
+     * First section that contains [chapterId], or -1.
+     *
+     * A chapter can span several blocks and a block can span two chapters, so the lookup goes
+     * through the chapters a section covers instead of comparing one id per section.
+     */
+    fun indexOf(chapterId: Long): Int = sections.indexOfFirst { it.covers(chapterId) }
 
     fun sectionAt(sectionIndex: Int): NovelBookSection? = sections.getOrNull(sectionIndex)
 
-    fun sectionOf(chapterId: Long): NovelBookSection? = sections.firstOrNull { it.chapterId == chapterId }
+    fun sectionOf(chapterId: Long): NovelBookSection? = sections.firstOrNull { it.covers(chapterId) }
 
     fun startOffsetOf(sectionIndex: Int): Int = startOffsets.getOrNull(sectionIndex) ?: 0
 
     /** Start fraction of a section in the book size domain. */
     fun sectionStartFraction(sectionIndex: Int): Float =
         sectionFractions.getOrNull(sectionIndex.coerceAtLeast(0)) ?: 0f
-
-    /** Height the active renderer reported for a section, or null while it is unmeasured. */
-    fun layoutHeightOf(sectionIndex: Int): Int? = sections.getOrNull(sectionIndex)?.layoutHeightPx
 
     /** Clamps a location into the current spine bounds, tolerating stale or out-of-range input. */
     fun clampLocation(location: NovelBookLocation): NovelBookLocation {
@@ -158,36 +187,6 @@ data class NovelBookSpine(
         return clampLocation(NovelBookLocation(section.index, charOffset))
     }
 
-    /** Returns a spine with the real measured length of a section, recomputing the location map. */
-    fun withMeasuredSection(chapterId: Long, charCount: Int): NovelBookSpine {
-        val sectionIndex = indexOf(chapterId)
-        if (sectionIndex < 0) return this
-        val safeCharCount = charCount.coerceAtLeast(1)
-        val current = sections[sectionIndex]
-        if (current.isMeasured && current.charCount == safeCharCount) return this
-        val updated = sections.toMutableList()
-        updated[sectionIndex] = current.copy(charCount = safeCharCount, isMeasured = true)
-        return NovelBookSpine(updated)
-    }
-
-    /**
-     * Returns a spine that remembers the pixel height the renderer gave a section.
-     *
-     * Progress is untouched by this on purpose: heights used to be written into [charCount], so every
-     * re-measure (font change, rotation, re-render) silently rescaled the whole book and the progress
-     * bar jumped. Heights now stay in their own field.
-     */
-    fun withMeasuredLayoutHeight(chapterId: Long, heightPx: Int): NovelBookSpine {
-        val sectionIndex = indexOf(chapterId)
-        if (sectionIndex < 0) return this
-        val safeHeightPx = heightPx.coerceAtLeast(0)
-        val current = sections[sectionIndex]
-        if (current.layoutHeightPx == safeHeightPx) return this
-        val updated = sections.toMutableList()
-        updated[sectionIndex] = current.copy(layoutHeightPx = safeHeightPx)
-        return NovelBookSpine(updated)
-    }
-
     /** Section indices that should be kept resident in the reader, centered on [sectionIndex]. */
     fun windowAround(sectionIndex: Int, radius: Int): List<Int> {
         if (sections.isEmpty()) return emptyList()
@@ -199,74 +198,6 @@ data class NovelBookSpine(
     }
 
     companion object {
-        const val DEFAULT_ESTIMATED_CHAR_COUNT = 4_000
-
         val EMPTY = NovelBookSpine(emptyList())
-
-        /**
-         * Builds a spine from the ordered chapter list. Sections whose real length is already known
-         * (for example from the chapter disk cache) use it; the rest use the average measured length
-         * of the book, falling back to [fallbackCharCount] when nothing has been measured yet.
-         */
-        fun fromChapters(
-            chapters: List<NovelChapter>,
-            measuredCharCounts: Map<Long, Int> = emptyMap(),
-            fallbackCharCount: Int = DEFAULT_ESTIMATED_CHAR_COUNT,
-        ): NovelBookSpine {
-            if (chapters.isEmpty()) return EMPTY
-            val measuredValues = chapters.mapNotNull { chapter ->
-                measuredCharCounts[chapter.id]?.takeIf { it > 0 }
-            }
-            val estimatedCharCount = if (measuredValues.isEmpty()) {
-                fallbackCharCount.coerceAtLeast(1)
-            } else {
-                val sum = measuredValues.fold(0L) { acc, value -> acc + value }
-                (sum / measuredValues.size).toInt().coerceAtLeast(1)
-            }
-            val sections = chapters.mapIndexed { index, chapter ->
-                val measured = measuredCharCounts[chapter.id]?.takeIf { it > 0 }
-                NovelBookSection(
-                    chapterId = chapter.id,
-                    index = index,
-                    name = chapter.name,
-                    charCount = measured ?: estimatedCharCount,
-                    isMeasured = measured != null,
-                )
-            }
-            return NovelBookSpine(sections)
-        }
     }
-}
-
-/**
- * Sanitized text length of a prepared section, used as its weight in the book size domain.
- *
- * Markup is skipped and whitespace runs collapse to a single character, so a heavily marked-up
- * chapter does not outweigh a plain one. This is intentionally cheap: it runs once per section, right
- * after the section HTML is prepared, and replaces the estimated weight the spine started with.
- */
-internal fun novelBookSectionTextLength(html: String): Int {
-    if (html.isEmpty()) return 0
-    var length = 0
-    var insideTag = false
-    var lastWasWhitespace = false
-    for (char in html) {
-        when {
-            char == '<' -> insideTag = true
-            char == '>' -> {
-                insideTag = false
-                lastWasWhitespace = false
-            }
-            insideTag -> Unit
-            char.isWhitespace() -> {
-                if (!lastWasWhitespace && length > 0) length += 1
-                lastWasWhitespace = true
-            }
-            else -> {
-                length += 1
-                lastWasWhitespace = false
-            }
-        }
-    }
-    return length
 }

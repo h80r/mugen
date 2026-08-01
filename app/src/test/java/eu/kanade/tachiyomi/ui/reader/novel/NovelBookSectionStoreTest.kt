@@ -96,7 +96,7 @@ class NovelBookSectionStoreTest {
         sections.put(3L, "<p>3</p>")
 
         sections.residentCount shouldBe 2
-        sections.residentChapterIds shouldBe setOf(1L, 3L)
+        sections.residentSectionKeys shouldBe setOf(1L, 3L)
         // Evicted from memory only; still readable from disk.
         disk[2L] shouldBe "<p>2</p>"
         sections.get(2L) shouldBe "<p>2</p>"
@@ -109,7 +109,7 @@ class NovelBookSectionStoreTest {
         sections.put(1L, "<p>1</p>")
         sections.put(2L, "<p>2</p>")
 
-        sections.residentChapterIds shouldBe setOf(2L)
+        sections.residentSectionKeys shouldBe setOf(2L)
     }
 
     @Test

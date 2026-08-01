@@ -37,6 +37,8 @@ class NovelBookStateRepositoryImpl(
                 chapterCount = state.chapterCount.toLong(),
                 charOffset = state.charOffset,
                 lastChapterId = state.lastChapterId,
+                blockIndex = state.blockIndex.toLong(),
+                chapterCharOffset = state.chapterCharOffset.toLong(),
                 complete = state.complete,
                 builtAt = state.builtAt,
                 updatedAt = state.updatedAt,
@@ -54,11 +56,20 @@ class NovelBookStateRepositoryImpl(
         }
     }
 
-    override suspend fun setBookProgress(novelId: Long, charOffset: Long, lastChapterId: Long?, updatedAt: Long) {
+    override suspend fun setBookProgress(
+        novelId: Long,
+        charOffset: Long,
+        lastChapterId: Long?,
+        blockIndex: Int,
+        chapterCharOffset: Int,
+        updatedAt: Long,
+    ) {
         handler.await { db ->
             db.novel_booksQueries.setProgress(
                 charOffset = charOffset,
                 lastChapterId = lastChapterId,
+                blockIndex = blockIndex.toLong(),
+                chapterCharOffset = chapterCharOffset.toLong(),
                 updatedAt = updatedAt,
                 novelId = novelId,
             )

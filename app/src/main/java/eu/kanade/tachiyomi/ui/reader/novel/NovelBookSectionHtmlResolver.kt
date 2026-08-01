@@ -17,6 +17,9 @@ internal data class NovelBookRawSection(
  * All dependencies are passed as lambdas so the screen model can reuse its existing chapter
  * resolution path (snapshot loading, download/cache lookup, sanitizing) while this stays testable
  * without Android or a source.
+ *
+ * Sections are addressed by their spine index; the chapter id is only used to fetch and translate
+ * the payload, because a section is not the same thing as a chapter.
  */
 internal class NovelBookSectionHtmlResolver(
     private val currentSpine: () -> NovelBookSpine,
@@ -30,19 +33,20 @@ internal class NovelBookSectionHtmlResolver(
 
     private val resolvedBaseUrls = ConcurrentHashMap<Long, String>()
 
-    fun resolvedBaseUrl(chapterId: Long): String? = resolvedBaseUrls[chapterId]
+    fun resolvedBaseUrl(sectionKey: Long): String? = resolvedBaseUrls[sectionKey]
 
     /**
-     * Resolves the section HTML for [chapterId]. Returns a blank string when the chapter has no
-     * usable content, which the loader reports as a failed section so it can be retried inline.
+     * Resolves the section HTML for the section with spine index [sectionKey]. Returns a blank
+     * string when the section has no usable content, which the loader reports as a failed section
+     * so it can be retried inline.
      */
-    suspend fun resolve(chapterId: Long): String {
-        val section = currentSpine().sectionOf(chapterId) ?: return ""
-        val raw = loadRawSection(chapterId)
+    suspend fun resolve(sectionKey: Long): String {
+        val section = currentSpine().sectionAt(sectionKey.toInt()) ?: return ""
+        val raw = loadRawSection(section.chapterId)
         raw.chapterWebUrl
             ?.takeIf { it.isNotBlank() }
-            ?.let { resolvedBaseUrls[chapterId] = it }
-            ?: resolvedBaseUrls.remove(chapterId)
+            ?.let { resolvedBaseUrls[sectionKey] = it }
+            ?: resolvedBaseUrls.remove(sectionKey)
         val bodyHtml = normalizeHtml(
             raw.chapterId,
             raw.rawHtml,

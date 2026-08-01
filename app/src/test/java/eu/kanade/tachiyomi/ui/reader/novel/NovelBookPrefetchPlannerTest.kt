@@ -121,7 +121,7 @@ class NovelBookPrefetchPlannerTest {
     }
 
     private fun spine(sectionCount: Int): NovelBookSpine {
-        return NovelBookSpine.fromChapters((0 until sectionCount).map(::chapter))
+        return testSpineOf((0 until sectionCount).map(::chapter))
     }
 
     private fun chapter(index: Int): NovelChapter {

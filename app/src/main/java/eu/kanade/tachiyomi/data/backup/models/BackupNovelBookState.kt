@@ -24,4 +24,11 @@ data class BackupNovelBookState(
     @ProtoNumber(9) var complete: Boolean = false,
     @ProtoNumber(10) var builtAt: Long = 0,
     @ProtoNumber(11) var updatedAt: Long = 0,
+    /**
+     * Locator part of the reading position: the offset inside [lastChapterUrl] plus the artifact
+     * block that held it. Blocks are rebuilt per device, so [blockIndex] is only a hint and the
+     * offset inside the chapter is what actually restores the position.
+     */
+    @ProtoNumber(12) var blockIndex: Int = 0,
+    @ProtoNumber(13) var chapterCharOffset: Int = 0,
 )

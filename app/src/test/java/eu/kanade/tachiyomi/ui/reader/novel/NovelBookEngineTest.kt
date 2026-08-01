@@ -9,12 +9,12 @@ class NovelBookEngineTest {
 
     @Test
     fun `opening a book loads the requested section as its own renderer document`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = listOf(
                 NovelChapter.create().copy(id = 1L, name = "Chapter 1"),
                 NovelChapter.create().copy(id = 2L, name = "Chapter 2"),
             ),
-            measuredCharCounts = mapOf(1L to 100, 2L to 100),
+            charCounts = mapOf(1L to 100, 2L to 100),
         )
         val renderer = RecordingNovelBookEngineRenderer()
         val engine = NovelBookEngine(
@@ -45,12 +45,12 @@ class NovelBookEngineTest {
 
     @Test
     fun `next at the end of a renderer document opens the next spine section`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = listOf(
                 NovelChapter.create().copy(id = 1L, name = "Chapter 1"),
                 NovelChapter.create().copy(id = 2L, name = "Chapter 2"),
             ),
-            measuredCharCounts = mapOf(1L to 100, 2L to 100),
+            charCounts = mapOf(1L to 100, 2L to 100),
         )
         val renderer = RecordingNovelBookEngineRenderer().apply {
             nextResult = NovelBookPageTurnResult.EndOfDocument
@@ -80,12 +80,12 @@ class NovelBookEngineTest {
 
     @Test
     fun `previous at the start of a renderer document opens the end of the previous spine section`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = listOf(
                 NovelChapter.create().copy(id = 1L, name = "Chapter 1"),
                 NovelChapter.create().copy(id = 2L, name = "Chapter 2"),
             ),
-            measuredCharCounts = mapOf(1L to 100, 2L to 200),
+            charCounts = mapOf(1L to 100, 2L to 200),
         )
         val renderer = RecordingNovelBookEngineRenderer().apply {
             previousResult = NovelBookPageTurnResult.StartOfDocument
@@ -115,12 +115,12 @@ class NovelBookEngineTest {
 
     @Test
     fun `switching flow reopens the same section at the exact book location`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = listOf(
                 NovelChapter.create().copy(id = 1L, name = "Chapter 1"),
                 NovelChapter.create().copy(id = 2L, name = "Chapter 2"),
             ),
-            measuredCharCounts = mapOf(1L to 100, 2L to 200),
+            charCounts = mapOf(1L to 100, 2L to 200),
         )
         val renderer = RecordingNovelBookEngineRenderer().apply {
             nextResult = NovelBookPageTurnResult.Moved(charOffset = 73)
@@ -155,12 +155,12 @@ class NovelBookEngineTest {
 
     @Test
     fun `reloading reopens the same section at the exact book location`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = listOf(
                 NovelChapter.create().copy(id = 1L, name = "Chapter 1"),
                 NovelChapter.create().copy(id = 2L, name = "Chapter 2"),
             ),
-            measuredCharCounts = mapOf(1L to 100, 2L to 200),
+            charCounts = mapOf(1L to 100, 2L to 200),
         )
         val renderer = RecordingNovelBookEngineRenderer().apply {
             relocateResult = NovelBookPageTurnResult.Moved(charOffset = 83)
@@ -195,12 +195,12 @@ class NovelBookEngineTest {
 
     @Test
     fun `renderer relocation updates and publishes the exact book location`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = listOf(
                 NovelChapter.create().copy(id = 1L, name = "Chapter 1"),
                 NovelChapter.create().copy(id = 2L, name = "Chapter 2"),
             ),
-            measuredCharCounts = mapOf(1L to 100, 2L to 200),
+            charCounts = mapOf(1L to 100, 2L to 200),
         )
         val relocatedLocations = mutableListOf<NovelBookLocation>()
         val engine = NovelBookEngine(
@@ -228,11 +228,11 @@ class NovelBookEngineTest {
 
     @Test
     fun `flushing queries the renderer and publishes its exact book location`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = listOf(
                 NovelChapter.create().copy(id = 1L, name = "Chapter 1"),
             ),
-            measuredCharCounts = mapOf(1L to 100),
+            charCounts = mapOf(1L to 100),
         )
         val relocatedLocations = mutableListOf<NovelBookLocation>()
         val renderer = RecordingNovelBookEngineRenderer().apply {
@@ -262,110 +262,13 @@ class NovelBookEngineTest {
     }
 
     @Test
-    fun `opening an unmeasured section preserves its stored renderer offset until the dom is measured`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
-            chapters = listOf(
-                NovelChapter.create().copy(id = 1L, name = "Chapter 1"),
-            ),
-        )
-        val renderer = RecordingNovelBookEngineRenderer()
-        val engine = NovelBookEngine(
-            loadDocument = { section ->
-                NovelBookDocument(
-                    sectionIndex = section.index,
-                    chapterId = section.chapterId,
-                    html = "<p>${section.name} text</p>",
-                )
-            },
-            renderer = renderer,
-        )
-
-        engine.open(
-            spine = spine,
-            location = NovelBookLocation(sectionIndex = 0, charOffset = 8_000),
-            flow = NovelBookEngineFlow.PAGINATED,
-        )
-
-        renderer.openedLocation shouldBe NovelBookLocation(sectionIndex = 0, charOffset = 8_000)
-        engine.location shouldBe NovelBookLocation(sectionIndex = 0, charOffset = 8_000)
-    }
-
-    @Test
-    fun `renderer dom measurement replaces the estimate before relocation is clamped`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
-            chapters = listOf(
-                NovelChapter.create().copy(id = 1L, name = "Chapter 1"),
-            ),
-        )
-        val measuredSections = mutableListOf<Pair<Long, Int>>()
-        val relocatedLocations = mutableListOf<NovelBookLocation>()
-        val engine = NovelBookEngine(
-            loadDocument = { section ->
-                NovelBookDocument(
-                    sectionIndex = section.index,
-                    chapterId = section.chapterId,
-                    html = "<p>${section.name} text</p>",
-                )
-            },
-            renderer = RecordingNovelBookEngineRenderer(),
-            onLocationChanged = relocatedLocations::add,
-            onSectionMeasured = { chapterId, charCount ->
-                measuredSections += chapterId to charCount
-            },
-        )
-        engine.open(
-            spine = spine,
-            location = NovelBookLocation(sectionIndex = 0, charOffset = 8_000),
-            flow = NovelBookEngineFlow.PAGINATED,
-        )
-
-        engine.onRendererMeasured(sectionIndex = 0, chapterId = 1L, charCount = 10_000)
-        engine.onRendererRelocated(charOffset = 9_000)
-
-        engine.location shouldBe NovelBookLocation(sectionIndex = 0, charOffset = 9_000)
-        measuredSections shouldBe listOf(1L to 10_000)
-        relocatedLocations shouldBe listOf(NovelBookLocation(sectionIndex = 0, charOffset = 9_000))
-    }
-
-    @Test
-    fun `renderer dom measurement clamps an out of range stored offset`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
-            chapters = listOf(
-                NovelChapter.create().copy(id = 1L, name = "Chapter 1"),
-            ),
-        )
-        val relocatedLocations = mutableListOf<NovelBookLocation>()
-        val engine = NovelBookEngine(
-            loadDocument = { section ->
-                NovelBookDocument(
-                    sectionIndex = section.index,
-                    chapterId = section.chapterId,
-                    html = "<p>${section.name} text</p>",
-                )
-            },
-            renderer = RecordingNovelBookEngineRenderer(),
-            onLocationChanged = relocatedLocations::add,
-        )
-        engine.open(
-            spine = spine,
-            location = NovelBookLocation(sectionIndex = 0, charOffset = 8_000),
-            flow = NovelBookEngineFlow.PAGINATED,
-        )
-
-        engine.onRendererMeasured(sectionIndex = 0, chapterId = 1L, charCount = 2_000)
-
-        engine.location shouldBe NovelBookLocation(sectionIndex = 0, charOffset = 1_999)
-        relocatedLocations shouldBe listOf(NovelBookLocation(sectionIndex = 0, charOffset = 1_999))
-    }
-
-    @Test
     fun `reaching the end of a scrolled document stitches the next chapter into the same document`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = listOf(
                 NovelChapter.create().copy(id = 1L, name = "Chapter 1"),
                 NovelChapter.create().copy(id = 2L, name = "Chapter 2"),
             ),
-            measuredCharCounts = mapOf(1L to 100, 2L to 100),
+            charCounts = mapOf(1L to 100, 2L to 100),
         )
         val renderer = RecordingNovelBookEngineRenderer().apply {
             stitchingSupported = true
@@ -390,12 +293,12 @@ class NovelBookEngineTest {
 
     @Test
     fun `scrolling back into the previous chapter stitches it above the current one`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = listOf(
                 NovelChapter.create().copy(id = 1L, name = "Chapter 1"),
                 NovelChapter.create().copy(id = 2L, name = "Chapter 2"),
             ),
-            measuredCharCounts = mapOf(1L to 100, 2L to 100),
+            charCounts = mapOf(1L to 100, 2L to 100),
         )
         val renderer = RecordingNovelBookEngineRenderer().apply { stitchingSupported = true }
         val engine = NovelBookEngine(
@@ -417,12 +320,12 @@ class NovelBookEngineTest {
 
     @Test
     fun `a stitched document reports which chapter the viewport is in`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = listOf(
                 NovelChapter.create().copy(id = 1L, name = "Chapter 1"),
                 NovelChapter.create().copy(id = 2L, name = "Chapter 2"),
             ),
-            measuredCharCounts = mapOf(1L to 100, 2L to 100),
+            charCounts = mapOf(1L to 100, 2L to 100),
         )
         val relocatedLocations = mutableListOf<NovelBookLocation>()
         val renderer = RecordingNovelBookEngineRenderer().apply { stitchingSupported = true }
@@ -446,11 +349,11 @@ class NovelBookEngineTest {
 
     @Test
     fun `stitching drops chapters the reader left far behind`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = (1L..7L).map { id ->
                 NovelChapter.create().copy(id = id, name = "Chapter ${'$'}id")
             },
-            measuredCharCounts = (1L..7L).associateWith { 100 },
+            charCounts = (1L..7L).associateWith { 100 },
         )
         val renderer = RecordingNovelBookEngineRenderer().apply { stitchingSupported = true }
         val engine = NovelBookEngine(
@@ -474,11 +377,11 @@ class NovelBookEngineTest {
 
     @Test
     fun `the chapter the reader is in is never dropped from the document`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = (1L..7L).map { id ->
                 NovelChapter.create().copy(id = id, name = "Chapter ${'$'}id")
             },
-            measuredCharCounts = (1L..7L).associateWith { 100 },
+            charCounts = (1L..7L).associateWith { 100 },
         )
         val renderer = RecordingNovelBookEngineRenderer().apply { stitchingSupported = true }
         val engine = NovelBookEngine(
@@ -497,31 +400,10 @@ class NovelBookEngineTest {
     }
 
     @Test
-    fun `an unmeasured section is restored from its fraction instead of an estimated offset`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
-            chapters = listOf(NovelChapter.create().copy(id = 1L, name = "Chapter 1")),
-        )
-        val renderer = RecordingNovelBookEngineRenderer()
-        val engine = NovelBookEngine(
-            loadDocument = { section -> documentFor(section) },
-            renderer = renderer,
-        )
-
-        engine.open(
-            spine = spine,
-            location = NovelBookLocation(sectionIndex = 0, charOffset = 2_000),
-            flow = NovelBookEngineFlow.SCROLLED,
-        )
-
-        // Half of the estimated length: the renderer resolves that against the real text length.
-        renderer.openedRestoreFraction shouldBe 0.5f
-    }
-
-    @Test
     fun `a measured section is restored from its exact offset`() = runTest {
-        val spine = NovelBookSpine.fromChapters(
+        val spine = testSpineOf(
             chapters = listOf(NovelChapter.create().copy(id = 1L, name = "Chapter 1")),
-            measuredCharCounts = mapOf(1L to 5_000),
+            charCounts = mapOf(1L to 5_000),
         )
         val renderer = RecordingNovelBookEngineRenderer()
         val engine = NovelBookEngine(

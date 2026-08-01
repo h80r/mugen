@@ -655,6 +655,17 @@ class NovelReaderPreferences(
     fun bookModePrepareAhead() =
         preferenceStore.getInt("novel_reader_book_mode_prepare_ahead", DEFAULT_BOOK_MODE_PREPARE_AHEAD)
 
+    // Book-mode refactor (phase 0). Hidden debug flag with no settings UI: it lets the current
+    // book-mode pipeline and the reworked one (single content pipeline, single locator,
+    // unidirectional position flow) coexist while the refactor lands phase by phase. Off by
+    // default, so shipping an unfinished phase cannot change behaviour for readers.
+    fun novelBookModeV2() = preferenceStore.getBoolean(NOVEL_BOOK_MODE_V2_KEY, false)
+
+    // Hidden debug flag for the structured `NovelBook` trace. Book-mode tracing used to be pinned
+    // on in release builds, which floods logcat and leaks reading data; it is now opt-in and only
+    // meant to be enabled while reproducing a book-mode issue.
+    fun bookModeTraceLogging() = preferenceStore.getBoolean(NOVEL_BOOK_MODE_TRACE_LOGGING_KEY, false)
+
     // Accessibility
     fun fullScreenMode() = preferenceStore.getBoolean("novel_reader_fullscreen", true)
 
@@ -1994,6 +2005,12 @@ class NovelReaderPreferences(
         const val DEFAULT_AUTO_SCROLL_OFFSET = 0
         const val DEFAULT_BACKGROUND_PRESET_ID = "linen_paper"
         const val DEFAULT_BOOK_MODE_PREPARE_AHEAD = 3
+
+        /** Hidden debug flag guarding the reworked book-mode pipeline. */
+        const val NOVEL_BOOK_MODE_V2_KEY = "novel_reader_book_mode_v2"
+
+        /** Hidden debug flag guarding the structured `NovelBook` trace. */
+        const val NOVEL_BOOK_MODE_TRACE_LOGGING_KEY = "novel_reader_book_mode_trace_logging"
 
         private val overrideSerializer = MapSerializer(
             Long.serializer(),

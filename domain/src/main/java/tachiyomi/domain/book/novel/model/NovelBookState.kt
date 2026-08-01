@@ -21,6 +21,14 @@ data class NovelBookState(
     val complete: Boolean,
     val builtAt: Long,
     val updatedAt: Long,
+    /**
+     * Artifact block that held the position when it was stored. Lookup hint only: it is recomputed
+     * from [lastChapterId] plus [chapterCharOffset] whenever the book is opened, so a rebuilt
+     * artifact cannot move the reader.
+     */
+    val blockIndex: Int = 0,
+    /** Character offset inside [lastChapterId]; the part of the position that survives a rebuild. */
+    val chapterCharOffset: Int = 0,
 ) {
 
     /** Whole book progress in the 0f..1f range. */
@@ -44,6 +52,8 @@ data class NovelBookState(
             complete = false,
             builtAt = 0L,
             updatedAt = 0L,
+            blockIndex = 0,
+            chapterCharOffset = 0,
         )
     }
 }

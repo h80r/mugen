@@ -7,13 +7,13 @@ sealed interface NovelBookRenderCommand {
     val sectionIndex: Int
 
     /** Insert an already prepared section into the live document. */
-    data class Render(override val sectionIndex: Int, val chapterId: Long) : NovelBookRenderCommand
+    data class Render(override val sectionIndex: Int, val sectionKey: Long) : NovelBookRenderCommand
 
     /** Replace a rendered section with a height-preserving placeholder to keep the DOM small. */
     data class Release(override val sectionIndex: Int) : NovelBookRenderCommand
 
     /** Prepare reader-ready HTML for a section in the background. */
-    data class Prepare(override val sectionIndex: Int, val chapterId: Long) : NovelBookRenderCommand
+    data class Prepare(override val sectionIndex: Int, val sectionKey: Long) : NovelBookRenderCommand
 }
 
 data class NovelBookRenderPlan(
@@ -62,7 +62,7 @@ object NovelBookRenderCoordinator {
             .sortedBy { abs(it - center) }
             .mapNotNull { index ->
                 spine.sectionAt(index)?.let { section ->
-                    NovelBookRenderCommand.Render(sectionIndex = index, chapterId = section.chapterId)
+                    NovelBookRenderCommand.Render(sectionIndex = index, sectionKey = section.loaderKey)
                 }
             }
 
@@ -75,7 +75,7 @@ object NovelBookRenderCoordinator {
             .nextPrefetchBatch(plan = plan, inFlightCount = inFlightSections.size, config = config)
             .mapNotNull { index ->
                 spine.sectionAt(index)?.let { section ->
-                    NovelBookRenderCommand.Prepare(sectionIndex = index, chapterId = section.chapterId)
+                    NovelBookRenderCommand.Prepare(sectionIndex = index, sectionKey = section.loaderKey)
                 }
             }
 

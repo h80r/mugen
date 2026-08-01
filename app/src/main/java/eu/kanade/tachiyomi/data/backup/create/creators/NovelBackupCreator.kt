@@ -86,6 +86,8 @@ class NovelBackupCreator(
                 complete = bookState.complete,
                 builtAt = bookState.builtAt,
                 updatedAt = bookState.updatedAt,
+                blockIndex = bookState.blockIndex,
+                chapterCharOffset = bookState.chapterCharOffset,
             )
         }
 

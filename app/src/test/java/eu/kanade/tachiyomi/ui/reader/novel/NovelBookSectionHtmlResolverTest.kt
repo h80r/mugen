@@ -9,7 +9,7 @@ import tachiyomi.domain.items.novelchapter.model.NovelChapter
 
 class NovelBookSectionHtmlResolverTest {
 
-    private val spine = NovelBookSpine.fromChapters(
+    private val spine = testSpineOf(
         chapters = (0 until 3).map { index ->
             NovelChapter.create().copy(id = index + 1L, name = "Chapter ${index + 1}")
         },
@@ -33,7 +33,7 @@ class NovelBookSectionHtmlResolverTest {
 
     @Test
     fun `a section carries its index chapter id and body`() = runTest {
-        val html = resolver().resolve(2L)
+        val html = resolver().resolve(1L)
 
         html shouldContain "data-an-section=\"1\""
         html shouldContain "data-an-chapter=\"2\""
@@ -43,13 +43,13 @@ class NovelBookSectionHtmlResolverTest {
 
     @Test
     fun `the first section has no divider and later sections do`() = runTest {
-        resolver().resolve(1L) shouldNotContain "an-book-divider"
-        resolver().resolve(3L) shouldContain "an-book-divider"
+        resolver().resolve(0L) shouldNotContain "an-book-divider"
+        resolver().resolve(2L) shouldContain "an-book-divider"
     }
 
     @Test
     fun `chapter headings can be turned off`() = runTest {
-        val html = resolver(showChapterHeadings = false).resolve(2L)
+        val html = resolver(showChapterHeadings = false).resolve(1L)
 
         html shouldNotContain "an-book-section-title"
         html shouldContain "<p>chapter 2</p>"

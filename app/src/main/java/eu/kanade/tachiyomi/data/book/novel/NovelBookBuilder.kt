@@ -170,6 +170,16 @@ class NovelBookBuilder(
             } else {
                 0L
             },
+            blockIndex = if (result.meta.chapterSetHash == previous?.chapterSetHash) {
+                previous?.blockIndex ?: 0
+            } else {
+                0
+            },
+            chapterCharOffset = if (result.meta.chapterSetHash == previous?.chapterSetHash) {
+                previous?.chapterCharOffset ?: 0
+            } else {
+                0
+            },
             lastChapterId = if (result.meta.chapterSetHash == previous?.chapterSetHash) {
                 previous?.lastChapterId ?: result.index.chapters.first().chapterId
             } else {
@@ -290,6 +300,8 @@ class NovelBookBuilder(
             totalChars = result.meta.totalChars.toLong(),
             chapterCount = result.meta.chapterCount,
             charOffset = previous?.charOffset ?: 0L,
+            blockIndex = previous?.blockIndex ?: 0,
+            chapterCharOffset = previous?.chapterCharOffset ?: 0,
             lastChapterId = previous?.lastChapterId ?: result.index.chapters.first().chapterId,
             complete = result.meta.complete,
             builtAt = result.meta.builtAt,
