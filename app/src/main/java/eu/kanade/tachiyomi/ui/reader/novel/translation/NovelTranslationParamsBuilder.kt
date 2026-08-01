@@ -9,6 +9,7 @@ internal const val DEEPSEEK_TOP_P_MIN = 0.9f
 internal const val DEEPSEEK_TOP_P_MAX = 0.95f
 internal const val DEEPSEEK_DEFAULT_PRESENCE_PENALTY = 0.15f
 internal const val DEEPSEEK_DEFAULT_FREQUENCY_PENALTY = 0.15f
+internal const val MAX_DEEPSEEK_CONCURRENCY = 32
 
 /**
  * Builds the provider-specific translation parameters from the shared [NovelReaderSettings].
@@ -124,6 +125,72 @@ internal fun NovelReaderSettings.toOllamaCloudTranslationParams(): OllamaCloudTr
             value = geminiReasoningEffort,
         ),
     )
+}
+
+internal fun NovelReaderSettings.hasConfiguredTranslationProvider(): Boolean {
+    if (!geminiEnabled) return false
+    return when (translationProvider) {
+        NovelTranslationProvider.GEMINI -> geminiApiKey.isNotBlank()
+        NovelTranslationProvider.GEMINI_PRIVATE -> {
+            geminiApiKey.isNotBlank() && isPrivateBridgeUnlocked()
+        }
+        NovelTranslationProvider.OPENROUTER -> {
+            openRouterBaseUrl.isNotBlank() &&
+                openRouterApiKey.isNotBlank() &&
+                openRouterModel.isNotBlank()
+        }
+        NovelTranslationProvider.DEEPSEEK -> {
+            deepSeekBaseUrl.isNotBlank() && deepSeekApiKey.isNotBlank() && deepSeekModel.isNotBlank()
+        }
+        NovelTranslationProvider.MISTRAL -> {
+            mistralBaseUrl.isNotBlank() && mistralApiKey.isNotBlank() && mistralModel.isNotBlank()
+        }
+        NovelTranslationProvider.NVIDIA -> {
+            nvidiaApiKey.isNotBlank() &&
+                nvidiaModel.isNotBlank()
+        }
+        NovelTranslationProvider.OLLAMA_CLOUD -> {
+            ollamaCloudBaseUrl.isNotBlank() &&
+                ollamaCloudApiKey.isNotBlank() &&
+                ollamaCloudModel.isNotBlank()
+        }
+    }
+}
+
+internal fun NovelReaderSettings.translationConcurrencyLimit(): Int {
+    return when (translationProvider) {
+        NovelTranslationProvider.GEMINI -> geminiConcurrency.coerceIn(1, 8)
+        NovelTranslationProvider.GEMINI_PRIVATE -> {
+            if (shouldUseSinglePrivateChapterRequestMode()) 1 else geminiConcurrency.coerceIn(1, 8)
+        }
+        NovelTranslationProvider.OPENROUTER -> 1
+        NovelTranslationProvider.DEEPSEEK -> geminiConcurrency.coerceIn(1, MAX_DEEPSEEK_CONCURRENCY)
+        NovelTranslationProvider.OLLAMA_CLOUD -> geminiConcurrency.coerceIn(1, 8)
+        else -> geminiConcurrency.coerceIn(1, 8)
+    }
+}
+
+internal fun NovelReaderSettings.effectiveTranslationBatchSize(): Int {
+    val requested = geminiBatchSize.coerceIn(1, 80)
+    return when (translationProvider) {
+        else -> requested
+    }
+}
+
+internal fun NovelReaderSettings.shouldUseSinglePrivateChapterRequestMode(): Boolean {
+    return translationProvider == NovelTranslationProvider.GEMINI_PRIVATE &&
+        GeminiPrivateBridge.isInstalled() &&
+        (GeminiPrivateBridge.forceSingleChapterRequest() || geminiPrivatePythonLikeMode)
+}
+
+internal fun NovelReaderSettings.requiresPrivateBridgeUnlock(): Boolean {
+    return translationProvider == NovelTranslationProvider.GEMINI_PRIVATE &&
+        GeminiPrivateBridge.isInstalled()
+}
+
+internal fun NovelReaderSettings.isPrivateBridgeUnlocked(): Boolean {
+    if (!requiresPrivateBridgeUnlock()) return true
+    return geminiPrivateUnlocked || GeminiPrivateBridge.isUnlocked()
 }
 
 private fun NovelReaderSettings.translationPromptFamily(): NovelTranslationPromptFamily {

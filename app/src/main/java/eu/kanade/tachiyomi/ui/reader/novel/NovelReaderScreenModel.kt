@@ -63,8 +63,13 @@ import eu.kanade.tachiyomi.ui.reader.novel.translation.OnlineDictionaryProvider
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OpenRouterModelsService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OpenRouterTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.TranslationPhase
+import eu.kanade.tachiyomi.ui.reader.novel.translation.effectiveTranslationBatchSize
 import eu.kanade.tachiyomi.ui.reader.novel.translation.formatAiTranslationThrowableForLog
+import eu.kanade.tachiyomi.ui.reader.novel.translation.hasConfiguredTranslationProvider
+import eu.kanade.tachiyomi.ui.reader.novel.translation.isPrivateBridgeUnlocked
 import eu.kanade.tachiyomi.ui.reader.novel.translation.normalizeTranslationReasoningEffort
+import eu.kanade.tachiyomi.ui.reader.novel.translation.requiresPrivateBridgeUnlock
+import eu.kanade.tachiyomi.ui.reader.novel.translation.shouldUseSinglePrivateChapterRequestMode
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toDeepSeekTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toGeminiTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toMistralTranslationParams
@@ -73,6 +78,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.translation.toOllamaCloudTranslationP
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toOpenRouterTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toTranslationCacheRequirements
 import eu.kanade.tachiyomi.ui.reader.novel.translation.translationCacheModelId
+import eu.kanade.tachiyomi.ui.reader.novel.translation.translationConcurrencyLimit
 import eu.kanade.tachiyomi.ui.reader.novel.tts.AndroidNovelTtsAudioFocusBridge
 import eu.kanade.tachiyomi.ui.reader.novel.tts.AndroidNovelTtsEngineInfoSource
 import eu.kanade.tachiyomi.ui.reader.novel.tts.AndroidNovelTtsPlatformFactory
@@ -570,7 +576,7 @@ class NovelReaderScreenModel(
         segments: List<String>,
         settings: NovelReaderSettings,
         onMessage: (String) -> Unit,
-    ): List<String?>? = requestTranslationBatch(segments, settings, onMessage)
+    ): List<String?>? = translationBatchExecutor.requestTranslationBatch(segments, settings, onMessage)
 
     override fun providerApplyAiProvidersState(state: NovelAiProviderState) {
         val successState = mutableState.value as? State.Success ?: return
@@ -752,6 +758,18 @@ class NovelReaderScreenModel(
     ).also { controller ->
         controller.setPendingAutoStart(autoStartGeminiTranslation)
     }
+
+    /**
+     * Dispatches whole-chapter translation batches to the configured provider service.
+     */
+    private val translationBatchExecutor = NovelTranslationBatchExecutor(
+        geminiTranslationService = geminiTranslationService,
+        openRouterTranslationService = openRouterTranslationService,
+        deepSeekTranslationService = deepSeekTranslationService,
+        mistralTranslationService = mistralTranslationService,
+        nvidiaTranslationService = nvidiaTranslationService,
+        ollamaCloudTranslationService = ollamaCloudTranslationService,
+    )
 
     /** Snapshot of the translation UI state, merged into the reader state by the screen model. */
     private val translationState: NovelTranslationState
@@ -1568,7 +1586,7 @@ class NovelReaderScreenModel(
                     chunks.mapIndexed { chunkIndex, chunk ->
                         async {
                             semaphore.withPermit {
-                                val result = requestTranslationBatch(
+                                val result = translationBatchExecutor.requestTranslationBatch(
                                     segments = chunk,
                                     settings = settings,
                                 ) { message ->
@@ -2385,128 +2403,6 @@ class NovelReaderScreenModel(
         return "$common, $sampling"
     }
     private fun Float.toLogFloat(): String = String.format(Locale.US, "%.3f", this)
-    private suspend fun requestTranslationBatch(
-        segments: List<String>,
-        settings: NovelReaderSettings,
-        onLog: ((String) -> Unit)? = null,
-    ): List<String?>? {
-        return when (settings.translationProvider) {
-            NovelTranslationProvider.GEMINI -> {
-                geminiTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toGeminiTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-            NovelTranslationProvider.GEMINI_PRIVATE -> {
-                geminiTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toGeminiTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-            NovelTranslationProvider.OPENROUTER -> {
-                openRouterTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toOpenRouterTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-            NovelTranslationProvider.DEEPSEEK -> {
-                deepSeekTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toDeepSeekTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-            NovelTranslationProvider.MISTRAL -> {
-                mistralTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toMistralTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-            NovelTranslationProvider.NVIDIA -> {
-                nvidiaTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toNvidiaTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-            NovelTranslationProvider.OLLAMA_CLOUD -> {
-                ollamaCloudTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toOllamaCloudTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-        }
-    }
-    private fun NovelReaderSettings.hasConfiguredTranslationProvider(): Boolean {
-        if (!geminiEnabled) return false
-        return when (translationProvider) {
-            NovelTranslationProvider.GEMINI -> geminiApiKey.isNotBlank()
-            NovelTranslationProvider.GEMINI_PRIVATE -> {
-                geminiApiKey.isNotBlank() && isPrivateBridgeUnlocked()
-            }
-            NovelTranslationProvider.OPENROUTER -> {
-                openRouterBaseUrl.isNotBlank() &&
-                    openRouterApiKey.isNotBlank() &&
-                    openRouterModel.isNotBlank()
-            }
-            NovelTranslationProvider.DEEPSEEK -> {
-                deepSeekBaseUrl.isNotBlank() &&
-                    deepSeekApiKey.isNotBlank() &&
-                    deepSeekModel.isNotBlank()
-            }
-            NovelTranslationProvider.MISTRAL -> {
-                mistralBaseUrl.isNotBlank() &&
-                    mistralApiKey.isNotBlank() &&
-                    mistralModel.isNotBlank()
-            }
-            NovelTranslationProvider.NVIDIA -> {
-                nvidiaApiKey.isNotBlank() &&
-                    nvidiaModel.isNotBlank()
-            }
-            NovelTranslationProvider.OLLAMA_CLOUD -> {
-                ollamaCloudBaseUrl.isNotBlank() &&
-                    ollamaCloudApiKey.isNotBlank() &&
-                    ollamaCloudModel.isNotBlank()
-            }
-        }
-    }
-    private fun NovelReaderSettings.translationConcurrencyLimit(): Int {
-        return when (translationProvider) {
-            NovelTranslationProvider.GEMINI -> geminiConcurrency.coerceIn(1, 8)
-            NovelTranslationProvider.GEMINI_PRIVATE -> {
-                if (shouldUseSinglePrivateChapterRequestMode()) 1 else geminiConcurrency.coerceIn(1, 8)
-            }
-            NovelTranslationProvider.OPENROUTER -> 1
-            NovelTranslationProvider.DEEPSEEK -> geminiConcurrency.coerceIn(1, MAX_DEEPSEEK_CONCURRENCY)
-            NovelTranslationProvider.OLLAMA_CLOUD -> geminiConcurrency.coerceIn(1, 8)
-            else -> geminiConcurrency.coerceIn(1, 8)
-        }
-    }
-
-    private fun NovelReaderSettings.effectiveTranslationBatchSize(): Int {
-        val requested = geminiBatchSize.coerceIn(1, 80)
-        return when (translationProvider) {
-            else -> requested
-        }
-    }
-    private fun NovelReaderSettings.shouldUseSinglePrivateChapterRequestMode(): Boolean {
-        return translationProvider == NovelTranslationProvider.GEMINI_PRIVATE &&
-            GeminiPrivateBridge.isInstalled() &&
-            (GeminiPrivateBridge.forceSingleChapterRequest() || geminiPrivatePythonLikeMode)
-    }
-    private fun NovelReaderSettings.requiresPrivateBridgeUnlock(): Boolean {
-        return translationProvider == NovelTranslationProvider.GEMINI_PRIVATE &&
-            GeminiPrivateBridge.isInstalled()
-    }
-    private fun NovelReaderSettings.isPrivateBridgeUnlocked(): Boolean {
-        if (!requiresPrivateBridgeUnlock()) return true
-        return geminiPrivateUnlocked || GeminiPrivateBridge.isUnlocked()
-    }
     sealed interface State {
         data class Loading(val readerSettings: NovelReaderSettings? = null) : State
         data class Error(val message: String?) : State
@@ -2696,7 +2592,6 @@ class NovelReaderScreenModel(
     )
     companion object {
         private const val JAOMIX_PAGE_SOURCE_ORDER_STRIDE = 1_000L
-        private const val MAX_DEEPSEEK_CONCURRENCY = 32
         private const val PRIVATE_FALLBACK_CHUNK_SIZE = 40
         private const val PRIVATE_FALLBACK_CONCURRENCY = 1
         private const val TTS_BASE_MILLIS_PER_WORD = 360f

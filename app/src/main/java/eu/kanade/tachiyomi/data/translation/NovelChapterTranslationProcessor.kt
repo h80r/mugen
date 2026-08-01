@@ -16,7 +16,11 @@ import eu.kanade.tachiyomi.ui.reader.novel.translation.MistralTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NvidiaTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OllamaCloudTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OpenRouterTranslationService
+import eu.kanade.tachiyomi.ui.reader.novel.translation.effectiveTranslationBatchSize
+import eu.kanade.tachiyomi.ui.reader.novel.translation.hasConfiguredTranslationProvider
+import eu.kanade.tachiyomi.ui.reader.novel.translation.isPrivateBridgeUnlocked
 import eu.kanade.tachiyomi.ui.reader.novel.translation.normalizeTranslationReasoningEffort
+import eu.kanade.tachiyomi.ui.reader.novel.translation.shouldUseSinglePrivateChapterRequestMode
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toDeepSeekTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toGeminiTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toMistralTranslationParams
@@ -24,6 +28,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.translation.toNvidiaTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toOllamaCloudTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toOpenRouterTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.translationCacheModelId
+import eu.kanade.tachiyomi.ui.reader.novel.translation.translationConcurrencyLimit
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -390,72 +395,6 @@ private fun NovelTranslationProvider.supportsGranularFallback(): Boolean {
         this == NovelTranslationProvider.OLLAMA_CLOUD
 }
 
-private fun NovelReaderSettings.hasConfiguredTranslationProvider(): Boolean {
-    if (!geminiEnabled) return false
-    return when (translationProvider) {
-        NovelTranslationProvider.GEMINI -> geminiApiKey.isNotBlank()
-        NovelTranslationProvider.GEMINI_PRIVATE -> {
-            geminiApiKey.isNotBlank() && isPrivateBridgeUnlocked()
-        }
-        NovelTranslationProvider.OPENROUTER -> {
-            openRouterBaseUrl.isNotBlank() &&
-                openRouterApiKey.isNotBlank() &&
-                openRouterModel.isNotBlank()
-        }
-        NovelTranslationProvider.DEEPSEEK -> {
-            deepSeekBaseUrl.isNotBlank() && deepSeekApiKey.isNotBlank() && deepSeekModel.isNotBlank()
-        }
-        NovelTranslationProvider.MISTRAL -> {
-            mistralBaseUrl.isNotBlank() && mistralApiKey.isNotBlank() && mistralModel.isNotBlank()
-        }
-        NovelTranslationProvider.NVIDIA -> {
-            nvidiaApiKey.isNotBlank() &&
-                nvidiaModel.isNotBlank()
-        }
-        NovelTranslationProvider.OLLAMA_CLOUD -> {
-            ollamaCloudBaseUrl.isNotBlank() &&
-                ollamaCloudApiKey.isNotBlank() &&
-                ollamaCloudModel.isNotBlank()
-        }
-    }
-}
-
-private fun NovelReaderSettings.translationConcurrencyLimit(): Int {
-    return when (translationProvider) {
-        NovelTranslationProvider.GEMINI -> geminiConcurrency.coerceIn(1, 8)
-        NovelTranslationProvider.GEMINI_PRIVATE -> {
-            if (shouldUseSinglePrivateChapterRequestMode()) 1 else geminiConcurrency.coerceIn(1, 8)
-        }
-        NovelTranslationProvider.OPENROUTER -> 1
-        NovelTranslationProvider.DEEPSEEK -> geminiConcurrency.coerceIn(1, MAX_DEEPSEEK_CONCURRENCY)
-        NovelTranslationProvider.OLLAMA_CLOUD -> geminiConcurrency.coerceIn(1, 8)
-        else -> geminiConcurrency.coerceIn(1, 8)
-    }
-}
-
-private fun NovelReaderSettings.effectiveTranslationBatchSize(): Int {
-    val requested = geminiBatchSize.coerceIn(1, 80)
-    return when (translationProvider) {
-        else -> requested
-    }
-}
-
-private fun NovelReaderSettings.shouldUseSinglePrivateChapterRequestMode(): Boolean {
-    return translationProvider == NovelTranslationProvider.GEMINI_PRIVATE &&
-        GeminiPrivateBridge.isInstalled() &&
-        (GeminiPrivateBridge.forceSingleChapterRequest() || geminiPrivatePythonLikeMode)
-}
-
-private fun NovelReaderSettings.requiresPrivateBridgeUnlock(): Boolean {
-    return translationProvider == NovelTranslationProvider.GEMINI_PRIVATE &&
-        GeminiPrivateBridge.isInstalled()
-}
-
-private fun NovelReaderSettings.isPrivateBridgeUnlocked(): Boolean {
-    if (!requiresPrivateBridgeUnlock()) return true
-    return geminiPrivateUnlocked || GeminiPrivateBridge.isUnlocked()
-}
-
 private fun NovelReaderSettings.translationRequestConfigLog(): String {
     val common = buildString {
         append("provider=").append(translationProvider.name)
@@ -523,6 +462,5 @@ private fun NovelReaderSettings.translationRequestConfigLog(): String {
 
 private fun Float.toLogFloat(): String = String.format(Locale.US, "%.3f", this)
 
-private const val MAX_DEEPSEEK_CONCURRENCY = 32
 private const val PRIVATE_FALLBACK_CHUNK_SIZE = 40
 private const val PRIVATE_FALLBACK_CONCURRENCY = 1
