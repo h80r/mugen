@@ -250,21 +250,36 @@ class NovelReaderScreenModelTest {
             holder.put("gemini", mapOf(0 to "g"))
             holder.put("google", mapOf(0 to "g"))
             setPrivateField(screenModel, "translationHolder", holder)
-            setPrivateField(screenModel, "geminiLogs", listOf("gemini"))
-            setPrivateField(screenModel, "googleLogs", listOf("google"))
-            setPrivateField(screenModel, "isGeminiTranslating", true)
-            setPrivateField(screenModel, "isGoogleTranslating", true)
-            setPrivateField(screenModel, "isGeminiTranslationVisible", true)
-            setPrivateField(screenModel, "isGoogleTranslationVisible", true)
-            setPrivateField(screenModel, "hasGeminiTranslationCache", true)
-            setPrivateField(screenModel, "hasGoogleTranslationCache", true)
-            setPrivateField(screenModel, "geminiTranslationProgress", 77)
-            setPrivateField(screenModel, "googleTranslationProgress", 88)
+            getPrivateField<NovelTranslationController>(screenModel, "translationController")
+                .restoreFromReaderState(
+                    gemini = NovelReaderScreenModel.State.ReaderGeminiState(
+                        isGeminiTranslating = true,
+                        geminiTranslationProgress = 77,
+                        isGeminiTranslationVisible = true,
+                        hasGeminiTranslationCache = true,
+                        geminiLogs = listOf("gemini"),
+                    ),
+                    google = NovelReaderScreenModel.State.ReaderGoogleState(
+                        isGoogleTranslating = true,
+                        googleTranslationProgress = 88,
+                        isGoogleTranslationVisible = true,
+                        hasGoogleTranslationCache = true,
+                        googleLogs = listOf("google"),
+                    ),
+                )
             setPrivateField(screenModel, "hasTriggeredNextChapterPrefetch", true)
             setPrivateField(screenModel, "hasTriggeredNextChapterGeminiPrefetch", true)
-            setPrivateField(screenModel, "hasTriggeredGeminiAutoStart", true)
+            setPrivateField(
+                getPrivateField<Any>(screenModel, "translationController"),
+                "hasTriggeredGeminiAutoStart",
+                true,
+            )
             setPrivateField(screenModel, "attemptedJaomixPages", mutableSetOf(1))
-            setPrivateField(screenModel, "chapterReadStartTimeMs", sentinelTime)
+            setPrivateField(
+                getPrivateField<Any>(screenModel, "progressPersistenceController"),
+                "chapterReadStartTimeMs",
+                sentinelTime,
+            )
 
             invokePrivateClearChapterTransientState(screenModel)
 
@@ -273,21 +288,31 @@ class NovelReaderScreenModelTest {
                 true
             getPrivateField<NovelReaderTranslationHolder>(screenModel, "translationHolder").isEmpty("google") shouldBe
                 true
-            getPrivateField<List<Any?>>(screenModel, "geminiLogs") shouldBe emptyList<Any?>()
-            getPrivateField<List<Any?>>(screenModel, "googleLogs") shouldBe emptyList<Any?>()
-            getPrivateField<Boolean>(screenModel, "isGeminiTranslating") shouldBe false
-            getPrivateField<Boolean>(screenModel, "isGoogleTranslating") shouldBe false
-            getPrivateField<Boolean>(screenModel, "isGeminiTranslationVisible") shouldBe false
-            getPrivateField<Boolean>(screenModel, "isGoogleTranslationVisible") shouldBe false
-            getPrivateField<Boolean>(screenModel, "hasGeminiTranslationCache") shouldBe false
-            getPrivateField<Boolean>(screenModel, "hasGoogleTranslationCache") shouldBe false
-            getPrivateField<Int>(screenModel, "geminiTranslationProgress") shouldBe 0
-            getPrivateField<Int>(screenModel, "googleTranslationProgress") shouldBe 0
+            val translationState =
+                getPrivateField<NovelTranslationController>(screenModel, "translationController").snapshot()
+            translationState.geminiLogs shouldBe emptyList()
+            translationState.googleLogs shouldBe emptyList()
+            translationState.isGeminiTranslating shouldBe false
+            translationState.isGoogleTranslating shouldBe false
+            translationState.isGeminiTranslationVisible shouldBe false
+            translationState.isGoogleTranslationVisible shouldBe false
+            translationState.hasGeminiTranslationCache shouldBe false
+            translationState.hasGoogleTranslationCache shouldBe false
+            translationState.geminiTranslationProgress shouldBe 0
+            translationState.googleTranslationProgress shouldBe 0
             getPrivateField<Boolean>(screenModel, "hasTriggeredNextChapterPrefetch") shouldBe false
             getPrivateField<Boolean>(screenModel, "hasTriggeredNextChapterGeminiPrefetch") shouldBe false
-            getPrivateField<Boolean>(screenModel, "hasTriggeredGeminiAutoStart") shouldBe false
+            getPrivateField<Boolean>(
+                getPrivateField<Any>(screenModel, "translationController"),
+                "hasTriggeredGeminiAutoStart",
+            ) shouldBe false
             getPrivateField<MutableSet<Int>>(screenModel, "attemptedJaomixPages") shouldBe emptySet()
-            (getPrivateField<Long>(screenModel, "chapterReadStartTimeMs") > sentinelTime) shouldBe true
+            (
+                getPrivateField<Long>(
+                    getPrivateField<Any>(screenModel, "progressPersistenceController"),
+                    "chapterReadStartTimeMs",
+                ) > sentinelTime
+                ) shouldBe true
         }
     }
 
@@ -374,10 +399,16 @@ class NovelReaderScreenModelTest {
             val holder = NovelReaderTranslationHolder { successState.textBlocks }
             holder.put("gemini", translatedByIndex)
             setPrivateField(screenModel, "translationHolder", holder)
-            setPrivateField(screenModel, "isGeminiTranslationVisible", true)
-            setPrivateField(screenModel, "hasGeminiTranslationCache", true)
-            setPrivateField(screenModel, "isGeminiTranslating", false)
-            setPrivateField(screenModel, "geminiTranslationProgress", 100)
+            getPrivateField<NovelTranslationController>(screenModel, "translationController")
+                .restoreFromReaderState(
+                    gemini = NovelReaderScreenModel.State.ReaderGeminiState(
+                        isGeminiTranslating = false,
+                        geminiTranslationProgress = 100,
+                        isGeminiTranslationVisible = true,
+                        hasGeminiTranslationCache = true,
+                    ),
+                    google = NovelReaderScreenModel.State.ReaderGoogleState(),
+                )
             invokePrivateUpdateContent(screenModel, translatedSettings)
 
             val before = screenModel.state.value.shouldBeInstanceOf<NovelReaderScreenModel.State.Success>()
@@ -757,7 +788,11 @@ class NovelReaderScreenModelTest {
             val holder = NovelReaderTranslationHolder { emptyList() }
             holder.put("gemini", mapOf(0 to "Переведенный абзац"))
             setPrivateField(screenModel, "translationHolder", holder)
-            setPrivateField(screenModel, "isGeminiTranslationVisible", false)
+            getPrivateField<NovelTranslationController>(screenModel, "translationController")
+                .restoreFromReaderState(
+                    gemini = NovelReaderScreenModel.State.ReaderGeminiState(isGeminiTranslationVisible = false),
+                    google = NovelReaderScreenModel.State.ReaderGoogleState(),
+                )
 
             val translatedModel = invokePrivateResolveTranslatedTtsChapterModel(
                 target = screenModel,
@@ -826,7 +861,11 @@ class NovelReaderScreenModelTest {
             val holder = NovelReaderTranslationHolder { emptyList() }
             holder.put("google", mapOf(0 to "Переведенный абзац"))
             setPrivateField(screenModel, "translationHolder", holder)
-            setPrivateField(screenModel, "isGoogleTranslationVisible", true)
+            getPrivateField<NovelTranslationController>(screenModel, "translationController")
+                .restoreFromReaderState(
+                    gemini = NovelReaderScreenModel.State.ReaderGeminiState(),
+                    google = NovelReaderScreenModel.State.ReaderGoogleState(isGoogleTranslationVisible = true),
+                )
 
             val translatedModel = invokePrivateResolveTranslatedTtsChapterModel(
                 target = screenModel,
@@ -876,8 +915,11 @@ class NovelReaderScreenModelTest {
             val holder = NovelReaderTranslationHolder { emptyList() }
             holder.put("google", mapOf(0 to "Переведённый абзац"))
             setPrivateField(screenModel, "translationHolder", holder)
-            setPrivateField(screenModel, "isGoogleTranslationVisible", true)
-            setPrivateField(screenModel, "isGoogleTranslationVisible", true)
+            getPrivateField<NovelTranslationController>(screenModel, "translationController")
+                .restoreFromReaderState(
+                    gemini = NovelReaderScreenModel.State.ReaderGeminiState(),
+                    google = NovelReaderScreenModel.State.ReaderGoogleState(isGoogleTranslationVisible = true),
+                )
 
             invokePrivateUpdateContent(
                 target = screenModel,

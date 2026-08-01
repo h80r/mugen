@@ -33,9 +33,11 @@ internal interface NovelBookReaderHost {
     fun bookMarkChapterReadInMemory(chapterId: Long)
     fun bookTtsChapterRepository(): NovelTtsChapterRepository
 
-    fun bookUpdateSuccessState(transform: (NovelReaderScreenModel.State.Success) -> NovelReaderScreenModel.State.Success)
+    fun bookUpdateSuccessState(
+        transform: (NovelReaderScreenModel.State.Success) -> NovelReaderScreenModel.State.Success,
+    )
     fun bookAdoptBookModeChapter(chapterId: Long)
-    fun bookEnqueueProgressPersistence(update: NovelReaderScreenModel.PendingProgressPersistence)
+    fun bookEnqueueProgressPersistence(update: PendingProgressPersistence)
     fun bookUpdateReadingProgress(currentIndex: Int, totalItems: Int, persistedProgress: Long?)
     fun bookApplyBookSectionTranslation(chapterId: Long, bodyHtml: String): String
     fun bookGeminiTranslationVisible(): Boolean
@@ -693,7 +695,7 @@ internal class NovelBookReaderController(
             val becameRead = !chapter.read
             host.bookMarkChapterReadInMemory(chapterId)
             host.bookEnqueueProgressPersistence(
-                NovelReaderScreenModel.PendingProgressPersistence(
+                PendingProgressPersistence(
                     chapterId = chapter.id,
                     novelId = chapter.novelId,
                     chapterNumber = chapter.chapterNumber.toInt(),

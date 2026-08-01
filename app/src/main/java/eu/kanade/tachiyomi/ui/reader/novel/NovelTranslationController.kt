@@ -1,15 +1,15 @@
 package eu.kanade.tachiyomi.ui.reader.novel
 
 import android.app.Application
+import eu.kanade.tachiyomi.data.translation.TranslationJob
+import eu.kanade.tachiyomi.data.translation.TranslationQueueManager
+import eu.kanade.tachiyomi.data.translation.TranslationStatus
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
 import eu.kanade.tachiyomi.ui.reader.novel.translation.GoogleTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.GoogleTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.GoogleTranslationSessionCache
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelReaderTranslationCacheResolver
-import eu.kanade.tachiyomi.data.translation.TranslationJob
-import eu.kanade.tachiyomi.data.translation.TranslationQueueManager
-import eu.kanade.tachiyomi.data.translation.TranslationStatus
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelReaderTranslationDiskCacheStore
 import eu.kanade.tachiyomi.ui.reader.novel.translation.TranslationPhase
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toTranslationCacheRequirements
@@ -104,7 +104,10 @@ internal class NovelTranslationController(
     fun snapshot(): NovelTranslationState = state
 
     /** Copies the current flags back into the controller (used after the screen model builds a state). */
-    fun restoreFromReaderState(gemini: NovelReaderScreenModel.State.ReaderGeminiState, google: NovelReaderScreenModel.State.ReaderGoogleState) {
+    fun restoreFromReaderState(
+        gemini: NovelReaderScreenModel.State.ReaderGeminiState,
+        google: NovelReaderScreenModel.State.ReaderGoogleState,
+    ) {
         state = state.copy(
             isGeminiTranslating = gemini.isGeminiTranslating,
             geminiTranslationProgress = gemini.geminiTranslationProgress,
@@ -263,7 +266,11 @@ internal class NovelTranslationController(
         if (!settings.geminiEnabled || !(requestedAutoStart || englishSourceAutoStart)) return
         if (!host.translationHasConfiguredProvider(settings)) return
         if (host.translationCurrentParsedTextBlocks().isEmpty()) return
-        if (state.isGeminiTranslating || state.hasGeminiTranslationCache || !host.translationHolderIsEmpty("gemini")) return
+        if (state.isGeminiTranslating || state.hasGeminiTranslationCache ||
+            !host.translationHolderIsEmpty("gemini")
+        ) {
+            return
+        }
         hasTriggeredGeminiAutoStart = true
         pendingAutoStartGeminiTranslation = false
         addAiTranslationLog("?? Auto-start translation for English source")
@@ -682,5 +689,6 @@ internal class NovelTranslationController(
         googleTranslationJob = null
         queueProgressJob?.cancel()
         queueProgressJob = null
+        hasTriggeredGeminiAutoStart = false
     }
 }

@@ -9,7 +9,6 @@ import eu.kanade.domain.items.novelchapter.interactor.SyncNovelChaptersWithSourc
 import eu.kanade.domain.items.novelchapter.model.toSNovelChapter
 import eu.kanade.domain.source.interactor.NovelReaderIncognitoState
 import eu.kanade.domain.source.novel.interactor.GetNovelIncognitoState
-import eu.kanade.domain.track.novel.interactor.TrackNovelChapter
 import eu.kanade.presentation.reader.novel.NovelAutoScrollHandoffState
 import eu.kanade.presentation.reader.novel.NovelReaderAutoScrollHandoffPolicy
 import eu.kanade.presentation.reader.novel.NovelReaderTtsChapterHandoffPolicy
@@ -123,9 +122,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -146,11 +143,9 @@ import org.jsoup.nodes.TextNode
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.achievement.handler.AchievementEventBus
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.achievement.repository.ActivityDataRepository
 import tachiyomi.domain.entries.novel.interactor.GetNovel
 import tachiyomi.domain.entries.novel.model.Novel
-import tachiyomi.domain.history.novel.model.NovelHistoryUpdate
 import tachiyomi.domain.history.novel.repository.NovelHistoryRepository
 import tachiyomi.domain.items.novelchapter.model.NovelChapter
 import tachiyomi.domain.items.novelchapter.model.NovelChapterUpdate
@@ -161,7 +156,6 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.aniyomi.AYMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.util.Date
 import java.util.LinkedHashMap
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -361,7 +355,8 @@ class NovelReaderScreenModel(
     NovelBookReaderHost,
     NovelTtsHost,
     NovelAiProviderHost,
-    NovelTranslationHost {
+    NovelTranslationHost,
+    NovelProgressPersistenceHost {
     private val contentPrefetchService = ContentPrefetchService(
         environment = runCatching {
             AndroidContentPrefetchEnvironment(Injekt.get<Application>())
@@ -480,18 +475,18 @@ class NovelReaderScreenModel(
         lastSavedProgress = chapter.lastPageRead
         initialProgressIndex = 0
         hasProgressChanged = true
-        chapterReadStartTimeMs = System.currentTimeMillis()
+        progressPersistenceController.resetSessionReadTimer()
         if (previousChapterId != null) {
             screenModelScope.launch {
                 withContext(NonCancellable) {
-                    flushPendingHistorySnapshot(previousChapterId)
+                    progressPersistenceController.flushPendingHistorySnapshot(previousChapterId)
                 }
             }
         }
     }
 
     override fun bookEnqueueProgressPersistence(update: PendingProgressPersistence) =
-        enqueueProgressPersistence(update)
+        progressPersistenceController.enqueueProgressPersistence(update)
 
     override fun bookUpdateReadingProgress(currentIndex: Int, totalItems: Int, persistedProgress: Long?) =
         updateReadingProgress(currentIndex, totalItems, persistedProgress)
@@ -673,6 +668,17 @@ class NovelReaderScreenModel(
         )
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // NovelProgressPersistenceHost implementation: the progress persistence controller reaches the
+    // shared reader state here.
+    // ---------------------------------------------------------------------------------------------
+
+    override val progressScope: CoroutineScope get() = screenModelScope
+
+    override fun progressCurrentChapterId(): Long? = currentChapter?.id
+
+    override fun progressCurrentNovel(): Novel? = currentNovel
+
     /**
      * TTS subsystem, extracted into its own controller. The screen model hosts the shared state
      * through [NovelTtsHost] and forwards the reader's `tts*` calls.
@@ -703,8 +709,6 @@ class NovelReaderScreenModel(
     private var lastSavedRead: Boolean? = null
     private var initialProgressIndex: Int = 0
     private var hasProgressChanged: Boolean = false
-    private var chapterReadStartTimeMs: Long = System.currentTimeMillis()
-    private var pendingHistoryReadDurationMs: Long = 0L
     private var nextChapterPrefetchJob: Job? = null
 
     /**
@@ -767,6 +771,19 @@ class NovelReaderScreenModel(
     private val aiProvidersState: NovelAiProviderState
         get() = aiProviderController.snapshot()
 
+    /**
+     * Chapter progress + reading-history persistence subsystem. Owns the pending-progress queue and
+     * the bounded flush pipeline; the screen model forwards the reader's persistence calls here.
+     */
+    private val progressPersistenceController = NovelProgressPersistenceController(
+        host = this,
+        novelChapterRepository = novelChapterRepository,
+        getIncognitoState = getIncognitoState,
+        eventBus = eventBus,
+        activityDataRepository = activityDataRepository,
+        historyRepository = historyRepository,
+    )
+
     private var selectedTextTranslationSelection: NovelSelectedTextSelection? = null
     private var selectedTextTranslationUiState: NovelSelectedTextTranslationUiState =
         NovelSelectedTextTranslationUiState.Idle
@@ -775,20 +792,11 @@ class NovelReaderScreenModel(
     private var novelDictionaryUiState: NovelDictionaryUiState = NovelDictionaryUiState.Idle
     private var novelDictionaryJob: Job? = null
     private val novelDictionarySessionCache = NovelDictionarySessionCache()
-    private val progressPersistenceMutex = Mutex()
-    private val pendingProgressPersistenceByChapterId = linkedMapOf<Long, PendingProgressPersistence>()
-    private var progressPersistenceJob: Job? = null
     private var incognitoObservationJob: Job? = null
-
-    @Volatile
-    private var progressPersistenceScheduled = false
 
     private val structuredJson = Json {
         ignoreUnknownKeys = true
         isLenient = true
-    }
-    private val resolvedHistoryRepository by lazy {
-        historyRepository ?: runCatching { Injekt.get<NovelHistoryRepository>() }.getOrNull()
     }
     init {
         ttsController.attach()
@@ -852,7 +860,7 @@ class NovelReaderScreenModel(
             mutableState.value = State.Loading(initialSettings)
         }
         if (contentModel == null) return setError("Chapter content is empty")
-        chapterReadStartTimeMs = System.currentTimeMillis()
+        progressPersistenceController.resetSessionReadTimer()
         bookController.startForChapter(chapter)
         observeReadingModeChanges(chapter)
         translationController.restoreGeminiTranslationFromCache(
@@ -881,7 +889,7 @@ class NovelReaderScreenModel(
                 normalizedChapterHtml,
             )
         ) {
-            saveHistorySnapshot(chapter.id, sessionReadDurationMs = 0L)
+            progressPersistenceController.saveHistorySnapshot(chapter.id, sessionReadDurationMs = 0L)
         } else {
             logcat(LogPriority.DEBUG) {
                 "Skip novel history for empty chapter content novelId=${novel.id} chapterId=${chapter.id}"
@@ -1383,7 +1391,7 @@ class NovelReaderScreenModel(
             becameRead = becameRead,
         )
         val shouldEmitNovelCompleted = becameRead && chapterOrderList.all { it.read }
-        enqueueProgressPersistence(
+        progressPersistenceController.enqueueProgressPersistence(
             PendingProgressPersistence(
                 chapterId = chapter.id,
                 novelId = chapter.novelId,
@@ -1392,7 +1400,7 @@ class NovelReaderScreenModel(
                 lastPageRead = newProgress,
                 emitReadEvent = becameRead,
                 emitNovelCompleted = shouldEmitNovelCompleted,
-                sessionReadDurationMs = System.currentTimeMillis() - chapterReadStartTimeMs,
+                sessionReadDurationMs = progressPersistenceController.sessionReadDurationMs(),
             ),
         )
     }
@@ -1447,63 +1455,12 @@ class NovelReaderScreenModel(
     fun createTtsPlaybackServiceRuntime(): NovelTtsPlaybackServiceRuntime =
         ttsController.createTtsPlaybackServiceRuntime()
 
-    private fun enqueueProgressPersistence(update: PendingProgressPersistence) {
-        progressPersistenceScheduled = true
-        // NonCancellable must wrap the block via withContext — passing it to launch() is
-        // deprecated and breaks structured concurrency (will become an error).
-        screenModelScope.launch {
-            withContext(NonCancellable) {
-                progressPersistenceMutex.withLock {
-                    pendingProgressPersistenceByChapterId[update.chapterId] =
-                        pendingProgressPersistenceByChapterId[update.chapterId]?.merge(update) ?: update
-                    if (progressPersistenceJob?.isActive == true) {
-                        return@withLock
-                    }
-                    progressPersistenceJob = screenModelScope.launch {
-                        withContext(NonCancellable) {
-                            try {
-                                flushPendingProgressPersistence()
-                            } finally {
-                                progressPersistenceMutex.withLock {
-                                    progressPersistenceJob = null
-                                    progressPersistenceScheduled =
-                                        pendingProgressPersistenceByChapterId.isNotEmpty()
-                                }
-                                // The flush may have stopped at its per-run budget while the reader
-                                // is still streaming positions; drain the rest instead of leaving the
-                                // tail until the next enqueue.
-                                if (progressPersistenceScheduled) {
-                                    scheduleProgressPersistenceFlush()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    suspend fun awaitPendingProgressPersistence() {
-        while (true) {
-            val activeJob = progressPersistenceMutex.withLock {
-                progressPersistenceJob?.takeIf { it.isActive }
-            }
-            if (activeJob != null) {
-                activeJob.join()
-                continue
-            }
-            if (!progressPersistenceScheduled) return
-            kotlinx.coroutines.yield()
-        }
-    }
-    suspend fun persistCurrentChapterExitState() {
-        val chapterId = currentChapter?.id ?: return
-        val finalReadDurationMs = (System.currentTimeMillis() - chapterReadStartTimeMs).coerceAtLeast(0L)
-        awaitPendingProgressPersistence()
-        flushPendingHistorySnapshot(
-            chapterId = chapterId,
-            additionalReadDurationMs = finalReadDurationMs,
-        )
-    }
+    suspend fun awaitPendingProgressPersistence() =
+        progressPersistenceController.awaitPendingProgressPersistence()
+
+    suspend fun persistCurrentChapterExitState() =
+        progressPersistenceController.persistCurrentChapterExitState()
+
     suspend fun awaitDisposalCleanup() {
         withTimeoutOrNull(2_000) {
             screenModelScope.coroutineContext[kotlinx.coroutines.Job]?.children?.forEach {
@@ -1512,99 +1469,6 @@ class NovelReaderScreenModel(
         }
     }
 
-    /**
-     * Drains pending progress writes, bounded per run.
-     *
-     * A reader that streams positions can keep enqueueing while this loop runs; without a budget the
-     * loop never yielded and held the DB and history writer busy for the whole session. One pass
-     * flushes at most [MAX_PENDING_PROGRESS_FLUSH_PER_RUN] chapters and lets the caller reschedule
-     * the tail (see [scheduleProgressPersistenceFlush]).
-     */
-    private suspend fun flushPendingProgressPersistence() {
-        var flushed = 0
-        while (flushed < MAX_PENDING_PROGRESS_FLUSH_PER_RUN) {
-            val nextUpdate = progressPersistenceMutex.withLock {
-                val iterator = pendingProgressPersistenceByChapterId.entries.iterator()
-                if (!iterator.hasNext()) return
-                val next = iterator.next().value
-                iterator.remove()
-                next
-            }
-            flushed += 1
-
-            if (getIncognitoState.shouldPauseHistory(currentNovel?.source, currentNovel?.favorite == true)) {
-                return
-            }
-
-            novelChapterRepository.updateChapter(
-                NovelChapterUpdate(
-                    id = nextUpdate.chapterId,
-                    read = nextUpdate.read,
-                    lastPageRead = nextUpdate.lastPageRead,
-                ),
-            )
-
-            if (nextUpdate.emitReadEvent) {
-                if (eu.kanade.domain.easteregg.aurora.AuroraNight.isVeilThin()) {
-                    val manager = Injekt.get<eu.kanade.domain.easteregg.aurora.AuroraHeartManager>()
-                    manager.registerNightAction()
-                    manager.revealHint()
-                }
-                eventBus?.tryEmit(
-                    AchievementEvent.NovelChapterRead(
-                        novelId = nextUpdate.novelId,
-                        chapterNumber = nextUpdate.chapterNumber,
-                    ),
-                )
-                if (nextUpdate.emitNovelCompleted) {
-                    eventBus?.tryEmit(AchievementEvent.NovelCompleted(nextUpdate.novelId))
-                }
-                activityDataRepository.recordReading(
-                    id = nextUpdate.chapterId,
-                    chaptersCount = 1,
-                    durationMs = nextUpdate.sessionReadDurationMs.coerceAtLeast(0L),
-                )
-                if (Injekt.get<eu.kanade.domain.track.service.TrackPreferences>().autoUpdateTrack().get()) {
-                    val context = Injekt.get<Application>()
-                    Injekt.get<TrackNovelChapter>().await(
-                        context,
-                        nextUpdate.novelId,
-                        nextUpdate.chapterNumber.toDouble(),
-                    )
-                }
-            }
-
-            val now = System.currentTimeMillis()
-            pendingHistoryReadDurationMs += nextUpdate.sessionReadDurationMs.coerceAtLeast(0L)
-            if (nextUpdate.emitReadEvent) {
-                flushPendingHistorySnapshot(nextUpdate.chapterId)
-            }
-            chapterReadStartTimeMs = now
-        }
-    }
-
-    /** Starts another bounded flush when the previous one stopped at its per-run budget. */
-    private suspend fun scheduleProgressPersistenceFlush() {
-        progressPersistenceMutex.withLock {
-            if (progressPersistenceJob?.isActive == true) return
-            if (pendingProgressPersistenceByChapterId.isEmpty()) return
-            progressPersistenceJob = screenModelScope.launch {
-                withContext(NonCancellable) {
-                    try {
-                        flushPendingProgressPersistence()
-                    } finally {
-                        progressPersistenceMutex.withLock {
-                            progressPersistenceJob = null
-                            progressPersistenceScheduled = pendingProgressPersistenceByChapterId.isNotEmpty()
-                        }
-                        if (progressPersistenceScheduled) {
-                            scheduleProgressPersistenceFlush()
-                        }
-                    }
-                }
-            }
-        }
-    }
     private fun maybePrefetchNextChapterOnProgress(
         currentIndex: Int,
         totalItems: Int,
@@ -1881,9 +1745,7 @@ class NovelReaderScreenModel(
         dictionaryTts?.stop()
         dictionaryTts?.shutdown()
         dictionaryTts = null
-        progressPersistenceJob?.cancel()
-        pendingProgressPersistenceByChapterId.clear()
-        progressPersistenceScheduled = false
+        progressPersistenceController.dispose()
         // Flush the debounced book-mode position before the jobs die: leaving the reader mid-section
         // would otherwise lose up to one debounce window of reading progress, and chapters the reader
         // scrolled past would never be marked read.
@@ -1938,7 +1800,7 @@ class NovelReaderScreenModel(
         ttsController.resetTransientState()
         seriesInterstitialState = null
         seriesInterstitialShownForChapterId = null
-        chapterReadStartTimeMs = System.currentTimeMillis()
+        progressPersistenceController.resetSessionReadTimer()
     }
     fun addAiTranslationLog(message: String) = translationController.addAiTranslationLog(message)
 
@@ -3254,31 +3116,6 @@ class NovelReaderScreenModel(
         if (!requiresPrivateBridgeUnlock()) return true
         return geminiPrivateUnlocked || GeminiPrivateBridge.isUnlocked()
     }
-    private suspend fun saveHistorySnapshot(chapterId: Long, sessionReadDurationMs: Long) {
-        if (getIncognitoState.shouldPauseHistory(currentNovel?.source, currentNovel?.favorite == true)) {
-            return
-        }
-        runCatching {
-            resolvedHistoryRepository?.upsertNovelHistory(
-                NovelHistoryUpdate(
-                    chapterId = chapterId,
-                    readAt = Date(),
-                    sessionReadDuration = sessionReadDurationMs.coerceAtLeast(0L),
-                ),
-            )
-        }.onFailure { error ->
-            logcat(LogPriority.ERROR, error) { "Failed to save novel history snapshot" }
-        }
-    }
-    private suspend fun flushPendingHistorySnapshot(
-        chapterId: Long,
-        additionalReadDurationMs: Long = 0L,
-    ) {
-        val readDurationMs = (pendingHistoryReadDurationMs + additionalReadDurationMs).coerceAtLeast(0L)
-        if (readDurationMs <= 0L) return
-        pendingHistoryReadDurationMs = 0L
-        saveHistorySnapshot(chapterId, readDurationMs)
-    }
     sealed interface State {
         data class Loading(val readerSettings: NovelReaderSettings? = null) : State
         data class Error(val message: String?) : State
@@ -3460,29 +3297,6 @@ class NovelReaderScreenModel(
         data class Text(val text: String) : ContentBlock
         data class Image(val url: String, val alt: String?) : ContentBlock
     }
-    data class PendingProgressPersistence(
-        val chapterId: Long,
-        val novelId: Long,
-        val chapterNumber: Int,
-        val read: Boolean,
-        val lastPageRead: Long,
-        val emitReadEvent: Boolean,
-        val emitNovelCompleted: Boolean,
-        val sessionReadDurationMs: Long,
-    ) {
-        fun merge(other: PendingProgressPersistence): PendingProgressPersistence {
-            require(chapterId == other.chapterId) {
-                "Pending progress persistence can only merge updates for the same chapter"
-            }
-            return copy(
-                read = other.read,
-                lastPageRead = other.lastPageRead,
-                emitReadEvent = emitReadEvent || other.emitReadEvent,
-                emitNovelCompleted = emitNovelCompleted || other.emitNovelCompleted,
-                sessionReadDurationMs = maxOf(sessionReadDurationMs, other.sessionReadDurationMs),
-            )
-        }
-    }
     private data class ChapterNavigation(
         val previousChapterId: Long?,
         val previousChapterName: String?,
@@ -3490,12 +3304,6 @@ class NovelReaderScreenModel(
         val nextChapterName: String?,
     )
     companion object {
-        /**
-         * Upper bound of chapters one progress-flush run writes before yielding to the caller.
-         * Streaming readers can enqueue positions faster than the DB drains them; without the budget
-         * the flush loop held the persistence pipeline busy for the whole reading session.
-         */
-        private const val MAX_PENDING_PROGRESS_FLUSH_PER_RUN = 16
         private const val JAOMIX_PAGE_SOURCE_ORDER_STRIDE = 1_000L
         private const val MAX_DEEPSEEK_CONCURRENCY = 32
         private const val PRIVATE_FALLBACK_CHUNK_SIZE = 40
