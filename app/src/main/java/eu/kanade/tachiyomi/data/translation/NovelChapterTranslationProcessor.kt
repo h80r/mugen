@@ -4,11 +4,8 @@ import android.app.Application
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTranslationProvider
-import eu.kanade.tachiyomi.ui.reader.novel.translation.DEEPSEEK_DEFAULT_FREQUENCY_PENALTY
-import eu.kanade.tachiyomi.ui.reader.novel.translation.DEEPSEEK_DEFAULT_PRESENCE_PENALTY
 import eu.kanade.tachiyomi.ui.reader.novel.translation.DeepSeekPromptResolver
 import eu.kanade.tachiyomi.ui.reader.novel.translation.DeepSeekTranslationService
-import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiPrivateBridge
 import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiPromptResolver
 import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.MistralPromptResolver
@@ -18,8 +15,6 @@ import eu.kanade.tachiyomi.ui.reader.novel.translation.OllamaCloudTranslationSer
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OpenRouterTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.effectiveTranslationBatchSize
 import eu.kanade.tachiyomi.ui.reader.novel.translation.hasConfiguredTranslationProvider
-import eu.kanade.tachiyomi.ui.reader.novel.translation.isPrivateBridgeUnlocked
-import eu.kanade.tachiyomi.ui.reader.novel.translation.normalizeTranslationReasoningEffort
 import eu.kanade.tachiyomi.ui.reader.novel.translation.shouldUseSinglePrivateChapterRequestMode
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toDeepSeekTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toGeminiTranslationParams
@@ -27,8 +22,8 @@ import eu.kanade.tachiyomi.ui.reader.novel.translation.toMistralTranslationParam
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toNvidiaTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toOllamaCloudTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toOpenRouterTranslationParams
-import eu.kanade.tachiyomi.ui.reader.novel.translation.translationCacheModelId
 import eu.kanade.tachiyomi.ui.reader.novel.translation.translationConcurrencyLimit
+import eu.kanade.tachiyomi.ui.reader.novel.translation.translationRequestConfigLog
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -41,7 +36,6 @@ import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 class NovelChapterTranslationProcessor(
@@ -394,73 +388,6 @@ private fun NovelTranslationProvider.supportsGranularFallback(): Boolean {
         this == NovelTranslationProvider.NVIDIA ||
         this == NovelTranslationProvider.OLLAMA_CLOUD
 }
-
-private fun NovelReaderSettings.translationRequestConfigLog(): String {
-    val common = buildString {
-        append("provider=").append(translationProvider.name)
-        append(", model=").append(translationCacheModelId())
-        append(", lang=").append(geminiSourceLang).append("->").append(geminiTargetLang)
-        append(", prompt=").append(geminiPromptMode.name)
-        append(", style=").append(geminiStylePreset.name)
-        if (shouldUseSinglePrivateChapterRequestMode()) {
-            append(", batch=chapter")
-            append(", concurrency=1")
-        } else {
-            append(", batch=").append(effectiveTranslationBatchSize())
-            append(", concurrency=").append(translationConcurrencyLimit())
-        }
-        append(", relaxed=").append(geminiRelaxedMode)
-        append(", cache=").append(!geminiDisableCache)
-    }
-    val sampling = when (translationProvider) {
-        NovelTranslationProvider.GEMINI -> {
-            "temp=${geminiTemperature.toLogFloat()}, topP=${geminiTopP.toLogFloat()}, topK=$geminiTopK, " +
-                "reasoning=$geminiReasoningEffort, budgetTokens=$geminiBudgetTokens"
-        }
-        NovelTranslationProvider.GEMINI_PRIVATE -> {
-            "temp=${geminiTemperature.toLogFloat()}, topP=${geminiTopP.toLogFloat()}, topK=$geminiTopK, " +
-                "reasoning=$geminiReasoningEffort, budgetTokens=$geminiBudgetTokens, " +
-                "singleRequest=${shouldUseSinglePrivateChapterRequestMode()}, " +
-                "pythonLike=$geminiPrivatePythonLikeMode, " +
-                "bridgeInstalled=${GeminiPrivateBridge.isInstalled()}, bridgeUnlocked=${isPrivateBridgeUnlocked()}"
-        }
-        NovelTranslationProvider.OPENROUTER -> {
-            "baseUrl=${openRouterBaseUrl.trim()}, temp=${geminiTemperature.toLogFloat()}, " +
-                "topP=${geminiTopP.toLogFloat()}"
-        }
-        NovelTranslationProvider.DEEPSEEK -> {
-            val presencePenalty = DEEPSEEK_DEFAULT_PRESENCE_PENALTY.toLogFloat()
-            val frequencyPenalty = DEEPSEEK_DEFAULT_FREQUENCY_PENALTY.toLogFloat()
-            val reasoning = normalizeTranslationReasoningEffort(
-                provider = NovelTranslationProvider.DEEPSEEK,
-                model = deepSeekModel,
-                value = geminiReasoningEffort,
-            ) ?: "none"
-            "baseUrl=${deepSeekBaseUrl.trim()}, temp=${geminiTemperature.toLogFloat()}, " +
-                "topP=${geminiTopP.toLogFloat()}, " +
-                "presencePenalty=$presencePenalty, frequencyPenalty=$frequencyPenalty, " +
-                "reasoning=$reasoning, thinking=${if (reasoning == "none") "disabled" else "enabled"}, " +
-                "stream=false"
-        }
-        NovelTranslationProvider.MISTRAL -> {
-            "baseUrl=${mistralBaseUrl.trim()}, temp=${geminiTemperature.toLogFloat()}, " +
-                "topP=${geminiTopP.toLogFloat()}, stream=false"
-        }
-        NovelTranslationProvider.NVIDIA -> {
-            "baseUrl=${nvidiaBaseUrl.trim()}, temp=${geminiTemperature.toLogFloat()}, " +
-                "topP=${geminiTopP.toLogFloat()}, stream=false"
-        }
-        NovelTranslationProvider.OLLAMA_CLOUD -> {
-            val params = toOllamaCloudTranslationParams()
-            val reasoning = params.reasoningEffort ?: "none"
-            "baseUrl=${params.baseUrl.trim()}, temp=${params.temperature.toLogFloat()}, " +
-                "topP=${params.topP.toLogFloat()}, think=$reasoning, stream=false"
-        }
-    }
-    return "$common, $sampling"
-}
-
-private fun Float.toLogFloat(): String = String.format(Locale.US, "%.3f", this)
 
 private const val PRIVATE_FALLBACK_CHUNK_SIZE = 40
 private const val PRIVATE_FALLBACK_CONCURRENCY = 1

@@ -268,7 +268,11 @@ class NovelReaderScreenModelTest {
                     ),
                 )
             setPrivateField(screenModel, "hasTriggeredNextChapterPrefetch", true)
-            setPrivateField(screenModel, "hasTriggeredNextChapterGeminiPrefetch", true)
+            setPrivateField(
+                getPrivateField<Any>(screenModel, "translationBatchExecutor"),
+                "hasTriggeredNextChapterGeminiPrefetch",
+                true,
+            )
             setPrivateField(
                 getPrivateField<Any>(screenModel, "translationController"),
                 "hasTriggeredGeminiAutoStart",
@@ -301,7 +305,10 @@ class NovelReaderScreenModelTest {
             translationState.geminiTranslationProgress shouldBe 0
             translationState.googleTranslationProgress shouldBe 0
             getPrivateField<Boolean>(screenModel, "hasTriggeredNextChapterPrefetch") shouldBe false
-            getPrivateField<Boolean>(screenModel, "hasTriggeredNextChapterGeminiPrefetch") shouldBe false
+            getPrivateField<Boolean>(
+                getPrivateField<Any>(screenModel, "translationBatchExecutor"),
+                "hasTriggeredNextChapterGeminiPrefetch",
+            ) shouldBe false
             getPrivateField<Boolean>(
                 getPrivateField<Any>(screenModel, "translationController"),
                 "hasTriggeredGeminiAutoStart",
