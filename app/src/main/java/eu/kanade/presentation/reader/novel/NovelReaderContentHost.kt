@@ -3500,351 +3500,111 @@ internal fun NovelReaderContentHost(
             } else {
                 nativeScrollItemsCount
             }
-            val showPageReaderDismissLayer = shouldShowPageReaderDismissLayer(
+            NovelReaderVerticalSeekbar(
                 showReaderUi = showReaderUi,
+                settings = state.readerSettings,
+                showWebView = showWebView,
                 usePageReader = usePageReader,
-            )
-            if (showPageReaderDismissLayer) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(showPageReaderDismissLayer) {
-                            detectTapGestures(
-                                onTap = {
-                                    onSetShowReaderUi(false)
-                                },
-                            )
-                        },
-                )
-            }
-            if (
-                shouldShowVerticalSeekbar(
-                    showReaderUi = showReaderUi,
-                    verticalSeekbarEnabled = state.readerSettings.verticalSeekbar,
-                    showWebView = showWebView,
-                    usePageReader = usePageReader,
-                    textBlocksCount = seekbarItemsCount,
-                )
-            ) {
-                val seekbarValue by remember(
-                    showWebView,
-                    webProgressPercent,
-                    usePageReader,
-                    pagerState.currentPage,
-                    pageTurnCurrentPage,
-                    textListState.firstVisibleItemIndex,
-                    textListState.canScrollForward,
-                    seekbarItemsCount,
-                    readingProgressPercent,
-                    isBookMode,
-                ) {
-                    derivedStateOf {
-                        resolveReaderVerticalSeekbarValue(
-                            showWebView = showWebView,
-                            webProgressPercent = webProgressPercent,
-                            usePageReader = usePageReader,
-                            pageReaderRendererRoute = pageReaderRendererRoute,
-                            pagerCurrentPage = pagerState.currentPage,
-                            pageTurnCurrentPage = pageTurnCurrentPage,
-                            composePagerContentPageCount = pageReaderItemsCount,
-                            composePagerHasPreviousChapter = composePagerHasPreviousChapter,
-                            pageTurnContentPageCount = pageReaderItemsCount,
-                            pageTurnHasPreviousChapter = composePagerHasPreviousChapter,
-                            seekbarItemsCount = seekbarItemsCount,
-                            readingProgressPercent = readingProgressPercent,
-                            nativeFirstVisibleItemIndex = textListState.firstVisibleItemIndex,
-                            nativeCanScrollForward = textListState.canScrollForward,
-                            bookModeEnabled = isBookMode,
+                webProgressPercent = webProgressPercent,
+                pagerCurrentPage = pagerState.currentPage,
+                pageTurnCurrentPage = pageTurnCurrentPage,
+                firstVisibleItemIndex = textListState.firstVisibleItemIndex,
+                canScrollForward = textListState.canScrollForward,
+                seekbarItemsCount = seekbarItemsCount,
+                readingProgressPercent = readingProgressPercent,
+                isBookMode = isBookMode,
+                pageReaderRendererRoute = pageReaderRendererRoute,
+                pageReaderItemsCount = pageReaderItemsCount,
+                composePagerHasPreviousChapter = composePagerHasPreviousChapter,
+                nativeScrollItemsCount = nativeScrollItemsCount,
+                pageReaderProgressPageIndex = pageReaderProgressPageIndex,
+                isGeminiTranslating = state.isGeminiTranslating,
+                hasGeminiTranslationCache = state.hasGeminiTranslationCache,
+                isGeminiTranslationVisible = state.isGeminiTranslationVisible,
+                geminiTranslationProgress = state.geminiTranslationProgress,
+                backgroundTranslatingChapterCount = state.backgroundTranslatingChapterCount(state.chapter.id),
+                isGoogleTranslating = state.isGoogleTranslating,
+                hasGoogleTranslationCache = state.hasGoogleTranslationCache,
+                isGoogleTranslationVisible = state.isGoogleTranslationVisible,
+                googleTranslationProgress = state.googleTranslationProgress,
+                onSetShowReaderUi = onSetShowReaderUi,
+                onSeekBookModeProgress = onSeekBookModeProgress,
+                onSeekWebProgress = { clampedValue, isFinal ->
+                    val targetPercent = (clampedValue * 100f).roundToInt().coerceIn(0, 100)
+                    webProgressPercent = targetPercent
+                    val webView = webViewInstance
+                    if (webView != null) {
+                        val totalScrollable = resolveWebViewTotalScrollablePx(
+                            contentHeightPx = webView.resolveWebViewContentHeightPx(),
+                            viewHeightPx = webView.height,
                         )
-                    }
-                }
-                // The chrome asks once what mode it is drawing for, instead of branching on it again
-                // for the labels and again for the ticks.
-                val chromeState = resolveReaderChromeState(
-                    bookModeEnabled = isBookMode,
-                    readingProgressPercent = readingProgressPercent,
-                    usePageReader = usePageReader,
-                    pageIndex = pageReaderProgressPageIndex,
-                    pageCount = pageReaderItemsCount,
-                    showScrollPercentage = state.readerSettings.showScrollPercentage,
-                )
-                val pageRailTopLabel = chromeState.railTopLabel
-                val pageRailBottomLabel = chromeState.railBottomLabel
-                val pageSeekbarTickFractions = chromeState.tickFractions
-                var seekJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-                fun seekToVerticalProgress(value: Float, isFinal: Boolean) {
-                    val clampedValue = value.coerceIn(0f, 1f)
-                    if (isBookMode) {
-                        onSeekBookModeProgress(clampedValue)
-                    } else if (showWebView) {
-                        val targetPercent = (clampedValue * 100f).roundToInt().coerceIn(0, 100)
-                        webProgressPercent = targetPercent
-                        val webView = webViewInstance
-                        if (webView != null) {
-                            val totalScrollable = resolveWebViewTotalScrollablePx(
-                                contentHeightPx = webView.resolveWebViewContentHeightPx(),
-                                viewHeightPx = webView.height,
-                            )
-                            val targetY = if (totalScrollable > 0) {
-                                ((targetPercent.toFloat() / 100f) * totalScrollable.toFloat())
-                                    .roundToInt()
-                                    .coerceIn(0, totalScrollable)
-                            } else {
-                                0
-                            }
-                            webView.scrollTo(0, targetY)
-                            if (isFinal) {
-                                webView.post {
-                                    val finalTotalScrollable = resolveWebViewTotalScrollablePx(
-                                        contentHeightPx = webView.resolveWebViewContentHeightPx(),
-                                        viewHeightPx = webView.height,
-                                    )
-                                    val finalPercent = resolveWebViewScrollProgressPercent(
-                                        scrollY = webView.scrollY,
-                                        totalScrollable = finalTotalScrollable,
-                                    )
-                                    webProgressPercent = finalPercent
-                                    reportReadingProgress(
-                                        finalPercent,
-                                        100,
-                                        encodeWebScrollProgressPercent(finalPercent),
-                                    )
-                                }
-                            }
-                        }
-                        reportReadingProgress(
-                            targetPercent,
-                            100,
-                            encodeWebScrollProgressPercent(targetPercent),
-                        )
-                    } else {
-                        val maxIndex = (seekbarItemsCount - 1).coerceAtLeast(0)
-                        val target = (clampedValue * maxIndex.toFloat())
-                            .roundToInt()
-                            .coerceIn(0, maxIndex)
-                        if (usePageReader) {
-                            pageTurnCurrentPage = target
-                            if (pageReaderRendererRoute == NovelPageReaderRendererRoute.PAGE_TURN_RENDERER) {
-                                pageTurnRequestedPage = target
-                            } else {
-                                val virtualTarget = resolveComposePagerVirtualPageIndex(
-                                    actualPageIndex = target,
-                                    hasPreviousChapter = composePagerHasPreviousChapter,
-                                )
-                                seekJob?.cancel()
-                                seekJob = coroutineScope.launch {
-                                    pagerState.scrollToPage(
-                                        virtualTarget.coerceIn(0, (pagerState.pageCount - 1).coerceAtLeast(0)),
-                                    )
-                                }
-                            }
+                        val targetY = if (totalScrollable > 0) {
+                            ((targetPercent.toFloat() / 100f) * totalScrollable.toFloat())
+                                .roundToInt()
+                                .coerceIn(0, totalScrollable)
                         } else {
-                            seekJob?.cancel()
-                            seekJob = coroutineScope.launch {
-                                textListState.scrollToItem(target)
-                            }
+                            0
                         }
-                    }
-                }
-                Column(
-                    modifier = Modifier
-                        .align(androidx.compose.ui.Alignment.CenterEnd)
-                        .padding(end = MaterialTheme.padding.small)
-                        .size(
-                            width = if (usePageReader &&
-                                !isBookMode
-                            ) {
-                                40.dp
-                            } else {
-                                30.dp
-                            },
-                            height = 270.dp,
-                        ),
-                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-                ) {
-                    if (state.readerSettings.geminiEnabled) {
-                        val hasTranslationResult =
-                            state.hasGeminiTranslationCache || state.geminiTranslationProgress == 100
-                        val quickActionIcon = when {
-                            state.isGeminiTranslating -> Icons.Filled.Pause
-                            hasTranslationResult && state.isGeminiTranslationVisible -> Icons.Filled.Public
-                            else -> Icons.Filled.PlayArrow
-                        }
-                        val quickActionDescription = when {
-                            state.isGeminiTranslating -> stringResource(MR.strings.reader_action_stop_translation)
-                            hasTranslationResult && state.isGeminiTranslationVisible -> stringResource(
-                                MR.strings.reader_action_show_original,
-                            )
-                            hasTranslationResult -> stringResource(MR.strings.reader_action_show_translation)
-                            else -> stringResource(MR.strings.reader_action_start_translation)
-                        }
-                        val quickActionContainerColor = when {
-                            state.isGeminiTranslating -> MaterialTheme.colorScheme.errorContainer
-                            hasTranslationResult && state.isGeminiTranslationVisible ->
-                                MaterialTheme.colorScheme.tertiaryContainer
-                            hasTranslationResult -> MaterialTheme.colorScheme.secondaryContainer
-                            else -> MaterialTheme.colorScheme.primaryContainer
-                        }
-                        val quickActionContentColor = when {
-                            state.isGeminiTranslating -> MaterialTheme.colorScheme.onErrorContainer
-                            hasTranslationResult && state.isGeminiTranslationVisible ->
-                                MaterialTheme.colorScheme.onTertiaryContainer
-                            hasTranslationResult ->
-                                MaterialTheme.colorScheme.onSecondaryContainer
-                            else -> MaterialTheme.colorScheme.onPrimaryContainer
-                        }
-
-                        Column(
-                            modifier = Modifier.padding(bottom = 6.dp),
-                            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = quickActionContainerColor,
-                                contentColor = quickActionContentColor,
-                                border = BorderStroke(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
-                                ),
-                                tonalElevation = 0.dp,
-                                shadowElevation = 0.dp,
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clickable {
-                                        when {
-                                            state.isGeminiTranslating -> onStopGeminiTranslation()
-                                            hasTranslationResult -> onToggleGeminiTranslationVisibility()
-                                            else -> requestGeminiTranslationStart()
-                                        }
-                                    },
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        imageVector = quickActionIcon,
-                                        contentDescription = quickActionDescription,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                }
-                            }
-
-                            if (state.isGeminiTranslating) {
-                                LinearProgressIndicator(
-                                    progress = { state.geminiTranslationProgress.coerceIn(0, 100) / 100f },
-                                    modifier = Modifier
-                                        .size(width = 24.dp, height = 3.dp),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        webView.scrollTo(0, targetY)
+                        if (isFinal) {
+                            webView.post {
+                                val finalTotalScrollable = resolveWebViewTotalScrollablePx(
+                                    contentHeightPx = webView.resolveWebViewContentHeightPx(),
+                                    viewHeightPx = webView.height,
                                 )
-                            }
-
-                            // Over a book the bar above describes the chapter under the reading
-                            // position; the queue keeps working on the other chapters of the book,
-                            // which would otherwise be invisible here.
-                            val backgroundTranslating = state.backgroundTranslatingChapterCount(state.chapter.id)
-                            if (isBookMode && backgroundTranslating > 0) {
-                                Text(
-                                    text = "+$backgroundTranslating",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                val finalPercent = resolveWebViewScrollProgressPercent(
+                                    scrollY = webView.scrollY,
+                                    totalScrollable = finalTotalScrollable,
+                                )
+                                webProgressPercent = finalPercent
+                                reportReadingProgress(
+                                    finalPercent,
+                                    100,
+                                    encodeWebScrollProgressPercent(finalPercent),
                                 )
                             }
                         }
                     }
-                    if (state.readerSettings.googleTranslationEnabled) {
-                        val hasGoogleResult = state.hasGoogleTranslationCache || state.googleTranslationProgress == 100
-                        val googleQuickActionIcon = when {
-                            state.isGoogleTranslating -> Icons.Filled.Pause
-                            hasGoogleResult && state.isGoogleTranslationVisible -> Icons.Filled.Public
-                            else -> Icons.Filled.PlayArrow
-                        }
-                        val googleQuickActionDescription = when {
-                            state.isGoogleTranslating -> stringResource(AYMR.strings.novel_reader_google_translate_stop)
-                            hasGoogleResult && state.isGoogleTranslationVisible -> stringResource(
-                                AYMR.strings.novel_reader_google_translate_original,
-                            )
-                            hasGoogleResult -> stringResource(AYMR.strings.novel_reader_google_translate_translated)
-                            else -> stringResource(AYMR.strings.novel_reader_google_translate_start)
-                        }
-                        val googleQuickActionContainerColor = when {
-                            state.isGoogleTranslating -> MaterialTheme.colorScheme.errorContainer
-                            hasGoogleResult && state.isGoogleTranslationVisible ->
-                                MaterialTheme.colorScheme.tertiaryContainer
-                            hasGoogleResult -> MaterialTheme.colorScheme.secondaryContainer
-                            else -> MaterialTheme.colorScheme.primaryContainer
-                        }
-                        val googleQuickActionContentColor = when {
-                            state.isGoogleTranslating -> MaterialTheme.colorScheme.onErrorContainer
-                            hasGoogleResult && state.isGoogleTranslationVisible ->
-                                MaterialTheme.colorScheme.onTertiaryContainer
-                            hasGoogleResult ->
-                                MaterialTheme.colorScheme.onSecondaryContainer
-                            else -> MaterialTheme.colorScheme.onPrimaryContainer
-                        }
-
-                        Column(
-                            modifier = Modifier.padding(bottom = 6.dp),
-                            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = googleQuickActionContainerColor,
-                                contentColor = googleQuickActionContentColor,
-                                border = BorderStroke(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
-                                ),
-                                tonalElevation = 0.dp,
-                                shadowElevation = 0.dp,
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clickable {
-                                        when {
-                                            state.isGoogleTranslating -> onStopGoogleTranslation()
-                                            hasGoogleResult -> onToggleGoogleTranslationVisibility()
-                                            else -> requestGoogleTranslationStart()
-                                        }
-                                    },
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        imageVector = googleQuickActionIcon,
-                                        contentDescription = googleQuickActionDescription,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                }
-                            }
-
-                            if (state.isGoogleTranslating) {
-                                LinearProgressIndicator(
-                                    progress = { state.googleTranslationProgress.coerceIn(0, 100) / 100f },
-                                    modifier = Modifier
-                                        .size(width = 24.dp, height = 3.dp),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                    LnReaderVerticalSeekbar(
-                        progress = seekbarValue,
-                        topLabel = pageRailTopLabel,
-                        bottomLabel = pageRailBottomLabel,
-                        tickFractions = pageSeekbarTickFractions,
-                        onProgressChange = { value -> seekToVerticalProgress(value, isFinal = false) },
-                        onProgressChangeFinished = { value -> seekToVerticalProgress(value, isFinal = true) },
-                        modifier = Modifier
-                            .fillMaxSize(),
+                    reportReadingProgress(
+                        targetPercent,
+                        100,
+                        encodeWebScrollProgressPercent(targetPercent),
                     )
-                }
-            }
+                },
+                onSeekPage = { target ->
+                    pageTurnCurrentPage = target
+                    if (pageReaderRendererRoute == NovelPageReaderRendererRoute.PAGE_TURN_RENDERER) {
+                        pageTurnRequestedPage = target
+                    } else {
+                        val virtualTarget = resolveComposePagerVirtualPageIndex(
+                            actualPageIndex = target,
+                            hasPreviousChapter = composePagerHasPreviousChapter,
+                        )
+                        coroutineScope.launch {
+                            pagerState.scrollToPage(
+                                virtualTarget.coerceIn(0, (pagerState.pageCount - 1).coerceAtLeast(0)),
+                            )
+                        }
+                    }
+                },
+                onScrollToNativeIndex = { target ->
+                    coroutineScope.launch {
+                        textListState.scrollToItem(target)
+                    }
+                },
+                onScrollToPagerPage = { target ->
+                    coroutineScope.launch {
+                        pagerState.scrollToPage(target)
+                    }
+                },
+                onStopGeminiTranslation = onStopGeminiTranslation,
+                onToggleGeminiTranslationVisibility = onToggleGeminiTranslationVisibility,
+                onStartGeminiTranslation = { requestGeminiTranslationStart() },
+                onStopGoogleTranslation = onStopGoogleTranslation,
+                onToggleGoogleTranslationVisibility = onToggleGoogleTranslationVisibility,
+                onStartGoogleTranslation = { requestGoogleTranslationStart() },
+                modifier = Modifier.align(androidx.compose.ui.Alignment.CenterEnd),
+            )
 
             if (shouldShowPersistentProgressLine(showReaderUi = showReaderUi)) {
                 val lineColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
