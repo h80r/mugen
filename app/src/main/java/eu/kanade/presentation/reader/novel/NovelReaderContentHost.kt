@@ -3480,59 +3480,18 @@ internal fun NovelReaderContentHost(
             }
 
             // UI overlay above the content.
-            AnimatedVisibility(
+            NovelReaderInfoOverlay(
                 visible = showBottomInfoOverlay,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(androidx.compose.ui.Alignment.BottomCenter)
-                    .padding(
-                        bottom = with(density) { bottomBarHeight.toDp() } + MaterialTheme.padding.small,
-                    ),
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                    shape = MaterialTheme.shapes.small,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(
-                            horizontal = MaterialTheme.padding.small,
-                            vertical = 6.dp,
-                        ),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        if (state.readerSettings.showBatteryAndTime) {
-                            Text(
-                                text = "${batteryLevel.coerceIn(0, 100)}% $timeText",
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                        }
-                        if (state.readerSettings.showKindleInfoBlock && state.readerSettings.showTimeToEnd) {
-                            Text(
-                                text = if (remainingMinutes == null) {
-                                    stringResource(AYMR.strings.novel_reader_time_to_end_unknown)
-                                } else {
-                                    stringResource(
-                                        AYMR.strings.novel_reader_time_to_end_minutes,
-                                        remainingMinutes.coerceAtLeast(0),
-                                    )
-                                },
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                        }
-                        if (state.readerSettings.showKindleInfoBlock && state.readerSettings.showWordCount) {
-                            Text(
-                                text = stringResource(
-                                    AYMR.strings.novel_reader_words_progress,
-                                    readWords,
-                                    totalWords,
-                                ),
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                        }
-                    }
-                }
-            }
+                settings = state.readerSettings,
+                batteryLevel = batteryLevel,
+                timeText = timeText,
+                remainingMinutes = remainingMinutes,
+                readWords = readWords,
+                totalWords = totalWords,
+                bottomBarHeightPx = bottomBarHeight,
+                density = density,
+                modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
+            )
 
             val seekbarItemsCount = if (showWebView) {
                 101
@@ -3905,290 +3864,132 @@ internal fun NovelReaderContentHost(
                 )
             }
 
-            val panelSlideSpec = spring<androidx.compose.ui.unit.IntOffset>(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow,
-            )
-            val panelFadeSpec = spring<Float>(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow,
-            )
-            val panelBackgroundColor = MaterialTheme.colorScheme
-                .surfaceColorAtElevation(3.dp)
-                .copy(alpha = if (isSystemInDarkTheme()) 0.9f else 0.95f)
-            // AppBar height (~64dp + status bar).
-            AnimatedVisibility(
+            NovelReaderTopBarPanel(
                 visible = showReaderUi,
-                enter = slideInVertically(
-                    initialOffsetY = { -it },
-                    animationSpec = panelSlideSpec,
-                ) + fadeIn(animationSpec = panelFadeSpec),
-                exit = slideOutVertically(
-                    targetOffsetY = { -it },
-                    animationSpec = panelSlideSpec,
-                ) + fadeOut(animationSpec = panelFadeSpec),
+                novelTitle = state.novel.title,
+                chapterName = state.chapter.name,
+                chapterBookmarked = state.chapter.bookmark,
+                autoScrollExpanded = autoScrollExpanded,
+                usePageReader = usePageReader,
+                autoScrollIntervalSeconds = state.readerSettings.autoScrollInterval,
+                autoScrollAdaptiveDelay = state.readerSettings.autoScrollAdaptiveDelay,
+                autoScrollSpeed = autoScrollSpeed,
+                chapterEndBehavior = state.readerSettings.autoScrollChapterEndBehavior,
+                autoScrollEndPauseMs = state.readerSettings.autoScrollEndPauseMs,
+                autoScrollEnabled = autoScrollEnabled,
+                showFloatingButton = state.readerSettings.showAutoScrollFloatingButton,
+                adaptiveDelayCharacterCount = {
+                    pageReaderCharacterCounts.getOrNull(pageReaderProgressPageIndex) ?: 0
+                },
                 modifier = Modifier.align(androidx.compose.ui.Alignment.TopCenter),
-            ) {
-                androidx.compose.foundation.layout.Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            panelBackgroundColor,
-                            RoundedCornerShape(bottomStart = 18.dp, bottomEnd = 18.dp),
-                        )
-                        .statusBarsPadding(),
-                ) {
-                    AppBar(
-                        modifier = Modifier.fillMaxWidth(),
-                        backgroundColor = Color.Transparent,
-                        title = state.novel.title,
-                        subtitle = state.chapter.name,
-                        navigationIcon = Icons.AutoMirrored.Outlined.ArrowBack,
-                        navigateUp = onBack,
-                        actions = {
-                            IconButton(onClick = onToggleBookmark) {
-                                Icon(
-                                    imageVector = if (state.chapter.bookmark) {
-                                        Icons.Outlined.Bookmark
-                                    } else {
-                                        Icons.Outlined.BookmarkBorder
-                                    },
-                                    contentDescription = null,
-                                )
-                            }
-                        },
+                onBack = onBack,
+                onToggleBookmark = onToggleBookmark,
+                onHapticTap = { appHaptics.tap() },
+                onIntervalChange = { persistAutoScrollIntervalPreference(it) },
+                onAdaptiveDelayChange = { persistAutoScrollAdaptiveDelayPreference(it) },
+                onSpeedChange = { newSpeed ->
+                    autoScrollSpeed = newSpeed
+                    persistAutoScrollIntervalPreference(
+                        interval = autoScrollSpeedToInterval(newSpeed),
                     )
-
-                    NovelReaderAutoScrollPanel(
-                        expanded = autoScrollExpanded,
-                        usePageReader = usePageReader,
-                        autoScrollIntervalSeconds = state.readerSettings.autoScrollInterval,
-                        autoScrollAdaptiveDelay = state.readerSettings.autoScrollAdaptiveDelay,
-                        adaptiveDelayCharacterCount = {
-                            pageReaderCharacterCounts.getOrNull(pageReaderProgressPageIndex) ?: 0
-                        },
-                        autoScrollSpeed = autoScrollSpeed,
-                        chapterEndBehavior = state.readerSettings.autoScrollChapterEndBehavior,
-                        autoScrollEndPauseMs = state.readerSettings.autoScrollEndPauseMs,
-                        autoScrollEnabled = autoScrollEnabled,
-                        showFloatingButton = state.readerSettings.showAutoScrollFloatingButton,
-                        onHapticTap = { appHaptics.tap() },
-                        onIntervalChange = { persistAutoScrollIntervalPreference(it) },
-                        onAdaptiveDelayChange = { persistAutoScrollAdaptiveDelayPreference(it) },
-                        onSpeedChange = { newSpeed ->
-                            autoScrollSpeed = newSpeed
-                            persistAutoScrollIntervalPreference(
-                                interval = autoScrollSpeedToInterval(newSpeed),
-                            )
-                        },
-                        onChapterEndBehaviorChange = {
-                            persistAutoScrollChapterEndBehaviorPreference(it)
-                        },
-                        onEndPauseMsChange = { persistAutoScrollEndPauseMsPreference(it) },
-                        onToggleAutoScroll = {
-                            val nextState = resolveAutoScrollUiStateOnToggle(
-                                currentEnabled = autoScrollEnabled,
-                                showReaderUi = showReaderUi,
-                                autoScrollExpanded = autoScrollExpanded,
-                            )
-                            autoScrollEnabled = nextState.autoScrollEnabled
-                            if (!nextState.autoScrollEnabled) {
-                                onCancelAutoScrollHandoff()
-                                autoScrollEndStableFrames = 0
-                                autoScrollEndDwellActive = false
-                            }
-                            onSetShowReaderUi(nextState.showReaderUi)
-                            autoScrollExpanded = nextState.autoScrollExpanded
-                        },
-                        onShowFloatingButtonChange = {
-                            readerPreferences.showAutoScrollFloatingButton().set(it)
-                        },
-                        onToggleExpanded = { autoScrollExpanded = !autoScrollExpanded },
+                },
+                onChapterEndBehaviorChange = { persistAutoScrollChapterEndBehaviorPreference(it) },
+                onEndPauseMsChange = { persistAutoScrollEndPauseMsPreference(it) },
+                onToggleAutoScroll = {
+                    val nextState = resolveAutoScrollUiStateOnToggle(
+                        currentEnabled = autoScrollEnabled,
+                        showReaderUi = showReaderUi,
+                        autoScrollExpanded = autoScrollExpanded,
                     )
-                }
-            }
+                    autoScrollEnabled = nextState.autoScrollEnabled
+                    if (!nextState.autoScrollEnabled) {
+                        onCancelAutoScrollHandoff()
+                        autoScrollEndStableFrames = 0
+                        autoScrollEndDwellActive = false
+                    }
+                    onSetShowReaderUi(nextState.showReaderUi)
+                    autoScrollExpanded = nextState.autoScrollExpanded
+                },
+                onShowFloatingButtonChange = {
+                    readerPreferences.showAutoScrollFloatingButton().set(it)
+                },
+                onToggleExpanded = { autoScrollExpanded = !autoScrollExpanded },
+            )
 
-            // Bottom navigation in LNReader-like style
-            AnimatedVisibility(
+            NovelReaderBottomPanel(
                 visible = showReaderUi,
-                enter = slideInVertically(
-                    initialOffsetY = { it },
-                    animationSpec = panelSlideSpec,
-                ) + fadeIn(animationSpec = panelFadeSpec),
-                exit = slideOutVertically(
-                    targetOffsetY = { it },
-                    animationSpec = panelSlideSpec,
-                ) + fadeOut(animationSpec = panelFadeSpec),
-                modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            panelBackgroundColor,
-                            RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
-                        ),
-                ) {
-                    if (state.readerSettings.ttsEnabled) {
-                        NovelReaderTtsControls(
-                            uiState = state.ttsUiState,
-                            onTogglePlayback = { onToggleTtsPlayback(currentTtsStartRequest) },
-                            onStop = onStopTtsPlayback,
-                            onSkipPrevious = onSkipPreviousTts,
-                            onSkipNext = onSkipNextTts,
-                            onSetEnginePackage = onSetTtsEnginePackage,
-                            onSetVoiceId = onSetTtsVoiceId,
-                            onSetLocaleTag = onSetTtsLocaleTag,
-                            onSetSpeechRate = onSetTtsSpeechRate,
-                            onSetPitch = onSetTtsPitch,
-                            onDisableTts = onDisableTts,
-                            onPreviewVoice = onPreviewTtsVoice,
-                            onStopVoicePreview = onStopTtsVoicePreview,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    start = MaterialTheme.padding.medium,
-                                    end = MaterialTheme.padding.medium,
-                                    top = MaterialTheme.padding.medium,
-                                ),
-                        )
-
-                        androidx.compose.material3.HorizontalDivider(
-                            modifier = Modifier.padding(top = MaterialTheme.padding.medium),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f),
-                        )
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(
-                                horizontal = MaterialTheme.padding.medium,
-                                vertical = MaterialTheme.padding.small,
+                ttsEnabled = state.readerSettings.ttsEnabled,
+                ttsUiState = state.ttsUiState,
+                ttsStartRequest = currentTtsStartRequest,
+                previousChapterId = state.previousChapterId,
+                nextChapterId = state.nextChapterId,
+                chapterWebUrl = state.chapterWebUrl,
+                chapterUrl = state.chapter.url,
+                novelUrl = state.novel.url,
+                ttsPlacement = ttsPlacement,
+                geminiEnabled = state.readerSettings.geminiEnabled,
+                isGeminiTranslating = state.isGeminiTranslating,
+                geminiButtonActiveLabel = stringResource(AYMR.strings.novel_reader_gemini_button_active),
+                geminiButtonLabel = stringResource(AYMR.strings.novel_reader_gemini_button),
+                googleTranslationEnabled = state.readerSettings.googleTranslationEnabled,
+                isGoogleTranslating = state.isGoogleTranslating,
+                hasGoogleTranslationCache = state.hasGoogleTranslationCache,
+                isGoogleTranslationVisible = state.isGoogleTranslationVisible,
+                dictionaryQuickAccessEnabled = onOpenDictionaryHistory != null &&
+                    remember { Injekt.get<NovelReaderPreferences>().novelDictionaryQuickAccess() }
+                        .collectAsState().value,
+                onOpenDictionaryHistory = onOpenDictionaryHistory,
+                onOpenPreviousChapter = onOpenPreviousChapter,
+                onOpenNextChapter = onOpenNextChapter,
+                onOpenChapterList = {
+                    appHaptics.tap()
+                    showChapterList = true
+                },
+                onOpenWebView = { url ->
+                    if (url.isNotBlank()) {
+                        context.startActivity(
+                            WebViewActivity.newIntent(
+                                context = context,
+                                url = url,
+                                sourceId = state.novel.source,
+                                title = state.novel.title,
                             ),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        IconButton(
-                            onClick = { openPreviousChapterFromReader() },
-                            enabled = state.previousChapterId != null && onOpenPreviousChapter != null,
-                        ) {
-                            Icon(imageVector = Icons.Outlined.ChevronLeft, contentDescription = null)
-                        }
-                        IconButton(
-                            onClick = {
-                                appHaptics.tap()
-                                showChapterList = true
-                            },
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ViewList,
-                                contentDescription = stringResource(MR.strings.chapters),
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                val chapterUrl =
-                                    state.chapterWebUrl
-                                        ?: state.chapter.url.takeIf { it.startsWith("http", ignoreCase = true) }
-                                        ?: state.novel.url.takeIf { it.startsWith("http", ignoreCase = true) }
-                                if (!chapterUrl.isNullOrBlank()) {
-                                    context.startActivity(
-                                        WebViewActivity.newIntent(
-                                            context = context,
-                                            url = chapterUrl,
-                                            sourceId = state.novel.source,
-                                            title = state.novel.title,
-                                        ),
-                                    )
-                                }
-                            },
-                        ) {
-                            Icon(imageVector = Icons.Filled.Public, contentDescription = null)
-                        }
-                        IconButton(
-                            onClick = {
-                                coroutineScope.launch {
-                                    if (showWebView) {
-                                        webViewInstance?.scrollTo(0, 0)
-                                    } else if (usePageReader) {
-                                        pagerState.animateScrollToPage(0)
-                                    } else {
-                                        textListState.animateScrollToItem(0)
-                                    }
-                                }
-                            },
-                        ) {
-                            Icon(imageVector = Icons.Filled.KeyboardArrowUp, contentDescription = null)
-                        }
-                        IconButton(onClick = { showSettings = true }) {
-                            Icon(imageVector = Icons.Outlined.Settings, contentDescription = null)
-                        }
-                        if (onOpenDictionaryHistory != null) {
-                            val dictionaryQuickAccess by remember {
-                                Injekt.get<NovelReaderPreferences>().novelDictionaryQuickAccess()
-                            }
-                                .collectAsState()
-                            if (dictionaryQuickAccess) {
-                                IconButton(onClick = { onOpenDictionaryHistory() }) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Outlined.MenuBook,
-                                        contentDescription = stringResource(
-                                            AYMR.strings.novel_reader_dictionary_history,
-                                        ),
-                                    )
-                                }
-                            }
-                        }
-                        LatticeCarrierSlot(LatticeCarrier.NOVEL)
-                        if (ttsPlacement.showFooterEntry) {
-                            IconButton(onClick = { showTtsBehaviorSettings = true }) {
-                                Icon(
-                                    imageVector = Icons.Outlined.SettingsVoice,
-                                    contentDescription = stringResource(
-                                        AYMR.strings.novel_reader_tts_behavior_settings,
-                                    ),
-                                )
-                            }
-                        }
-                        if (state.readerSettings.geminiEnabled) {
-                            IconButton(onClick = { showGeminiDialog = true }) {
-                                Text(
-                                    text = if (state.isGeminiTranslating) {
-                                        stringResource(AYMR.strings.novel_reader_gemini_button_active)
-                                    } else {
-                                        stringResource(AYMR.strings.novel_reader_gemini_button)
-                                    },
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                            }
-                        }
-                        if (state.readerSettings.googleTranslationEnabled) {
-                            IconButton(onClick = { showGoogleDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Translate,
-                                    contentDescription = stringResource(AYMR.strings.novel_reader_google_translate),
-                                    tint = if (state.isGoogleTranslating ||
-                                        state.hasGoogleTranslationCache ||
-                                        state.isGoogleTranslationVisible
-                                    ) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        LocalContentColor.current
-                                    },
-                                )
-                            }
-                        }
-                        IconButton(
-                            onClick = { openNextChapterFromReader() },
-                            enabled = state.nextChapterId != null && onOpenNextChapter != null,
-                        ) {
-                            Icon(imageVector = Icons.Outlined.ChevronRight, contentDescription = null)
+                        )
+                    }
+                },
+                onScrollToTop = {
+                    coroutineScope.launch {
+                        if (showWebView) {
+                            webViewInstance?.scrollTo(0, 0)
+                        } else if (usePageReader) {
+                            pagerState.animateScrollToPage(0)
+                        } else {
+                            textListState.animateScrollToItem(0)
                         }
                     }
-                    Spacer(
-                        modifier = Modifier.padding(bottom = with(density) { navigationBarHeight.toDp() }),
-                    )
-                }
-            }
+                },
+                onOpenSettings = { showSettings = true },
+                onOpenTtsBehaviorSettings = { showTtsBehaviorSettings = true },
+                onOpenGeminiDialog = { showGeminiDialog = true },
+                onOpenGoogleDialog = { showGoogleDialog = true },
+                onToggleTtsPlayback = { onToggleTtsPlayback(currentTtsStartRequest) },
+                onStopTtsPlayback = onStopTtsPlayback,
+                onSkipPreviousTts = onSkipPreviousTts,
+                onSkipNextTts = onSkipNextTts,
+                onSetTtsEnginePackage = onSetTtsEnginePackage,
+                onSetTtsVoiceId = onSetTtsVoiceId,
+                onSetTtsLocaleTag = onSetTtsLocaleTag,
+                onSetTtsSpeechRate = onSetTtsSpeechRate,
+                onSetTtsPitch = onSetTtsPitch,
+                onDisableTts = onDisableTts,
+                onPreviewTtsVoice = onPreviewTtsVoice,
+                onStopTtsVoicePreview = onStopTtsVoicePreview,
+                onOpenPreviousChapterFromReader = { openPreviousChapterFromReader() },
+                onOpenNextChapterFromReader = { openNextChapterFromReader() },
+                navigationBarHeightPx = navigationBarHeight,
+                density = density,
+                modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
+            )
 
             SelectedTextTranslationOverlay(
                 state = state,
