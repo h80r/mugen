@@ -1,6 +1,12 @@
 package eu.kanade.presentation.reader.novel
 
 import android.view.View
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * The scrollable surface the book renderer actually shows.
@@ -79,23 +85,37 @@ internal fun buildBookScrollByJavascript(distancePx: Int): String {
  * Parses the engine answer.
  *
  * `evaluateJavascript` hands the returned JSON back as a quoted and escaped JSON string, so the
- * payload is reduced to bare `key:value` pairs before reading the two fields.
+ * payload is unwrapped once and then read as real JSON, exactly like the section mutations already
+ * do. The previous version stripped every character that was not a letter, digit, `:`, `,` or `-`
+ * and split on commas, which silently mangled any value containing one of those characters.
  */
 internal fun parseBookScrollReport(rawResult: String?): NovelBookScrollReport? {
     if (rawResult.isNullOrBlank() || rawResult == "null") return null
-    val fields = rawResult
-        .filter { it.isLetterOrDigit() || it == ':' || it == ',' || it == '-' }
-        .split(',')
-        .mapNotNull { field ->
-            val key = field.substringBefore(':', "")
-            val value = field.substringAfter(':', "")
-            if (key.isBlank() || value.isBlank()) null else key to value
-        }
-        .toMap()
-    val consumed = fields["consumed"]?.toIntOrNull() ?: return null
-    val forward = fields["forward"]?.toBooleanStrictOrNull() ?: true
+    val payload = decodeBookScrollPayload(rawResult) ?: return null
+    val consumed = payload["consumed"]?.jsonPrimitive?.intOrNull ?: return null
+    val forward = payload["forward"]?.jsonPrimitive?.booleanOrNull ?: true
     return NovelBookScrollReport(consumedPx = consumed, canScrollForward = forward)
 }
+
+/**
+ * Unwraps what `evaluateJavascript` returned into a JSON object.
+ *
+ * The bridge returns the script's value as JSON, so a script returning a JSON *string* arrives
+ * double encoded (`"{\"consumed\":1}"`). That string is decoded once more before being read.
+ */
+private fun decodeBookScrollPayload(rawResult: String): JsonObject? = runCatching {
+    when (val element = BOOK_SCROLL_JSON.parseToJsonElement(rawResult.trim())) {
+        is JsonObject -> element
+        is JsonPrimitive -> if (element.isString) {
+            BOOK_SCROLL_JSON.parseToJsonElement(element.content) as? JsonObject
+        } else {
+            null
+        }
+        else -> null
+    }
+}.getOrNull()
+
+private val BOOK_SCROLL_JSON = Json { ignoreUnknownKeys = true }
 
 /**
  * [NovelBookScrollSurface] backed by the renderer's own view.

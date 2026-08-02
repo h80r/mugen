@@ -2228,6 +2228,9 @@
     <string name="novel_book_appending">Добавление глав…</string>
     <string name="novel_book_cleanup_source_chapters">Удалить поглавные файлы</string>
     <string name="novel_book_toc_title">Содержание книги</string>
+    <string name="novel_book_renderer_fallback_bionic">Бионическое чтение работает только в веб-отрисовщике, поэтому нативный отрисовщик книги отключён</string>
+    <string name="novel_book_renderer_fallback_custom_styles">Ваши пользовательские CSS/JS работают только в веб-отрисовщике, поэтому нативный отрисовщик книги отключён</string>
+    <string name="novel_book_renderer_fallback_unsupported_content">В книге есть оформление, которое нативный отрисовщик не показывает, поэтому используется веб-отрисовщик</string>
     <string name="novel_reader_chapter_cache_size">Размер кэша глав</string>
     <string name="novel_reader_chapter_cache_size_summary_limited">%1$s • %2$s записей • лимит %3$s / %4$s глав</string>
     <string name="novel_reader_chapter_cache_size_summary_unlimited">%1$s • %2$s записей • без лимита</string>

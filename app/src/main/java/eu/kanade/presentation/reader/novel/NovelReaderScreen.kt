@@ -1402,13 +1402,13 @@ fun NovelReaderScreen(
     // Book mode is renderer independent: the reader settings pick the book renderer, and the WebView
     // adapter only has to switch the document's flow. "Pages" therefore works in book mode too, over
     // the same spine, sections and progress as the scrolled flow.
-    val bookRenderer = remember(
+    val bookRendererDecision = remember(
         state.readerSettings.pageReader,
         state.readerSettings.richNativeRendererExperimental,
         state.readerSettings.bionicReading,
         state.richContentUnsupportedFeaturesDetected,
     ) {
-        resolveNovelBookRenderer(
+        resolveNovelBookRendererDecision(
             pageReaderEnabled = state.readerSettings.pageReader,
             richNativeRendererExperimentalEnabled = state.readerSettings.richNativeRendererExperimental,
             bionicReadingEnabled = state.readerSettings.bionicReading,
@@ -1416,6 +1416,20 @@ fun NovelReaderScreen(
                 state.readerSettings.customJS.isNotBlank(),
             richContentUnsupportedFeaturesDetected = state.richContentUnsupportedFeaturesDetected,
         )
+    }
+    val bookRenderer = bookRendererDecision.renderer
+    // Asking for the native renderer and silently getting the WebView looks like the setting did
+    // nothing. Saying which setting took priority turns that into an explanation.
+    LaunchedEffect(state.bookMode.isEnabled, bookRendererDecision) {
+        if (!state.bookMode.isEnabled || !bookRendererDecision.isSilentFallback) return@LaunchedEffect
+        val reasonMessage = when (bookRendererDecision.reason) {
+            NovelBookRendererReason.BIONIC_READING ->
+                AYMR.strings.novel_book_renderer_fallback_bionic
+            NovelBookRendererReason.CUSTOM_STYLES ->
+                AYMR.strings.novel_book_renderer_fallback_custom_styles
+            else -> AYMR.strings.novel_book_renderer_fallback_unsupported_content
+        }
+        Toast.makeText(context, context.getString(reasonMessage.resourceId), Toast.LENGTH_SHORT).show()
     }
     // Native renderer side of book mode. Both renderers consume the same command stream, so the
     // native list folds appends and prunes into its resident sections instead of running JavaScript.

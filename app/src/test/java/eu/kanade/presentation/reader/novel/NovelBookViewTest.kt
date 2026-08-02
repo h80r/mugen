@@ -96,4 +96,68 @@ class NovelBookViewTest {
             nativeBookRendererAvailable = true,
         ).usesWebView shouldBe false
     }
+
+    @Test
+    fun `the renderer decision says which setting took priority`() {
+        // A fallback to the WebView used to be silent, so enabling the native renderer and getting
+        // the WebView anyway looked like the setting was ignored. Each fallback now names its cause.
+        resolveNovelBookRendererDecision(
+            pageReaderEnabled = false,
+            richNativeRendererExperimentalEnabled = true,
+            bionicReadingEnabled = true,
+            richContentUnsupportedFeaturesDetected = false,
+            nativeBookRendererAvailable = true,
+        ).reason shouldBe NovelBookRendererReason.BIONIC_READING
+
+        resolveNovelBookRendererDecision(
+            pageReaderEnabled = false,
+            richNativeRendererExperimentalEnabled = true,
+            bionicReadingEnabled = false,
+            richContentUnsupportedFeaturesDetected = false,
+            customStylesPresent = true,
+            nativeBookRendererAvailable = true,
+        ).reason shouldBe NovelBookRendererReason.CUSTOM_STYLES
+
+        resolveNovelBookRendererDecision(
+            pageReaderEnabled = false,
+            richNativeRendererExperimentalEnabled = true,
+            bionicReadingEnabled = false,
+            richContentUnsupportedFeaturesDetected = true,
+            nativeBookRendererAvailable = true,
+        ).reason shouldBe NovelBookRendererReason.UNSUPPORTED_CONTENT
+    }
+
+    @Test
+    fun `only a renderer the reader asked for and did not get is worth reporting`() {
+        // Pages and "native renderer never requested" are choices, not fallbacks: telling the reader
+        // about them would be noise on every open.
+        val pages = resolveNovelBookRendererDecision(
+            pageReaderEnabled = true,
+            richNativeRendererExperimentalEnabled = false,
+            bionicReadingEnabled = false,
+            richContentUnsupportedFeaturesDetected = false,
+        )
+        pages.reason shouldBe NovelBookRendererReason.PAGE_MODE
+        pages.isSilentFallback shouldBe false
+
+        val notRequested = resolveNovelBookRendererDecision(
+            pageReaderEnabled = false,
+            richNativeRendererExperimentalEnabled = false,
+            bionicReadingEnabled = false,
+            richContentUnsupportedFeaturesDetected = false,
+        )
+        notRequested.reason shouldBe NovelBookRendererReason.NATIVE_NOT_REQUESTED
+        notRequested.isSilentFallback shouldBe false
+
+        val native = resolveNovelBookRendererDecision(
+            pageReaderEnabled = false,
+            richNativeRendererExperimentalEnabled = true,
+            bionicReadingEnabled = false,
+            richContentUnsupportedFeaturesDetected = false,
+            nativeBookRendererAvailable = true,
+        )
+        native.renderer shouldBe NovelBookRenderer.RICH_NATIVE_SCROLLED
+        native.reason shouldBe NovelBookRendererReason.NONE
+        native.isSilentFallback shouldBe false
+    }
 }

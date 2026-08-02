@@ -228,6 +228,22 @@ internal class NovelBookWebViewRenderer(
     override suspend fun removeSection(sectionIndex: Int): Boolean =
         evaluateBoolean("window.__anBookEngine && window.__anBookEngine.removeSection($sectionIndex)")
 
+    /**
+     * Restyles the live document instead of reloading it.
+     *
+     * The stylesheet is shipped as a JSON string literal, the same way chapter markup is, so quotes
+     * and newlines in user CSS cannot break the script. The location travels with it because new
+     * type metrics move the text: the document restores the reader's position itself once the new
+     * styles laid out.
+     */
+    override suspend fun applyReaderCss(
+        css: String,
+        location: NovelBookLocation,
+    ): NovelBookPageTurnResult = evaluatePageTurn(
+        "window.__anBookEngine && window.__anBookEngine.applyReaderCss(" +
+            "${JsonPrimitive(css)}, ${location.sectionIndex}, ${location.charOffset})",
+    )
+
     suspend fun close() {
         activeGeneration = generations.incrementAndGet()
         pendingReady?.cancel()

@@ -36,6 +36,51 @@ internal enum class NovelBookRenderer(
 internal const val NOVEL_BOOK_NATIVE_RENDERER_READY = true
 
 /**
+ * Why book mode is presented by the WebView instead of the native renderer.
+ *
+ * The fallback used to be silent, so a reader that had enabled the native renderer simply saw a
+ * different presentation with no explanation. The decision now carries its reason so the reader can
+ * show it.
+ */
+internal enum class NovelBookRendererReason {
+    /** The reader is configured for pages, which the paged WebView flow presents. */
+    PAGE_MODE,
+
+    /** The native renderer was not requested. */
+    NATIVE_NOT_REQUESTED,
+
+    /** The native renderer is not mounted in this build. */
+    NATIVE_UNAVAILABLE,
+
+    /** Bionic reading is applied to the WebView document only. */
+    BIONIC_READING,
+
+    /** Custom reader CSS or JavaScript only has meaning inside the WebView document. */
+    CUSTOM_STYLES,
+
+    /** The content uses features the native renderer cannot express. */
+    UNSUPPORTED_CONTENT,
+
+    /** The native renderer presents the book; nothing was given up. */
+    NONE,
+}
+
+/** The chosen renderer together with the reason it was chosen. */
+internal data class NovelBookRendererDecision(
+    val renderer: NovelBookRenderer,
+    val reason: NovelBookRendererReason,
+) {
+    /**
+     * True when the reader asked for the native renderer and got the WebView anyway, which is the
+     * only case worth telling the reader about.
+     */
+    val isSilentFallback: Boolean
+        get() = reason == NovelBookRendererReason.BIONIC_READING ||
+            reason == NovelBookRendererReason.CUSTOM_STYLES ||
+            reason == NovelBookRendererReason.UNSUPPORTED_CONTENT
+}
+
+/**
  * Picks the renderer for book mode from the reader settings.
  *
  * Book mode is no longer WebView-only: "pages" maps to the paginated book flow, and the experimental
@@ -56,18 +101,53 @@ internal fun resolveNovelBookRenderer(
      */
     customStylesPresent: Boolean = false,
     nativeBookRendererAvailable: Boolean = NOVEL_BOOK_NATIVE_RENDERER_READY,
-): NovelBookRenderer {
-    if (pageReaderEnabled) return NovelBookRenderer.WEBVIEW_PAGINATED
-    val canUseRichNative = nativeBookRendererAvailable &&
-        richNativeRendererExperimentalEnabled &&
-        !bionicReadingEnabled &&
-        !customStylesPresent &&
-        !richContentUnsupportedFeaturesDetected
-    return if (canUseRichNative) {
-        NovelBookRenderer.RICH_NATIVE_SCROLLED
-    } else {
-        NovelBookRenderer.WEBVIEW_SCROLLED
+): NovelBookRenderer = resolveNovelBookRendererDecision(
+    pageReaderEnabled = pageReaderEnabled,
+    richNativeRendererExperimentalEnabled = richNativeRendererExperimentalEnabled,
+    bionicReadingEnabled = bionicReadingEnabled,
+    richContentUnsupportedFeaturesDetected = richContentUnsupportedFeaturesDetected,
+    customStylesPresent = customStylesPresent,
+    nativeBookRendererAvailable = nativeBookRendererAvailable,
+).renderer
+
+/**
+ * The single rule that picks the book renderer, stated once as an ordered list of reasons.
+ *
+ * Every branch names why it was taken, so the reader can explain a fallback instead of quietly
+ * changing the presentation under the user.
+ */
+internal fun resolveNovelBookRendererDecision(
+    pageReaderEnabled: Boolean,
+    richNativeRendererExperimentalEnabled: Boolean,
+    bionicReadingEnabled: Boolean,
+    richContentUnsupportedFeaturesDetected: Boolean,
+    customStylesPresent: Boolean = false,
+    nativeBookRendererAvailable: Boolean = NOVEL_BOOK_NATIVE_RENDERER_READY,
+): NovelBookRendererDecision {
+    // Pages are a presentation choice, not a fallback: the paged flow is a first-class book flow and
+    // now stitches sections just like the scrolled one.
+    if (pageReaderEnabled) {
+        return NovelBookRendererDecision(
+            renderer = NovelBookRenderer.WEBVIEW_PAGINATED,
+            reason = NovelBookRendererReason.PAGE_MODE,
+        )
     }
+    val reason = when {
+        !richNativeRendererExperimentalEnabled -> NovelBookRendererReason.NATIVE_NOT_REQUESTED
+        !nativeBookRendererAvailable -> NovelBookRendererReason.NATIVE_UNAVAILABLE
+        bionicReadingEnabled -> NovelBookRendererReason.BIONIC_READING
+        customStylesPresent -> NovelBookRendererReason.CUSTOM_STYLES
+        richContentUnsupportedFeaturesDetected -> NovelBookRendererReason.UNSUPPORTED_CONTENT
+        else -> NovelBookRendererReason.NONE
+    }
+    return NovelBookRendererDecision(
+        renderer = if (reason == NovelBookRendererReason.NONE) {
+            NovelBookRenderer.RICH_NATIVE_SCROLLED
+        } else {
+            NovelBookRenderer.WEBVIEW_SCROLLED
+        },
+        reason = reason,
+    )
 }
 
 /** A position inside the book, expressed without any renderer units. */

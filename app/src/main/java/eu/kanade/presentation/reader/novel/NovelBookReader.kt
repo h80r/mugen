@@ -233,7 +233,10 @@ internal fun NovelBookReader(
         val flowChanged = appliedFlow != flow
         val styleChanged = appliedReaderCss != readerCss
         if (!flowChanged && !styleChanged) return@LaunchedEffect
-        loading = true
+        // Switching between scroll and pages is a different layout, so the document is rebuilt and
+        // the reader sees that it is loading. Changing a style is not: the book stays on screen and
+        // only its stylesheet is swapped, so there is no spinner and nothing to re-open.
+        if (flowChanged) loading = true
         failure = null
         runCatching {
             operationMutex.withLock {
@@ -241,14 +244,14 @@ internal fun NovelBookReader(
                 if (flowChanged) {
                     engine.setFlow(flow)
                 } else {
-                    engine.reload()
+                    engine.applyReaderCss(readerCss)
                 }
             }
         }.onSuccess {
             appliedFlow = flow
             appliedReaderCss = readerCss
         }.onFailure { failure = it }
-        loading = false
+        if (flowChanged) loading = false
     }
     LaunchedEffect(seekRequest, opened) {
         if (!opened) return@LaunchedEffect

@@ -33,8 +33,9 @@ class NovelBookEngineDocumentTest {
         html shouldContain "object-fit: contain;"
         html shouldContain "break-inside: avoid;"
         html shouldNotContain "body { column-width:"
-        // The paged flow keeps the bare chapter markup its column geometry was tuned against.
-        html shouldNotContain "class=\"an-book-section\""
+        // Both flows wrap their content in a section element: it is what lets a position be
+        // expressed as (section, offset) and what the stitching addresses.
+        html shouldContain "class=\"an-book-section\""
     }
 
     @Test

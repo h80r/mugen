@@ -65,6 +65,18 @@ internal interface NovelBookEngineRenderer {
     /** Drops a resident section from the document, compensating the scroll offset when needed. */
     suspend fun removeSection(sectionIndex: Int): Boolean = false
 
+    /**
+     * Applies reader styles to the open document and re-resolves [location] afterwards.
+     *
+     * Styles change type metrics, so the same reading position maps to a different scroll offset or
+     * column. Passing the location lets the renderer restore it instead of reopening the document,
+     * which is what used to send the reader back to the top of the chapter on every setting change.
+     */
+    suspend fun applyReaderCss(
+        css: String,
+        location: NovelBookLocation,
+    ): NovelBookPageTurnResult = relocate()
+
     suspend fun goTo(location: NovelBookLocation): NovelBookPageTurnResult = relocate()
 }
 
@@ -140,7 +152,9 @@ internal class NovelBookEngine(
      * content ahead of (or behind) the viewport for a seamless crossing.
      */
     suspend fun stitch(forward: Boolean): Boolean {
-        if (flow != NovelBookEngineFlow.SCROLLED || stitchInFlight) return false
+        // Both flows stitch now: the paged document lays the neighbouring chapter out in the same
+        // column box, so crossing a chapter boundary is a page turn rather than a document swap.
+        if (stitchInFlight) return false
         val targetIndex = if (forward) residentLast + 1 else residentFirst - 1
         if (targetIndex < 0) return false
         val section = spine.sectionAt(targetIndex) ?: return false
@@ -231,6 +245,19 @@ internal class NovelBookEngine(
 
     suspend fun reload() {
         openCurrentSection()
+    }
+
+    /**
+     * Applies reader styles without rebuilding the document.
+     *
+     * The document keeps living, so the book stays rendered and the reader keeps the paragraph they
+     * were on: the renderer restores the current location once the new styles laid out.
+     */
+    suspend fun applyReaderCss(css: String) {
+        val result = renderer.applyReaderCss(css, location)
+        if (result is NovelBookPageTurnResult.Moved) {
+            updateLocation(locationOf(result))
+        }
     }
 
     suspend fun flushLocation() {

@@ -37,6 +37,14 @@ internal fun buildNovelBookEngineDocumentHtml(
               break-inside: avoid;
               page-break-inside: avoid;
             }
+            /* One block per chapter stitched into the paged document. The paged flow used to hold
+               exactly one section, which is why crossing a chapter meant swapping the document and
+               showing a half empty page. Sections now flow into the same column box, so a chapter
+               boundary is just another column. */
+            .an-book-section {
+              display: block;
+              background: transparent !important;
+            }
             /* Block the voice is reading, in the paged flow. */
             #an-book-content [data-an-tts-highlight] {
               background-color: rgba(128, 128, 128, 0.28);
@@ -88,15 +96,11 @@ internal fun buildNovelBookEngineDocumentHtml(
             }
         """.trimIndent()
     }
-    // Only the scrolled flow stitches chapters together, so only it wraps its content in a section
-    // element. The paged flow keeps the bare markup its column geometry was tuned against.
-    val sectionMarkup = when (flow) {
-        NovelBookEngineFlow.PAGINATED -> document.html
-        NovelBookEngineFlow.SCROLLED ->
-            "<section class=\"an-book-section\" " +
-                "data-an-index=\"${document.sectionIndex}\" " +
-                "data-an-chapter=\"${document.chapterId}\">${document.html}</section>"
-    }
+    // Both flows stitch chapters together now, so both wrap their content in a section element: it
+    // is what lets a position be expressed as (section, offset) and what the stitching addresses.
+    val sectionMarkup = "<section class=\"an-book-section\" " +
+        "data-an-index=\"${document.sectionIndex}\" " +
+        "data-an-chapter=\"${document.chapterId}\">${document.html}</section>"
     val engineScript = """
         <script>
           (function() {
@@ -122,6 +126,9 @@ internal fun buildNovelBookEngineDocumentHtml(
             let pageColumn = 1;
             let pageGap = 0;
             let pagePitch = 1;
+            // How close to the edge of the resident columns the reader has to be before the next
+            // chapter is asked for. Two columns is roughly the scrolled flow's "one viewport ahead".
+            const PAGE_STITCH_MARGIN = 2;
             let pageIndex = 0;
             // Paged geometry is measured as a delta between rects of the column box. A page turn
             // animates that box (depth scales it, book rotates it, curl tilts it), so anything
@@ -131,7 +138,15 @@ internal fun buildNovelBookEngineDocumentHtml(
             // are taken while the box is settled and cached for the duration of the turn.
             let turnActive = false;
             let pageCountCache = 1;
-            let pageOffsetCache = { page: -1, offset: 0 };
+            let pageOffsetCache = { page: -1, section: -1, offset: 0 };
+            // Every cached page measurement belongs to one geometry and one set of resident
+            // sections. Restyling the document or stitching a chapter into it invalidates both, so
+            // the caches are dropped in one place instead of being half updated.
+            const invalidatePagedCaches = function() {
+              turnActive = false;
+              pageCountCache = 1;
+              pageOffsetCache = { page: -1, section: -1, offset: 0 };
+            };
             const sentinel = (function() {
               if (!isPaginated) return null;
               const marker = document.createElement('span');
@@ -170,8 +185,7 @@ internal fun buildNovelBookEngineDocumentHtml(
                 setImportant(media[index], 'height', 'auto');
               }
               // Cached measurements belong to the geometry that produced them.
-              turnActive = false;
-              pageOffsetCache = { page: -1, offset: 0 };
+              invalidatePagedCaches();
             };
             const pageCount = function() {
               if (!isPaginated) return 1;
@@ -243,7 +257,11 @@ internal fun buildNovelBookEngineDocumentHtml(
               setImportant(content, 'transform', 'translateX(' + startX + 'px)');
               setImportant(content, 'opacity', '1');
               setImportant(content, 'filter', 'none');
-              pageOffsetCache = { page: target, offset: measurePageOffset(target) };
+              pageOffsetCache = {
+                page: target,
+                section: sectionIndexOf(sectionNodeAtPage(target)),
+                offset: measurePageOffset(target)
+              };
               setImportant(content, 'transform-origin', turnOrigin(style));
               if (style === 'instant' || startPage === target) {
                 setImportant(content, 'transition', 'none');
@@ -325,11 +343,30 @@ internal fun buildNovelBookEngineDocumentHtml(
                 return total + (node.nodeValue || '').length;
               }, 0);
             };
+            // First column a section occupies. In the paged flow sections are laid out side by side
+            // in the column box, so "where a section starts" is a page number, not a vertical edge.
+            const sectionStartPage = function(node) {
+              if (!node || !isPaginated) return 0;
+              const contentRect = content.getBoundingClientRect();
+              const rect = node.getBoundingClientRect();
+              return Math.max(0, Math.floor((rect.left - contentRect.left) / pagePitch));
+            };
+            // Section that owns [page]: the last one that starts at or before it.
+            const sectionNodeAtPage = function(page) {
+              const nodes = sectionNodes();
+              if (nodes.length === 0) return content;
+              let candidate = nodes[0];
+              for (let index = 0; index < nodes.length; index += 1) {
+                if (sectionStartPage(nodes[index]) <= page) candidate = nodes[index];
+              }
+              return candidate;
+            };
             // Section the viewport currently starts in: the last one whose top edge is at or above
-            // the top of the viewport.
+            // the top of the viewport, or - when paged - the one owning the current column.
             const currentSectionNode = function() {
               const nodes = sectionNodes();
               if (nodes.length === 0) return content;
+              if (isPaginated) return sectionNodeAtPage(currentPage());
               const top = viewport.getBoundingClientRect().top;
               let candidate = nodes[0];
               for (let index = 0; index < nodes.length; index += 1) {
@@ -341,8 +378,12 @@ internal fun buildNovelBookEngineDocumentHtml(
               const total = totalCharCount(textNodesIn(sectionNode));
               if (total <= 0) return 0;
               if (isPaginated) {
-                const count = pageCount();
-                const fraction = count <= 1 ? 0 : currentPage() / (count - 1);
+                // Pages are shared by every resident section, so the fraction has to be taken
+                // inside this section's own column range instead of across the whole document.
+                const start = sectionStartPage(sectionNode);
+                const span = Math.max(1, sectionPageSpan(sectionNode));
+                const within = Math.max(0, Math.min(currentPage() - start, span - 1));
+                const fraction = span <= 1 ? 0 : within / (span - 1);
                 return Math.round(fraction * Math.max(0, total - 1));
               }
               const rect = sectionNode.getBoundingClientRect();
@@ -414,15 +455,25 @@ internal fun buildNovelBookEngineDocumentHtml(
               const rect = rectOfRange(range);
               return Math.max(0, Math.floor((rect.left - contentRect.left) / pagePitch));
             };
+            // How many columns a section occupies, measured from its own bounding box.
+            const sectionPageSpan = function(node) {
+              if (!node || !isPaginated) return 1;
+              const contentRect = content.getBoundingClientRect();
+              const rect = node.getBoundingClientRect();
+              const start = Math.floor((rect.left - contentRect.left) / pagePitch);
+              const end = Math.floor((rect.right - contentRect.left - 1) / pagePitch);
+              return Math.max(1, end - start + 1);
+            };
             // The paged flow always knows which page it is on, so its text offset is derived from the
             // page with a binary search over the column geometry instead of hit-testing a point.
-            const measurePageOffset = function(page) {
-              const nodes = textNodes();
+            // The search runs over one section's text: with several chapters resident, an offset is
+            // only meaningful relative to the section reporting it.
+            const measurePageOffsetIn = function(nodes, page) {
               const total = totalCharCount(nodes);
               if (total <= 0) return 0;
               const target = Math.max(0, page);
-              if (target === 0) return 0;
               const contentRect = content.getBoundingClientRect();
+              if (pageOfOffset(nodes, 0, contentRect) >= target) return 0;
               let low = 0;
               let high = total - 1;
               let best = total - 1;
@@ -437,10 +488,17 @@ internal fun buildNovelBookEngineDocumentHtml(
               }
               return best;
             };
+            const measurePageOffset = function(page) {
+              return measurePageOffsetIn(textNodesIn(sectionNodeAtPage(page)), page);
+            };
             const charOffsetAtPage = function(page) {
-              if (turnActive || pageOffsetCache.page === page) return pageOffsetCache.offset;
+              const section = sectionIndexOf(sectionNodeAtPage(page));
+              if (turnActive) return pageOffsetCache.offset;
+              if (pageOffsetCache.page === page && pageOffsetCache.section === section) {
+                return pageOffsetCache.offset;
+              }
               const offset = measurePageOffset(page);
-              pageOffsetCache = { page: page, offset: offset };
+              pageOffsetCache = { page: page, section: section, offset: offset };
               return offset;
             };
             const locationAtViewportStart = function() {
@@ -530,13 +588,31 @@ internal fun buildNovelBookEngineDocumentHtml(
             let stitchForwardRequested = -1;
             let stitchBackwardRequested = -1;
             const pushStitchRequests = function() {
-              if (isPaginated) return;
               const nodes = sectionNodes();
               if (nodes.length === 0) return;
+              const lastSection = sectionIndexOf(nodes[nodes.length - 1]);
+              const firstSection = sectionIndexOf(nodes[0]);
+              if (isPaginated) {
+                // The paged flow asks for the neighbouring chapter a few columns before the reader
+                // turns into it, exactly like the scrolled flow asks a viewport ahead. Without this
+                // the paged document held one chapter and the crossing was a document swap.
+                const count = pageCount();
+                const page = currentPage();
+                if (count - page <= PAGE_STITCH_MARGIN && stitchForwardRequested !== lastSection) {
+                  stitchForwardRequested = lastSection;
+                  reportBoundary('end');
+                }
+                if (firstSection > 0 && page <= PAGE_STITCH_MARGIN &&
+                  stitchBackwardRequested !== firstSection) {
+                  stitchBackwardRequested = firstSection;
+                  reportBoundary('start');
+                }
+                return;
+              }
               const height = Math.max(1, viewport.clientHeight);
               const maximum = Math.max(0, viewport.scrollHeight - height);
-              const lastIndex = sectionIndexOf(nodes[nodes.length - 1]);
-              const firstIndex = sectionIndexOf(nodes[0]);
+              const lastIndex = lastSection;
+              const firstIndex = firstSection;
               if (maximum - viewport.scrollTop <= height * 1.25 && stitchForwardRequested !== lastIndex) {
                 stitchForwardRequested = lastIndex;
                 reportBoundary('end');
@@ -594,9 +670,36 @@ internal fun buildNovelBookEngineDocumentHtml(
               node.innerHTML = html;
               return node;
             };
+            // Re-anchors the paged document on the position it was showing.
+            //
+            // Inserting or restyling a section relays out every column, so the page the reader was
+            // on now shows different text. The locator survives that: the position is re-resolved
+            // from (section, char offset) after the new geometry settled.
+            const restorePagedAnchor = function(anchor) {
+              if (!isPaginated || !anchor) return;
+              invalidatePagedCaches();
+              applyPagedGeometry();
+              const node = resolveSectionNode(anchor.sectionIndex);
+              if (node) scrollToOffsetIn(node, anchor.charOffset);
+            };
             // Images decode after insertion, so a section added above the viewport keeps growing.
             // Compensating every height change it causes is what holds the reading position still.
             const holdPositionWhileLoading = function(node) {
+              const images = node.querySelectorAll('img');
+              if (images.length === 0) return;
+              if (isPaginated) {
+                // A decoded image changes the column count, so the paged document re-resolves its
+                // locator instead of compensating pixels it does not scroll by.
+                const repage = function() {
+                  restorePagedAnchor(locationAtViewportStart());
+                  pushRelocated();
+                };
+                for (let index = 0; index < images.length; index += 1) {
+                  images[index].addEventListener('load', repage, { once: true });
+                  images[index].addEventListener('error', repage, { once: true });
+                }
+                return;
+              }
               let last = node.offsetHeight;
               const fix = function() {
                 const height = node.offsetHeight;
@@ -607,17 +710,22 @@ internal fun buildNovelBookEngineDocumentHtml(
                   viewport.scrollTop = Math.max(0, viewport.scrollTop + delta);
                 }
               };
-              const images = node.querySelectorAll('img');
               for (let index = 0; index < images.length; index += 1) {
                 images[index].addEventListener('load', fix, { once: true });
                 images[index].addEventListener('error', fix, { once: true });
               }
             };
             const appendSection = function(sectionIndex, chapterId, html) {
-              if (isPaginated) return false;
               if (sectionNodeAt(sectionIndex)) return true;
+              const anchor = isPaginated ? locationAtViewportStart() : null;
               const node = buildSectionNode(sectionIndex, chapterId, html);
-              content.appendChild(node);
+              // The paged flow measures its column count from a sentinel that has to stay last.
+              if (sentinel && sentinel.parentNode === content) {
+                content.insertBefore(node, sentinel);
+              } else {
+                content.appendChild(node);
+              }
+              restorePagedAnchor(anchor);
               holdPositionWhileLoading(node);
               reportSectionMeasured(node);
               stitchForwardRequested = -1;
@@ -625,13 +733,19 @@ internal fun buildNovelBookEngineDocumentHtml(
               return true;
             };
             const prependSection = function(sectionIndex, chapterId, html) {
-              if (isPaginated) return false;
               if (sectionNodeAt(sectionIndex)) return true;
+              const anchor = isPaginated ? locationAtViewportStart() : null;
               const node = buildSectionNode(sectionIndex, chapterId, html);
               const before = viewport.scrollHeight;
               content.insertBefore(node, content.firstChild);
-              const after = viewport.scrollHeight;
-              viewport.scrollTop = Math.max(0, viewport.scrollTop + (after - before));
+              if (isPaginated) {
+                // Every column shifted right by the inserted chapter, so the page index is restored
+                // from the locator rather than patched with a pixel delta.
+                restorePagedAnchor(anchor);
+              } else {
+                const after = viewport.scrollHeight;
+                viewport.scrollTop = Math.max(0, viewport.scrollTop + (after - before));
+              }
               holdPositionWhileLoading(node);
               reportSectionMeasured(node);
               stitchBackwardRequested = -1;
@@ -639,29 +753,42 @@ internal fun buildNovelBookEngineDocumentHtml(
               return true;
             };
             const replaceSection = function(sectionIndex, chapterId, html) {
-              if (isPaginated) return false;
               const node = sectionNodeAt(sectionIndex);
               if (!node) return false;
-              const above = node.getBoundingClientRect().top < viewport.getBoundingClientRect().top;
+              const anchor = isPaginated ? locationAtViewportStart() : null;
+              const above = !isPaginated &&
+                node.getBoundingClientRect().top < viewport.getBoundingClientRect().top;
               const before = viewport.scrollHeight;
               const fresh = buildSectionNode(sectionIndex, chapterId, html);
               node.parentNode.replaceChild(fresh, node);
-              const after = viewport.scrollHeight;
-              if (above) viewport.scrollTop = Math.max(0, viewport.scrollTop + (after - before));
+              if (isPaginated) {
+                restorePagedAnchor(anchor);
+              } else {
+                const after = viewport.scrollHeight;
+                if (above) viewport.scrollTop = Math.max(0, viewport.scrollTop + (after - before));
+              }
               holdPositionWhileLoading(fresh);
               reportSectionMeasured(fresh);
               pushRelocated();
               return true;
             };
             const removeSection = function(sectionIndex) {
-              if (isPaginated) return false;
               const node = sectionNodeAt(sectionIndex);
               if (!node) return true;
-              const above = node.getBoundingClientRect().top < viewport.getBoundingClientRect().top;
+              const anchor = isPaginated ? locationAtViewportStart() : null;
+              // Never drop the section the reader is looking at: it is the anchor everything else
+              // is measured against.
+              if (isPaginated && anchor && anchor.sectionIndex === sectionIndex) return false;
+              const above = !isPaginated &&
+                node.getBoundingClientRect().top < viewport.getBoundingClientRect().top;
               const before = viewport.scrollHeight;
               node.parentNode.removeChild(node);
-              const after = viewport.scrollHeight;
-              if (above) viewport.scrollTop = Math.max(0, viewport.scrollTop - (before - after));
+              if (isPaginated) {
+                restorePagedAnchor(anchor);
+              } else {
+                const after = viewport.scrollHeight;
+                if (above) viewport.scrollTop = Math.max(0, viewport.scrollTop - (before - after));
+              }
               stitchForwardRequested = -1;
               stitchBackwardRequested = -1;
               return true;
@@ -764,8 +891,14 @@ internal fun buildNovelBookEngineDocumentHtml(
               next: function(styleName) {
                 if (isPaginated) {
                   const targetPage = currentPage() + 1;
-                  if (targetPage >= pageCount()) return JSON.stringify({ kind: 'end' });
+                  if (targetPage >= pageCount()) {
+                    // Ask for the next chapter before reporting the end, so the engine can stitch it
+                    // in and the reader turns one more column instead of swapping the document.
+                    pushStitchRequests();
+                    return JSON.stringify({ kind: 'end' });
+                  }
                   goToPage(targetPage, styleName);
+                  pushStitchRequests();
                   return relocate();
                 }
                 const maximum = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
@@ -776,8 +909,12 @@ internal fun buildNovelBookEngineDocumentHtml(
               previous: function(styleName) {
                 if (isPaginated) {
                   const targetPage = currentPage() - 1;
-                  if (targetPage < 0) return JSON.stringify({ kind: 'start' });
+                  if (targetPage < 0) {
+                    pushStitchRequests();
+                    return JSON.stringify({ kind: 'start' });
+                  }
                   goToPage(targetPage, styleName);
+                  pushStitchRequests();
                   return relocate();
                 }
                 if (viewport.scrollTop <= 1) return JSON.stringify({ kind: 'start' });
@@ -797,6 +934,24 @@ internal fun buildNovelBookEngineDocumentHtml(
                 pushRelocated();
                 pushStitchRequests();
                 return Math.round(viewport.scrollTop - before);
+              },
+              // Applies reader styles to the open document.
+              //
+              // Changing a setting used to rebuild the whole document, which threw away the
+              // rendered book and landed the reader at the top of the chapter. Swapping the text of
+              // one style element keeps the document alive; the position is then re-resolved from
+              // the locator, because new type metrics mean new columns and new scroll offsets.
+              applyReaderCss: function(css, sectionIndex, charOffset) {
+                const element = document.getElementById('an-book-reader-css');
+                if (element) element.textContent = typeof css === 'string' ? css : '';
+                if (isPaginated) {
+                  invalidatePagedCaches();
+                  applyPagedGeometry();
+                }
+                const node = resolveSectionNode(sectionIndex);
+                if (node) scrollToOffsetIn(node, Math.max(0, charOffset || 0));
+                pushStitchRequests();
+                return relocate();
               }
             });
           })();
@@ -808,6 +963,10 @@ internal fun buildNovelBookEngineDocumentHtml(
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+          <!-- Reader styles live alone in this element so a setting change can replace them without
+               rebuilding the document. It stays ahead of the layout rules below, which keep the
+               same authority over the book geometry as before. -->
+          <style id="an-book-reader-css">$readerCss</style>
           <style>
             html, body {
               box-sizing: border-box;
@@ -819,7 +978,6 @@ internal fun buildNovelBookEngineDocumentHtml(
               background-color: transparent !important;
               background-image: none !important;
             }
-            $readerCss
             $flowCss
             html#an-book-root,
             html#an-book-root > body {

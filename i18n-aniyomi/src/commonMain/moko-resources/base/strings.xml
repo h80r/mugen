@@ -763,6 +763,9 @@
     <string name="novel_book_appending">Appending chapters…</string>
     <string name="novel_book_cleanup_source_chapters">Delete per-chapter files</string>
     <string name="novel_book_toc_title">Book contents</string>
+    <string name="novel_book_renderer_fallback_bionic">Bionic reading needs the web renderer, so the native book renderer is off for now</string>
+    <string name="novel_book_renderer_fallback_custom_styles">Your custom CSS/JS needs the web renderer, so the native book renderer is off for now</string>
+    <string name="novel_book_renderer_fallback_unsupported_content">This book uses formatting the native renderer can\'t show, so the web renderer is used</string>
     <string name="novel_reader_chapter_cache_size">Chapter cache usage</string>
     <string name="novel_reader_chapter_cache_size_summary_limited">%1$s • %2$s entries • limit %3$s / %4$s chapters</string>
     <string name="novel_reader_chapter_cache_size_summary_unlimited">%1$s • %2$s entries • unlimited</string>
