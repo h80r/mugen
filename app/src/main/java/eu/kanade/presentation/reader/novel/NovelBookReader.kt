@@ -37,7 +37,6 @@ import eu.kanade.tachiyomi.ui.reader.novel.NovelBookEngineFlow
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookLocation
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSection
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSpine
-import eu.kanade.tachiyomi.ui.reader.novel.NovelBookUiCommand
 import eu.kanade.tachiyomi.ui.reader.novel.shouldApplyBookSeek
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -72,13 +71,15 @@ internal fun NovelBookReader(
     seekRequest: BookSeekRequest? = null,
     onSeekApplied: (Long) -> Unit = {},
     /**
-     * Sections whose markup changed while they are on screen, e.g. because a translation finished.
+     * Content revision per section, bumped by the core when a section's markup changed, e.g.
+     * because a translation finished.
      *
-     * They are swapped in place instead of reopening the document, so the reading position survives
-     * a translation that lands mid-chapter.
+     * The renderer pulls that one section again through [loadSectionHtml] and swaps it in place
+     * instead of reopening the document, so the reading position survives a translation that lands
+     * mid-chapter. There is no acknowledgement: the revision the renderer holds is the state.
      */
-    replaceCommands: List<NovelBookUiCommand.Replace> = emptyList(),
-    onReplaceApplied: (List<Long>) -> Unit = {},
+    sectionRevisions: Map<Int, Long> = emptyMap(),
+    loadSectionHtml: suspend (Int) -> String? = { null },
     flow: NovelBookEngineFlow,
     transitionStyleName: String = "SLIDE",
     loadDocument: suspend (NovelBookSection) -> NovelBookDocument,
@@ -285,16 +286,19 @@ internal fun NovelBookReader(
         onSeekApplied(request.id)
     }
 
-    LaunchedEffect(replaceCommands, opened) {
-        if (!opened || replaceCommands.isEmpty()) return@LaunchedEffect
-        replaceCommands.forEach { command ->
+    val appliedSectionRevisions = remember(spine) { mutableMapOf<Int, Long>() }
+    LaunchedEffect(sectionRevisions, opened) {
+        if (!opened || sectionRevisions.isEmpty()) return@LaunchedEffect
+        sectionRevisions.forEach { (sectionIndex, revision) ->
+            if (appliedSectionRevisions[sectionIndex] == revision) return@forEach
+            appliedSectionRevisions[sectionIndex] = revision
+            val html = runCatching { loadSectionHtml(sectionIndex) }.getOrNull() ?: return@forEach
             runCatching {
                 operationMutex.withLock {
-                    engine.replaceSection(sectionIndex = command.sectionIndex, html = command.html)
+                    engine.replaceSection(sectionIndex = sectionIndex, html = html)
                 }
             }
         }
-        onReplaceApplied(replaceCommands.map { it.id })
     }
 
     val navigate: (Boolean) -> Unit = remember(engine, coroutineScope, operationMutex) {

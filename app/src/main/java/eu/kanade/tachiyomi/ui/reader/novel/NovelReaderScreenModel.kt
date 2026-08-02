@@ -359,9 +359,13 @@ class NovelReaderScreenModel(
      */
     private val bookController = NovelBookReaderController(host = this)
 
-    /** Pending book-mode DOM work, consumed and acknowledged by the reader UI. */
-    internal val bookModeCommands: kotlinx.coroutines.flow.StateFlow<List<NovelBookUiCommand>> =
-        bookController.bookModeCommands
+    /** Window the mounted renderer holds; renderers pull their sections from it themselves. */
+    internal val bookWindow: kotlinx.coroutines.flow.StateFlow<NovelBookWindowState> =
+        bookController.bookWindow
+
+    /** Section markup for a renderer that is missing it. */
+    internal suspend fun loadBookSectionHtml(sectionIndex: Int): String? =
+        bookController.bookSectionHtml(sectionIndex)
 
     internal val bookEngineSpine: NovelBookSpine
         get() = bookController.bookEngineSpine
@@ -394,8 +398,6 @@ class NovelReaderScreenModel(
         bookController.observeReadingModeChanges(loadedChapter)
     }
 
-    internal fun onBookModeDocumentReady() = bookController.onBookModeDocumentReady()
-
     internal fun onBookModeScroll(sectionIndex: Int, sectionFraction: Float) =
         bookController.onBookModeScroll(sectionIndex, sectionFraction)
 
@@ -406,9 +408,6 @@ class NovelReaderScreenModel(
 
     internal fun onBookModeChapterSelected(chapterId: Long): Boolean =
         bookController.onBookModeChapterSelected(chapterId)
-
-    internal fun onBookModeCommandsExecuted(commandIds: List<Long>) =
-        bookController.onBookModeCommandsExecuted(commandIds)
 
     internal fun onBookModeRetrySection(sectionIndex: Int) =
         bookController.onBookModeRetrySection(sectionIndex)

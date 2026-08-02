@@ -245,7 +245,7 @@ class NovelReaderScreen(
                     bookEngineSpine = screenModel.bookEngineSpine,
                     bookInitialLocation = screenModel.bookEngineLocation,
                     bookSeekRequest = screenModel.bookSeekRequests.collectAsState().value,
-                    bookModeCommands = screenModel.bookModeCommands.collectAsState().value,
+                    bookWindow = screenModel.bookWindow.collectAsState().value,
                     actions = NovelReaderScreenActions(
                         nativeBookBlocksForSection = screenModel::nativeBookBlocksForSection,
                         onSetShowReaderUi = { showReaderUi = it },
@@ -351,7 +351,7 @@ class NovelReaderScreen(
                         loadBookEngineDocument = screenModel::loadBookEngineDocument,
                         onBookEngineLocationChanged = screenModel::onBookEngineLocationChanged,
                         onBookSeekApplied = screenModel::onBookSeekApplied,
-                        onBookModeCommandsExecuted = screenModel::onBookModeCommandsExecuted,
+                        loadBookSectionHtml = screenModel::loadBookSectionHtml,
                         onBookModeScroll = screenModel::onBookModeScroll,
                         onBookModeRetrySection = screenModel::onBookModeRetrySection,
                         onPrepareWholeBook = screenModel::prepareWholeBook,

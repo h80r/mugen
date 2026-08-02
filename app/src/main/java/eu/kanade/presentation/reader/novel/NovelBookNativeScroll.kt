@@ -1,114 +1,109 @@
 package eu.kanade.presentation.reader.novel
 
-import eu.kanade.tachiyomi.ui.reader.novel.NovelBookUiCommand
+import eu.kanade.tachiyomi.ui.reader.novel.BookSeekRequest
+import eu.kanade.tachiyomi.ui.reader.novel.NovelBookWindowState
 import eu.kanade.tachiyomi.ui.reader.novel.NovelRichContentBlock
 import eu.kanade.tachiyomi.ui.reader.novel.parseNovelRichContent
+import kotlin.math.abs
 
 /**
  * Native-renderer side of book mode.
  *
- * The book session emits the same [NovelBookUiCommand] stream for every renderer: append a section,
- * prune a section, scroll to a position. The WebView adapter applies those commands with JavaScript;
- * the native renderer applies them to the list of resident sections below. Nothing about the book
- * model, the spine or progress tracking is renderer specific, so both renderers stay in sync by
- * construction.
+ * The core publishes one window ([NovelBookWindowState]) and serves section markup on demand; the
+ * renderer mounts exactly the sections of that window and drops everything else. There is no
+ * command queue and no acknowledgement: a renderer that was rebuilt underneath the core simply
+ * reads the window again, which is what used to need a document-ready hook and a "forget what is
+ * rendered" call on the core side.
  *
  * The section payload is generic so this layer can be unit tested without a parser or Compose.
  */
 internal data class NovelBookNativeSection<T>(
     val sectionIndex: Int,
     val blocks: List<T>,
+    /** Content revision this section was built from, see [NovelBookWindowState.sectionRevisions]. */
+    val revision: Long = 0L,
 )
 
-/**
- * Applies [commands] to the currently resident [sections].
- *
- * Appends are parsed once and inserted in spine order, so the list always reads top to bottom even
- * when the reader scrolls backwards and earlier sections arrive last. Prunes drop the section again,
- * which is what keeps a long book from holding every chapter in memory. Scroll commands are position
- * changes, not content changes, and are handled by the caller.
- */
-internal fun <T> applyNovelBookCommandsToNativeSections(
+/** Drops the sections that left the window, keeping the rest in spine order. */
+internal fun <T> pruneNovelBookNativeSections(
     sections: List<NovelBookNativeSection<T>>,
-    commands: List<NovelBookUiCommand>,
-    parseSection: (String) -> List<T>,
-    /**
-     * Blocks the compiled book already holds for a section, or null when the book has none.
-     *
-     * When the artifact was built with the native stream, appending a section costs a byte range
-     * read plus a JSON decode instead of a full HTML parse of a 200k character window, which is what
-     * removes the stall when the reader scrolls into a new part of the book. [parseSection] stays as
-     * the fallback so books compiled by older versions keep working unchanged.
-     */
-    precompiledSection: (Int) -> List<T>? = { null },
+    window: NovelBookWindowState,
 ): List<NovelBookNativeSection<T>> {
-    if (commands.isEmpty()) return sections
-    val bySectionIndex = sections.associateByTo(LinkedHashMap()) { it.sectionIndex }
-    commands.forEach { command ->
-        when (command) {
-            is NovelBookUiCommand.Append -> {
-                if (!bySectionIndex.containsKey(command.sectionIndex)) {
-                    val blocks = precompiledSection(command.sectionIndex)
-                        ?.takeIf { it.isNotEmpty() }
-                        ?: parseSection(command.html)
-                    bySectionIndex[command.sectionIndex] = NovelBookNativeSection(
-                        sectionIndex = command.sectionIndex,
-                        blocks = blocks,
-                    )
-                }
-            }
-            is NovelBookUiCommand.Replace -> {
-                // Only a resident section is replaced: one that is not on screen will simply be
-                // parsed from the new markup when it is appended again.
-                if (bySectionIndex.containsKey(command.sectionIndex)) {
-                    bySectionIndex[command.sectionIndex] = NovelBookNativeSection(
-                        sectionIndex = command.sectionIndex,
-                        blocks = parseSection(command.html),
-                    )
-                }
-            }
-            is NovelBookUiCommand.Prune -> bySectionIndex.remove(command.sectionIndex)
-            is NovelBookUiCommand.ScrollTo -> Unit
+    if (sections.isEmpty()) return sections
+    val resident = window.residentSections.toSet()
+    if (sections.all { it.sectionIndex in resident }) return sections
+    return sections.filter { it.sectionIndex in resident }
+}
+
+/**
+ * Sections the renderer still has to pull, nearest to the reading position first.
+ *
+ * A section already mounted at an older revision is pulled again: that is how a finished
+ * translation is swapped in place instead of rebuilding the document around it.
+ */
+internal fun <T> missingNovelBookNativeSections(
+    sections: List<NovelBookNativeSection<T>>,
+    window: NovelBookWindowState,
+): List<Int> {
+    if (window.residentSections.isEmpty()) return emptyList()
+    val mounted = sections.associateBy { it.sectionIndex }
+    val center = window.residentSections
+        .minByOrNull { index -> abs(index - centerOf(window)) }
+        ?: return emptyList()
+    return window.residentSections
+        .filter { index ->
+            val section = mounted[index]
+            section == null || section.revision != window.revisionOf(index)
         }
-    }
+        .sortedBy { index -> abs(index - center) }
+}
+
+/** Middle of the resident window, i.e. where the reader currently is. */
+private fun centerOf(window: NovelBookWindowState): Int {
+    val resident = window.residentSections
+    if (resident.isEmpty()) return 0
+    return resident[resident.size / 2]
+}
+
+/** Inserts (or replaces) one pulled section, keeping the list in spine order. */
+internal fun <T> withNovelBookNativeSection(
+    sections: List<NovelBookNativeSection<T>>,
+    section: NovelBookNativeSection<T>,
+): List<NovelBookNativeSection<T>> {
+    val bySectionIndex = sections.associateByTo(LinkedHashMap()) { it.sectionIndex }
+    bySectionIndex[section.sectionIndex] = section
     return bySectionIndex.values.sortedBy { it.sectionIndex }
 }
 
-/** A programmatic scroll the native list still has to perform. */
-internal data class NovelBookNativeScrollTarget(
-    val commandId: Long,
+/** A programmatic move the native list still has to perform. */
+internal data class NovelBookNativeSeekTarget(
+    val seekRequestId: Long,
     val itemIndex: Int,
     val fraction: Float,
 )
 
 /**
- * Resolves the scroll command the native list has to apply, or null when there is nothing to do.
+ * Resolves the seek the native list has to apply, or null when there is nothing to do.
  *
- * Scroll commands used to be re-applied for every command batch, so each append or prune that
- * arrived while the reader was scrolling threw the list back to the last requested position - the
- * book simply refused to be scrolled. A command is now applied exactly once, identified by its id,
- * and the position inside the section is honoured instead of always landing on the section's top.
+ * Both renderers now take their moves from the same channel: an explicit [BookSeekRequest] that is
+ * applied at most once and acknowledged by id. Reported positions never travel back down into the
+ * renderer, so an append arriving mid-scroll can no longer throw the reader back.
  */
-internal fun resolveNovelBookNativeScrollTarget(
+internal fun resolveNovelBookNativeSeekTarget(
     entries: List<NovelBookNativeEntry>,
-    commands: List<NovelBookUiCommand>,
-    lastAppliedCommandId: Long,
-): NovelBookNativeScrollTarget? {
-    val scrollTo = latestNovelBookScrollCommand(commands) ?: return null
-    if (scrollTo.id <= lastAppliedCommandId) return null
-    val itemIndex = entries.indexOfFirst { it.sectionIndex == scrollTo.sectionIndex }
+    request: BookSeekRequest?,
+    lastAppliedSeekId: Long,
+    sectionFraction: Float,
+): NovelBookNativeSeekTarget? {
+    if (request == null || request.id <= lastAppliedSeekId) return null
+    val itemIndex = entries.indexOfFirst { it.sectionIndex == request.location.sectionIndex }
     if (itemIndex < 0) return null
-    return NovelBookNativeScrollTarget(
-        commandId = scrollTo.id,
+    return NovelBookNativeSeekTarget(
+        seekRequestId = request.id,
         itemIndex = itemIndex,
-        fraction = scrollTo.sectionFraction.coerceIn(0f, 1f),
+        fraction = sectionFraction.coerceIn(0f, 1f),
     )
 }
-
-/** Returns the last scroll command in [commands], which is the only one still worth applying. */
-internal fun latestNovelBookScrollCommand(
-    commands: List<NovelBookUiCommand>,
-): NovelBookUiCommand.ScrollTo? = commands.filterIsInstance<NovelBookUiCommand.ScrollTo>().lastOrNull()
 
 /** The resident book sections as the native renderer holds them. */
 internal typealias NovelBookNativeSections = List<NovelBookNativeSection<NovelRichContentBlock>>
@@ -150,7 +145,7 @@ internal fun buildNovelBookNativeEntries(
 /**
  * Parses one book section for the native renderer.
  *
- * The section HTML is exactly what the WebView renderer appends to its document, so both renderers
+ * The section HTML is exactly what the WebView renderer mounts in its document, so both renderers
  * show the same content and the same chapter headings.
  */
 internal fun parseNovelBookNativeSection(html: String): List<NovelRichContentBlock> =

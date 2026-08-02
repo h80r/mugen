@@ -78,6 +78,11 @@ internal class NovelBookEngine(
     private val loadDocument: suspend (NovelBookSection) -> NovelBookDocument,
     private val renderer: NovelBookEngineRenderer,
     private val onLocationChanged: (NovelBookLocation) -> Unit = {},
+    /**
+     * Window the engine keeps stitched. It is the same policy the core plans with, so a section can
+     * no longer be resident for the planner and prunable for the engine at the same time.
+     */
+    private val windowPolicy: BookWindowPolicy = BookWindowPolicy.DEFAULT,
 ) {
 
     private var spine: NovelBookSpine = NovelBookSpine.EMPTY
@@ -252,11 +257,11 @@ internal class NovelBookEngine(
 
     /**
      * Keeps the stitched document bounded: sections that scrolled far out of reach are dropped, so a
-     * long reading session cannot grow the DOM until scrolling stutters. Five resident sections keep
-     * both directions seamless while staying cheap.
+     * long reading session cannot grow the DOM until scrolling stutters. How many sections stay is
+     * [BookWindowPolicy]'s call, not a number hardcoded here.
      */
     private suspend fun pruneResidentWindow(keepForward: Boolean) {
-        while (residentLast - residentFirst + 1 > 5) {
+        while (residentLast - residentFirst + 1 > windowPolicy.residentSectionCount) {
             val victim = if (keepForward) residentFirst else residentLast
             if (victim == location.sectionIndex) break
             if (!renderer.removeSection(victim)) break

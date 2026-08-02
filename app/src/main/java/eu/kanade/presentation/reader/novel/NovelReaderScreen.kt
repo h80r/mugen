@@ -158,7 +158,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.NovelBookEngineFlow
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookLocation
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSection
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSpine
-import eu.kanade.tachiyomi.ui.reader.novel.NovelBookUiCommand
+import eu.kanade.tachiyomi.ui.reader.novel.NovelBookWindowState
 import eu.kanade.tachiyomi.ui.reader.novel.NovelReaderScreenModel
 import eu.kanade.tachiyomi.ui.reader.novel.NovelRichContentBlock
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRenderer
@@ -358,7 +358,7 @@ fun NovelReaderScreen(
     bookInitialLocation: NovelBookLocation = NovelBookLocation.START,
     // Explicit move requested by the core (resume, seek bar, chapter picker, TTS, search).
     bookSeekRequest: BookSeekRequest? = null,
-    bookModeCommands: List<NovelBookUiCommand> = emptyList(),
+    bookWindow: NovelBookWindowState = NovelBookWindowState.EMPTY,
     actions: NovelReaderScreenActions,
 ) {
     val onBack = actions.onBack
@@ -463,7 +463,7 @@ fun NovelReaderScreen(
     val loadBookEngineDocument = actions.loadBookEngineDocument
     val onBookEngineLocationChanged = actions.onBookEngineLocationChanged
     val onBookSeekApplied = actions.onBookSeekApplied
-    val onBookModeCommandsExecuted = actions.onBookModeCommandsExecuted
+    val loadBookSectionHtml = actions.loadBookSectionHtml
     val onBookModeScroll = actions.onBookModeScroll
     val onBookModeRetrySection = actions.onBookModeRetrySection
     val onPrepareWholeBook = actions.onPrepareWholeBook
@@ -1445,43 +1445,59 @@ fun NovelReaderScreen(
             failedSectionIndices = state.bookMode.failedSectionIndices,
         )
     }
-    // Id of the scroll command that was already applied. Kept in an array so updating it never
-    // triggers a recomposition of the reader. No time-based guard is needed anymore: reported
-    // positions never travel back down into the renderer, so an intermediate frame cannot pull the
-    // reader back.
-    val bookModeAppliedScrollCommandId = remember(state.novel.id) { longArrayOf(0L) }
-    LaunchedEffect(useNativeBookScroll, bookModeCommands) {
+    // Id of the seek that was already applied. Kept in an array so updating it never triggers a
+    // recomposition of the reader. No time-based guard is needed: reported positions never travel
+    // back down into the renderer, so an intermediate frame cannot pull the reader back.
+    val bookModeAppliedSeekId = remember(state.novel.id) { longArrayOf(0L) }
+    // The native renderer holds exactly the published window: it drops what left it and pulls what
+    // it is missing. Nothing is pushed at it, so a rebuilt list re-reads the window on its own.
+    LaunchedEffect(useNativeBookScroll, bookWindow) {
         if (!useNativeBookScroll) return@LaunchedEffect
-        val commands = bookModeCommands
-        if (commands.isEmpty()) return@LaunchedEffect
-        val nextSections = applyNovelBookCommandsToNativeSections(
-            sections = bookModeNativeSections,
-            commands = commands,
-            parseSection = ::parseNovelBookNativeSection,
-            precompiledSection = nativeBookBlocksForSection,
-        )
-        bookModeNativeSections = nextSections
-        val scrollTarget = resolveNovelBookNativeScrollTarget(
-            entries = buildNovelBookNativeEntries(
-                sections = nextSections,
-                failedSectionIndices = state.bookMode.failedSectionIndices,
-            ),
-            commands = commands,
-            lastAppliedCommandId = bookModeAppliedScrollCommandId[0],
-        )
-        if (scrollTarget != null) {
-            bookModeAppliedScrollCommandId[0] = scrollTarget.commandId
-            textListState.scrollToItem(scrollTarget.itemIndex)
-            val itemHeight = textListState.layoutInfo.visibleItemsInfo
-                .firstOrNull { it.index == scrollTarget.itemIndex }
-                ?.size
-                ?: 0
-            val offsetPx = (itemHeight * scrollTarget.fraction).toInt()
-            if (offsetPx > 0) {
-                textListState.scrollToItem(scrollTarget.itemIndex, offsetPx)
-            }
+        // Prune before pulling: at a chapter boundary this keeps one window of sections in memory
+        // instead of briefly holding the old and the new one at once.
+        val pruned = pruneNovelBookNativeSections(bookModeNativeSections, bookWindow)
+        if (pruned !== bookModeNativeSections) {
+            bookModeNativeSections = pruned
         }
-        onBookModeCommandsExecuted(commands.map { it.id })
+        var sections = pruned
+        missingNovelBookNativeSections(sections, bookWindow).forEach { sectionIndex ->
+            // Compiled books carry pre-parsed blocks with their TTS anchors; only a book without an
+            // artifact has to be parsed from markup here.
+            val blocks = nativeBookBlocksForSection(sectionIndex)
+                ?: loadBookSectionHtml(sectionIndex)?.let(::parseNovelBookNativeSection)
+                ?: return@forEach
+            sections = withNovelBookNativeSection(
+                sections = sections,
+                section = NovelBookNativeSection(
+                    sectionIndex = sectionIndex,
+                    blocks = blocks,
+                    revision = bookWindow.revisionOf(sectionIndex),
+                ),
+            )
+            bookModeNativeSections = sections
+        }
+    }
+    // Explicit moves (resume, seek bar, chapter picker, TTS) come from the same seek channel both
+    // renderers use, and are applied at most once.
+    LaunchedEffect(useNativeBookScroll, bookSeekRequest, bookModeNativeEntries) {
+        if (!useNativeBookScroll) return@LaunchedEffect
+        val seekTarget = resolveNovelBookNativeSeekTarget(
+            entries = bookModeNativeEntries,
+            request = bookSeekRequest,
+            lastAppliedSeekId = bookModeAppliedSeekId[0],
+            sectionFraction = state.bookMode.currentSectionFraction,
+        ) ?: return@LaunchedEffect
+        bookModeAppliedSeekId[0] = seekTarget.seekRequestId
+        textListState.scrollToItem(seekTarget.itemIndex)
+        val itemHeight = textListState.layoutInfo.visibleItemsInfo
+            .firstOrNull { it.index == seekTarget.itemIndex }
+            ?.size
+            ?: 0
+        val offsetPx = (itemHeight * seekTarget.fraction).toInt()
+        if (offsetPx > 0) {
+            textListState.scrollToItem(seekTarget.itemIndex, offsetPx)
+        }
+        onBookSeekApplied(seekTarget.seekRequestId)
     }
     // Position reporting for the native list, mirroring what the WebView relocate bridge sends.
     LaunchedEffect(
@@ -2679,9 +2695,8 @@ fun NovelReaderScreen(
                                 initialLocation = bookInitialLocation,
                                 seekRequest = bookSeekRequest,
                                 onSeekApplied = onBookSeekApplied,
-                                replaceCommands = bookModeCommands
-                                    .filterIsInstance<NovelBookUiCommand.Replace>(),
-                                onReplaceApplied = onBookModeCommandsExecuted,
+                                sectionRevisions = bookWindow.sectionRevisions,
+                                loadSectionHtml = loadBookSectionHtml,
                                 flow = if (state.readerSettings.pageReader) {
                                     NovelBookEngineFlow.PAGINATED
                                 } else {
@@ -5541,7 +5556,7 @@ data class NovelReaderScreenActions(
     val onBookEngineLocationChanged: (NovelBookLocation) -> Unit = {},
     /** Acknowledges a [BookSeekRequest] the renderer applied, identified by its id. */
     val onBookSeekApplied: (Long) -> Unit = {},
-    val onBookModeCommandsExecuted: (List<Long>) -> Unit = {},
+    val loadBookSectionHtml: suspend (Int) -> String? = { null },
     val onBookModeScroll: (sectionIndex: Int, sectionFraction: Float) -> Unit = { _, _ -> },
     val onBookModeRetrySection: (sectionIndex: Int) -> Unit = {},
     val onPrepareWholeBook: () -> Unit = {},

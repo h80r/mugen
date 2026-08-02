@@ -151,11 +151,59 @@ internal class NovelBookReaderController(
             ?.toAnchoredRichContentBlocks()
             ?.takeIf { it.isNotEmpty() }
 
-    /** Pending book-mode DOM work, consumed and acknowledged by the reader UI. */
-    private val bookModeCommandQueue = NovelBookUiCommandQueue()
+    /** Content revision per section, bumped when a mounted section's markup changed. */
+    private val bookSectionRevisions = mutableMapOf<Int, Long>()
 
-    internal val bookModeCommands: kotlinx.coroutines.flow.StateFlow<List<NovelBookUiCommand>> =
-        bookModeCommandQueue.commands
+    private val bookWindowState = MutableStateFlow(NovelBookWindowState.EMPTY)
+
+    /**
+     * The window a mounted renderer holds, and the only channel from the core to a renderer.
+     *
+     * The core no longer pushes append/prune/scroll work into a queue that only one renderer read:
+     * it publishes where the reader is, and each renderer pulls the sections it is missing through
+     * [bookSectionHtml]. A renderer that was rebuilt underneath the core just reads this state
+     * again, which is what the document-ready hook used to be needed for.
+     */
+    internal val bookWindow: StateFlow<NovelBookWindowState> = bookWindowState.asStateFlow()
+
+    /** Publishes the window for the current reading position. */
+    private fun refreshBookWindow() {
+        bookWindowState.value = bookModeRuntime.windowState(bookSectionRevisions.toMap())
+    }
+
+    /**
+     * Marks one section's markup as changed, so every mounted renderer re-pulls exactly it.
+     *
+     * Replaces the old "replace section" command: the section is dropped from the prepared cache and
+     * its revision moves on, which both renderers notice on their own.
+     */
+    private fun bumpBookSectionRevision(sectionIndex: Int) {
+        bookModeRuntime.invalidatePreparedSection(sectionIndex)
+        bookSectionRevisions[sectionIndex] = (bookSectionRevisions[sectionIndex] ?: 0L) + 1L
+        refreshBookWindow()
+        logBookModeTrace { "section=$sectionIndex revision=${bookSectionRevisions[sectionIndex]}" }
+    }
+
+    /**
+     * Markup of one section, prepared on demand for the renderer that is missing it.
+     *
+     * Compiled-book sections come straight out of the artifact body, so the translation overlay is
+     * the only pipeline step left to run here.
+     */
+    internal suspend fun bookSectionHtml(sectionIndex: Int): String? {
+        if (!bookModeRuntime.isActive) return null
+        val html = runCatching { bookModeRuntime.sectionHtml(sectionIndex) }
+            .onFailure { error -> logBookModeFailure("load section $sectionIndex", error) }
+            .getOrNull()
+            ?: return null
+        val artifact = artifactSource ?: return html
+        return runCatching {
+            sectionRepository.applyArtifactTranslations(
+                html = html,
+                chapterIds = artifact.chaptersOfSection(sectionIndex),
+            )
+        }.getOrDefault(html)
+    }
 
     internal val bookEngineSpine: NovelBookSpine
         get() = bookModeRuntime.engineSpine
@@ -236,11 +284,6 @@ internal class NovelBookReaderController(
 
     private var lastBookEnginePrefetchSectionIndex = -1
 
-    private var bookModeSyncJob: kotlinx.coroutines.Job? = null
-
-    /** Set while a sync round runs, to request exactly one more round with the latest position. */
-    private var bookModeSyncPending = false
-
     private var bookModeProgressJob: kotlinx.coroutines.Job? = null
 
     private var lastPersistedBookModeSectionIndex = -1
@@ -301,16 +344,10 @@ internal class NovelBookReaderController(
         // chapter's text has to be rebuilt, not just the first one.
         val sections = bookModeRuntime.engineSpine.sections.filter { it.covers(chapterId) }
         if (sections.isEmpty()) return
-        host.bookScope.launch {
-            sections.forEach { section ->
-                // Only the affected sections are rebuilt and swapped in place. Rebuilding the whole
-                // document (the old behaviour) reset the renderer, which is what made a finished
-                // translation flash the book and throw the reader back to the section start.
-                val html = runCatching { rebuildSectionHtml(section) }.getOrNull() ?: return@forEach
-                bookModeCommandQueue.enqueueReplace(sectionIndex = section.index, html = html)
-                logBookModeTrace { "replace section=${section.index} chapter=$chapterId chars=${html.length}" }
-            }
-        }
+        // Only the affected sections change revision and are pulled again in place. Rebuilding the
+        // whole document (the old behaviour) reset the renderer, which is what made a finished
+        // translation flash the book and throw the reader back to the section start.
+        sections.forEach { section -> bumpBookSectionRevision(section.index) }
     }
 
     /**
@@ -331,31 +368,9 @@ internal class NovelBookReaderController(
             radius = BOOK_TRANSLATION_REFRESH_RADIUS,
         )
         if (indices.isEmpty()) return
-        host.bookScope.launch {
-            indices.forEach { index ->
-                val section = spine.sectionAt(index) ?: return@forEach
-                val html = runCatching { rebuildSectionHtml(section) }.getOrNull() ?: return@forEach
-                bookModeCommandQueue.enqueueReplace(sectionIndex = section.index, html = html)
-                logBookModeTrace {
-                    "replace section=${section.index} reason=translation-visibility chars=${html.length}"
-                }
-            }
-        }
-    }
-
-    /** Rebuilds one section's markup through the pipeline, bypassing every cache. */
-    private suspend fun rebuildSectionHtml(section: NovelBookSection): String? {
-        val artifact = artifactSource
-        if (artifact != null) {
-            val document = artifact.documentFor(section.index) ?: return null
-            return sectionRepository.applyArtifactTranslations(
-                html = document.html,
-                chapterIds = artifact.chaptersOfSection(section.index),
-            )
-        }
-        return when (val result = bookModeRuntime.retrySection(section.loaderKey)) {
-            is NovelBookSectionResult.Ready -> result.html
-            is NovelBookSectionResult.Failed -> null
+        indices.forEach { index ->
+            val section = spine.sectionAt(index) ?: return@forEach
+            bumpBookSectionRevision(section.index)
         }
     }
 
@@ -376,7 +391,8 @@ internal class NovelBookReaderController(
                         bookEnginePrefetchJob?.cancel()
                         lastBookEnginePrefetchSectionIndex = -1
                         bookModeRuntime.stop()
-                        bookModeCommandQueue.clear()
+                        bookSectionRevisions.clear()
+                        refreshBookWindow()
                     }
                     refreshBookModeState()
                 }
@@ -499,7 +515,7 @@ internal class NovelBookReaderController(
         bookModeRuntime.startWithSpine(
             spine = artifact.spine,
             resumeLocation = resumeLocation,
-            windowConfig = NovelBookWindowConfig.forBlockChars(
+            windowPolicy = BookWindowPolicy.forBlockChars(
                 eu.kanade.tachiyomi.data.book.novel.NovelBookBlockPlanner.DEFAULT_TARGET_CHARS,
             ),
             fetchSectionHtml = { sectionKey ->
@@ -508,7 +524,7 @@ internal class NovelBookReaderController(
         )
         bookEnginePrefetchJob?.cancel()
         lastBookEnginePrefetchSectionIndex = -1
-        bookModeCommandQueue.clear()
+        bookSectionRevisions.clear()
         val resumeState = bookModeRuntime.uiState()
         val resumedLocation = bookModeRuntime.location
         bookModeRestoringPosition = resumedLocation.sectionIndex > 0 || resumedLocation.charOffset > 0
@@ -521,13 +537,11 @@ internal class NovelBookReaderController(
         lastPersistedBookModeSectionIndex = resumedLocation.sectionIndex
         lastBookModeChapterId = bookModeChapterAtReadingPosition()?.id
         bookModeMarkedReadChapterIds.clear()
-        // The native renderer has no document-ready hook to place the reader, so the resume position
-        // is queued as a regular scroll command. Both renderers therefore open the book where the
-        // reader left off instead of at the top of the resident window.
-        bookModeCommandQueue.enqueueScrollTo(
-            sectionIndex = resumeState.currentSectionIndex,
-            sectionFraction = resumeState.currentSectionFraction,
-        )
+        // Both renderers take their moves from the seek request published above and pull the window
+        // themselves, so the book opens where the reader left off on either renderer without a
+        // renderer-specific scroll command.
+        refreshBookWindow()
+        scheduleBookEnginePrefetch(resumedLocation.sectionIndex)
         logcat(LogPriority.INFO) {
             "Book mode started: sections=${resumeState.sectionCount}, " +
                 "resumeSection=${resumeState.currentSectionIndex}, " +
@@ -539,83 +553,6 @@ internal class NovelBookReaderController(
                 "v2=${novelReaderPreferences.novelBookModeV2().get()} " +
                 "durationMs=${System.currentTimeMillis() - startedAtMs}",
         )
-    }
-
-    /**
-     * Rebuilds the whole book document after the reader (re)loaded it.
-     *
-     * The reader document is loaded asynchronously, so every piece of DOM work that book mode had
-     * already executed was thrown away when the fresh document committed. The reader calls this once
-     * per loaded document.
-     */
-    fun onBookModeDocumentReady() {
-        if (!bookModeRuntime.isActive) return
-        bookModeCommandQueue.clear()
-        bookModeRuntime.forgetRenderedSections()
-        val current = bookModeRuntime.uiState()
-        // The legacy WebView used to be re-seeded with one placeholder per section here; the book
-        // engine and the native list rebuild their resident window from the sync round instead, so
-        // only the reading position is re-applied.
-        bookModeCommandQueue.enqueueScrollTo(
-            sectionIndex = current.currentSectionIndex,
-            sectionFraction = current.currentSectionFraction,
-        )
-        logcat(LogPriority.INFO) {
-            "Book mode document ready: section=${current.currentSectionIndex}, " +
-                "fraction=${current.currentSectionFraction}"
-        }
-        scheduleBookModeSync()
-    }
-
-    /**
-     * Runs book-mode rounds strictly one at a time: a round queues the sections to append/prune for
-     * the current position and prepares the sections around it.
-     */
-    private fun scheduleBookModeSync() {
-        if (!bookModeRuntime.isActive) return
-        if (bookModeSyncJob?.isActive == true) {
-            bookModeSyncPending = true
-            return
-        }
-        bookModeSyncJob = host.bookScope.launch {
-            do {
-                val replan = runBookModeSyncRound()
-            } while (replan && bookModeRuntime.isActive)
-            refreshBookModeState()
-        }
-    }
-
-    /** One planning round. Returns true when a section finished preparing during the round. */
-    private suspend fun runBookModeSyncRound(): Boolean {
-        bookModeSyncPending = false
-        runCatching {
-            bookModeRuntime.sync(
-                renderSection = { section, html ->
-                    bookModeCommandQueue.enqueueAppend(sectionIndex = section.index, html = html)
-                    logBookModeTrace { "append section=${section.index} chars=${html.length}" }
-                },
-                releaseSection = { section ->
-                    bookModeCommandQueue.enqueuePrune(sectionIndex = section.index)
-                    logBookModeTrace { "prune section=${section.index}" }
-                },
-                prepareSection = { section ->
-                    val prepared = withContext(Dispatchers.IO) {
-                        runCatching { bookModeRuntime.prepareSection(section.loaderKey) }
-                            .onFailure { error ->
-                                logBookModeFailure("prepare section ${section.index}", error)
-                            }
-                            .isSuccess
-                    }
-                    if (prepared) {
-                        bookModeSyncPending = true
-                    }
-                },
-            )
-        }.onFailure { error ->
-            logBookModeFailure("sync sections", error)
-        }
-        refreshBookModeState()
-        return bookModeSyncPending
     }
 
     /** Throttled book-mode logging: repeated failures collapse into one entry per few seconds. */
@@ -664,7 +601,8 @@ internal class NovelBookReaderController(
     fun onBookModeScroll(sectionIndex: Int, sectionFraction: Float) {
         if (!bookModeRuntime.isActive) return
         bookModeRuntime.moveTo(sectionIndex = sectionIndex, sectionFraction = sectionFraction)
-        scheduleBookModeSync()
+        refreshBookWindow()
+        scheduleBookEnginePrefetch(bookModeRuntime.location.sectionIndex)
         refreshBookModeState()
         onBookModePositionChanged(sectionFraction)
     }
@@ -673,6 +611,7 @@ internal class NovelBookReaderController(
     fun onBookEngineLocationChanged(location: NovelBookLocation) {
         if (!bookModeRuntime.isActive) return
         bookModeRuntime.moveTo(location)
+        refreshBookWindow()
         refreshBookModeState()
         val currentLocation = bookModeRuntime.location
         scheduleBookEnginePrefetch(currentLocation.sectionIndex)
@@ -736,6 +675,7 @@ internal class NovelBookReaderController(
         // go there once. It is not a reported position, so it never loops back.
         bookModeRuntime.moveTo(location)
         requestBookSeek(location, BookSeekReason.Seekbar)
+        refreshBookWindow()
         refreshBookModeState()
         scheduleBookEnginePrefetch(location.sectionIndex)
         onBookModePositionChanged(bookModeRuntime.uiState().currentSectionFraction)
@@ -943,10 +883,6 @@ internal class NovelBookReaderController(
         return true
     }
 
-    fun onBookModeCommandsExecuted(commandIds: List<Long>) {
-        bookModeCommandQueue.ack(commandIds)
-    }
-
     /**
      * Retries a section that failed to load, e.g. after a network drop.
      */
@@ -960,7 +896,7 @@ internal class NovelBookReaderController(
                     .isSuccess
             }
             if (retried) {
-                scheduleBookModeSync()
+                bumpBookSectionRevision(sectionIndex)
             }
             refreshBookModeState()
         }
@@ -1017,11 +953,9 @@ internal class NovelBookReaderController(
             markBookModeCrossedChaptersRead()
             persistBookModeProgress(bookModeRuntime.uiState().currentSectionFraction)
         }
-        bookModeSyncJob?.cancel()
         bookModeProgressJob?.cancel()
         bookEnginePrefetchJob?.cancel()
         bookPrepareJob?.cancel()
-        bookModeSyncPending = false
         lastPersistedBookModeSectionIndex = -1
         bookSeekRequestState.value = null
         bookModeRestoringPosition = false
@@ -1029,7 +963,8 @@ internal class NovelBookReaderController(
         lastBookModeChapterId = null
         bookModeMarkedReadChapterIds.clear()
         bookModeRuntime.stop()
-        bookModeCommandQueue.clear()
+        bookSectionRevisions.clear()
+        bookWindowState.value = NovelBookWindowState.EMPTY
     }
 
     companion object {

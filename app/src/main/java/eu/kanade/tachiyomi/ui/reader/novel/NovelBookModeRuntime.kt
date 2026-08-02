@@ -10,15 +10,19 @@ private const val SPINE_KIND_ARTIFACT = "artifact"
 /**
  * Single entry point the novel reader screen model uses to drive book mode.
  *
- * It owns the spine, the section store/loader and the reading session, so the screen model only has
- * to start/stop it, report scroll metrics and forward render/prune work to the WebView. Everything
- * here is Android free: the chapter payload and HTML normalization come in as lambdas, which keeps
- * the chapter-by-chapter reader untouched and this whole flow unit testable.
+ * It owns the spine, the section store/loader and the reading position, so the screen model only
+ * has to start/stop it and report where the reader is. Everything here is Android free: the chapter
+ * payload and HTML normalization come in as lambdas, which keeps the chapter-by-chapter reader
+ * untouched and this whole flow unit testable.
+ *
+ * The runtime does not render and does not track what a renderer holds: it publishes the window
+ * ([windowState]) and serves section markup on demand. Which sections are mounted is the renderer's
+ * business alone.
  */
 internal class NovelBookModeRuntime(
     private val sectionRepository: BookSectionRepository,
     private val showChapterHeadings: () -> Boolean = { true },
-    private val prepareAhead: () -> Int = { NovelBookWindowConfig.DEFAULT_PREFETCH_AHEAD },
+    private val prepareAhead: () -> Int = { BookWindowPolicy.DEFAULT_PREFETCH_AHEAD },
     /**
      * Scope the prepared sections are cached under, e.g. the novel plus the translation variant the
      * HTML was built with. Returning null keeps sections in memory only, which is what tests want.
@@ -96,29 +100,35 @@ internal class NovelBookModeRuntime(
         fetchSectionHtml = { sectionKey -> resolver.resolve(sectionKey) },
     )
 
-    private var session: NovelBookSession? = null
+    /** True between [startWithSpine] and [stop]; a book is being read. */
+    private var running = false
+
+    private var currentLocation: NovelBookLocation = NovelBookLocation.START
 
     /**
-     * Window configuration of the running session.
+     * Window policy of the running session.
      *
      * Prefetching used to rebuild the default configuration instead of reusing the one the session
      * was started with, so a book started with a wider window kept prefetching (and pruning) with
      * the narrow default.
      */
-    private var activeConfig: NovelBookWindowConfig = NovelBookWindowConfig.DEFAULT
+    private var activePolicy: BookWindowPolicy = BookWindowPolicy.DEFAULT
 
-    val isActive: Boolean get() = session != null
+    val isActive: Boolean get() = running
 
-    val location: NovelBookLocation get() = session?.location ?: NovelBookLocation.START
+    val location: NovelBookLocation get() = currentLocation
 
     val engineSpine: NovelBookSpine get() = spine
 
-    val currentChapterId: Long? get() = session?.currentSection()?.chapterId
+    val windowPolicy: BookWindowPolicy get() = activePolicy
 
-    /** Stops book mode and frees every resident section. */
+    val currentChapterId: Long? get() = spine.sectionAt(currentLocation.sectionIndex)?.chapterId
+
+    /** Stops book mode and frees every prepared section. */
     fun stop() {
-        session = null
+        running = false
         spine = NovelBookSpine.EMPTY
+        currentLocation = NovelBookLocation.START
         loader.clear()
         loader = NovelBookSectionLoader(
             store = store,
@@ -128,69 +138,73 @@ internal class NovelBookModeRuntime(
     }
 
     /**
-     * Drops the rendered-section bookkeeping so the next [sync] re-renders the resident window.
-     *
-     * Used when the reader document was rebuilt underneath the runtime: the prepared HTML is still
-     * cached, only the document lost its content.
-     */
-    fun forgetRenderedSections() {
-        session?.forgetRenderedSections()
-    }
-
-    /**
-     * Drops every prepared section so the next mount runs the pipeline again.
+     * Drops every prepared section so the next pull runs the pipeline again.
      *
      * The disk cache separates translated from untranslated markup through the cache scope, but the
      * in-memory store is keyed by section alone. Hiding or showing a translation therefore left the
-     * neighbouring resident sections serving the markup of the variant that was just switched away
-     * from, which is why the "show original" button appeared to do nothing.
+     * neighbouring sections serving the markup of the variant that was just switched away from,
+     * which is why the "show original" button appeared to do nothing.
      */
     fun invalidatePreparedSections() {
         loader.clear()
         staleSectionsPruned = false
-        session?.forgetRenderedSections()
+    }
+
+    /** Forgets one section's markup, so the next pull rebuilds exactly that section. */
+    fun invalidatePreparedSection(sectionIndex: Int) {
+        val section = spine.sectionAt(sectionIndex) ?: return
+        loader.invalidate(section.loaderKey)
     }
 
     fun moveTo(sectionIndex: Int, sectionFraction: Float) {
-        val activeSession = session ?: return
-        val section = activeSession.sectionAt(sectionIndex) ?: return
-        activeSession.moveTo(
+        if (!running) return
+        val section = spine.sectionAt(sectionIndex) ?: return
+        currentLocation = spine.clampLocation(
             NovelBookLocation(
                 sectionIndex = sectionIndex,
                 charOffset = (section.charCount * sectionFraction).toInt(),
             ),
         )
-        spine = activeSession.spine
     }
 
     /** Moves to an exact renderer-owned text position without converting through a pixel fraction. */
     fun moveTo(location: NovelBookLocation) {
-        val activeSession = session ?: return
-        activeSession.moveTo(location)
-        spine = activeSession.spine
+        if (!running) return
+        currentLocation = spine.clampLocation(location)
     }
 
     fun moveToChapter(chapterId: Long, fraction: Float = 0f): Boolean {
-        val activeSession = session ?: return false
-        val moved = activeSession.moveToChapter(chapterId, fraction)
-        spine = activeSession.spine
-        return moved
+        if (!running) return false
+        val target = spine.locationForChapterFraction(chapterId, fraction) ?: return false
+        currentLocation = spine.clampLocation(target)
+        return true
     }
 
-    /** Applies one render/prune/prefetch round for the current position. */
-    suspend fun sync(
-        renderSection: suspend (NovelBookSection, String) -> Unit,
-        releaseSection: suspend (NovelBookSection) -> Unit,
-        prepareSection: suspend (NovelBookSection) -> Unit,
-    ): NovelBookRenderPlan {
-        val activeSession = session ?: return NovelBookRenderPlan.EMPTY
-        val plan = activeSession.sync(
-            renderSection = renderSection,
-            releaseSection = releaseSection,
-            prepareSection = prepareSection,
+    fun sectionAt(sectionIndex: Int): NovelBookSection? = spine.sectionAt(sectionIndex)
+
+    fun currentSection(): NovelBookSection? = spine.sectionAt(currentLocation.sectionIndex)
+
+    /** The window the mounted renderer has to hold for the current position. */
+    fun windowState(sectionRevisions: Map<Int, Long> = emptyMap()): NovelBookWindowState {
+        if (!running || spine.isEmpty) return NovelBookWindowState.EMPTY
+        return NovelBookWindowState(
+            sectionCount = spine.sections.size,
+            residentSections = activePolicy.residentSections(
+                center = currentLocation.sectionIndex,
+                sectionCount = spine.sections.size,
+            ),
+            sectionRevisions = sectionRevisions,
         )
-        spine = activeSession.spine
-        return plan
+    }
+
+    /** Markup of one section, preparing it first when the renderer asks for it before the prefetch. */
+    suspend fun sectionHtml(sectionIndex: Int): String? {
+        val section = spine.sectionAt(sectionIndex) ?: return null
+        loader.preparedHtml(section.loaderKey)?.let { return it }
+        return when (val result = loader.prepare(section.loaderKey)) {
+            is NovelBookSectionResult.Ready -> result.html
+            is NovelBookSectionResult.Failed -> null
+        }
     }
 
     /** Prepares one section's HTML by spine index, e.g. for the "prepare book" action. */
@@ -210,23 +224,29 @@ internal class NovelBookModeRuntime(
         }
     }
 
-    /** Prepares the dedicated reader's neighboring spine sections without adding them to one DOM. */
+    /**
+     * Prepares the sections around [sectionIndex] and releases the ones that left the window.
+     *
+     * This is the only place that decides what is worth holding: one policy, one caller, so the
+     * window cannot drift apart from what the renderer mounts.
+     */
     suspend fun prefetchAround(sectionIndex: Int): List<NovelBookSectionResult> = coroutineScope {
-        if (session == null || spine.isEmpty) return@coroutineScope emptyList()
-        val config = activeConfig
-        val loadedSections = spine.sections
+        if (!running || spine.isEmpty) return@coroutineScope emptyList()
+        val policy = activePolicy
+        val sectionCount = spine.sections.size
+        val prepared = spine.sections
             .filter { loader.isPrepared(it.loaderKey) }
             .mapTo(mutableSetOf()) { it.index }
-        val inFlightSections = loader.inFlightSectionKeys
-            .mapTo(mutableSetOf()) { sectionKey -> sectionKey.toInt() }
-        val plan = NovelBookPrefetchPlanner.plan(
-            spine = spine,
-            currentSectionIndex = sectionIndex,
-            loadedSections = loadedSections,
-            inFlightSections = inFlightSections,
-            config = config,
+        val inFlight = loader.inFlightSectionKeys.mapTo(mutableSetOf()) { key -> key.toInt() }
+        policy.releasableSections(sectionIndex, sectionCount, prepared).forEach { index ->
+            spine.sectionAt(index)?.let { section -> loader.release(section.loaderKey) }
+        }
+        policy.prefetchOrder(
+            center = sectionIndex,
+            sectionCount = sectionCount,
+            prepared = prepared,
+            inFlight = inFlight,
         )
-        plan.prefetchQueue
             .mapNotNull(spine::sectionAt)
             .map { section -> async { loader.prepare(section.loaderKey) } }
             .awaitAll()
@@ -237,9 +257,32 @@ internal class NovelBookModeRuntime(
     /** Chapter behind a spine position, so the reader can act on a section it only knows by index. */
     fun chapterIdOfSection(sectionIndex: Int): Long? = spine.sectionAt(sectionIndex)?.chapterId
 
-    fun uiState(): NovelReaderScreenModel.State.ReaderBookModeState =
-        session?.uiState(showChapterHeadings = showChapterHeadings())
-            ?: NovelReaderScreenModel.State.ReaderBookModeState()
+    fun uiState(): NovelReaderScreenModel.State.ReaderBookModeState {
+        if (!running) return NovelReaderScreenModel.State.ReaderBookModeState()
+        return NovelReaderScreenModel.State.ReaderBookModeState(
+            isEnabled = true,
+            sectionCount = spine.sections.size,
+            currentSectionIndex = currentLocation.sectionIndex,
+            currentSectionFraction = spine.sectionProgressOf(currentLocation),
+            bookProgressFraction = spine.progressOf(currentLocation),
+            renderedSectionIndices = activePolicy.residentSections(
+                center = currentLocation.sectionIndex,
+                sectionCount = spine.sections.size,
+            ),
+            preparingSectionIndices = inFlightSectionIndices().sorted(),
+            failedSectionIndices = failedSectionIndices().sorted(),
+            showChapterHeadings = showChapterHeadings(),
+        )
+    }
+
+    private fun inFlightSectionIndices(): Set<Int> = sectionIndicesOf(loader.inFlightSectionKeys)
+
+    private fun failedSectionIndices(): Set<Int> = sectionIndicesOf(loader.failedSectionKeys)
+
+    private fun sectionIndicesOf(sectionKeys: Set<Long>): Set<Int> = sectionKeys
+        .map { it.toInt() }
+        .filter { spine.sectionAt(it) != null }
+        .toSet()
 
     /**
      * Starts book mode from a pre-built [spine] (e.g. from a compiled book artifact) and a custom
@@ -253,7 +296,7 @@ internal class NovelBookModeRuntime(
          * Window of the compiled book. Blocks are much smaller than chapters, so the caller sizes
          * the window from the block length instead of leaving it at the per-chapter default.
          */
-        windowConfig: NovelBookWindowConfig = NovelBookWindowConfig.DEFAULT,
+        windowPolicy: BookWindowPolicy = BookWindowPolicy.DEFAULT,
         fetchSectionHtml: suspend (Long) -> String,
     ): NovelBookLocation {
         this.spine = spine
@@ -262,13 +305,11 @@ internal class NovelBookModeRuntime(
             fetchSectionBaseUrl = { null },
             fetchSectionHtml = fetchSectionHtml,
         )
-        activeConfig = windowConfig.copy(
-            prefetchAhead = prepareAhead().coerceAtLeast(windowConfig.prefetchAhead),
+        activePolicy = windowPolicy.copy(
+            prefetchAhead = prepareAhead().coerceAtLeast(windowPolicy.prefetchAhead),
         )
-        session = NovelBookSession(
-            loader = loader,
-            config = activeConfig,
-        ).also { it.reset(spine, resumeLocation) }
-        return resumeLocation
+        running = true
+        currentLocation = spine.clampLocation(resumeLocation)
+        return currentLocation
     }
 }
