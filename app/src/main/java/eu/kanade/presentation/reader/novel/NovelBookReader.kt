@@ -37,6 +37,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.NovelBookEngineFlow
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookLocation
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSection
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSpine
+import eu.kanade.tachiyomi.ui.reader.novel.NovelBookUiCommand
 import eu.kanade.tachiyomi.ui.reader.novel.shouldApplyBookSeek
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -70,6 +71,14 @@ internal fun NovelBookReader(
      */
     seekRequest: BookSeekRequest? = null,
     onSeekApplied: (Long) -> Unit = {},
+    /**
+     * Sections whose markup changed while they are on screen, e.g. because a translation finished.
+     *
+     * They are swapped in place instead of reopening the document, so the reading position survives
+     * a translation that lands mid-chapter.
+     */
+    replaceCommands: List<NovelBookUiCommand.Replace> = emptyList(),
+    onReplaceApplied: (List<Long>) -> Unit = {},
     flow: NovelBookEngineFlow,
     transitionStyleName: String = "SLIDE",
     loadDocument: suspend (NovelBookSection) -> NovelBookDocument,
@@ -274,6 +283,18 @@ internal fun NovelBookReader(
         // The core hides the "restoring position" cover on this acknowledgement instead of on a
         // timer, so it can never uncover the reader before the position actually landed.
         onSeekApplied(request.id)
+    }
+
+    LaunchedEffect(replaceCommands, opened) {
+        if (!opened || replaceCommands.isEmpty()) return@LaunchedEffect
+        replaceCommands.forEach { command ->
+            runCatching {
+                operationMutex.withLock {
+                    engine.replaceSection(sectionIndex = command.sectionIndex, html = command.html)
+                }
+            }
+        }
+        onReplaceApplied(replaceCommands.map { it.id })
     }
 
     val navigate: (Boolean) -> Unit = remember(engine, coroutineScope, operationMutex) {

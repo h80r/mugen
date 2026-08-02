@@ -25,6 +25,18 @@ sealed interface NovelBookUiCommand {
         val keepScrollAnchored: Boolean = true,
     ) : NovelBookUiCommand
 
+    /**
+     * Swap the content of a resident section without touching the reading position.
+     *
+     * A finished translation only changes the text of the chapters it covers, so the document is not
+     * rebuilt for it: the affected sections are replaced in place.
+     */
+    data class Replace(
+        override val id: Long,
+        override val sectionIndex: Int,
+        val html: String,
+    ) : NovelBookUiCommand
+
     /** Replace a section with a fixed-height placeholder so the scroll position stays stable. */
     data class Prune(
         override val id: Long,
@@ -70,11 +82,22 @@ internal class NovelBookUiCommandQueue {
         return id
     }
 
+    fun enqueueReplace(sectionIndex: Int, html: String): Long {
+        val id = nextId.getAndIncrement()
+        pending.update { current ->
+            current.filterNot { it is NovelBookUiCommand.Replace && it.sectionIndex == sectionIndex } +
+                NovelBookUiCommand.Replace(id = id, sectionIndex = sectionIndex, html = html)
+        }
+        return id
+    }
+
     fun enqueuePrune(sectionIndex: Int): Long {
         val id = nextId.getAndIncrement()
         pending.update { current ->
-            current.filterNot { it.sectionIndex == sectionIndex && it is NovelBookUiCommand.Append } +
-                NovelBookUiCommand.Prune(id = id, sectionIndex = sectionIndex)
+            current.filterNot {
+                it.sectionIndex == sectionIndex &&
+                    (it is NovelBookUiCommand.Append || it is NovelBookUiCommand.Replace)
+            } + NovelBookUiCommand.Prune(id = id, sectionIndex = sectionIndex)
         }
         return id
     }

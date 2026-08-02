@@ -626,6 +626,21 @@ internal fun buildNovelBookEngineDocumentHtml(
               pushRelocated();
               return true;
             };
+            const replaceSection = function(sectionIndex, chapterId, html) {
+              if (isPaginated) return false;
+              const node = sectionNodeAt(sectionIndex);
+              if (!node) return false;
+              const above = node.getBoundingClientRect().top < viewport.getBoundingClientRect().top;
+              const before = viewport.scrollHeight;
+              const fresh = buildSectionNode(sectionIndex, chapterId, html);
+              node.parentNode.replaceChild(fresh, node);
+              const after = viewport.scrollHeight;
+              if (above) viewport.scrollTop = Math.max(0, viewport.scrollTop + (after - before));
+              holdPositionWhileLoading(fresh);
+              reportSectionMeasured(fresh);
+              pushRelocated();
+              return true;
+            };
             const removeSection = function(sectionIndex) {
               if (isPaginated) return false;
               const node = sectionNodeAt(sectionIndex);
@@ -732,6 +747,7 @@ internal fun buildNovelBookEngineDocumentHtml(
               relocate: relocate,
               appendSection: appendSection,
               prependSection: prependSection,
+              replaceSection: replaceSection,
               removeSection: removeSection,
               next: function(styleName) {
                 if (isPaginated) {

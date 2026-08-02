@@ -624,8 +624,13 @@ class NovelReaderScreenModel(
 
     override fun translationHolderClear(provider: String) = translationHolder.clear(provider)
 
-    override fun translationHolderPut(provider: String, map: Map<Int, String>) =
+    override fun translationHolderPut(provider: String, map: Map<Int, String>) {
+        // The in-memory maps belong to one chapter, and over a book that chapter is not necessarily
+        // the one the reader was opened with. Remembering it here is what lets a neighbouring
+        // resident chapter keep its own (cached) translation instead of being served this one.
+        translationHolderChapterId = activeTranslationChapterId()
         translationHolder.put(provider, map)
+    }
 
     override fun translationHolderIsEmpty(provider: String): Boolean = translationHolder.isEmpty(provider)
 
@@ -756,6 +761,9 @@ class NovelReaderScreenModel(
      * The translation controller writes into it through [NovelTranslationHost].
      */
     private val translationHolder = NovelReaderTranslationHolder { currentParsedTextBlocks() }
+
+    /** Chapter the in-memory translation maps were produced for, null when there are none. */
+    private var translationHolderChapterId: Long? = null
 
     /**
      * Whole-chapter translation subsystem (Gemini/AI queue + Google). Owns the jobs, visibility and
@@ -1724,6 +1732,7 @@ class NovelReaderScreenModel(
         attemptedJaomixPages.clear()
         translationHolder.clear("gemini")
         translationHolder.clear("google")
+        translationHolderChapterId = null
         aiProviderController.resetTransientState()
         ttsController.resetTransientState()
         seriesInterstitialState = null
@@ -2209,8 +2218,12 @@ class NovelReaderScreenModel(
      */
     private fun applyBookSectionTranslation(chapterId: Long, bodyHtml: String): String {
         val settings = (mutableState.value as? State.Success)?.readerSettings ?: return bodyHtml
+        // Every chapter of the book is translated, not just the one at the reading position: the
+        // in-memory maps are used for the chapter they were produced for, every other chapter falls
+        // back to its own cache entry. Gating this on the active chapter made the neighbouring
+        // resident chapters lose their translation as soon as the reader crossed a boundary.
         val inMemory = when {
-            chapterId != activeTranslationChapterId() -> emptyMap()
+            chapterId != translationHolderChapterId -> emptyMap()
             translationState.isGeminiTranslationVisible && !translationHolder.isEmpty("gemini") ->
                 translationHolder.map("gemini")
             translationState.isGoogleTranslationVisible && !translationHolder.isEmpty("google") ->

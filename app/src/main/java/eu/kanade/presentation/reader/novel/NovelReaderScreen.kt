@@ -2600,6 +2600,9 @@ fun NovelReaderScreen(
                                 initialLocation = bookInitialLocation,
                                 seekRequest = bookSeekRequest,
                                 onSeekApplied = onBookSeekApplied,
+                                replaceCommands = bookModeCommands
+                                    .filterIsInstance<NovelBookUiCommand.Replace>(),
+                                onReplaceApplied = onBookModeCommandsExecuted,
                                 flow = if (state.readerSettings.pageReader) {
                                     NovelBookEngineFlow.PAGINATED
                                 } else {

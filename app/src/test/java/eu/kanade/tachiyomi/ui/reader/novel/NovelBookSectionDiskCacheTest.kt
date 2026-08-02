@@ -115,6 +115,23 @@ class NovelBookSectionDiskCacheTest {
     }
 
     @Test
+    fun `removeScopeExcept keeps only the entries of the current transform signature`() {
+        withCache { cache ->
+            cache.write("novel1-artifact-p1-h1-raw-s0", section("<p>current</p>"))
+            cache.write("novel1-artifact-p1-h1-gemini-s0", section("<p>stale translation</p>"))
+            cache.write("novel1-artifact-p1-h0-raw-s0", section("<p>stale headings</p>"))
+            cache.write("novel2-artifact-p1-h1-gemini-s0", section("<p>other novel</p>"))
+
+            cache.removeScopeExcept(scopePrefix = "novel1-", keepPrefix = "novel1-artifact-p1-h1-raw-")
+
+            cache.contains("novel1-artifact-p1-h1-raw-s0") shouldBe true
+            cache.contains("novel1-artifact-p1-h1-gemini-s0") shouldBe false
+            cache.contains("novel1-artifact-p1-h0-raw-s0") shouldBe false
+            cache.contains("novel2-artifact-p1-h1-gemini-s0") shouldBe true
+        }
+    }
+
+    @Test
     fun `a blank scope prefix removes nothing`() {
         withCache { cache ->
             cache.write(KEY, section("<p>five</p>"))

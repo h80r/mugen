@@ -61,7 +61,14 @@ internal class NovelBookReaderController(
     private val setNovelBookProgress: SetNovelBookProgress = Injekt.get(),
 ) {
 
-    private val bookModeRuntime = NovelBookModeRuntime(
+    /**
+     * Single content pipeline of book mode.
+     *
+     * Both the chapter-fed sections and the compiled artifact go through this one chain, so a
+     * section can no longer be built with a different set of transformations depending on which
+     * path produced it.
+     */
+    private val sectionRepository: BookSectionRepository = DefaultBookSectionRepository(
         loadRawSection = { sectionChapterId ->
             val snapshot = host.bookTtsChapterRepository().loadChapterSnapshot(sectionChapterId)
             NovelBookRawSection(
@@ -71,24 +78,34 @@ internal class NovelBookReaderController(
                 chapterWebUrl = snapshot.chapterWebUrl,
             )
         },
-        normalizeHtml = { sectionChapterId, rawHtml, chapterName ->
+        translateChapterHtml = { sectionChapterId, bodyHtml ->
             withContext(Dispatchers.Default) {
-                val withHeading = prependChapterHeadingIfMissing(
-                    rawHtml = rawHtml.normalizeStructuredChapterPayload(),
-                    chapterName = chapterName,
-                )
-                val sanitized = sanitizeChapterHtmlForReader(withHeading)
-                val bodyHtml = if (sanitized.isBlank()) withHeading else sanitized
                 host.bookApplyBookSectionTranslation(chapterId = sectionChapterId, bodyHtml = bodyHtml)
             }
         },
+        showChapterHeadings = { novelReaderPreferences.bookModeShowChapterHeadings().get() },
+        translationVariant = { bookTranslationVariant() },
+    )
+
+    private val bookModeRuntime = NovelBookModeRuntime(
+        sectionRepository = sectionRepository,
         showChapterHeadings = { novelReaderPreferences.bookModeShowChapterHeadings().get() },
         prepareAhead = { novelReaderPreferences.bookModePrepareAhead().get() },
         sectionCacheScope = { bookSectionCacheScope() },
         readCachedSection = { key -> NovelBookSectionDiskCacheStore.read(key) },
         writeCachedSection = { key, section -> NovelBookSectionDiskCacheStore.write(key, section) },
         deleteCachedSection = { key -> NovelBookSectionDiskCacheStore.remove(key) },
+        pruneCachedSections = { scope, keepPrefix ->
+            NovelBookSectionDiskCacheStore.removeScopeExcept(scopePrefix = scope, keepPrefix = keepPrefix)
+        },
     )
+
+    /** Translation variant the section markup is built with, part of the cache scope and signature. */
+    private fun bookTranslationVariant(): String = when {
+        host.bookGeminiTranslationVisible() -> "gemini"
+        host.bookGoogleTranslationVisible() -> "google"
+        else -> "raw"
+    }
 
     /**
      * Scope prepared book sections are cached under.
@@ -101,13 +118,8 @@ internal class NovelBookReaderController(
      */
     private fun bookSectionCacheScope(): String? {
         val novelId = host.bookCurrentNovel()?.id ?: return null
-        val translation = when {
-            host.bookGeminiTranslationVisible() -> "gemini"
-            host.bookGoogleTranslationVisible() -> "google"
-            else -> "raw"
-        }
         val bookVersion = bookStateVersion?.takeIf { it > 0 }?.let { "v$it-" } ?: ""
-        return "novel$novelId-$bookVersion$translation"
+        return "novel$novelId-$bookVersion"
     }
 
     /**
@@ -194,21 +206,16 @@ internal class NovelBookReaderController(
     internal suspend fun loadBookEngineDocument(section: NovelBookSection): NovelBookDocument {
         val document = bookModeRuntime.loadEngineDocument(section)
         scheduleBookEnginePrefetch(section.index)
-        // Compiled-book sections come straight out of the artifact body, bypassing the section
-        // pipeline where applyBookSectionTranslation lives, so translations were computed, cached
-        // and then never shown. Sections that cover exactly one chapter can be translated safely;
-        // sections straddling a chapter boundary are left untranslated rather than misaligning the
-        // per-chapter block indices.
-        val translated = if (artifactSource != null) {
-            val chapters = artifactSource?.chaptersOfSection(section.index).orEmpty()
-            if (chapters.size == 1) {
-                host.bookApplyBookSectionTranslation(chapterId = chapters.first(), bodyHtml = document.html)
-            } else {
-                document.html
-            }
-        } else {
-            document.html
-        }
+        // Compiled-book sections come straight out of the artifact body, so the translation overlay
+        // of the shared pipeline is the only step that still has to run here. A section straddling a
+        // chapter boundary is split per chapter first, which is what makes translations continue
+        // across the boundary instead of stopping at it.
+        val translated = artifactSource?.let { artifact ->
+            sectionRepository.applyArtifactTranslations(
+                html = document.html,
+                chapterIds = artifact.chaptersOfSection(section.index),
+            )
+        } ?: document.html
         return if (translated == document.html) {
             document
         } else {
@@ -283,15 +290,33 @@ internal class NovelBookReaderController(
         if (!bookModeRuntime.isActive) return
         // A chapter can cover several sections of a compiled book, so every section holding this
         // chapter's text has to be rebuilt, not just the first one.
-        val sectionKeys = bookModeRuntime.engineSpine.sections
-            .filter { it.covers(chapterId) }
-            .map { it.loaderKey }
-        if (sectionKeys.isEmpty()) return
+        val sections = bookModeRuntime.engineSpine.sections.filter { it.covers(chapterId) }
+        if (sections.isEmpty()) return
         host.bookScope.launch {
-            sectionKeys.forEach { sectionKey ->
-                runCatching { bookModeRuntime.retrySection(sectionKey) }
+            sections.forEach { section ->
+                // Only the affected sections are rebuilt and swapped in place. Rebuilding the whole
+                // document (the old behaviour) reset the renderer, which is what made a finished
+                // translation flash the book and throw the reader back to the section start.
+                val html = runCatching { rebuildSectionHtml(section) }.getOrNull() ?: return@forEach
+                bookModeCommandQueue.enqueueReplace(sectionIndex = section.index, html = html)
+                logBookModeTrace { "replace section=${section.index} chapter=$chapterId chars=${html.length}" }
             }
-            onBookModeDocumentReady()
+        }
+    }
+
+    /** Rebuilds one section's markup through the pipeline, bypassing every cache. */
+    private suspend fun rebuildSectionHtml(section: NovelBookSection): String? {
+        val artifact = artifactSource
+        if (artifact != null) {
+            val document = artifact.documentFor(section.index) ?: return null
+            return sectionRepository.applyArtifactTranslations(
+                html = document.html,
+                chapterIds = artifact.chaptersOfSection(section.index),
+            )
+        }
+        return when (val result = bookModeRuntime.retrySection(section.loaderKey)) {
+            is NovelBookSectionResult.Ready -> result.html
+            is NovelBookSectionResult.Failed -> null
         }
     }
 

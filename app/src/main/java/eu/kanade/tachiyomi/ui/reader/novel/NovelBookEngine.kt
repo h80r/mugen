@@ -54,6 +54,14 @@ internal interface NovelBookEngineRenderer {
     /** Inserts a section before the first resident one and compensates the scroll offset. */
     suspend fun prependSection(document: NovelBookDocument): Boolean = false
 
+    /**
+     * Swaps the content of a resident section in place, keeping the reading position.
+     *
+     * Used when a translation finishes: only the affected sections change, so the document is not
+     * reopened for it.
+     */
+    suspend fun replaceSection(document: NovelBookDocument): Boolean = false
+
     /** Drops a resident section from the document, compensating the scroll offset when needed. */
     suspend fun removeSection(sectionIndex: Int): Boolean = false
 
@@ -100,6 +108,24 @@ internal class NovelBookEngine(
         this.location = clampLocationForOpen(spine, location)
         this.flow = flow
         openCurrentSection()
+    }
+
+    /**
+     * Replaces the markup of one resident section without touching the reading position.
+     *
+     * Returns false when the section is not resident, in which case nothing has to be done: it will
+     * be loaded with the new markup the next time it enters the window.
+     */
+    suspend fun replaceSection(sectionIndex: Int, html: String): Boolean {
+        if (residentFirst < 0 || sectionIndex < residentFirst || sectionIndex > residentLast) return false
+        val section = spine.sectionAt(sectionIndex) ?: return false
+        return renderer.replaceSection(
+            NovelBookDocument(
+                sectionIndex = sectionIndex,
+                chapterId = section.chapterId,
+                html = html,
+            ),
+        )
     }
 
     /**

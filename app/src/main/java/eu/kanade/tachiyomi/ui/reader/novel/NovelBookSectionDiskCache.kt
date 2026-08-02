@@ -133,6 +133,25 @@ internal class NovelBookSectionDiskCache(
         }
     }
 
+    /**
+     * Drops every entry of one scope except those built by the current transformation chain.
+     *
+     * Section markup depends on the pipeline version, the heading setting and the visible
+     * translation, all of which are part of the key. Entries of older variants used to stay on disk
+     * forever, because nothing ever looked them up again; they are deleted here instead, the first
+     * time the current variant misses.
+     */
+    fun removeScopeExcept(scopePrefix: String, keepPrefix: String) {
+        if (scopePrefix.isBlank() || keepPrefix.isBlank()) return
+        val scope = sanitize(scopePrefix)
+        val keep = sanitize(keepPrefix)
+        synchronized(lock) {
+            sectionFilesLocked()
+                .filter { it.name.startsWith(scope) && !it.name.startsWith(keep) }
+                .forEach { it.delete() }
+        }
+    }
+
     fun clear() {
         synchronized(lock) {
             directory.listFiles()?.forEach { it.delete() }
@@ -292,6 +311,9 @@ internal object NovelBookSectionDiskCacheStore {
     fun remove(key: String) = cache.remove(key)
 
     fun removeScope(scopePrefix: String) = cache.removeScope(scopePrefix)
+
+    fun removeScopeExcept(scopePrefix: String, keepPrefix: String) =
+        cache.removeScopeExcept(scopePrefix, keepPrefix)
 
     fun stats(): NovelBookSectionDiskCacheStats = cache.stats()
 

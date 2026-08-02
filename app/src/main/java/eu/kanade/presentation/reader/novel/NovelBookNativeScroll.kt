@@ -57,6 +57,16 @@ internal fun <T> applyNovelBookCommandsToNativeSections(
                     )
                 }
             }
+            is NovelBookUiCommand.Replace -> {
+                // Only a resident section is replaced: one that is not on screen will simply be
+                // parsed from the new markup when it is appended again.
+                if (bySectionIndex.containsKey(command.sectionIndex)) {
+                    bySectionIndex[command.sectionIndex] = NovelBookNativeSection(
+                        sectionIndex = command.sectionIndex,
+                        blocks = parseSection(command.html),
+                    )
+                }
+            }
             is NovelBookUiCommand.Prune -> bySectionIndex.remove(command.sectionIndex)
             is NovelBookUiCommand.ScrollTo -> Unit
         }

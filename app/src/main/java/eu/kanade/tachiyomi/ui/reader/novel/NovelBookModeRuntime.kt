@@ -16,8 +16,7 @@ private const val SPINE_KIND_ARTIFACT = "artifact"
  * the chapter-by-chapter reader untouched and this whole flow unit testable.
  */
 internal class NovelBookModeRuntime(
-    private val loadRawSection: suspend (Long) -> NovelBookRawSection,
-    private val normalizeHtml: suspend (Long, String, String) -> String,
+    private val sectionRepository: BookSectionRepository,
     private val showChapterHeadings: () -> Boolean = { true },
     private val prepareAhead: () -> Int = { NovelBookWindowConfig.DEFAULT_PREFETCH_AHEAD },
     /**
@@ -28,12 +27,21 @@ internal class NovelBookModeRuntime(
     private val readCachedSection: (String) -> NovelBookPreparedSection? = { null },
     private val writeCachedSection: (String, NovelBookPreparedSection) -> Unit = { _, _ -> },
     private val deleteCachedSection: (String) -> Unit = {},
+    /**
+     * Drops every cached section of this scope that was not built by the current transformation
+     * chain. Called once per session, on the first cache miss.
+     */
+    private val pruneCachedSections: (String, String) -> Unit = { _, _ -> },
 ) {
 
     private var spine: NovelBookSpine = NovelBookSpine.EMPTY
 
     private val store = NovelBookSectionStore(
-        diskReadSection = { sectionKey -> sectionCacheKey(sectionKey)?.let(readCachedSection) },
+        diskReadSection = { sectionKey ->
+            val cached = sectionCacheKey(sectionKey)?.let(readCachedSection)
+            if (cached == null) pruneStaleCachedSections()
+            cached
+        },
         diskWriteSection = { sectionKey, section ->
             sectionCacheKey(sectionKey)?.let { key -> writeCachedSection(key, section) }
         },
@@ -46,17 +54,40 @@ internal class NovelBookModeRuntime(
      * The heading setting is part of the key on purpose: the same section can be prepared with or
      * without its chapter heading, so one shared key would serve the wrong markup.
      */
-    private fun sectionCacheKey(sectionKey: Long): String? {
+    private fun sectionCacheKey(sectionKey: Long): String? =
+        sectionCacheKeyPrefix()?.let { prefix -> "${prefix}s$sectionKey" }
+
+    /**
+     * Key prefix every section of the current scope and transformation chain shares.
+     *
+     * The signature carries the pipeline version, the heading setting and the visible translation,
+     * so entries built by a different chain can be recognized - and deleted - instead of piling up
+     * on disk forever.
+     */
+    private fun sectionCacheKeyPrefix(): String? {
         val scope = sectionCacheScope()?.takeIf { it.isNotBlank() } ?: return null
-        val headings = if (showChapterHeadings()) "h1" else "h0"
-        return "$scope-$SPINE_KIND_ARTIFACT-$headings-s$sectionKey"
+        return "$scope-$SPINE_KIND_ARTIFACT-${sectionRepository.transformSignature()}-"
     }
+
+    /**
+     * Deletes stale entries of this scope once per session.
+     *
+     * A miss means the current chain has nothing cached here, which is exactly the moment the
+     * entries of older chains are known to be dead weight.
+     */
+    private fun pruneStaleCachedSections() {
+        if (staleSectionsPruned) return
+        val scope = sectionCacheScope()?.takeIf { it.isNotBlank() } ?: return
+        val keepPrefix = sectionCacheKeyPrefix() ?: return
+        staleSectionsPruned = true
+        runCatching { pruneCachedSections(scope, keepPrefix) }
+    }
+
+    private var staleSectionsPruned = false
 
     private val resolver = NovelBookSectionHtmlResolver(
         currentSpine = { spine },
-        loadRawSection = loadRawSection,
-        normalizeHtml = normalizeHtml,
-        showChapterHeadings = showChapterHeadings,
+        repository = sectionRepository,
     )
 
     private var loader = NovelBookSectionLoader(

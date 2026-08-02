@@ -222,6 +222,9 @@ internal class NovelBookWebViewRenderer(
     override suspend fun prependSection(document: NovelBookDocument): Boolean =
         evaluateSectionMutation("prependSection", document)
 
+    override suspend fun replaceSection(document: NovelBookDocument): Boolean =
+        evaluateSectionMutation("replaceSection", document)
+
     override suspend fun removeSection(sectionIndex: Int): Boolean =
         evaluateBoolean("window.__anBookEngine && window.__anBookEngine.removeSection($sectionIndex)")
 

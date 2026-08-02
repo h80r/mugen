@@ -20,15 +20,17 @@ class NovelBookSectionHtmlResolverTest {
         showChapterHeadings: Boolean = true,
     ) = NovelBookSectionHtmlResolver(
         currentSpine = { spine },
-        loadRawSection = { chapterId ->
-            NovelBookRawSection(
-                chapterId = chapterId,
-                chapterName = "Chapter $chapterId",
-                rawHtml = rawHtml(chapterId),
-            )
-        },
-        normalizeHtml = { _, html, _ -> html.trim() },
-        showChapterHeadings = { showChapterHeadings },
+        repository = DefaultBookSectionRepository(
+            loadRawSection = { chapterId ->
+                NovelBookRawSection(
+                    chapterId = chapterId,
+                    chapterName = "Chapter $chapterId",
+                    rawHtml = rawHtml(chapterId),
+                )
+            },
+            translateChapterHtml = { _, html -> html },
+            showChapterHeadings = { showChapterHeadings },
+        ),
     )
 
     @Test
@@ -37,7 +39,7 @@ class NovelBookSectionHtmlResolverTest {
 
         html shouldContain "data-an-section=\"1\""
         html shouldContain "data-an-chapter=\"2\""
-        html shouldContain "<p>chapter 2</p>"
+        html shouldContain "chapter 2"
         html shouldContain "Chapter 2"
     }
 
@@ -52,12 +54,19 @@ class NovelBookSectionHtmlResolverTest {
         val html = resolver(showChapterHeadings = false).resolve(1L)
 
         html shouldNotContain "an-book-section-title"
-        html shouldContain "<p>chapter 2</p>"
+        html shouldContain "chapter 2"
     }
 
     @Test
-    fun `blank content resolves to nothing so the loader can fail the section`() = runTest {
-        resolver(rawHtml = { "   " }).resolve(2L) shouldBe ""
+    fun `blank chapter content still renders its heading`() = runTest {
+        // The shared pipeline prepends the chapter heading before checking for blank content, the
+        // same way the per-chapter reader does, so an empty chapter is not mistaken for a load
+        // failure: it renders its title and an empty body.
+        val html = resolver(rawHtml = { "   " }).resolve(2L)
+
+        html.isNotBlank() shouldBe true
+        html shouldContain "an-reader-chapter-title"
+        html shouldNotContain "<p>"
     }
 
     @Test
