@@ -68,8 +68,8 @@ import kotlin.math.hypot
 import kotlin.math.roundToInt
 import eu.kanade.tachiyomi.ui.reader.novel.setting.TextAlign as ReaderTextAlign
 
-private const val MENU_ID_DICTIONARY = 0x9001
-private const val MENU_ID_TRANSLATION = 0x9002
+internal const val MENU_ID_DICTIONARY = 0x9001
+internal const val MENU_ID_TRANSLATION = 0x9002
 
 internal data class NovelPageReaderContentLayout(
     val textPadding: PaddingValues,
