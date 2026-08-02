@@ -493,71 +493,28 @@ internal fun NovelReaderContentHost(
     var hasReportedReadingProgress by remember(state.chapter.id, showWebView, state.readerSettings.pageReader) {
         mutableStateOf(false)
     }
-    fun persistAutoScrollEnabledPreference(
-        enabled: Boolean,
-    ) {
-        if (hasSourceOverride) {
-            readerPreferences.updateSourceOverride(sourceId) { override ->
-                override.copy(
-                    autoScroll = enabled,
-                )
-            }
-        } else {
-            readerPreferences.autoScroll().set(enabled)
-        }
+    val autoScrollPreferenceWriter = remember(readerPreferences, sourceId, hasSourceOverride) {
+        NovelReaderAutoScrollPreferenceWriter(
+            readerPreferences = readerPreferences,
+            sourceId = sourceId,
+            hasSourceOverride = hasSourceOverride,
+        )
     }
-    fun persistAutoScrollIntervalPreference(
-        interval: Int,
-    ) {
-        if (hasSourceOverride) {
-            readerPreferences.updateSourceOverride(sourceId) { override ->
-                override.copy(
-                    autoScrollInterval = interval,
-                )
-            }
-        } else {
-            readerPreferences.autoScrollInterval().set(interval)
-        }
-    }
-    fun persistAutoScrollAdaptiveDelayPreference(
-        enabled: Boolean,
-    ) {
-        if (hasSourceOverride) {
-            readerPreferences.updateSourceOverride(sourceId) { override ->
-                override.copy(
-                    autoScrollAdaptiveDelay = enabled,
-                )
-            }
-        } else {
-            readerPreferences.autoScrollAdaptiveDelay().set(enabled)
-        }
-    }
-    fun persistAutoScrollChapterEndBehaviorPreference(
-        behavior: NovelAutoScrollChapterEndBehavior,
-    ) {
-        if (hasSourceOverride) {
-            readerPreferences.updateSourceOverride(sourceId) { override ->
-                override.copy(
-                    autoScrollChapterEndBehavior = behavior,
-                )
-            }
-        } else {
-            readerPreferences.autoScrollChapterEndBehavior().set(behavior)
-        }
-    }
-    fun persistAutoScrollEndPauseMsPreference(
-        pauseMs: Long,
-    ) {
-        if (hasSourceOverride) {
-            readerPreferences.updateSourceOverride(sourceId) { override ->
-                override.copy(
-                    autoScrollEndPauseMs = pauseMs,
-                )
-            }
-        } else {
-            readerPreferences.autoScrollEndPauseMs().set(pauseMs)
-        }
-    }
+    fun persistAutoScrollEnabledPreference(enabled: Boolean) =
+        autoScrollPreferenceWriter.persistAutoScrollEnabledPreference(enabled)
+
+    fun persistAutoScrollIntervalPreference(interval: Int) =
+        autoScrollPreferenceWriter.persistAutoScrollIntervalPreference(interval)
+
+    fun persistAutoScrollAdaptiveDelayPreference(enabled: Boolean) =
+        autoScrollPreferenceWriter.persistAutoScrollAdaptiveDelayPreference(enabled)
+
+    fun persistAutoScrollChapterEndBehaviorPreference(behavior: NovelAutoScrollChapterEndBehavior) =
+        autoScrollPreferenceWriter.persistAutoScrollChapterEndBehaviorPreference(behavior)
+
+    fun persistAutoScrollEndPauseMsPreference(pauseMs: Long) =
+        autoScrollPreferenceWriter.persistAutoScrollEndPauseMsPreference(pauseMs)
+
     fun reportReadingProgress(
         currentIndex: Int,
         totalItems: Int,
@@ -1722,113 +1679,49 @@ internal fun NovelReaderContentHost(
         animationSpeed = state.readerSettings.bookFlipAnimationSpeed,
     )
 
-    fun requestPageTurnChapterNavigation(direction: PageTurnChapterNavigationDirection) {
-        pageTurnChapterNavigationRequestToken += 1L
-        pageTurnChapterNavigationRequest = PageTurnChapterNavigationRequest(
-            direction = direction,
-            token = pageTurnChapterNavigationRequestToken,
+    // Chapter navigation and auto-scroll end handling live in a plain class with provider lambdas,
+    // so the instance never captures a stale snapshot of the reader state across recompositions.
+    val chapterNavigator = remember {
+        NovelReaderChapterNavigator(
+            state = { state },
+            isBookMode = { isBookMode },
+            webViewInstance = { webViewInstance },
+            onOpenPreviousChapter = onOpenPreviousChapter,
+            onOpenNextChapter = onOpenNextChapter,
+            onPrepareAutoScrollHandoff = onPrepareAutoScrollHandoff,
+            onCancelAutoScrollHandoff = onCancelAutoScrollHandoff,
+            bookContentHandle = { bookContentHandle },
+            showReaderUi = { latestShowReaderUi },
+            autoScrollEnabled = { autoScrollEnabled },
+            setAutoScrollEnabled = { autoScrollEnabled = it },
+            autoScrollSpeed = { autoScrollSpeed },
+            setAutoScrollEndStableFrames = { autoScrollEndStableFrames = it },
+            autoScrollEndDwellActive = { autoScrollEndDwellActive },
+            setAutoScrollEndDwellActive = { autoScrollEndDwellActive = it },
+            setAutoScrollEndDwellRemainingSeconds = { autoScrollEndDwellRemainingSeconds = it },
+            pageTurnChapterNavigationRequest = { pageTurnChapterNavigationRequest },
+            setPageTurnChapterNavigationRequest = { pageTurnChapterNavigationRequest = it },
+            pageTurnChapterNavigationRequestToken = { pageTurnChapterNavigationRequestToken },
+            setPageTurnChapterNavigationRequestToken = { pageTurnChapterNavigationRequestToken = it },
         )
     }
+    fun requestPageTurnChapterNavigation(direction: PageTurnChapterNavigationDirection) =
+        chapterNavigator.requestPageTurnChapterNavigation(direction)
 
-    fun openPreviousChapterFromReader() {
-        val chapterId = state.previousChapterId ?: return
-        NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
-            NovelReaderPageReaderHandoffTarget.END,
-        )
-        // A seamless in-place chapter switch can detach the reader WebView (renderer may change
-        // between chapters). If the WebView still holds view focus when it is detached, ViewGroup
-        // restarts a focus search from the window root while Compose is applying the composition,
-        // which synchronously remeasures the lazy layout and disposes subcompositions mid-pass
-        // ("Cannot start a writer when another writer is pending"). Dropping focus first avoids it.
-        webViewInstance?.clearFocus()
-        onOpenPreviousChapter?.invoke(chapterId)
-    }
+    fun openPreviousChapterFromReader() =
+        chapterNavigator.openPreviousChapterFromReader()
 
-    // True only on the last section of the spine: the single place where auto-scroll over a book is
-    // really out of content.
-    fun isAtEndOfBook(): Boolean {
-        val sectionCount = state.bookMode.sectionCount
-        return sectionCount <= 0 || state.bookMode.currentSectionIndex >= sectionCount - 1
-    }
+    fun isAtEndOfBook(): Boolean =
+        chapterNavigator.isAtEndOfBook()
 
-    fun openNextChapterFromReader() {
-        val chapterId = state.nextChapterId ?: return
-        NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
-            NovelReaderPageReaderHandoffTarget.START,
-        )
-        webViewInstance?.clearFocus()
-        onOpenNextChapter?.invoke(chapterId)
-    }
+    fun openNextChapterFromReader() =
+        chapterNavigator.openNextChapterFromReader()
 
-    fun handleAutoScrollChapterEnd() {
-        if (isBookMode) {
-            // A book has no chapter boundary to hand off at: the spine continues inside the same
-            // document and the next section is stitched in on demand. Treating the end of the
-            // resident window as the end of a chapter is what stopped auto-scroll mid-book (or, with
-            // continuous reading, kicked the reader out into the next chapter).
-            if (!isAtEndOfBook()) {
-                autoScrollEndStableFrames = 0
-                autoScrollEndDwellActive = false
-                return
-            }
-            autoScrollEnabled = false
-            autoScrollEndStableFrames = 0
-            autoScrollEndDwellActive = false
-            onCancelAutoScrollHandoff()
-            return
-        }
-        val nextChapterId = state.nextChapterId
-        val behavior = state.readerSettings.autoScrollChapterEndBehavior
-        if (!shouldAutoScrollAdvanceToNextChapter(behavior, nextChapterId != null) || nextChapterId == null) {
-            autoScrollEnabled = false
-            autoScrollEndStableFrames = 0
-            autoScrollEndDwellActive = false
-            onCancelAutoScrollHandoff()
-            return
-        }
-        if (shouldAutoScrollContinueAcrossChapters(behavior)) {
-            onPrepareAutoScrollHandoff(nextChapterId, autoScrollSpeed)
-        } else {
-            onCancelAutoScrollHandoff()
-        }
-        autoScrollEnabled = false
-        autoScrollEndStableFrames = 0
-        autoScrollEndDwellActive = false
-        openNextChapterFromReader()
-    }
+    fun handleAutoScrollChapterEnd() =
+        chapterNavigator.handleAutoScrollChapterEnd()
 
-    suspend fun handleAutoScrollStableChapterEndAfterDwell() {
-        if (isBookMode && !isAtEndOfBook()) {
-            // Not the end of anything the reader should pause at - only the end of the sections that
-            // are currently resident.
-            autoScrollEndStableFrames = 0
-            return
-        }
-        val behavior = state.readerSettings.autoScrollChapterEndBehavior
-        if (behavior == NovelAutoScrollChapterEndBehavior.StopAtEnd) {
-            autoScrollEnabled = false
-            autoScrollEndStableFrames = 0
-            autoScrollEndDwellActive = false
-            onCancelAutoScrollHandoff()
-            return
-        }
-
-        autoScrollEndStableFrames = 0
-        val endPauseMs = state.readerSettings.autoScrollEndPauseMs
-        val totalSeconds = ((endPauseMs + 999L) / 1000L).toInt()
-        autoScrollEndDwellRemainingSeconds = totalSeconds
-        autoScrollEndDwellActive = true
-
-        for (sec in totalSeconds downTo 1) {
-            autoScrollEndDwellRemainingSeconds = sec
-            delay(1000L)
-            if (!autoScrollEnabled || showReaderUi || !autoScrollEndDwellActive) return
-        }
-
-        autoScrollEndDwellRemainingSeconds = 0
-        autoScrollEndDwellActive = false
-        handleAutoScrollChapterEnd()
-    }
+    suspend fun handleAutoScrollStableChapterEndAfterDwell() =
+        chapterNavigator.handleAutoScrollStableChapterEndAfterDwell()
 
     suspend fun moveBackwardByReaderActionWithAnimation(pageAnimationDurationMillis: Int?) {
         if (isBookMode) {
@@ -1979,23 +1872,24 @@ internal fun NovelReaderContentHost(
     }
 
     fun handleVolumeKey(event: KeyEvent): Boolean {
-        if (!state.readerSettings.useVolumeButtons) return false
-        if (event.keyCode != KeyEvent.KEYCODE_VOLUME_UP && event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) {
-            return false
-        }
-        if (event.action == KeyEvent.ACTION_DOWN) return true
-        if (event.action != KeyEvent.ACTION_UP) return false
-        if (latestShowReaderUi) return true
-        return when (event.keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> {
+        return when (
+            resolveVolumeKeyAction(
+                keyCode = event.keyCode,
+                action = event.action,
+                useVolumeButtons = state.readerSettings.useVolumeButtons,
+                showReaderUi = { latestShowReaderUi },
+            )
+        ) {
+            VolumeKeyAction.BACKWARD -> {
                 coroutineScope.launch { moveBackwardByReaderAction() }
                 true
             }
-            KeyEvent.KEYCODE_VOLUME_DOWN -> {
+            VolumeKeyAction.FORWARD -> {
                 coroutineScope.launch { moveForwardByReaderAction() }
                 true
             }
-            else -> false
+            VolumeKeyAction.CONSUME -> true
+            VolumeKeyAction.NONE -> false
         }
     }
 
