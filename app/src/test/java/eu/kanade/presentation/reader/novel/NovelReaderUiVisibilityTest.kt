@@ -36,6 +36,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTurnSpeed
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderAppearanceMode
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundSource
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundTexture
+import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTapZoneAction
 import eu.wewox.pagecurl.ExperimentalPageCurlApi
 import eu.wewox.pagecurl.config.PageCurlConfig
 import org.junit.jupiter.api.AfterEach
@@ -3834,6 +3835,171 @@ class NovelReaderUiVisibilityTest {
                 hasNextChapter = true,
                 tapToScrollEnabled = true,
                 animateBoundaryTransition = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action keeps toggle ui zone action`() {
+        assertEquals(
+            PageTurnCustomTapAction.TOGGLE_UI,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.TOGGLE_UI,
+                currentPage = 1,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action ignores none zone action`() {
+        assertEquals(
+            PageTurnCustomTapAction.NONE,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.NONE,
+                currentPage = 1,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action moves backward from zone action on inner page`() {
+        assertEquals(
+            PageTurnCustomTapAction.MOVE_PREVIOUS_PAGE,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.BACKWARD,
+                currentPage = 1,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action moves forward from zone action on inner page`() {
+        assertEquals(
+            PageTurnCustomTapAction.MOVE_NEXT_PAGE,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.FORWARD,
+                currentPage = 1,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action opens previous chapter from zone action on first page`() {
+        assertEquals(
+            PageTurnCustomTapAction.OPEN_PREVIOUS_CHAPTER,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.BACKWARD,
+                currentPage = 0,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action opens next chapter from zone action on last page`() {
+        assertEquals(
+            PageTurnCustomTapAction.OPEN_NEXT_CHAPTER,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.FORWARD,
+                currentPage = 2,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action opens previous chapter directly from chapter zone action`() {
+        assertEquals(
+            PageTurnCustomTapAction.OPEN_PREVIOUS_CHAPTER,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.PREV_CHAPTER,
+                currentPage = 1,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action opens next chapter directly from chapter zone action`() {
+        assertEquals(
+            PageTurnCustomTapAction.OPEN_NEXT_CHAPTER,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.NEXT_CHAPTER,
+                currentPage = 1,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action animates boundary transition on previous chapter edge when enabled`() {
+        assertEquals(
+            PageTurnCustomTapAction.MOVE_PREVIOUS_PAGE,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.BACKWARD,
+                currentPage = 0,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action animates boundary transition on next chapter edge when enabled`() {
+        assertEquals(
+            PageTurnCustomTapAction.MOVE_NEXT_PAGE,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.FORWARD,
+                currentPage = 2,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action stays none without previous chapter at first page`() {
+        assertEquals(
+            PageTurnCustomTapAction.NONE,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.BACKWARD,
+                currentPage = 0,
+                pageCount = 3,
+                hasPreviousChapter = false,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
             ),
         )
     }

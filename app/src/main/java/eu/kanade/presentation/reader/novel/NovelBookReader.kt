@@ -364,6 +364,13 @@ internal fun NovelBookReader(
                         event.eventTime - downAt <= TAP_TIMEOUT_MILLIS &&
                             abs(deltaX) <= touchSlop &&
                             abs(deltaY) <= touchSlop -> {
+                            // Let the WebView open links itself: a tap on an anchor must not
+                            // also run the configured tap zone action.
+                            val hitResultType = webView.hitTestResult?.type
+                            val isAnchorTap =
+                                hitResultType == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
+                                    hitResultType == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
+                            if (isAnchorTap) return@setOnTouchListener false
                             val handler = latestOnShortTap.value
                             if (handler != null) {
                                 // The reader's configured tap zones (or tap-to-scroll) decide.

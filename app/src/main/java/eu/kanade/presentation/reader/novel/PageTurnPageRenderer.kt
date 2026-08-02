@@ -42,6 +42,9 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTurnShadowIntensity
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTurnSpeed
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundTexture
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
+import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTapZoneAction
+import eu.kanade.tachiyomi.ui.reader.novel.setting.parseNovelReaderTapZoneActions
+import eu.kanade.tachiyomi.ui.reader.novel.setting.resolveConfiguredNovelReaderTapAction
 import eu.wewox.pagecurl.ExperimentalPageCurlApi
 import eu.wewox.pagecurl.config.PageCurlConfig
 import eu.wewox.pagecurl.config.rememberPageCurlConfig
@@ -350,6 +353,45 @@ internal fun resolvePageTurnCustomTapAction(
     }
 }
 
+internal fun resolvePageTurnConfiguredTapAction(
+    zoneAction: NovelReaderTapZoneAction,
+    currentPage: Int,
+    pageCount: Int,
+    hasPreviousChapter: Boolean,
+    hasNextChapter: Boolean,
+    animateBoundaryTransition: Boolean,
+): PageTurnCustomTapAction {
+    if (pageCount <= 0) return PageTurnCustomTapAction.NONE
+    return when (zoneAction) {
+        NovelReaderTapZoneAction.NONE -> PageTurnCustomTapAction.NONE
+        NovelReaderTapZoneAction.TOGGLE_UI -> PageTurnCustomTapAction.TOGGLE_UI
+        NovelReaderTapZoneAction.BACKWARD -> when {
+            currentPage <= 0 && hasPreviousChapter -> {
+                if (animateBoundaryTransition) {
+                    PageTurnCustomTapAction.MOVE_PREVIOUS_PAGE
+                } else {
+                    PageTurnCustomTapAction.OPEN_PREVIOUS_CHAPTER
+                }
+            }
+            currentPage > 0 -> PageTurnCustomTapAction.MOVE_PREVIOUS_PAGE
+            else -> PageTurnCustomTapAction.NONE
+        }
+        NovelReaderTapZoneAction.FORWARD -> when {
+            currentPage >= pageCount - 1 && hasNextChapter -> {
+                if (animateBoundaryTransition) {
+                    PageTurnCustomTapAction.MOVE_NEXT_PAGE
+                } else {
+                    PageTurnCustomTapAction.OPEN_NEXT_CHAPTER
+                }
+            }
+            currentPage < pageCount - 1 -> PageTurnCustomTapAction.MOVE_NEXT_PAGE
+            else -> PageTurnCustomTapAction.NONE
+        }
+        NovelReaderTapZoneAction.PREV_CHAPTER -> PageTurnCustomTapAction.OPEN_PREVIOUS_CHAPTER
+        NovelReaderTapZoneAction.NEXT_CHAPTER -> PageTurnCustomTapAction.OPEN_NEXT_CHAPTER
+    }
+}
+
 internal fun createPageTurnTapInteraction(
     config: NovelPageTurnRendererConfig,
 ): PageCurlConfig.TargetTapInteraction {
@@ -589,20 +631,42 @@ internal fun PageTurnPageRenderer(
     val latestHasPreviousChapter by rememberUpdatedState(hasPreviousChapterNavigation)
     val latestHasNextChapter by rememberUpdatedState(hasNextChapterNavigation)
     val latestTapToScrollEnabled by rememberUpdatedState(readerSettings.tapToScroll)
+    val latestCustomTapZonesEnabled by rememberUpdatedState(readerSettings.customTapZones)
+    val latestTapZoneActions by rememberUpdatedState(
+        parseNovelReaderTapZoneActions(readerSettings.tapZoneActions),
+    )
     val pageCurlConfig = rememberPageCurlConfig(
         onCustomTap = { size, offset ->
-            when (
+            val currentTapPage = resolvePageTurnRendererProgressPageIndex(
+                currentPage = pageCurlState.current,
+                contentPageCount = latestPageCount,
+                hasPreviousChapter = latestHasPreviousBoundaryPage,
+            )
+            val customTapAction = if (latestCustomTapZonesEnabled) {
+                resolvePageTurnConfiguredTapAction(
+                    zoneAction = resolveConfiguredNovelReaderTapAction(
+                        tapX = offset.x,
+                        tapY = offset.y,
+                        width = size.width.toFloat(),
+                        height = size.height.toFloat(),
+                        customTapZonesEnabled = true,
+                        tapZoneActions = latestTapZoneActions,
+                        tapToScrollEnabled = latestTapToScrollEnabled,
+                    ),
+                    currentPage = currentTapPage,
+                    pageCount = latestPageCount.coerceAtLeast(1),
+                    hasPreviousChapter = latestHasPreviousChapter,
+                    hasNextChapter = latestHasNextChapter,
+                    animateBoundaryTransition = transitionStyle == NovelPageTransitionStyle.CURL,
+                )
+            } else {
                 resolvePageTurnCustomTapAction(
                     tapXFraction = if (size.width > 0) {
                         offset.x / size.width.toFloat()
                     } else {
                         0.5f
                     },
-                    currentPage = resolvePageTurnRendererProgressPageIndex(
-                        currentPage = pageCurlState.current,
-                        contentPageCount = latestPageCount,
-                        hasPreviousChapter = latestHasPreviousBoundaryPage,
-                    ),
+                    currentPage = currentTapPage,
                     pageCount = latestPageCount.coerceAtLeast(1),
                     centerTapWidthFraction = latestRendererConfig.centerTapWidthFraction,
                     hasPreviousChapter = latestHasPreviousChapter,
@@ -610,7 +674,8 @@ internal fun PageTurnPageRenderer(
                     tapToScrollEnabled = latestTapToScrollEnabled,
                     animateBoundaryTransition = transitionStyle == NovelPageTransitionStyle.CURL,
                 )
-            ) {
+            }
+            when (customTapAction) {
                 PageTurnCustomTapAction.TOGGLE_UI -> {
                     latestToggleUi()
                     true

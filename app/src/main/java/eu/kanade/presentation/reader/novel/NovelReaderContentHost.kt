@@ -3096,6 +3096,15 @@ internal fun NovelReaderContentHost(
                                 webView.context,
                                 object : GestureDetector.SimpleOnGestureListener() {
                                     override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                                        // Let the WebView open links itself: a tap on an anchor must
+                                        // not also run the configured tap zone action.
+                                        val hitResultType = webView.hitTestResult?.type
+                                        if (
+                                            hitResultType == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
+                                            hitResultType == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
+                                        ) {
+                                            return false
+                                        }
                                         val viewWidth = webView.width.takeIf { it > 0 } ?: return false
                                         val viewHeight = webView.height.takeIf { it > 0 } ?: return false
                                         return when (
