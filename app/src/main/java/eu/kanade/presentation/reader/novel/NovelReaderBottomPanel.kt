@@ -44,8 +44,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import eu.kanade.domain.easteregg.lattice.LatticeCarrier
 import eu.kanade.presentation.easteregg.lattice.LatticeCarrierSlot
-import eu.kanade.tachiyomi.ui.reader.novel.tts.NovelReaderTtsUiState
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.novel.tts.NovelReaderTtsUiState
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.components.material.padding
