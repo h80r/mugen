@@ -110,25 +110,14 @@ internal fun NovelBookContentHost(
     onRetrySection: (Int) -> Unit,
     contentPaddingTop: Dp,
     contentPaddingBottom: Dp,
+    /**
+     * Renderer chosen by the parent content host. The decision is made exactly once, in
+     * [NovelReaderContentHost]; passing it down keeps the two hosts from ever disagreeing about
+     * which renderer is mounted.
+     */
+    bookRendererDecision: NovelBookRendererDecision,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val bookRendererDecision = remember(
-        state.readerSettings.pageReader,
-        state.readerSettings.richNativeRendererExperimental,
-        state.readerSettings.bionicReading,
-        state.readerSettings.customCSS,
-        state.readerSettings.customJS,
-        state.richContentUnsupportedFeaturesDetected,
-    ) {
-        resolveNovelBookRendererDecision(
-            pageReaderEnabled = state.readerSettings.pageReader,
-            richNativeRendererExperimentalEnabled = state.readerSettings.richNativeRendererExperimental,
-            bionicReadingEnabled = state.readerSettings.bionicReading,
-            customStylesPresent = state.readerSettings.customCSS.isNotBlank() ||
-                state.readerSettings.customJS.isNotBlank(),
-            richContentUnsupportedFeaturesDetected = state.richContentUnsupportedFeaturesDetected,
-        )
-    }
     val useNativeBookScroll = bookRendererDecision.renderer.usesWebView.not()
     val nativeSections = remember(state.novel.id) {
         mutableStateOf<NovelBookNativeSections>(emptyList())

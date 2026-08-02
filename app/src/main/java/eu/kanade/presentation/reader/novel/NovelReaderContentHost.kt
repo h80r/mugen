@@ -2420,6 +2420,7 @@ internal fun NovelReaderContentHost(
                             },
                             contentPaddingTop = contentPaddingPx + ttsScrollTopPadding,
                             contentPaddingBottom = contentPaddingPx,
+                            bookRendererDecision = bookRendererDecision,
                         )
                     } else if (pageReaderRendererRoute == NovelPageReaderRendererRoute.COMPOSE_PAGER) {
                         ComposePagerPageRenderer(
@@ -3123,6 +3124,8 @@ internal fun NovelReaderContentHost(
                                 webViewInstance = this
                                 setBackgroundColor(backgroundColor)
                                 alpha = if (shouldHideWebViewUntilReveal) 0f else 1f
+                                // This is the chapter WebView; book mode is served by its own host
+                                // (NovelBookContentHost) and never mounts this view.
                                 settings.javaScriptEnabled = shouldEnableJavaScriptInReaderWebView(
                                     pluginRequestsJavaScript = state.enableJs,
                                     bookModeEnabled = false,
@@ -3177,6 +3180,7 @@ internal fun NovelReaderContentHost(
                                 webView.isTranslationEnabled = state.readerSettings.selectedTextTranslationEnabled
                             }
                             webView.setBackgroundColor(backgroundColor)
+                            // Chapter WebView only; book mode never reaches this update block.
                             webView.settings.javaScriptEnabled = shouldEnableJavaScriptInReaderWebView(
                                 pluginRequestsJavaScript = state.enableJs,
                                 bookModeEnabled = false,
