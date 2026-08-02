@@ -27,6 +27,15 @@ data class NovelTtsSegment(
     val chapterId: Long,
     val text: String,
     val sourceBlockIndex: Int,
+    /**
+     * Address of this segment's block inside its chapter.
+     *
+     * Identical to [sourceBlockIndex] for a chapter model, and named separately because book mode
+     * addresses blocks by the `(chapterId, blockIndex)` pair: over a book the rendered position of
+     * a block says nothing about the chapter it belongs to, so the pair is what the DOM anchor and
+     * the native renderer both match on.
+     */
+    val blockIndex: Int = sourceBlockIndex,
     val pageCandidates: List<Int> = emptyList(),
     val firstUtteranceIndex: Int,
     val lastUtteranceIndex: Int,

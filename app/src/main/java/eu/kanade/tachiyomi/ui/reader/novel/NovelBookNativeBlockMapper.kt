@@ -13,7 +13,7 @@ import eu.kanade.tachiyomi.data.book.novel.NovelBookNativeSegment
  * is ignored by the codec and an unmapped one simply falls back to the renderer default.
  */
 internal fun NovelBookNativeBlock.toRichContentBlock(): NovelRichContentBlock? = when (kind) {
-    NovelBookNativeBlockKind.RULE -> NovelRichContentBlock.HorizontalRule
+    NovelBookNativeBlockKind.RULE -> NovelRichContentBlock.HorizontalRule()
     NovelBookNativeBlockKind.IMAGE -> imageUrl?.let { url ->
         NovelRichContentBlock.Image(url = url, alt = imageAlt)
     }
@@ -34,6 +34,35 @@ internal fun NovelBookNativeBlock.toRichContentBlock(): NovelRichContentBlock? =
 }
 
 /**
+ * A stored block together with the position it has inside its own chapter.
+ *
+ * The compiled book is read as windows over one continuous stream, so the position of a block in
+ * the window says nothing about the chapter it belongs to. TTS addresses blocks by
+ * `(chapterId, blockIndex)`, so the index has to travel with the block instead of being recovered
+ * from where it happens to be rendered.
+ */
+data class NovelBookAnchoredNativeBlock(
+    val block: NovelBookNativeBlock,
+    val blockIndex: Int,
+)
+
+/**
+ * Numbers every block inside its chapter, restarting at each chapter boundary.
+ *
+ * This is the same numbering `annotateNovelBlockAnchors` writes into the book DOM as `data-an-b`
+ * and the TTS model reports as `sourceBlockIndex`: every parsed block counts, including images and
+ * rules, so the three sides address the same paragraph by the same name.
+ */
+internal fun List<NovelBookNativeBlock>.withChapterBlockIndices(): List<NovelBookAnchoredNativeBlock> {
+    val nextIndexByChapter = mutableMapOf<Long, Int>()
+    return map { block ->
+        val blockIndex = nextIndexByChapter.getOrElse(block.chapterId) { 0 }
+        nextIndexByChapter[block.chapterId] = blockIndex + 1
+        NovelBookAnchoredNativeBlock(block = block, blockIndex = blockIndex)
+    }
+}
+
+/**
  * Maps a window of stored blocks to renderer blocks.
  *
  * [includeChapterHeadings] only controls rendering. The heading block itself always exists in the
@@ -42,9 +71,32 @@ internal fun NovelBookNativeBlock.toRichContentBlock(): NovelRichContentBlock? =
  */
 internal fun List<NovelBookNativeBlock>.toRichContentBlocks(
     includeChapterHeadings: Boolean = true,
+): List<NovelRichContentBlock> = withChapterBlockIndices().toAnchoredRichContentBlocks(includeChapterHeadings)
+
+/**
+ * Maps already numbered stored blocks to renderer blocks that carry their book address.
+ *
+ * Without the anchor the native renderer had no address at all for a block of a compiled book:
+ * `annotateNovelBlockAnchors` only ever ran on the HTML path, so follow-along could neither paint
+ * the spoken paragraph nor scroll to it, and the highlight fell back to comparing the chapter-local
+ * TTS index against the position of the block inside the whole section - a different chapter's
+ * paragraph, or nothing at all.
+ *
+ * A hidden chapter heading is dropped only after the numbering, so what the reader shows can never
+ * shift the addresses the voice speaks by.
+ */
+internal fun List<NovelBookAnchoredNativeBlock>.toAnchoredRichContentBlocks(
+    includeChapterHeadings: Boolean = true,
 ): List<NovelRichContentBlock> = asSequence()
-    .filter { includeChapterHeadings || !it.isChapterHeading }
-    .mapNotNull { it.toRichContentBlock() }
+    .filter { includeChapterHeadings || !it.block.isChapterHeading }
+    .mapNotNull { anchored ->
+        anchored.block.toRichContentBlock()?.withAnchor(
+            NovelBlockAnchor(
+                chapterId = anchored.block.chapterId,
+                blockIndex = anchored.blockIndex,
+            ),
+        )
+    }
     .toList()
 
 private fun NovelBookNativeSegment.toRichSegment(): NovelRichTextSegment = NovelRichTextSegment(

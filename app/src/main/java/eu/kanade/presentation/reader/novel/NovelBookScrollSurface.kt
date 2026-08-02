@@ -26,13 +26,18 @@ internal interface NovelBookScrollSurface {
     fun step(forward: Boolean)
 
     /**
-     * Runs [script] inside the mounted book document.
+     * Runs [script] inside the mounted book document and reports what it returned.
      *
      * TTS follow-along used to address the chapter WebView, which book mode never mounts, so it
      * scrolled a view that is not on screen. The book renderer owns its own document and this is the
      * only channel the reader chrome has into it.
+     *
+     * [onResult] receives the raw `evaluateJavascript` answer, or `null` when the script could not
+     * run at all. Follow-along needs it to tell "the block was found and scrolled to" from
+     * "the section is not in the document yet", which is the difference between a finished
+     * navigation and one that has to be replayed after the section mounts.
      */
-    fun evaluate(script: String) = Unit
+    fun evaluate(script: String, onResult: (String?) -> Unit = {}) = onResult(null)
 }
 
 /** What the book engine answered to one scroll request. */
@@ -145,9 +150,13 @@ internal class ViewNovelBookScrollSurface(
 
     override fun step(forward: Boolean) = onStep(forward)
 
-    override fun evaluate(script: String) {
-        val webView = view as? android.webkit.WebView ?: return
-        webView.post { webView.evaluateJavascript(script, null) }
+    override fun evaluate(script: String, onResult: (String?) -> Unit) {
+        val webView = view as? android.webkit.WebView
+        if (webView == null) {
+            onResult(null)
+            return
+        }
+        webView.post { webView.evaluateJavascript(script) { result -> onResult(result) } }
     }
 }
 
@@ -189,5 +198,10 @@ internal class LazyListNovelBookScrollSurface(
         runCatching { listState.dispatchRawDelta(distance.toFloat()) }
     }
 
-    override fun evaluate(script: String) = Unit
+    override fun evaluate(script: String, onResult: (String?) -> Unit) {
+        // The native list has no JS document to run the anchor script in; the anchor is applied
+        // directly by the reader chrome instead. Reporting null keeps the anchor pending until the
+        // native block is actually laid out.
+        onResult(null)
+    }
 }

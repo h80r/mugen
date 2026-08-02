@@ -461,6 +461,9 @@ class NovelReaderScreenModel(
         val previousChapterId = currentChapter?.id
         if (previousChapterId == chapter.id) return
         currentChapter = chapter
+        // The overlay indicator follows the text, not the session: the queue may be working on a
+        // chapter the reader has already left behind.
+        translationController.onActiveChapterChanged(chapter.id)
         lastSavedRead = chapter.read
         lastSavedProgress = chapter.lastPageRead
         initialProgressIndex = 0
@@ -639,6 +642,10 @@ class NovelReaderScreenModel(
     override fun translationUpdateContent(settings: NovelReaderSettings) = updateContent(settings)
 
     override fun translationRefreshBookModeSection(chapterId: Long) = refreshBookModeSection(chapterId)
+
+    override fun translationRefreshBookModeTranslationVariant() {
+        bookController.refreshSectionsAfterTranslationVisibilityChange()
+    }
 
     override fun translationIsGeminiTranslating(): Boolean = translationState.isGeminiTranslating
 
@@ -1023,7 +1030,12 @@ class NovelReaderScreenModel(
     }
 
     private fun subscribeToQueueProgress(chapterId: Long) =
-        translationController.subscribeToQueueProgress(chapterId)
+        translationController.subscribeToQueueProgress(
+            chapterId = chapterId,
+            // Over a book one session covers the whole novel, so the queue has to be watched for
+            // every chapter of it, not just the chapter the reader was opened with.
+            novelId = currentNovel?.id,
+        )
 
     private fun scheduleNextChapterPrefetch(
         novel: Novel,
@@ -1344,6 +1356,7 @@ class NovelReaderScreenModel(
                 isGeminiTranslationVisible = geminiVisibleInUi,
                 hasGeminiTranslationCache = geminiCacheAvailableInUi,
                 geminiLogs = translationState.geminiLogs,
+                chapterProgress = translationState.chapterProgress,
             ),
             googleTranslation = State.ReaderGoogleState(
                 isGoogleTranslating = translationState.isGoogleTranslating,
@@ -2312,6 +2325,12 @@ class NovelReaderScreenModel(
             val isGeminiTranslationVisible: Boolean get() = geminiTranslation.isGeminiTranslationVisible
             val hasGeminiTranslationCache: Boolean get() = geminiTranslation.hasGeminiTranslationCache
             val geminiLogs: List<String> get() = geminiTranslation.geminiLogs
+            val chapterTranslationProgress: Map<Long, NovelBookChapterTranslationProgress>
+                get() = geminiTranslation.chapterProgress
+
+            /** Chapters of the book still being translated somewhere behind or ahead of the reader. */
+            fun backgroundTranslatingChapterCount(activeChapterId: Long): Int =
+                chapterTranslationProgress.backgroundTranslatingCount(activeChapterId)
 
             val isGoogleTranslating: Boolean get() = googleTranslation.isGoogleTranslating
             val googleTranslationProgress: Int get() = googleTranslation.googleTranslationProgress
@@ -2394,6 +2413,8 @@ class NovelReaderScreenModel(
             val isGeminiTranslationVisible: Boolean = false,
             val hasGeminiTranslationCache: Boolean = false,
             val geminiLogs: List<String> = emptyList(),
+            /** Queue progress per chapter of the open book, keyed by chapter id. */
+            val chapterProgress: Map<Long, NovelBookChapterTranslationProgress> = emptyMap(),
         )
 
         data class ReaderGoogleState(

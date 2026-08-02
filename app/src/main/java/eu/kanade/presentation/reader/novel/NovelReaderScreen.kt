@@ -29,6 +29,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -115,7 +116,9 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -149,6 +152,7 @@ import eu.kanade.tachiyomi.source.novel.NovelPluginImage
 import eu.kanade.tachiyomi.source.novel.NovelPluginImageResolver
 import eu.kanade.tachiyomi.source.novel.NovelSiteSource
 import eu.kanade.tachiyomi.ui.reader.novel.BookSeekRequest
+import eu.kanade.tachiyomi.ui.reader.novel.NovelBlockAnchor
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookDocument
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookEngineFlow
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookLocation
@@ -213,6 +217,7 @@ import uy.kohesive.injekt.api.get
 import java.io.ByteArrayInputStream
 import java.io.File
 import kotlin.coroutines.resume
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @Suppress("UNNECESSARY_SAFE_CALL", "USELESS_ELVIS")
@@ -1520,22 +1525,86 @@ fun NovelReaderScreen(
     }
     // Book mode renders its own document, so neither the WebView adapter (chapter WebView) nor the
     // native adapter (per-chapter lazy list) can follow the voice there.
+    // Block the voice is reading, as the native book renderer needs it: the WebView document marks
+    // the block itself, the native list has to be told which block to paint.
+    var bookTtsBlockAnchor by remember(state.novel.id) { mutableStateOf<NovelBlockAnchor?>(null) }
+    val bookTtsBlockPositions = remember(state.novel.id) { NovelBookTtsBlockPositions() }
+    val latestBookNativeEntries by rememberUpdatedState(bookModeNativeEntries)
+    val latestUseNativeBookScroll by rememberUpdatedState(useNativeBookScroll)
     val bookTtsNavigationAdapter = remember(state.novel.id, bookEngineSpine) {
         BookTtsNavigationAdapter(
             surface = { bookScrollSurface },
-            // A spine built from chapters (live book) maps the segment's chapter directly to its
-            // section. A compiled book slices chapters into blocks, so the chapter is not in the
-            // spine and the document falls back to a whole-content snippet search.
+            // The spine maps the segment's chapter to its section; the anchor addresses the exact
+            // block, and the section only serves as the fallback target when the block is not in
+            // the document yet.
             sectionIndexForChapter = { chapterId ->
                 bookEngineSpine.indexOf(chapterId).takeIf { it >= 0 }
             },
+            // The section may not be resident yet - the usual case right after a chapter border.
+            // Answering that honestly is what lets the adapter keep the request pending instead of
+            // dropping the voice's position on the floor.
+            scrollNativeToSection = { sectionIndex ->
+                val itemIndex = latestBookNativeEntries.indexOfFirst { it.sectionIndex == sectionIndex }
+                if (itemIndex < 0) {
+                    false
+                } else {
+                    runCatching { textListState.animateScrollToItem(itemIndex) }.isSuccess
+                }
+            },
+            onNativeAnchor = { anchor -> bookTtsBlockAnchor = anchor },
+            isNativeRenderer = { latestUseNativeBookScroll },
+            isNativeBlockLaidOut = { anchor -> bookTtsBlockPositions.isLaidOut(anchor) },
         )
+    }
+    // Follow-along used to be a single shot per utterance: whatever the state of the document was
+    // at that instant decided whether the voice was followed for the whole paragraph. Sections
+    // mount asynchronously, so the first utterance of a chapter regularly arrived before its
+    // section existed, the script answered `not-found`, and nothing asked again until the next
+    // utterance - which is why follow-along looked dead exactly where it matters, at the borders.
+    // Everything that can make the pending anchor resolvable replays it here.
+    LaunchedEffect(
+        bookScrollSurface,
+        bookModeNativeEntries,
+        bookEngineSpine,
+        useNativeBookScroll,
+        state.readerSettings.ttsFollowAlong,
+    ) {
+        if (!state.bookMode.isEnabled || !state.readerSettings.ttsFollowAlong) return@LaunchedEffect
+        bookTtsNavigationAdapter.retryPendingAnchor()
     }
     SideEffect {
         pageReaderTtsNavigationAdapter.hashCode()
         nativeScrollTtsNavigationAdapter.hashCode()
         webViewTtsNavigationAdapter.hashCode()
         bookTtsNavigationAdapter.hashCode()
+    }
+    // Native book renderer: the adapter can only scroll to the section, and a section is tens of
+    // thousands of characters, so the voice walked the whole item while the screen stood still.
+    // The blocks report where they were laid out, so once the section is composed the list is
+    // scrolled to the spoken paragraph itself. This also carries the manual return: restoring the
+    // TTS position republishes the anchor, which lands here.
+    // Keyed on the resident entries as well: the block can only report a position once its section
+    // is composed, so a fixed frame budget that started before the section arrived simply expired.
+    // Every change of the resident window restarts the wait with a fresh budget.
+    LaunchedEffect(
+        bookTtsBlockAnchor,
+        bookModeNativeEntries,
+        useNativeBookScroll,
+        state.readerSettings.ttsFollowAlong,
+    ) {
+        if (!useNativeBookScroll || !state.readerSettings.ttsFollowAlong) return@LaunchedEffect
+        val anchor = bookTtsBlockAnchor ?: return@LaunchedEffect
+        repeat(NOVEL_BOOK_TTS_SCROLL_ATTEMPTS) {
+            val delta = bookTtsBlockPositions.scrollDeltaFor(anchor)
+            if (delta != null) {
+                if (abs(delta) > NOVEL_BOOK_TTS_SCROLL_EPSILON_PX) {
+                    runCatching { textListState.animateScrollBy(delta) }
+                }
+                return@LaunchedEffect
+            }
+            // The section scroll is still bringing the block into composition.
+            withFrameNanos { }
+        }
     }
     LaunchedEffect(
         state.chapter.id,
@@ -1726,6 +1795,11 @@ fun NovelReaderScreen(
             ?: return@LaunchedEffect
         if (requestedTtsChapterSyncTarget == targetChapterId) return@LaunchedEffect
         requestedTtsChapterSyncTarget = targetChapterId
+        // The book already holds the next chapter. Opening it here reloaded the whole reader in the
+        // middle of playback - the screen flashed, the document was rebuilt and the voice lost its
+        // place - to arrive at markup that was on screen already. Over a book the handoff is only a
+        // change of the spoken chapter; the follow-along anchor moves the reader across the border.
+        if (state.bookMode.isEnabled) return@LaunchedEffect
         NovelReaderTtsChapterHandoffPolicy.markPendingRestore(targetChapterId)
         webViewInstance?.clearFocus()
         onOpenNextChapter?.invoke(targetChapterId)
@@ -1747,8 +1821,11 @@ fun NovelReaderScreen(
             )
         }
     }
+    // Also keyed on the spoken block: a long utterance can walk several blocks, and keying only on
+    // the utterance id left follow-along standing on the first one until the voice moved on.
     LaunchedEffect(
         state.ttsUiState.activeSession?.utterance?.id,
+        state.ttsUiState.activeSourceBlockIndex,
         state.readerSettings.ttsFollowAlong,
         showWebView,
         usePageReader,
@@ -1799,6 +1876,7 @@ fun NovelReaderScreen(
         state.ttsUiState.activeUtteranceText,
         state.ttsUiState.activeWordRange,
         state.ttsUiState.activeHighlightMode,
+        bookTtsBlockAnchor,
     ) {
         val activeUtterance = state.ttsUiState.activeSession?.utterance
         val activePageAnchor = if (usePageReader) {
@@ -1816,6 +1894,7 @@ fun NovelReaderScreen(
             blockTextStart = activePageAnchor?.blockTextStart ?: activeUtterance?.blockTextStart,
             blockTextEndExclusive = activePageAnchor?.blockTextEndExclusive ?: activeUtterance?.blockTextEndExclusive,
             mode = state.ttsUiState.activeHighlightMode,
+            blockAnchor = bookTtsBlockAnchor,
         )
     }
     val ttsHighlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
@@ -2920,7 +2999,16 @@ fun NovelReaderScreen(
                                     } else {
                                         Modifier
                                     },
-                                ),
+                                )
+                                .onGloballyPositioned { coordinates ->
+                                    // Reference frame for the book blocks below: follow-along
+                                    // scrolls by the distance between the spoken block and the
+                                    // reading band, and both are measured in window coordinates.
+                                    bookTtsBlockPositions.recordViewport(
+                                        topInWindow = coordinates.positionInWindow().y,
+                                        heightPx = coordinates.size.height.toFloat(),
+                                    )
+                                },
                             state = textListState,
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(
                                 top = contentPaddingPx + ttsScrollTopPadding,
@@ -2941,30 +3029,45 @@ fun NovelReaderScreen(
                                         is NovelBookNativeEntry.Section -> {
                                             Column(modifier = Modifier.fillMaxWidth()) {
                                                 entry.section.blocks.forEachIndexed { blockIndex, block ->
-                                                    NovelRichNativeScrollItem(
-                                                        block = block,
-                                                        index = blockIndex,
-                                                        lastIndex = entry.section.blocks.lastIndex,
-                                                        chapterTitle = state.chapter.name,
-                                                        novelTitle = state.novel.title,
-                                                        sourceId = state.novel.source,
-                                                        chapterWebUrl = state.chapterWebUrl,
-                                                        novelUrl = state.novel.url,
-                                                        statusBarTopPadding = statusBarTopPadding,
-                                                        textColor = textColor,
-                                                        backgroundColor = textBackground,
-                                                        readerSettings = state.readerSettings,
-                                                        textTypeface = composeTypeface,
-                                                        chapterTitleTypeface = chapterTitleTypeface,
-                                                        paragraphSpacing = paragraphSpacing,
-                                                        ttsHighlightState = ttsHighlightState,
-                                                        ttsHighlightColor = ttsHighlightColor,
-                                                        selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
-                                                        onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
-                                                        onPlainTap = { tapX, tapY, width, height ->
-                                                            latestReaderShortTapHandler(tapX, tapY, width, height)
-                                                        },
-                                                    )
+                                                    val blockAnchor = block.anchor
+                                                    DisposableEffect(blockAnchor) {
+                                                        onDispose { bookTtsBlockPositions.forgetBlock(blockAnchor) }
+                                                    }
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .onGloballyPositioned { coordinates ->
+                                                                bookTtsBlockPositions.recordBlock(
+                                                                    anchor = blockAnchor,
+                                                                    topInWindow = coordinates.positionInWindow().y,
+                                                                )
+                                                            },
+                                                    ) {
+                                                        NovelRichNativeScrollItem(
+                                                            block = block,
+                                                            index = blockIndex,
+                                                            lastIndex = entry.section.blocks.lastIndex,
+                                                            chapterTitle = state.chapter.name,
+                                                            novelTitle = state.novel.title,
+                                                            sourceId = state.novel.source,
+                                                            chapterWebUrl = state.chapterWebUrl,
+                                                            novelUrl = state.novel.url,
+                                                            statusBarTopPadding = statusBarTopPadding,
+                                                            textColor = textColor,
+                                                            backgroundColor = textBackground,
+                                                            readerSettings = state.readerSettings,
+                                                            textTypeface = composeTypeface,
+                                                            chapterTitleTypeface = chapterTitleTypeface,
+                                                            paragraphSpacing = paragraphSpacing,
+                                                            ttsHighlightState = ttsHighlightState,
+                                                            ttsHighlightColor = ttsHighlightColor,
+                                                            selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
+                                                            onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                                                            onPlainTap = { tapX, tapY, width, height ->
+                                                                latestReaderShortTapHandler(tapX, tapY, width, height)
+                                                            },
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
@@ -4218,6 +4321,18 @@ fun NovelReaderScreen(
                                         .size(width = 24.dp, height = 3.dp),
                                     color = MaterialTheme.colorScheme.primary,
                                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                )
+                            }
+
+                            // Over a book the bar above describes the chapter under the reading
+                            // position; the queue keeps working on the other chapters of the book,
+                            // which would otherwise be invisible here.
+                            val backgroundTranslating = state.backgroundTranslatingChapterCount(state.chapter.id)
+                            if (state.bookMode.isEnabled && backgroundTranslating > 0) {
+                                Text(
+                                    text = "+$backgroundTranslating",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }

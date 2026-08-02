@@ -137,6 +137,20 @@ internal class NovelBookModeRuntime(
         session?.forgetRenderedSections()
     }
 
+    /**
+     * Drops every prepared section so the next mount runs the pipeline again.
+     *
+     * The disk cache separates translated from untranslated markup through the cache scope, but the
+     * in-memory store is keyed by section alone. Hiding or showing a translation therefore left the
+     * neighbouring resident sections serving the markup of the variant that was just switched away
+     * from, which is why the "show original" button appeared to do nothing.
+     */
+    fun invalidatePreparedSections() {
+        loader.clear()
+        staleSectionsPruned = false
+        session?.forgetRenderedSections()
+    }
+
     fun moveTo(sectionIndex: Int, sectionFraction: Float) {
         val activeSession = session ?: return
         val section = activeSession.sectionAt(sectionIndex) ?: return

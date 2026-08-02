@@ -20,6 +20,15 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 /**
+ * Sections around the reading position rebuilt when the visible translation changes.
+ *
+ * Wide enough to cover the resident window on both sides, so the reader never scrolls from a
+ * translated section straight into an untranslated one, and small enough that toggling the button
+ * does not re-run the pipeline over a whole book.
+ */
+private const val BOOK_TRANSLATION_REFRESH_RADIUS = 2
+
+/**
  * Host the book controller uses to reach the shared reader state owned by
  * [NovelReaderScreenModel].
  *
@@ -138,8 +147,8 @@ internal class NovelBookReaderController(
     /** Pre-compiled native blocks of a book section, or null when this book has none. */
     fun nativeBookBlocksForSection(sectionIndex: Int): List<NovelRichContentBlock>? =
         artifactSource
-            ?.nativeBlocksFor(sectionIndex)
-            ?.toRichContentBlocks()
+            ?.anchoredNativeBlocksFor(sectionIndex)
+            ?.toAnchoredRichContentBlocks()
             ?.takeIf { it.isNotEmpty() }
 
     /** Pending book-mode DOM work, consumed and acknowledged by the reader UI. */
@@ -300,6 +309,36 @@ internal class NovelBookReaderController(
                 val html = runCatching { rebuildSectionHtml(section) }.getOrNull() ?: return@forEach
                 bookModeCommandQueue.enqueueReplace(sectionIndex = section.index, html = html)
                 logBookModeTrace { "replace section=${section.index} chapter=$chapterId chars=${html.length}" }
+            }
+        }
+    }
+
+    /**
+     * Rebuilds the resident sections after the visible translation was switched on or off.
+     *
+     * The toggle only re-rendered the chapter reader, which book mode does not show: the book kept
+     * the document it was already displaying, so "show original" flipped the button and changed
+     * nothing on screen. Every section around the reading position is rebuilt with the variant that
+     * is visible now and swapped in place, and the prepared-section cache is dropped so sections
+     * mounted later do not serve the previous variant from memory.
+     */
+    fun refreshSectionsAfterTranslationVisibilityChange() {
+        if (!bookModeRuntime.isActive) return
+        bookModeRuntime.invalidatePreparedSections()
+        val spine = bookModeRuntime.engineSpine
+        val indices = spine.windowAround(
+            sectionIndex = bookModeRuntime.location.sectionIndex,
+            radius = BOOK_TRANSLATION_REFRESH_RADIUS,
+        )
+        if (indices.isEmpty()) return
+        host.bookScope.launch {
+            indices.forEach { index ->
+                val section = spine.sectionAt(index) ?: return@forEach
+                val html = runCatching { rebuildSectionHtml(section) }.getOrNull() ?: return@forEach
+                bookModeCommandQueue.enqueueReplace(sectionIndex = section.index, html = html)
+                logBookModeTrace {
+                    "replace section=${section.index} reason=translation-visibility chars=${html.length}"
+                }
             }
         }
     }

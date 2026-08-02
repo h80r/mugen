@@ -37,6 +37,11 @@ internal fun buildNovelBookEngineDocumentHtml(
               break-inside: avoid;
               page-break-inside: avoid;
             }
+            /* Block the voice is reading, in the paged flow. */
+            #an-book-content [data-an-tts-highlight] {
+              background-color: rgba(128, 128, 128, 0.28);
+              border-radius: 4px;
+            }
             /* Marker used to measure how many columns the section actually produced. */
             #an-book-end {
               display: block;
@@ -66,6 +71,13 @@ internal fun buildNovelBookEngineDocumentHtml(
               display: block;
               width: 100%;
               background: transparent !important;
+            }
+            /* Block the voice is reading. The chapter WebView paints its highlight from its own
+               script; the book document is built here, so without this rule the anchor script
+               marked the right paragraph and nothing at all changed on screen. */
+            #an-book-content [data-an-tts-highlight] {
+              background-color: rgba(128, 128, 128, 0.28);
+              border-radius: 4px;
             }
             #an-book-content img,
             #an-book-content svg,

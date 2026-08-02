@@ -40,7 +40,9 @@ internal data class BookChapterFragment(
  * changing the pipeline invalidates previously prepared sections instead of serving markup that was
  * built by an older version of the chain.
  */
-private const val BOOK_SECTION_PIPELINE_VERSION = "p1"
+private const val BOOK_SECTION_PIPELINE_VERSION = "p2"
+// p2: blocks carry `data-an-b` anchors. Sections prepared by p1 have none, so TTS follow-along and
+// the highlight would silently do nothing over every already-cached book until it was re-read.
 
 /**
  * Single owner of "raw chapter payload in, reader-ready section HTML out".
@@ -116,12 +118,18 @@ internal class DefaultBookSectionRepository(
             return BookSectionContent(html = "", baseUrl = raw.chapterWebUrl?.takeIf { it.isNotBlank() })
         }
         val translated = translateChapterHtml(raw.chapterId, bodyHtml)
+        // Block anchors are written last, over exactly the markup the reader will see: TTS
+        // follow-along addresses `(chapterId, blockIndex)` and a translation that changed the block
+        // structure must not shift those indices.
+        val anchored = withContext(Dispatchers.Default) {
+            annotateNovelBlockAnchors(rawHtml = translated, chapterId = raw.chapterId)
+        }
         return BookSectionContent(
             html = buildBookSectionHtml(
                 sectionIndex = section.index,
                 chapterId = section.chapterId,
                 title = section.name,
-                bodyHtml = translated,
+                bodyHtml = anchored,
                 showDivider = section.index > 0,
                 showHeading = showChapterHeadings(),
             ),
@@ -135,17 +143,19 @@ internal class DefaultBookSectionRepository(
             splitArtifactSectionByChapter(html = html, fallbackChapterIds = chapterIds)
         }
         if (fragments.isEmpty()) return html
-        var changed = false
         val translated = fragments.map { fragment ->
             if (fragment.chapterId == BookLocator.NO_CHAPTER_ID) {
                 fragment.html
             } else {
                 val result = translateChapterHtml(fragment.chapterId, fragment.html)
-                if (result != fragment.html) changed = true
-                result
+                // The artifact was compiled without block anchors, so they are added per chapter
+                // here, after the overlay: this is the only path a compiled book takes, and without
+                // it TTS follow-along has nothing to address in an artifact section.
+                withContext(Dispatchers.Default) {
+                    annotateNovelBlockAnchors(rawHtml = result, chapterId = fragment.chapterId)
+                }
             }
         }
-        if (!changed) return html
         return translated.joinToString(separator = "")
     }
 }

@@ -88,7 +88,19 @@ class NovelBookArtifactSource(
      * range. That clipping uses the same offsets as the HTML path, which is why progress, the table
      * of contents and read marking behave identically in both renderers.
      */
-    fun nativeBlocksFor(sectionIndex: Int): List<NovelBookNativeBlock>? {
+    fun nativeBlocksFor(sectionIndex: Int): List<NovelBookNativeBlock>? =
+        anchoredNativeBlocksFor(sectionIndex)?.map { it.block }
+
+    /**
+     * The same blocks, each carrying the index it has inside its own chapter.
+     *
+     * The numbering is done over the whole decoded chapter, before the section clip, so a chapter
+     * that straddles a section boundary still numbers its blocks from its own beginning. That is
+     * the address the book DOM carries as `data-an-b` and the one TTS speaks by, which is what lets
+     * follow-along find a paragraph of a compiled book instead of guessing from its position in the
+     * rendered window.
+     */
+    fun anchoredNativeBlocksFor(sectionIndex: Int): List<NovelBookAnchoredNativeBlock>? {
         if (!hasNativeBlocks) return null
         val block = blocks.getOrNull(sectionIndex) ?: return null
         val sectionStart = block.charStart
@@ -108,7 +120,12 @@ class NovelBookArtifactSource(
             byteLength = nativeLength,
         )
         if (decoded.isEmpty()) return null
-        return decoded.filter { it.charStart < sectionEnd && it.charStart + it.charLength > sectionStart }
+        return decoded
+            .withChapterBlockIndices()
+            .filter { anchored ->
+                val start = anchored.block.charStart
+                start < sectionEnd && start + anchored.block.charLength > sectionStart
+            }
     }
 
     /** Whole-book character offset of a block location, used as the persisted reading position. */

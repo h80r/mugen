@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.reader.novel
 
 import android.app.Application
 import eu.kanade.tachiyomi.data.translation.TranslationJob
+import eu.kanade.tachiyomi.data.translation.TranslationProgressUpdate
 import eu.kanade.tachiyomi.data.translation.TranslationQueueManager
 import eu.kanade.tachiyomi.data.translation.TranslationStatus
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
@@ -46,6 +47,9 @@ internal interface NovelTranslationHost {
     fun translationHolderMap(provider: String): Map<Int, String>
     fun translationUpdateContent(settings: NovelReaderSettings)
     fun translationRefreshBookModeSection(chapterId: Long)
+
+    /** Rebuilds the resident book sections after the visible translation was switched. */
+    fun translationRefreshBookModeTranslationVariant()
     fun translationIsGeminiTranslating(): Boolean
     fun translationIsGeminiTranslationVisible(): Boolean
     fun translationIsBookRuntimeActive(): Boolean
@@ -66,6 +70,8 @@ data class NovelTranslationState(
     val isGeminiTranslationVisible: Boolean = false,
     val hasGeminiTranslationCache: Boolean = false,
     val geminiLogs: List<String> = emptyList(),
+    /** Queue progress of every chapter of the open book the reader has seen an update for. */
+    val chapterProgress: Map<Long, NovelBookChapterTranslationProgress> = emptyMap(),
     val isGoogleTranslating: Boolean = false,
     val googleTranslationProgress: Int = 0,
     val isGoogleTranslationVisible: Boolean = false,
@@ -92,6 +98,7 @@ internal class NovelTranslationController(
 
     private var geminiTranslationJob: Job? = null
     private var queueProgressJob: Job? = null
+    private var subscribedChapterId: Long? = null
     private var googleTranslationJob: Job? = null
     private val googleSessionCache = GoogleTranslationSessionCache()
 
@@ -114,6 +121,7 @@ internal class NovelTranslationController(
             isGeminiTranslationVisible = gemini.isGeminiTranslationVisible,
             hasGeminiTranslationCache = gemini.hasGeminiTranslationCache,
             geminiLogs = gemini.geminiLogs,
+            chapterProgress = gemini.chapterProgress,
             isGoogleTranslating = google.isGoogleTranslating,
             googleTranslationProgress = google.googleTranslationProgress,
             isGoogleTranslationVisible = google.isGoogleTranslationVisible,
@@ -176,6 +184,7 @@ internal class NovelTranslationController(
                 isGeminiTranslationVisible = state.isGeminiTranslationVisible,
                 hasGeminiTranslationCache = state.hasGeminiTranslationCache,
                 geminiLogs = state.geminiLogs,
+                chapterProgress = state.chapterProgress,
             ),
             google = NovelReaderScreenModel.State.ReaderGoogleState(
                 isGoogleTranslating = state.isGoogleTranslating,
@@ -192,14 +201,28 @@ internal class NovelTranslationController(
     // Queue progress subscription + auto-start
     // ---------------------------------------------------------------------------------------------
 
-    fun subscribeToQueueProgress(chapterId: Long) {
+    /**
+     * Subscribes to the translation queue for the reading session.
+     *
+     * Over a book the session spans the whole novel, so the subscription cannot be bound to the
+     * chapter the reader was opened with: the queue keeps working on chapters the reader has already
+     * scrolled past, or on the next ones. With [novelId] set, every update of that novel is recorded
+     * per chapter and only the chapter under the reading position drives the overlay indicator.
+     */
+    fun subscribeToQueueProgress(chapterId: Long, novelId: Long? = null) {
         queueProgressJob?.cancel()
+        subscribedChapterId = chapterId
         queueProgressJob = host.translationScope.launch {
             translationQueueManager.progressUpdates
-                .filter { it.chapterId == chapterId }
+                .filter { it.chapterId == chapterId || (novelId != null && novelId != 0L && it.novelId == novelId) }
                 .onEach { update ->
                     if (update.logMessage != null) {
-                        addAiTranslationLog(update.logMessage)
+                        if (update.chapterId == overlayChapterId()) addAiTranslationLog(update.logMessage)
+                        return@onEach
+                    }
+                    recordChapterProgress(update)
+                    if (update.chapterId != overlayChapterId()) {
+                        onBackgroundChapterUpdate(update)
                         return@onEach
                     }
                     when (update.status) {
@@ -280,6 +303,50 @@ internal class NovelTranslationController(
     fun cancelQueueProgress() {
         queueProgressJob?.cancel()
         queueProgressJob = null
+        subscribedChapterId = null
+    }
+
+    /** Chapter the overlay indicator describes: the one under the reading position over a book. */
+    private fun overlayChapterId(): Long? = host.translationActiveChapterId() ?: subscribedChapterId
+
+    /** Records the queue state of [update]'s chapter so the overlay can show it per chapter. */
+    private fun recordChapterProgress(update: TranslationProgressUpdate) {
+        val entry = NovelBookChapterTranslationProgress(
+            chapterId = update.chapterId,
+            isTranslating = update.status == TranslationStatus.IN_PROGRESS ||
+                update.status == TranslationStatus.PENDING,
+            progress = if (update.status == TranslationStatus.COMPLETED) 100 else update.progress,
+            isDone = update.status == TranslationStatus.COMPLETED,
+        )
+        updateState { it.copy(chapterProgress = it.chapterProgress + (update.chapterId to entry)) }
+    }
+
+    /**
+     * Handles a queue update of a chapter the reader is not standing in.
+     *
+     * Its text can still be on screen (the neighbouring resident sections of the book), so a
+     * finished translation has to reach the document; the overlay flags stay on the chapter under
+     * the reading position.
+     */
+    private fun onBackgroundChapterUpdate(update: TranslationProgressUpdate) {
+        if (update.status != TranslationStatus.COMPLETED) return
+        host.translationRefreshBookModeSection(update.chapterId)
+    }
+
+    /**
+     * Moves the overlay indicator onto [chapterId] when the reading position crosses into it.
+     *
+     * Nothing is restarted or cancelled: the queue keeps running, only what the indicator describes
+     * changes, which is what makes the progress per chapter instead of per session.
+     */
+    fun onActiveChapterChanged(chapterId: Long) {
+        val entry = state.chapterProgress.overlayIndicatorFor(chapterId)
+        updateState {
+            it.copy(
+                isGeminiTranslating = entry?.isTranslating == true,
+                geminiTranslationProgress = entry?.percent ?: 0,
+            )
+        }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -374,6 +441,9 @@ internal class NovelTranslationController(
         addAiTranslationLog(
             "??? Visibility: ${if (state.isGeminiTranslationVisible) "ON" else "OFF"}",
         )
+        // Book mode shows its own document, so re-rendering the chapter reader alone left the
+        // translated markup on screen and the button looked dead.
+        host.translationRefreshBookModeTranslationVariant()
         val settings = host.translationReaderSettings() ?: return
         host.translationUpdateContent(settings)
     }
@@ -396,6 +466,7 @@ internal class NovelTranslationController(
         }
         NovelReaderTranslationDiskCacheStore.remove(chapter.id)
         addAiTranslationLog("??? Cleared chapter cache")
+        host.translationRefreshBookModeTranslationVariant()
         val settings = host.translationReaderSettings() ?: return
         host.translationUpdateContent(settings)
     }
@@ -557,6 +628,7 @@ internal class NovelTranslationController(
     fun toggleGoogleTranslationVisibility() {
         if (host.translationHolderIsEmpty("google")) return
         updateState { it.copy(isGoogleTranslationVisible = !it.isGoogleTranslationVisible) }
+        host.translationRefreshBookModeTranslationVariant()
         val settings = host.translationReaderSettings() ?: return
         host.translationUpdateContent(settings)
     }
@@ -582,6 +654,7 @@ internal class NovelTranslationController(
             sourceLang = host.translationReaderSettings()?.googleTranslationSourceLang ?: "auto",
             targetLang = host.translationReaderSettings()?.googleTranslationTargetLang ?: "Russian",
         )
+        host.translationRefreshBookModeTranslationVariant()
         val settings = host.translationReaderSettings() ?: return
         host.translationUpdateContent(settings)
     }
