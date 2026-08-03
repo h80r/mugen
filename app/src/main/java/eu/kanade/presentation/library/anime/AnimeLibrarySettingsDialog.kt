@@ -357,4 +357,19 @@ private fun ColumnScope.DisplayPage(
         label = stringResource(MR.strings.action_display_show_number_of_items),
         pref = screenModel.libraryPreferences.categoryNumberOfItems(),
     )
+    AuroraCheckboxItem(
+        label = stringResource(AYMR.strings.action_display_full_number_of_items),
+        pref = screenModel.libraryPreferences.categoryFullNumberOfItems(),
+        description = stringResource(AYMR.strings.action_display_full_number_of_items_summary),
+    )
+    val showFullNumberOfItems by screenModel.libraryPreferences
+        .categoryFullNumberOfItems()
+        .collectAsStateWithLifecycle()
+    if (showFullNumberOfItems) {
+        AuroraCheckboxItem(
+            label = stringResource(AYMR.strings.action_display_grouped_number_of_items),
+            pref = screenModel.libraryPreferences.categoryGroupedNumberOfItems(),
+            description = stringResource(AYMR.strings.action_display_grouped_number_of_items_summary),
+        )
+    }
 }

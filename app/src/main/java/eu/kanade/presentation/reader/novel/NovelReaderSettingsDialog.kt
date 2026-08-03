@@ -76,6 +76,11 @@ fun NovelReaderSettingsDialog(
     currentWebViewActive: Boolean,
     currentPageReaderActive: Boolean,
     onDismissRequest: () -> Unit,
+    onPrepareBook: (() -> Unit)? = null,
+    bookModeActive: Boolean = false,
+    prepareBookInProgress: Boolean = false,
+    preparedChapterCount: Int = 0,
+    totalChapterCount: Int = 0,
 ) {
     val preferences = remember { Injekt.get<NovelReaderPreferences>() }
     val sourceOverrides = remember { preferences.sourceOverrides() }
@@ -223,6 +228,11 @@ fun NovelReaderSettingsDialog(
                                 overrideEnabled = overrideEnabled,
                                 preferences = preferences,
                                 onDismissRequest = onDismissRequest,
+                                bookModeActive = bookModeActive,
+                                onPrepareBook = onPrepareBook,
+                                prepareBookInProgress = prepareBookInProgress,
+                                preparedChapterCount = preparedChapterCount,
+                                totalChapterCount = totalChapterCount,
                             )
                             1 -> ReadingTab(
                                 settings = settings,

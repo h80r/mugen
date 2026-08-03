@@ -15,6 +15,8 @@ import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.AnimeSourceFactory
 import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
 import eu.kanade.tachiyomi.extension.anime.model.AnimeLoadResult
+import eu.kanade.tachiyomi.extension.canReplacePrivateExtension
+import eu.kanade.tachiyomi.extension.matchesExtensionFeature
 import eu.kanade.tachiyomi.util.lang.Hash
 import eu.kanade.tachiyomi.util.storage.copyAndSetReadOnlyTo
 import eu.kanade.tachiyomi.util.system.ChildFirstPathClassLoader
@@ -51,7 +53,7 @@ internal object AnimeExtensionLoader {
     const val LIB_VERSION_MIN = 12.0
     const val LIB_VERSION_MAX = 16.0
 
-    val SUPPORTED_LIB_VERSIONS = (LIB_VERSION_MIN.toInt()..LIB_VERSION_MAX.toInt()).map { it.toDouble() }
+    val SUPPORTED_LIB_VERSIONS: ClosedFloatingPointRange<Double> = LIB_VERSION_MIN..LIB_VERSION_MAX
 
     @Suppress("DEPRECATION")
     private val PACKAGE_FLAGS = PackageManager.GET_CONFIGURATIONS or
@@ -84,7 +86,11 @@ internal object AnimeExtensionLoader {
             if (file.isFile && file.extension == PRIVATE_EXTENSION_EXTENSION) {
                 val pkgName = file.nameWithoutExtension
                 if (pkgName.matches(Regex("^[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)+$"))) {
-                    if (pkgName.contains(".anime")) {
+                    // Classify by the manifest feature, not by the file name: manga extensions such
+                    // as ...extension.fr.animesama contain ".anime" and were moved into the anime
+                    // directory, where nothing ever loads them again.
+                    val archiveInfo = context.packageManager.getPackageArchiveInfo(file.absolutePath, PACKAGE_FLAGS)
+                    if (matchesExtensionFeature(archiveInfo, EXTENSION_FEATURE) == true) {
                         targetDir.mkdirs()
                         val targetFile = File(targetDir, file.name)
                         file.renameTo(targetFile)
@@ -129,7 +135,15 @@ internal object AnimeExtensionLoader {
                 return false
             }
 
-            if (!extensionSignatures.containsAll(getSignatures(currentExtension)!!)) {
+            // Cross-store re-publication is handled by the reinstall path (uninstall first), so a
+            // signature change here means the replacement is not from the installed publisher.
+            if (!canReplacePrivateExtension(
+                    installedVersionCode = PackageInfoCompat.getLongVersionCode(currentExtension),
+                    newVersionCode = PackageInfoCompat.getLongVersionCode(extension),
+                    installedSignatures = getSignatures(currentExtension).orEmpty(),
+                    newSignatures = extensionSignatures,
+                )
+            ) {
                 logcat(LogPriority.ERROR) { "Installed extension signature is not matched." }
                 return false
             }

@@ -11,6 +11,11 @@ class DownloadPreferences(
         true,
     )
 
+    fun hideDownloadPowerPolicyBanner() = preferenceStore.getBoolean(
+        "pref_hide_download_power_policy_banner",
+        false,
+    )
+
     fun useExternalDownloader() = preferenceStore.getBoolean("use_external_downloader", false)
 
     fun externalDownloaderSelection() = preferenceStore.getString(

@@ -18,11 +18,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Hub
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.kanade.domain.easteregg.aurora.AuroraHeartManager
 import eu.kanade.domain.easteregg.aurora.AuroraLocalization
+import eu.kanade.domain.easteregg.lattice.LatticeProtocolManager
 import eu.kanade.presentation.achievement.components.AchievementActivityGraph
 import eu.kanade.presentation.achievement.components.AchievementCard
 import eu.kanade.presentation.achievement.components.AchievementCategoryTabs
@@ -46,6 +52,7 @@ import eu.kanade.presentation.achievement.components.AchievementStatsComparison
 import eu.kanade.presentation.achievement.screenmodel.AchievementScreenState
 import eu.kanade.presentation.more.settings.AuroraTopBarLayout
 import eu.kanade.presentation.theme.AuroraTheme
+import kotlinx.coroutines.launch
 import tachiyomi.domain.achievement.model.Achievement
 import tachiyomi.domain.achievement.model.AchievementCategory
 import tachiyomi.i18n.aniyomi.AYMR
@@ -71,6 +78,12 @@ fun AchievementScreen(
     val title = stringResource(AYMR.strings.label_achievements)
     val localeTags = LocalConfiguration.current.locales.toLanguageTags()
 
+    // Permanent Lattice entry point. The "More" item hides itself once the rewards are granted,
+    // so this stays available for as long as all carriers are latched.
+    val latticeManager = remember { LatticeProtocolManager.get(Injekt.get<android.app.Application>()) }
+    val latticeScope = rememberCoroutineScope()
+    val latticeAvailable = latticeManager.canOpenGrid()
+
     LaunchedEffect(localeTags) {
         onLocaleChanged()
     }
@@ -81,7 +94,17 @@ fun AchievementScreen(
                 title = title,
                 titleContent = null,
                 onNavigateUp = onClickBack,
-                actions = {},
+                actions = {
+                    if (latticeAvailable) {
+                        IconButton(onClick = { latticeScope.launch { latticeManager.requestBreach() } }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Hub,
+                                contentDescription = stringResource(AYMR.strings.lattice_open_manual),
+                                tint = colors.accent,
+                            )
+                        }
+                    }
+                },
             )
         },
         containerColor = colors.background,

@@ -43,9 +43,7 @@ class CreateNovelExtensionRepoTest {
 
         result shouldBe CreateNovelExtensionRepo.Result.Success
         coVerify {
-            repository.upsertStore(
-                insertedStore.copy(name = "Custom store", badgeLabel = "Custom store"),
-            )
+            repository.setCustomName(insertedStore.indexUrl, "Custom store")
         }
     }
 

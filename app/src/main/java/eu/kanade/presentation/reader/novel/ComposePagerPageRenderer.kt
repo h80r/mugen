@@ -61,6 +61,48 @@ internal fun resolveComposePagerTransitionSpec(
             scale = (1f - (clampedAbsOffset * 0.08f)).coerceIn(0.92f, 1f),
             translationXFraction = (-pageOffset * 0.12f).coerceIn(-0.12f, 0.12f),
         )
+        NovelPageTransitionStyle.BOOK -> {
+            if (pageOffset > 0f && pageOffset <= 1f) {
+                ComposePagerTransitionSpec(
+                    rotationY = -180f * pageOffset,
+                    pivotXFraction = 0f,
+                    cameraDistance = 15f,
+                    cancelPagerMotion = true,
+                    shadowAlpha = (abs(0.5f - pageOffset) * -0.6f + 0.3f).coerceIn(0f, 0.3f),
+                    zIndex = 1f - pageOffset,
+                )
+            } else if (pageOffset <= 0f && pageOffset >= -1f) {
+                ComposePagerTransitionSpec(
+                    cancelPagerMotion = true,
+                    zIndex = 0f,
+                )
+            } else {
+                ComposePagerTransitionSpec(
+                    hideOffscreenPages = true,
+                )
+            }
+        }
+        NovelPageTransitionStyle.CURL -> {
+            if (pageOffset > 0f && pageOffset <= 1f) {
+                ComposePagerTransitionSpec(
+                    rotationY = -180f * pageOffset,
+                    pivotXFraction = 1f,
+                    cameraDistance = 15f,
+                    cancelPagerMotion = true,
+                    shadowAlpha = (abs(0.5f - pageOffset) * -0.6f + 0.3f).coerceIn(0f, 0.3f),
+                    zIndex = 1f - pageOffset,
+                )
+            } else if (pageOffset <= 0f && pageOffset >= -1f) {
+                ComposePagerTransitionSpec(
+                    cancelPagerMotion = true,
+                    zIndex = 0f,
+                )
+            } else {
+                ComposePagerTransitionSpec(
+                    hideOffscreenPages = true,
+                )
+            }
+        }
         NovelPageTransitionStyle.BOOK_FLIP -> {
             if (pageOffset > 0f && pageOffset <= 1f) {
                 // Page rotating (around left edge)
@@ -84,7 +126,6 @@ internal fun resolveComposePagerTransitionSpec(
                 )
             }
         }
-        else -> ComposePagerTransitionSpec()
     }
 }
 
@@ -166,17 +207,33 @@ internal fun ComposePagerPageRenderer(
     previousChapterLabel: String,
     nextChapterLabel: String,
     boundaryChapterHint: String,
+    // When false, the pager never renders the intermediate "next/previous chapter" placeholder page:
+    // the edge page shows real chapter content and the chapter switch happens directly.
+    showBoundaryChapterPages: Boolean = true,
     onToggleUi: () -> Unit,
     onMoveBackward: () -> Unit,
     onMoveForward: () -> Unit,
     onOpenPreviousChapter: () -> Unit,
     onOpenNextChapter: () -> Unit,
-    onTextTap: (Float, Float) -> Unit = { _, _ -> onToggleUi() },
+    onTextTap: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> onToggleUi() },
+    onImageLongClick: ((String) -> Unit)? = null,
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
 ) {
     val density = LocalDensity.current
-    val useBoundaryPreview = shouldUseComposePagerBoundaryPreview(transitionStyle)
+    // Chapter neighbour availability drives two different things: the extra boundary placeholder
+    // page (pager geometry) and whether an edge swipe may switch chapters (navigation). When the
+    // placeholder pages are disabled the extra slots have to disappear, otherwise the edge page
+    // renders clamped content and the last page of the chapter shows up twice.
+    val hasPreviousChapterNavigation = hasPreviousChapter
+    val hasNextChapterNavigation = hasNextChapter
+
+    @Suppress("NAME_SHADOWING")
+    val hasPreviousChapter = hasPreviousChapter && showBoundaryChapterPages
+
+    @Suppress("NAME_SHADOWING")
+    val hasNextChapter = hasNextChapter && showBoundaryChapterPages
+    val useBoundaryPreview = shouldUseComposePagerBoundaryPreview(transitionStyle) && showBoundaryChapterPages
     val contentPageCount = contentPages.size
     val latestToggleUi by rememberUpdatedState(onToggleUi)
     val latestMoveBackward by rememberUpdatedState(onMoveBackward)
@@ -199,8 +256,8 @@ internal fun ComposePagerPageRenderer(
             pagerState,
             contentPageCount,
             edgeSwipeThresholdPx,
-            hasPreviousChapter,
-            hasNextChapter,
+            hasPreviousChapterNavigation,
+            hasNextChapterNavigation,
         ) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
@@ -223,8 +280,8 @@ internal fun ComposePagerPageRenderer(
                         deltaX = currentPosition.x - down.position.x,
                         deltaY = currentPosition.y - down.position.y,
                         thresholdPx = edgeSwipeThresholdPx,
-                        hasPreviousChapter = hasPreviousChapter,
-                        hasNextChapter = hasNextChapter,
+                        hasPreviousChapter = hasPreviousChapterNavigation,
+                        hasNextChapter = hasNextChapterNavigation,
                     )
                 ) {
                     HorizontalChapterSwipeAction.PREVIOUS -> latestOpenPreviousChapter()
@@ -283,14 +340,7 @@ internal fun ComposePagerPageRenderer(
         },
         modifier = Modifier
             .fillMaxSize()
-            .then(boundarySwipeModifier)
-            .pointerInput(readerSettings.tapToScroll) {
-                detectTapGestures(
-                    onTap = { offset ->
-                        onTextTap(offset.x, size.width.toFloat())
-                    },
-                )
-            },
+            .then(boundarySwipeModifier),
     ) { page ->
         val boundaryTarget = if (useBoundaryPreview) {
             resolveComposePagerBoundaryChapterTarget(
@@ -302,18 +352,22 @@ internal fun ComposePagerPageRenderer(
         } else {
             HorizontalChapterSwipeAction.NONE
         }
-        val boundaryPreview = when (boundaryTarget) {
-            HorizontalChapterSwipeAction.PREVIOUS -> createNovelPageBoundaryPreviewData(
-                chapterLabel = latestPreviousChapterLabel,
-                chapterName = latestPreviousChapterName,
-                chapterHint = latestBoundaryChapterHint,
-            )
-            HorizontalChapterSwipeAction.NEXT -> createNovelPageBoundaryPreviewData(
-                chapterLabel = latestNextChapterLabel,
-                chapterName = latestNextChapterName,
-                chapterHint = latestBoundaryChapterHint,
-            )
-            HorizontalChapterSwipeAction.NONE -> null
+        val boundaryPreview = if (!showBoundaryChapterPages) {
+            null
+        } else {
+            when (boundaryTarget) {
+                HorizontalChapterSwipeAction.PREVIOUS -> createNovelPageBoundaryPreviewData(
+                    chapterLabel = latestPreviousChapterLabel,
+                    chapterName = latestPreviousChapterName,
+                    chapterHint = latestBoundaryChapterHint,
+                )
+                HorizontalChapterSwipeAction.NEXT -> createNovelPageBoundaryPreviewData(
+                    chapterLabel = latestNextChapterLabel,
+                    chapterName = latestNextChapterName,
+                    chapterHint = latestBoundaryChapterHint,
+                )
+                HorizontalChapterSwipeAction.NONE -> null
+            }
         }
         val contentPage = if (boundaryPreview == null) {
             val actualPage = resolveComposePagerActualPageIndex(
@@ -398,6 +452,7 @@ internal fun ComposePagerPageRenderer(
                     selectionSessionIdProvider = selectionSessionIdProvider,
                     onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
                     onPlainTap = onTextTap,
+                    onImageLongClick = onImageLongClick,
                 )
             }
 

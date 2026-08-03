@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.ui.reader.novel.tts
 
 import android.app.Application
+import eu.kanade.tachiyomi.data.book.novel.NovelBookArtifact
+import eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder
 import eu.kanade.tachiyomi.data.download.novel.NovelDownloadManager
 import eu.kanade.tachiyomi.data.prefetch.AllowAllContentPrefetchEnvironment
 import eu.kanade.tachiyomi.data.prefetch.AndroidContentPrefetchEnvironment
@@ -24,6 +26,8 @@ import eu.kanade.tachiyomi.ui.reader.novel.resolveNovelChapterWebUrl
 import eu.kanade.tachiyomi.ui.reader.novel.sanitizeChapterHtmlForReader
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -73,16 +77,20 @@ class NovelTtsChapterRepository internal constructor(
         },
     ),
 ) {
+    private val chapterListCacheMutex = Mutex()
     private val chapterListCache = mutableMapOf<Long, Pair<Long, List<NovelChapter>>>()
 
     private suspend fun getCachedOrLoadChapterList(novelId: Long): List<NovelChapter> {
-        val now = System.currentTimeMillis()
-        val cached = chapterListCache[novelId]
-        if (cached != null && (now - cached.first) < 60_000L) {
-            return cached.second
+        chapterListCacheMutex.withLock {
+            val cached = chapterListCache[novelId]
+            if (cached != null && (System.currentTimeMillis() - cached.first) < CHAPTER_LIST_CACHE_TTL_MS) {
+                return cached.second
+            }
         }
         val loaded = loadChapterOrderList(novelId)
-        chapterListCache[novelId] = Pair(now, loaded)
+        chapterListCacheMutex.withLock {
+            chapterListCache[novelId] = System.currentTimeMillis() to loaded
+        }
         return loaded
     }
 
@@ -96,13 +104,17 @@ class NovelTtsChapterRepository internal constructor(
         val source = sourceManager.getOrStub(novel.source)
         val chapterOrderList = getCachedOrLoadChapterList(novel.id)
         val html = withContext(Dispatchers.IO) {
-            contentPrefetchService.resolveNovelChapterText(
-                novel = novel,
-                chapter = chapter,
-                source = source,
-                downloadManager = novelDownloadManager,
-                cacheReadChapters = novelReaderPreferences.cacheReadChapters().get(),
-            )
+            // A compiled book holds the same normalized text as the per-chapter files, but it
+            // survives "delete source chapters after building" and needs no network, so it wins
+            // whenever it covers this chapter.
+            loadArtifactChapterHtml(novel = novel, chapter = chapter)
+                ?: contentPrefetchService.resolveNovelChapterText(
+                    novel = novel,
+                    chapter = chapter,
+                    source = source,
+                    downloadManager = novelDownloadManager,
+                    cacheReadChapters = novelReaderPreferences.cacheReadChapters().get(),
+                )
         }
         val pluginPackage = withContext(Dispatchers.IO) {
             pluginStorage.getAll().firstOrNull { it.entry.id.hashCode().toLong() == novel.source }
@@ -192,6 +204,30 @@ class NovelTtsChapterRepository internal constructor(
             val chapters = novelChapterRepository.getChapterByNovelId(novelId, applyScanlatorFilter = true)
             chapters.sortedByNovelReadingOrder()
         }
+    }
+
+    /**
+     * Chapter body taken straight out of the compiled book by byte range, or null when this novel
+     * has no artifact or the artifact predates this chapter.
+     */
+    private fun loadArtifactChapterHtml(novel: Novel, chapter: NovelChapter): String? {
+        return runCatching {
+            val directory = NovelBookArtifact.directoryFor(
+                root = NovelBookBuilder.defaultRootDirectory(),
+                sourceId = novel.source,
+                novelId = novel.id,
+            )
+            if (!NovelBookArtifact.exists(directory)) return null
+            val entry = NovelBookArtifact.readIndex(directory)
+                ?.chapters
+                ?.firstOrNull { it.chapterId == chapter.id }
+                ?: return null
+            NovelBookArtifact.readRange(
+                directory = directory,
+                byteStart = entry.byteStart,
+                byteLength = entry.byteLength,
+            ).takeIf { it.isNotBlank() }
+        }.getOrNull()
     }
 
     private suspend fun resolveChapterWebUrl(
@@ -318,6 +354,8 @@ private fun resolveSnapshotContentResourceUrl(
         novelUrl = novelUrl,
     )
 }
+
+private const val CHAPTER_LIST_CACHE_TTL_MS = 60_000L
 
 private fun String.sanitizeSnapshotTextBlock(): String {
     return replace('\u00A0', ' ')

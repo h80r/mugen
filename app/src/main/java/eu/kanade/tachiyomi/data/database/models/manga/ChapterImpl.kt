@@ -32,6 +32,11 @@ class ChapterImpl : Chapter {
 
     override var version: Long = 0
 
+    // Real backing field: the SChapter interface default is a no-op setter that always reads back
+    // empty, and the reader hands this class straight to Source.getPageList - a 1.6 source reads
+    // its context (e.g. a rotating slug) out of this.
+    override var memo: kotlinx.serialization.json.JsonObject = kotlinx.serialization.json.JsonObject(emptyMap())
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other == null || javaClass != other.javaClass) return false

@@ -102,6 +102,13 @@ class MangaUpdates(id: Long) : BaseTracker(id, "MangaUpdates"), MangaTracker, De
             }
     }
 
+    override suspend fun searchNovel(query: String): List<MangaTrackSearch> {
+        return api.search(query, isNovel = true)
+            .map {
+                it.toTrackSearch(id)
+            }
+    }
+
     override suspend fun refresh(track: MangaTrack): MangaTrack {
         val (series, rating) = api.getSeriesListItem(track)
         return track.copyFrom(series, rating)

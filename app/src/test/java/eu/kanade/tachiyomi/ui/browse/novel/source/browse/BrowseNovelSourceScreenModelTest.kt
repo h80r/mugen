@@ -1,8 +1,11 @@
 package eu.kanade.tachiyomi.ui.browse.novel.source.browse
 
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.entries.novel.interactor.UpdateNovel
+import eu.kanade.domain.source.novel.interactor.GetNovelIncognitoState
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.tachiyomi.extension.novel.NovelExtensionManager
 import eu.kanade.tachiyomi.novelsource.NovelCatalogueSource
 import eu.kanade.tachiyomi.novelsource.NovelSource
 import eu.kanade.tachiyomi.novelsource.model.NovelFilter
@@ -11,10 +14,12 @@ import eu.kanade.tachiyomi.novelsource.model.NovelsPage
 import eu.kanade.tachiyomi.novelsource.model.SNovel
 import eu.kanade.tachiyomi.novelsource.model.SNovelChapter
 import eu.kanade.tachiyomi.novelsource.online.NovelHttpSource
+import eu.kanade.tachiyomi.test.PersistingPreferenceStore
 import eu.kanade.tachiyomi.ui.browse.search.SavedSearchFilterSerializer
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.clearMocks
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.collections.immutable.persistentListOf
@@ -22,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -60,6 +66,7 @@ class BrowseNovelSourceScreenModelTest {
         Dispatchers.setMain(Dispatchers.Unconfined)
         ensureUiPreferences()
         ensureAchievementHandler()
+        ensureIncognitoState()
     }
 
     @AfterEach
@@ -398,6 +405,39 @@ class BrowseNovelSourceScreenModelTest {
             screenModel.state.value.filters.isNotEmpty() shouldBe true
             screenModel.state.value.filtersLoaded shouldBe true
         }
+    }
+
+    private fun ensureIncognitoState() {
+        runCatching { Injekt.get<GetNovelIncognitoState>() }
+            .getOrElse {
+                // Registered in DomainModule for the app; unit tests never run that module. Build the
+                // real interactor so incognito preferences behave exactly as they do in production.
+                // This class never toggles incognito, so a plain in-memory store is enough here.
+                val basePreferences = runCatching { Injekt.get<BasePreferences>() }
+                    .getOrElse {
+                        BasePreferences(mockk(relaxed = true), PersistingPreferenceStore())
+                            .also { Injekt.addSingleton(fullType<BasePreferences>(), it) }
+                    }
+                val sourcePreferences = runCatching { Injekt.get<SourcePreferences>() }
+                    .getOrElse {
+                        SourcePreferences(PersistingPreferenceStore())
+                            .also { Injekt.addSingleton(fullType<SourcePreferences>(), it) }
+                    }
+                val extensionManager = runCatching { Injekt.get<NovelExtensionManager>() }
+                    .getOrElse {
+                        mockk<NovelExtensionManager>(relaxed = true).also { manager ->
+                            every { manager.getPluginId(any()) } returns null
+                            every { manager.getPluginIdAsFlow(any()) } returns flowOf(null)
+                            every { manager.isNsfwForSource(any()) } returns false
+                            every { manager.isNsfwForSourceAsFlow(any()) } returns flowOf(false)
+                            Injekt.addSingleton(fullType<NovelExtensionManager>(), manager)
+                        }
+                    }
+                Injekt.addSingleton(
+                    fullType<GetNovelIncognitoState>(),
+                    GetNovelIncognitoState(basePreferences, sourcePreferences, extensionManager),
+                )
+            }
     }
 
     private fun ensureUiPreferences() {

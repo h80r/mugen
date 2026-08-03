@@ -12,6 +12,12 @@ interface ExtensionStoreRepository {
 
     suspend fun upsertStore(store: ExtensionStore)
 
+    /**
+     * Stores the name the user gave this store. Kept out of [upsertStore] so a metadata refresh,
+     * which overwrites every remote field, cannot silently revert a rename.
+     */
+    suspend fun setCustomName(indexUrl: String, customName: String?)
+
     suspend fun getAll(): List<ExtensionStore>
 
     fun getAllAsFlow(): Flow<List<ExtensionStore>>
@@ -21,9 +27,9 @@ interface ExtensionStoreRepository {
     suspend fun remove(indexUrl: String)
 
     /**
-     * One-time migration helper from legacy repos. Default no-op for implementations
-     * that don't need it. Data impls override to do the port if store table is empty.
-     * Called only from extension fetch paths (deferred after first frame for perf).
+     * One-time port from the legacy repo tables. Default no-op for implementations that don't need
+     * it; the data implementations run it from [getAll], which is what trust checks and the store
+     * screens go through, and remember that it is done in an app-state preference.
      */
     suspend fun ensureLegacyMigrated() {}
 }

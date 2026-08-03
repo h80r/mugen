@@ -12,6 +12,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import eu.kanade.tachiyomi.data.backup.BackupNotifier
+import eu.kanade.tachiyomi.data.backup.create.BackupCreator
+import eu.kanade.tachiyomi.data.backup.create.BackupOptions
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.util.system.cancelNotification
 import eu.kanade.tachiyomi.util.system.isRunning
@@ -20,7 +22,10 @@ import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
+import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.i18n.MR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 class BackupRestoreJob(private val context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams) {
@@ -44,6 +49,9 @@ class BackupRestoreJob(private val context: Context, workerParams: WorkerParamet
         }
 
         return try {
+            if (!isSync) {
+                createSafetyBackup()
+            }
             BackupRestorer(context, notifier, isSync).restore(uri, options)
             Result.success()
         } catch (e: Exception) {
@@ -57,6 +65,27 @@ class BackupRestoreJob(private val context: Context, workerParams: WorkerParamet
             }
         } finally {
             context.cancelNotification(Notifications.ID_RESTORE_PROGRESS)
+        }
+    }
+
+    /**
+     * Best-effort snapshot of the current library into the automatic backups
+     * folder before a restore mutates data. Restore proceeds even if this fails.
+     */
+    private suspend fun createSafetyBackup() {
+        try {
+            val dir = Injekt.get<StorageManager>().getAutomaticBackupsDirectory() ?: return
+            notifier.showRestoreProgress(
+                context.stringResource(MR.strings.restore_creating_safety_backup),
+                0,
+                0,
+                false,
+            )
+            BackupCreator(context, isAutoBackup = true).backup(dir.uri, BackupOptions())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "Failed to create a safety backup before restore" }
         }
     }
 

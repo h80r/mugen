@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.reader.setting
 import android.os.Build
 import androidx.compose.ui.graphics.BlendMode
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.tachiyomi.ui.reader.viewer.navigation.CUSTOM_TAP_ZONES_DEFAULT
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.getEnum
@@ -290,6 +291,13 @@ class ReaderPreferences(
 
     fun navigationModeWebtoon() = preferenceStore.getInt("reader_navigation_mode_webtoon", 0)
 
+    fun customTapZoneActions() = preferenceStore.getString(
+        "reader_custom_tap_zone_actions",
+        CUSTOM_TAP_ZONES_DEFAULT,
+    )
+
+    fun enablePinchToZoom() = preferenceStore.getBoolean("reader_enable_pinch_to_zoom", true)
+
     fun pagerNavInverted() = preferenceStore.getEnum(
         "reader_tapping_inverted",
         TappingInvertMode.NONE,
@@ -298,11 +306,6 @@ class ReaderPreferences(
     fun webtoonNavInverted() = preferenceStore.getEnum(
         "reader_tapping_inverted_webtoon",
         TappingInvertMode.NONE,
-    )
-
-    fun showNavigationOverlayNewUser() = preferenceStore.getBoolean(
-        "reader_navigation_overlay_new_user",
-        true,
     )
 
     fun showNavigationOverlayOnStart() = preferenceStore.getBoolean(
@@ -413,6 +416,7 @@ class ReaderPreferences(
             MR.strings.edge_nav,
             MR.strings.right_and_left_nav,
             MR.strings.disabled_nav,
+            MR.strings.grid_nav,
         )
 
         val ImageScaleType = listOf(

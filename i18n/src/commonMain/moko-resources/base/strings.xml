@@ -417,6 +417,7 @@
     <string name="ext_update_all">Update all</string>
     <string name="ext_reinstall_required">Reinstall required</string>
     <string name="ext_reinstall_required_hint">A newer plugin was found in another repository. Reinstall is required.</string>
+    <string name="ext_update_available_banner">A newer version of this extension is available from its store.</string>
     <string name="ext_obsolete">Orphaned</string>
     <string name="ext_repo_update_short">Different repository</string>
     <string name="ext_repo_update_required">Reinstall required</string>
@@ -459,6 +460,11 @@
     <string name="ext_installer_dhizuku_stopped">Dhizuku is not running</string>
     <string name="ext_installer_dhizuku_unavailable_dialog">Install and activate Dhizuku as Device Owner to use Dhizuku as extension installer.</string>
     <string name="ext_revoke_trust">Revoke trusted unknown extensions</string>
+    <string name="ext_auto_update_pref">Auto-update extensions</string>
+    <string name="ext_auto_update_pref_summary">Silently install extension updates in the background. Requires the Private installer.</string>
+    <string name="ext_auto_update_security_title">Security notice</string>
+    <string name="ext_auto_update_security_dialog">Extension updates will be downloaded and installed automatically, without asking you each time. Updates are only applied when the new file is signed by the same publisher as the installed extension; anything else is skipped and only reported. Extensions run code inside the app, so only enable this if you trust every store you added.</string>
+    <string name="ext_auto_update_notif_title">Extensions updated</string>
 
     <!-- Extension repos (legacy keys preserved for compat/migration; primary now uses store terminology) -->
     <string name="label_extension_repos">Extension stores</string>
@@ -587,6 +593,12 @@
     <string name="nav_zone_next">Next</string>
     <string name="nav_zone_left">Left</string>
     <string name="nav_zone_right">Right</string>
+    <string name="nav_zone_none">None</string>
+    <string name="grid_nav">Custom grid</string>
+    <string name="pref_custom_tap_zones">Tap zone layout</string>
+    <string name="custom_tap_zones_hint">Tap a zone to cycle its action</string>
+    <string name="pref_zoom_dual_taps">Pinch to zoom (two fingers)</string>
+    <string name="pref_zoom_dual_taps_summary">Allow zooming pages with a two-finger pinch gesture</string>
     <string name="left_to_right_viewer">Paged (left to right)</string>
     <string name="right_to_left_viewer">Paged (right to left)</string>
     <string name="vertical_viewer">Paged (vertical)</string>
@@ -769,6 +781,18 @@
     <string name="restoring_backup_canceled">Canceled restore</string>
     <string name="backup_info">Backups contain sensitive data, including stored passwords. Do not store them in untrusted locations or share them carelessly — choose your backup location carefully.</string>
     <string name="last_auto_backup_info">Last automatically backed up: %s</string>
+    <string name="backup_step_content">Step 1 — What goes into the file</string>
+    <string name="backup_step_compatibility">Step 2 — Compatibility</string>
+    <string name="backup_step_destination">Step 3 — Where the file is saved</string>
+    <string name="backup_destination_info">After tapping Create you will pick the folder and file name yourself. Keep the file somewhere safe — it can be restored on any device.</string>
+    <string name="backup_restore_preview_title">Backup contents</string>
+    <string name="backup_restore_options_title">What to restore</string>
+    <string name="backup_restore_origin_mihon">Mihon / Tachiyomi backup</string>
+    <string name="backup_restore_origin_mihon_info">This file was created by a sister app (Mihon, Komikku, TachiyomiSY or similar). Compatible data will be imported; data specific to the other app is skipped.</string>
+    <string name="backup_restore_merge_info">Restoring merges the file into your current library. Nothing is deleted: existing entries are kept and updated with the newer data.</string>
+    <string name="backup_restore_safety_info">A safety backup of your current data is created automatically before restoring.</string>
+    <string name="backup_restore_empty_preview">This file doesn\'t contain any restorable data.</string>
+    <string name="restore_creating_safety_backup">Creating safety backup…</string>
     <string name="label_data">Data</string>
     <string name="pref_storage_usage">Storage usage</string>
     <string name="available_disk_space_info">Available: %1$s / Total: %2$s</string>
@@ -926,6 +950,7 @@
     <string name="copied_to_clipboard_plain">Copied to clipboard</string>
     <string name="copied_to_clipboard">Copied to clipboard:\n%1$s</string>
     <string name="clipboard_copy_error">Failed to copy to clipboard</string>
+    <string name="copy_title">Copy title</string>
     <string name="source_not_installed">Source not installed: %1$s</string>
     <string name="snack_add_to_library">Add to library?</string>
     <string name="description_placeholder">No description</string>
@@ -1470,9 +1495,9 @@
     <string name="suggestions_empty_search_novel">No search matches found on this source</string>
     <string name="suggestions_fallback_exhausted_novel">No suggestions available for this novel</string>
     <string name="action_show_more">Show more</string>
-    <string name="pref_category_epub_import">EPUB Import</string>
-    <string name="pref_epub_import_add_to_library">Add imported EPUBs to library</string>
-    <string name="pref_epub_import_add_to_library_summary">Imported EPUB novels will automatically appear in the library. When disabled, they can be added manually from the local source browse.</string>
+    <string name="pref_category_epub_import">Local book import</string>
+    <string name="pref_epub_import_add_to_library">Add imported books to library</string>
+    <string name="pref_epub_import_add_to_library_summary">Imported EPUB/FB2 novels will automatically appear in the library. When disabled, they can be added manually from the local source browse.</string>
 
     <!-- Library Grouping -->
     <string name="action_group">Group</string>
@@ -1708,7 +1733,9 @@
     <string name="unlockable_profile_nickname_effect_glitch_rune_red">Crimson Glitch Nickname Effect</string>
     <string name="unlockable_avatar_frame_glitch_red">Crimson Avatar Frame</string>
     <string name="unlockable_theme_AURORA_PRIME">Aurora Prime Theme</string>
+    <string name="unlockable_theme_LATTICE_PROTOCOL">Lattice Protocol Theme</string>
     <string name="unlockable_special_navbar_aurora_celestial">Celestial Navigation</string>
+    <string name="unlockable_special_navbar_lattice_circuit">Circuit Edge</string>
 
     <!-- Download engine -->
     <string name="download_engine_title">Download Engine</string>
@@ -1770,4 +1797,15 @@
     <string name="reward_special_tab_glow_desc">An accent-colored glow below the tab switcher</string>
     <string name="reward_special_navbar_aurora_celestial_title">Celestial Navigation</string>
     <string name="reward_special_navbar_aurora_celestial_desc">Night sky, travelling light wave and polar halo for the Aurora bottom bar</string>
+    <!-- Novel reader TTS playback -->
+    <string name="novel_tts_notification_title">Novel text-to-speech</string>
+    <string name="novel_tts_action_previous">Previous</string>
+    <string name="novel_tts_action_play">Play</string>
+    <string name="novel_tts_action_pause">Pause</string>
+    <string name="novel_tts_action_next">Next</string>
+    <string name="novel_tts_action_stop">Stop</string>
+    <string name="novel_tts_error_speak">Failed to speak the selected text</string>
+    <!-- Lattice Resonance reward (hidden) -->
+    <string name="reward_special_navbar_lattice_circuit_title">Circuit Edge</string>
+    <string name="reward_special_navbar_lattice_circuit_desc">Bottom-only rim-light along the navigation bar underside</string>
 </resources>

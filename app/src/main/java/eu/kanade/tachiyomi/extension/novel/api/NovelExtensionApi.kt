@@ -3,7 +3,6 @@ package eu.kanade.tachiyomi.extension.novel.api
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.novel.repo.NovelPluginRepoEntry
 import eu.kanade.tachiyomi.extension.novel.repo.NovelPluginRepoUpdateInteractor
-import eu.kanade.tachiyomi.extension.novel.repo.resolveNovelPluginRepoIndexUrls
 import mihon.domain.extensionrepo.novel.interactor.GetNovelExtensionRepo
 import mihon.domain.extensionrepo.novel.interactor.UpdateNovelExtensionRepo
 import tachiyomi.core.common.preference.Preference
@@ -23,13 +22,15 @@ internal class NovelExtensionApi(
 ) {
 
     private val lastExtCheck: Preference<Long> by lazy {
-        preferenceStore.getLong("last_novel_ext_check", 0)
+        preferenceStore.getLong(Preference.appStateKey("last_novel_ext_check"), 0)
     }
 
     suspend fun checkForUpdates(
         fromAvailableExtensionList: Boolean = false,
     ): List<NovelPluginRepoEntry>? {
-        if (fromAvailableExtensionList &&
+        // The 24h budget belongs to the fetching call; a screen-initiated check reuses a list it
+        // already has and must neither be gated nor stamp the timestamp.
+        if (!fromAvailableExtensionList &&
             timeProvider() < lastExtCheck.get() + 1.days.inWholeMilliseconds
         ) {
             return null
@@ -37,8 +38,9 @@ internal class NovelExtensionApi(
 
         updateExtensionRepo.awaitAll()
 
+        // Pass the repo base URLs; each repo is fetched once via its first available candidate.
         val repoUrls = getExtensionRepo.getAll()
-            .flatMap { resolveNovelPluginRepoIndexUrls(it.baseUrl) }
+            .map { it.baseUrl }
             .distinct()
 
         val updates = repoUpdateInteractor.findUpdates(repoUrls)

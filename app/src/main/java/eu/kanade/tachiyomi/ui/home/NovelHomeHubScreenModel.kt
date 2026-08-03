@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.home
 
 import cafe.adriel.voyager.core.model.screenModelScope
+import eu.kanade.domain.entries.novel.LocalNovelVisibility
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.ui.UserProfilePreferences
 import eu.kanade.tachiyomi.ui.novel.resolveNovelResumeChapter
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.update
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.category.novel.interactor.GetNovelCategories
 import tachiyomi.domain.entries.novel.interactor.GetLibraryNovel
+import tachiyomi.domain.entries.novel.interactor.GetNovel
 import tachiyomi.domain.entries.novel.interactor.GetNovelWithChapters
 import tachiyomi.domain.entries.novel.model.NovelCover
 import tachiyomi.domain.history.novel.model.NovelHistoryWithRelations
@@ -17,6 +19,8 @@ import tachiyomi.domain.history.novel.repository.NovelHistoryRepository
 import tachiyomi.domain.library.novel.LibraryNovel
 import tachiyomi.domain.source.novel.service.NovelSourceManager
 import tachiyomi.i18n.aniyomi.AYMR
+import tachiyomi.source.local.io.novel.LocalNovelSourceFileSystem
+import tachiyomi.source.local.io.novel.hasSupportedLocalNovelContent
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -32,33 +36,45 @@ internal class NovelHomeHubScreenModel(
         val hadCache = !cached.isEmpty || cached.isInitialized
         if (hadCache) {
             HomeHubUiState(
-                hero = cached.hero?.let { h ->
-                    HomeHubHero(
-                        entryId = h.entryId,
-                        title = h.title,
-                        progressNumber = h.progressNumber,
-                        coverData = NovelCover(h.entryId, h.sourceId, h.favorite, h.coverUrl, h.coverLastModified),
-                    )
-                },
-                history = cached.history.map { h ->
-                    HomeHubHistory(
-                        entryId = h.entryId,
-                        title = h.title,
-                        progressNumber = h.progressNumber,
-                        coverData = NovelCover(h.entryId, h.sourceId, h.favorite, h.coverUrl, h.coverLastModified),
-                        section = HomeHubSection.Novel,
-                    )
-                },
-                recommendations = cached.recommendations.map { r ->
-                    HomeHubRecommendation(
-                        entryId = r.entryId,
-                        title = r.title,
-                        coverData = NovelCover(r.entryId, r.sourceId, r.favorite, r.coverUrl, r.coverLastModified),
-                        section = HomeHubSection.Novel,
-                        progressNumerator = r.progressNumerator,
-                        progressDenominator = r.totalCount,
-                    )
-                },
+                hero = cached.hero
+                    ?.takeUnless {
+                        LocalNovelVisibility.shouldHideLocalHistoryByCover(it.sourceId, it.coverUrl)
+                    }
+                    ?.let { h ->
+                        HomeHubHero(
+                            entryId = h.entryId,
+                            title = h.title,
+                            progressNumber = h.progressNumber,
+                            coverData = NovelCover(h.entryId, h.sourceId, h.favorite, h.coverUrl, h.coverLastModified),
+                        )
+                    },
+                history = cached.history
+                    .filterNot {
+                        LocalNovelVisibility.shouldHideLocalHistoryByCover(it.sourceId, it.coverUrl)
+                    }
+                    .map { h ->
+                        HomeHubHistory(
+                            entryId = h.entryId,
+                            title = h.title,
+                            progressNumber = h.progressNumber,
+                            coverData = NovelCover(h.entryId, h.sourceId, h.favorite, h.coverUrl, h.coverLastModified),
+                            section = HomeHubSection.Novel,
+                        )
+                    },
+                recommendations = cached.recommendations
+                    .filterNot {
+                        LocalNovelVisibility.shouldHideLocalHistoryByCover(it.sourceId, it.coverUrl)
+                    }
+                    .map { r ->
+                        HomeHubRecommendation(
+                            entryId = r.entryId,
+                            title = r.title,
+                            coverData = NovelCover(r.entryId, r.sourceId, r.favorite, r.coverUrl, r.coverLastModified),
+                            section = HomeHubSection.Novel,
+                            progressNumerator = r.progressNumerator,
+                            progressDenominator = r.totalCount,
+                        )
+                    },
                 userName = cached.userName,
                 userAvatar = cached.userAvatar,
                 greeting = GreetingProvider.getInitialGreeting(userProfilePreferences),
@@ -83,10 +99,12 @@ internal class NovelHomeHubScreenModel(
 
     private val historyRepository: NovelHistoryRepository by injectLazy()
     private val getLibraryNovel: GetLibraryNovel by injectLazy()
+    private val getNovel: GetNovel by injectLazy()
     private val getNovelWithChapters: GetNovelWithChapters by injectLazy()
     private val getNovelCategories: GetNovelCategories by injectLazy()
     private val sourcePreferences: SourcePreferences by injectLazy()
     private val sourceManager: NovelSourceManager by injectLazy()
+    private val localNovelSourceFileSystem: LocalNovelSourceFileSystem by injectLazy()
 
     override val avatarFileName: String = "user_avatar_novel.jpg"
 
@@ -114,33 +132,63 @@ internal class NovelHomeHubScreenModel(
             originalHeroChapterId = cached.hero?.subId
             mutableState.update {
                 it.copy(
-                    hero = cached.hero?.let { h ->
-                        HomeHubHero(
-                            entryId = h.entryId,
-                            title = h.title,
-                            progressNumber = h.progressNumber,
-                            coverData = NovelCover(h.entryId, h.sourceId, h.favorite, h.coverUrl, h.coverLastModified),
-                        )
-                    },
-                    history = cached.history.map { h ->
-                        HomeHubHistory(
-                            entryId = h.entryId,
-                            title = h.title,
-                            progressNumber = h.progressNumber,
-                            coverData = NovelCover(h.entryId, h.sourceId, h.favorite, h.coverUrl, h.coverLastModified),
-                            section = HomeHubSection.Novel,
-                        )
-                    },
-                    recommendations = cached.recommendations.map { r ->
-                        HomeHubRecommendation(
-                            entryId = r.entryId,
-                            title = r.title,
-                            coverData = NovelCover(r.entryId, r.sourceId, r.favorite, r.coverUrl, r.coverLastModified),
-                            section = HomeHubSection.Novel,
-                            progressNumerator = r.progressNumerator,
-                            progressDenominator = r.totalCount,
-                        )
-                    },
+                    hero = cached.hero
+                        ?.takeUnless {
+                            LocalNovelVisibility.shouldHideLocalHistoryByCover(it.sourceId, it.coverUrl)
+                        }
+                        ?.let { h ->
+                            HomeHubHero(
+                                entryId = h.entryId,
+                                title = h.title,
+                                progressNumber = h.progressNumber,
+                                coverData = NovelCover(
+                                    h.entryId,
+                                    h.sourceId,
+                                    h.favorite,
+                                    h.coverUrl,
+                                    h.coverLastModified,
+                                ),
+                            )
+                        },
+                    history = cached.history
+                        .filterNot {
+                            LocalNovelVisibility.shouldHideLocalHistoryByCover(it.sourceId, it.coverUrl)
+                        }
+                        .map { h ->
+                            HomeHubHistory(
+                                entryId = h.entryId,
+                                title = h.title,
+                                progressNumber = h.progressNumber,
+                                coverData = NovelCover(
+                                    h.entryId,
+                                    h.sourceId,
+                                    h.favorite,
+                                    h.coverUrl,
+                                    h.coverLastModified,
+                                ),
+                                section = HomeHubSection.Novel,
+                            )
+                        },
+                    recommendations = cached.recommendations
+                        .filterNot {
+                            LocalNovelVisibility.shouldHideLocalHistoryByCover(it.sourceId, it.coverUrl)
+                        }
+                        .map { r ->
+                            HomeHubRecommendation(
+                                entryId = r.entryId,
+                                title = r.title,
+                                coverData = NovelCover(
+                                    r.entryId,
+                                    r.sourceId,
+                                    r.favorite,
+                                    r.coverUrl,
+                                    r.coverLastModified,
+                                ),
+                                section = HomeHubSection.Novel,
+                                progressNumerator = r.progressNumerator,
+                                progressDenominator = r.totalCount,
+                            )
+                        },
                     userName = cached.userName,
                     userAvatar = cached.userAvatar,
                     isLoading = false,
@@ -185,19 +233,28 @@ internal class NovelHomeHubScreenModel(
                     categoryIdSelector = { it.category },
                 )
 
-                val filteredHistory = filterHomeHubEntriesBy(
+                val categoryFilteredHistory = filterHomeHubEntriesBy(
                     items = data.historyList,
                     keySelector = { it.novelId },
                     entryCategoryIds = novelCategoryIdsByNovelId,
                     hiddenCategoryIds = hiddenCategoryIds,
                 )
+                val filteredHistory = filterGhostLocalNovelHistory(categoryFilteredHistory)
 
-                val filteredNovel = filterHomeHubEntriesByDistinct(
+                val categoryFilteredNovel = filterHomeHubEntriesByDistinct(
                     items = data.novelList,
                     keySelector = { it.novel.id },
                     entryCategoryIds = novelCategoryIdsByNovelId,
                     hiddenCategoryIds = hiddenCategoryIds,
                 )
+                val filteredNovel = categoryFilteredNovel.filter { item ->
+                    LocalNovelVisibility.shouldShowLocalNovelEntry(
+                        sourceId = item.novel.source,
+                        url = item.novel.url,
+                        coverUrl = item.novel.thumbnailUrl,
+                        hasSupportedContent = localNovelSourceFileSystem::hasSupportedLocalNovelContent,
+                    )
+                }
 
                 val hero = filteredHistory.firstOrNull()
                 val history = takeHomeHubHistoryExcluding(
@@ -360,6 +417,34 @@ internal class NovelHomeHubScreenModel(
         val sourceId = sourcePreferences.lastUsedNovelSource().get()
         if (sourceId == -1L) return null
         return sourceManager.get(sourceId)?.name
+    }
+
+    private suspend fun filterGhostLocalNovelHistory(
+        items: List<NovelHistoryWithRelations>,
+    ): List<NovelHistoryWithRelations> {
+        if (items.isEmpty()) return items
+        val localItems = items.filter { LocalNovelVisibility.isLocalSource(it.coverData.sourceId) }
+        if (localItems.isEmpty()) return items
+
+        val urlByNovelId = HashMap<Long, String?>(localItems.size)
+        for (item in localItems) {
+            if (item.novelId in urlByNovelId) continue
+            if (LocalNovelVisibility.shouldHideLocalHistoryByCover(item.coverData.sourceId, item.coverData.url)) {
+                urlByNovelId[item.novelId] = null
+                continue
+            }
+            urlByNovelId[item.novelId] = getNovel.await(item.novelId)?.url
+        }
+
+        return items.filter { item ->
+            if (!LocalNovelVisibility.isLocalSource(item.coverData.sourceId)) return@filter true
+            LocalNovelVisibility.shouldShowLocalNovelEntry(
+                sourceId = item.coverData.sourceId,
+                url = urlByNovelId[item.novelId],
+                coverUrl = item.coverData.url,
+                hasSupportedContent = localNovelSourceFileSystem::hasSupportedLocalNovelContent,
+            )
+        }
     }
 
     private data class LiveData(

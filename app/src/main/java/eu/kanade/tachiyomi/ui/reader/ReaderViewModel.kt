@@ -1104,19 +1104,22 @@ class ReaderViewModel @JvmOverloads constructor(
      * depending on [isSeriesViewerOverrideEnabled].
      */
     fun setReadingModePreference(readingMode: ReadingMode) {
-        if (readingMode == ReadingMode.DEFAULT) {
-            setMangaReadingMode(ReadingMode.DEFAULT)
-            return
-        }
-        if (isSeriesViewerOverrideEnabled()) {
-            setMangaReadingMode(readingMode)
-        } else {
-            readerPreferences.defaultReadingMode().set(readingMode.flagValue)
-            // Manga stays on DEFAULT → resolved value changes; reload viewer.
-            viewModelScope.launchIO {
-                val currChapters = state.value.viewerChapters ?: return@launchIO
-                applySavedProgress(currChapters.currChapter)
-                eventChannel.send(Event.ReloadViewerChapters)
+        val target = resolveReadingModeApplyTarget(
+            readingMode = readingMode,
+            isSeriesOverrideEnabled = isSeriesViewerOverrideEnabled(),
+            isAutoWebtoonModeActive = isMangaReadingModeAutoWebtoon(),
+        )
+        when (target) {
+            ReadingModeApplyTarget.SeriesFlags -> setMangaReadingMode(readingMode)
+            ReadingModeApplyTarget.GlobalDefault -> {
+                readerPreferences.defaultReadingMode().set(readingMode.flagValue)
+                // Manga flags stay on DEFAULT, so state.manga never re-emits and the activity would
+                // keep the current viewer. Ask it to rebuild the viewer for the new resolved mode.
+                viewModelScope.launchIO {
+                    val currChapters = state.value.viewerChapters ?: return@launchIO
+                    applySavedProgress(currChapters.currChapter)
+                    eventChannel.send(Event.RecreateViewer)
+                }
             }
         }
     }
@@ -1563,6 +1566,12 @@ class ReaderViewModel @JvmOverloads constructor(
 
     sealed interface Event {
         data object ReloadViewerChapters : Event
+
+        /**
+         * Rebuild the viewer itself, then refill it with the current chapters. Needed when the
+         * resolved reading mode changed without touching the manga viewer flags.
+         */
+        data object RecreateViewer : Event
         data object PageChanged : Event
         data class SetOrientation(val orientation: Int) : Event
         data class SetCoverResult(val result: SetAsCoverResult) : Event
@@ -1578,6 +1587,34 @@ class ReaderViewModel @JvmOverloads constructor(
         val encodedProgress: Long,
         val read: Boolean,
     )
+}
+
+/**
+ * Where a reading mode picked in the reader is stored, and whether the viewer has to be rebuilt
+ * explicitly afterwards.
+ */
+internal enum class ReadingModeApplyTarget(val requiresViewerRebuild: Boolean) {
+    /** Stored on the manga viewer flags; the resulting state.manga change rebuilds the viewer. */
+    SeriesFlags(requiresViewerRebuild = false),
+
+    /** Stored as the app-wide default; nothing in the reader state changes on its own. */
+    GlobalDefault(requiresViewerRebuild = true),
+}
+
+internal fun resolveReadingModeApplyTarget(
+    readingMode: ReadingMode,
+    isSeriesOverrideEnabled: Boolean,
+    isAutoWebtoonModeActive: Boolean,
+): ReadingModeApplyTarget {
+    return when {
+        readingMode == ReadingMode.DEFAULT -> ReadingModeApplyTarget.SeriesFlags
+        isSeriesOverrideEnabled -> ReadingModeApplyTarget.SeriesFlags
+        // Auto-detect webtoon resolves the mode from the entry's own flags being DEFAULT, so a
+        // global write would keep losing to it here (and would move every other series instead).
+        // A manual pick must win for this entry: store it as a series override.
+        isAutoWebtoonModeActive -> ReadingModeApplyTarget.SeriesFlags
+        else -> ReadingModeApplyTarget.GlobalDefault
+    }
 }
 
 internal fun shouldRestoreSavedProgress(

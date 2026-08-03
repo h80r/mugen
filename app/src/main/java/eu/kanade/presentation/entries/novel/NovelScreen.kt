@@ -73,6 +73,7 @@ import coil3.compose.AsyncImage
 import coil3.request.crossfade
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AuroraCoverPlaceholderVariant
 import eu.kanade.presentation.components.relativeDateTimeText
 import eu.kanade.presentation.components.rememberThemeAwareCoverErrorPainter
@@ -98,6 +99,7 @@ import eu.kanade.tachiyomi.ui.entries.novel.resolveNovelChapterRowIndex
 import eu.kanade.tachiyomi.ui.entries.novel.resolveNovelVisibleChapterRows
 import eu.kanade.tachiyomi.ui.entries.novel.resolveNovelVolumeChapterDisplayData
 import eu.kanade.tachiyomi.ui.entries.novel.shouldGroupNovelChaptersByVolume
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.delay
 import me.saket.swipe.SwipeableActionsBox
 import tachiyomi.domain.items.novelchapter.model.NovelChapter
@@ -178,6 +180,11 @@ fun NovelScreen(
     onSaveScrollPosition: (Int, Int) -> Unit = { _, _ -> },
     onRetrySuggestions: () -> Unit = {},
     onOpenSuggestions: () -> Unit = {},
+    onMakeBookClicked: (() -> Unit)? = null,
+    onAppendBookClicked: (() -> Unit)? = null,
+    onDeleteBookSourceChaptersClicked: (() -> Unit)? = null,
+    onDeleteBookClicked: (() -> Unit)? = null,
+    onToggleReadAsBook: ((Boolean) -> Unit)? = null,
 ) {
     val uiPreferences = Injekt.get<UiPreferences>()
     val sourcePreferences = remember { Injekt.get<SourcePreferences>() }
@@ -193,6 +200,7 @@ fun NovelScreen(
             AYMR.strings.action_enable_auto_jump_next_chapter
         },
     )
+
     val onToggleAutoJumpToNext = {
         uiPreferences.entryAutoJumpToNextNovel().set(!autoJumpToNextEnabled)
     }
@@ -267,6 +275,11 @@ fun NovelScreen(
             onToggleAutoJumpToNext = onToggleAutoJumpToNext,
             onRetrySuggestions = onRetrySuggestions,
             onOpenSuggestions = onOpenSuggestions,
+            onMakeBookClicked = onMakeBookClicked,
+            onAppendBookClicked = onAppendBookClicked,
+            onDeleteBookSourceChaptersClicked = onDeleteBookSourceChaptersClicked,
+            onDeleteBookClicked = onDeleteBookClicked,
+            onToggleReadAsBook = onToggleReadAsBook,
         )
         return
     }
@@ -274,9 +287,8 @@ fun NovelScreen(
     // Standard implementation (non-Aurora)
     val chapters = state.processedChapters
     val groupedByChapter = false
-    // PERF: cheaper remember keys (size + filter is stable enough for grouping)
-    val groupedByVolume = remember(chapters.size, selectedScanlator) { shouldGroupNovelChaptersByVolume(chapters) }
-    val chapterGroups = remember(chapters.size, groupedByChapter, selectedScanlator) {
+    val groupedByVolume = remember(chapters, selectedScanlator) { shouldGroupNovelChaptersByVolume(chapters) }
+    val chapterGroups = remember(chapters, groupedByChapter, selectedScanlator) {
         if (groupedByChapter) {
             resolveNovelChapterDisplayData(
                 chapters = chapters,
@@ -287,7 +299,7 @@ fun NovelScreen(
             emptyList()
         }
     }
-    val volumeGroups = remember(chapters.size, groupedByVolume, selectedScanlator) {
+    val volumeGroups = remember(chapters, groupedByVolume, selectedScanlator) {
         if (groupedByVolume) {
             resolveNovelVolumeChapterDisplayData(
                 chapters = chapters,
@@ -305,7 +317,7 @@ fun NovelScreen(
         }
     }
     val initialExpandedGroupKeys =
-        remember(chapters.size, selectedScanlator, state.targetChapterIndex, groupedByVolume) {
+        remember(chapters, selectedScanlator, state.targetChapterIndex, groupedByVolume) {
             when {
                 groupedByVolume -> {
                     val targetChapterId = chapters.getOrNull(state.targetChapterIndex)?.id
@@ -425,6 +437,99 @@ fun NovelScreen(
                 if (!isFirstItemVisible || isFirstItemScrolled) 1f else 0f,
                 label = "Top Bar Background",
             )
+            val isBookBuilt = state.bookState != null
+            val isBookBuilding = state.bookBuildProgress != null
+            val appendableChapterCount = (state.chapters.size - (state.bookState?.chapterCount ?: 0)).coerceAtLeast(0)
+            val readAsBook = state.bookState?.enabled == true
+
+            val bookTitle = stringResource(
+                when {
+                    isBookBuilding -> AYMR.strings.novel_book_building
+                    isBookBuilt -> AYMR.strings.novel_book_rebuild
+                    else -> AYMR.strings.novel_book_make
+                },
+            )
+            val appendTitle = stringResource(AYMR.strings.novel_book_append_available, appendableChapterCount)
+            val toggleTitle = stringResource(
+                if (readAsBook) AYMR.strings.novel_book_read_as_chapters else AYMR.strings.novel_book_read_as_book,
+            )
+            val deleteTitle = stringResource(AYMR.strings.novel_book_delete)
+            val deleteSourceChaptersTitle = stringResource(AYMR.strings.novel_book_cleanup_source_chapters)
+            val outdatedTitle = stringResource(AYMR.strings.novel_book_outdated)
+
+            val overflowActions = remember(
+                bookTitle,
+                appendTitle,
+                toggleTitle,
+                deleteTitle,
+                deleteSourceChaptersTitle,
+                outdatedTitle,
+                isBookBuilt,
+                isBookBuilding,
+                appendableChapterCount,
+                readAsBook,
+                state.bookIsStale,
+                onMakeBookClicked,
+                onAppendBookClicked,
+                onToggleReadAsBook,
+                onDeleteBookClicked,
+                onDeleteBookSourceChaptersClicked,
+            ) {
+                persistentListOf<AppBar.OverflowAction>().builder().apply {
+                    if (onMakeBookClicked != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = bookTitle,
+                                enabled = !isBookBuilding,
+                                onClick = { if (!isBookBuilding) onMakeBookClicked() },
+                            ),
+                        )
+                    }
+                    if (onAppendBookClicked != null && isBookBuilt && appendableChapterCount > 0) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = appendTitle,
+                                enabled = !isBookBuilding,
+                                onClick = { if (!isBookBuilding) onAppendBookClicked() },
+                            ),
+                        )
+                    }
+                    if (isBookBuilt && state.bookIsStale) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = outdatedTitle,
+                                enabled = false,
+                                onClick = {},
+                            ),
+                        )
+                    }
+                    if (onToggleReadAsBook != null && isBookBuilt) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = toggleTitle,
+                                onClick = { onToggleReadAsBook(!readAsBook) },
+                            ),
+                        )
+                    }
+                    if (onDeleteBookClicked != null && isBookBuilt) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = deleteTitle,
+                                onClick = onDeleteBookClicked,
+                            ),
+                        )
+                    }
+                    if (onDeleteBookSourceChaptersClicked != null && isBookBuilt) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = deleteSourceChaptersTitle,
+                                enabled = !isBookBuilding,
+                                onClick = { if (!isBookBuilding) onDeleteBookSourceChaptersClicked() },
+                            ),
+                        )
+                    }
+                }.build()
+            }
             EntryToolbar(
                 title = state.novel.displayTitle,
                 hasFilters = state.filterActive,
@@ -456,6 +561,7 @@ fun NovelScreen(
                 backgroundAlphaProvider = { backgroundAlpha },
                 onClickEditInfo = onClickEditInfo,
                 isManga = true,
+                overflowActions = overflowActions,
             )
         },
         bottomBar = {

@@ -31,9 +31,7 @@ class CreateAnimeExtensionRepoTest {
 
         result shouldBe CreateAnimeExtensionRepo.Result.Success
         coVerify {
-            repository.upsertStore(
-                insertedStore.copy(name = "Custom store", badgeLabel = "Custom store"),
-            )
+            repository.setCustomName(insertedStore.indexUrl, "Custom store")
         }
     }
 

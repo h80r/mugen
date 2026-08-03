@@ -39,37 +39,45 @@ object AnixartCsvParser {
         parse(input.readBytes().toString(Charsets.UTF_8))
 
     fun parse(text: String): List<AnixartRow> {
+        // Leading blank lines are common in hand-split exports and must not be mistaken
+        // for the header row.
         val rows = tokenize(stripBom(text))
+            .dropWhile { record -> record.all { it.isBlank() } }
         if (rows.isEmpty()) {
             throw InvalidAnixartCsvException("Empty CSV: no header row found")
         }
 
-        val header = rows.first().map { it.trim() }
+        val header = rows.first().map { sanitize(it) }
         val index = header.withIndex().associate { (i, name) -> name to i }
-
         val missing = REQUIRED_COLUMNS.filterNot { index.containsKey(it) }
-        if (missing.isNotEmpty()) {
-            throw InvalidAnixartCsvException(
+
+        val (columns, records) = when {
+            missing.isEmpty() -> index to rows.drop(1)
+            // Splitting a big export into chunks by hand usually drops the header from
+            // every part but the first. The export column order is fixed, so fall back
+            // to it rather than rejecting a file that is plainly an Anixart export.
+            looksHeaderless(rows) -> POSITIONAL_COLUMNS to rows
+            else -> throw InvalidAnixartCsvException(
                 "Not an Anixart CSV export. Missing columns: ${missing.joinToString()}",
             )
         }
 
-        val result = ArrayList<AnixartRow>(rows.size - 1)
+        val result = ArrayList<AnixartRow>(records.size)
         var fallbackIndex = 0
-        for (record in rows.drop(1)) {
+        for (record in records) {
             // Skip completely blank lines that the tokenizer may emit.
             if (record.all { it.isBlank() }) continue
             fallbackIndex++
 
-            val parsedIndex = cell(record, index, COL_INDEX).trim().toIntOrNull() ?: fallbackIndex
+            val parsedIndex = cell(record, columns, COL_INDEX).toIntOrNull() ?: fallbackIndex
             result += AnixartRow(
                 index = parsedIndex,
-                russianTitle = cell(record, index, COL_RU),
-                originalTitle = cell(record, index, COL_ORIGINAL),
-                alternativeTitles = cell(record, index, COL_ALT),
-                favoriteRaw = cell(record, index, COL_FAVORITE),
-                statusRaw = cell(record, index, COL_STATUS),
-                ratingRaw = cell(record, index, COL_RATING),
+                russianTitle = cell(record, columns, COL_RU),
+                originalTitle = cell(record, columns, COL_ORIGINAL),
+                alternativeTitles = cell(record, columns, COL_ALT),
+                favoriteRaw = cell(record, columns, COL_FAVORITE),
+                statusRaw = cell(record, columns, COL_STATUS),
+                ratingRaw = cell(record, columns, COL_RATING),
             )
         }
         return result
@@ -78,8 +86,39 @@ object AnixartCsvParser {
     /** Safe column access by name; returns "" when the column is absent or the row is short. */
     private fun cell(record: List<String>, index: Map<String, Int>, column: String): String {
         val i = index[column] ?: return ""
-        return record.getOrNull(i)?.trim() ?: ""
+        return record.getOrNull(i)?.let { sanitize(it) } ?: ""
     }
+
+    /** Column order of the Anixart export, used when the header line is missing. */
+    private val POSITIONAL_COLUMNS = mapOf(
+        COL_INDEX to 0,
+        COL_RU to 1,
+        COL_ORIGINAL to 2,
+        COL_ALT to 3,
+        COL_FAVORITE to 4,
+        COL_STATUS to 5,
+        COL_RATING to 6,
+    )
+
+    /** True when a status label sits where the header would be, i.e. the header is gone. */
+    private fun looksHeaderless(records: List<List<String>>): Boolean {
+        val statusIndex = POSITIONAL_COLUMNS.getValue(COL_STATUS)
+        return records.take(HEADERLESS_PROBE_ROWS).any { record ->
+            record.size > statusIndex && AnixartStatus.fromCsv(sanitize(record[statusIndex])) != null
+        }
+    }
+
+    /**
+     * Re-saving or hand-splitting an export leaves invisible junk inside cells — a BOM
+     * on the first field of a chunk, non-breaking spaces, zero-width marks. None of it
+     * is data, and leaving it in silently breaks both the header lookup and matching.
+     */
+    private fun sanitize(value: String): String =
+        value.replace(INVISIBLE_CHARS, " ").trim()
+
+    private val INVISIBLE_CHARS = Regex("[\uFEFF\u00A0\u200B\u200C\u200D\u2060]")
+
+    private const val HEADERLESS_PROBE_ROWS = 5
 
     private fun stripBom(text: String): String =
         if (text.isNotEmpty() && text[0] == '\uFEFF') text.substring(1) else text

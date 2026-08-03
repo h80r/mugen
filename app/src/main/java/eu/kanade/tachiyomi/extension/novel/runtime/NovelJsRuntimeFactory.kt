@@ -32,6 +32,7 @@ import uy.kohesive.injekt.api.get
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.Base64
+import java.util.zip.GZIPInputStream
 
 class NovelJsRuntimeFactory(
     private val context: Context,
@@ -80,12 +81,24 @@ class NovelJsRuntimeFactory(
                     )
                     val headers = response.headers.toMultimap()
                         .mapValues { (_, values) -> values.joinToString(",") }
+                        .toMutableMap()
                     val responseBody = response.body
                     val bodyCharset = options.textEncoding
                         ?.let { name -> resolveCharsetOrNull(name) }
                         ?: responseBody.contentType()?.charset(Charsets.UTF_8)
                         ?: Charsets.UTF_8
-                    val body = responseBody.bytes().toString(bodyCharset)
+                    val rawBytes = responseBody.bytes()
+                    val isGzip = response.header("Content-Encoding")?.equals("gzip", ignoreCase = true) == true
+                    val bodyBytes = if (isGzip) {
+                        runCatching { GZIPInputStream(rawBytes.inputStream()).use { it.readBytes() } }
+                            .getOrElse { rawBytes }
+                    } else {
+                        rawBytes
+                    }
+                    if (isGzip && bodyBytes !== rawBytes) {
+                        headers.keys.removeIf { it.equals("Content-Encoding", ignoreCase = true) }
+                    }
+                    val body = bodyBytes.toString(bodyCharset)
                     if (!response.isSuccessful) {
                         logcat(priority = LogPriority.WARN, tag = "NovelFetch") {
                             "Novel plugin fetch $pluginId: HTTP ${response.code} " +
@@ -127,7 +140,16 @@ class NovelJsRuntimeFactory(
                         url = response.request.url.toString(),
                         setCookieHeaders = response.headers.values("Set-Cookie"),
                     )
-                    Base64.getEncoder().encodeToString(response.body.bytes())
+                    val bytes = response.body.bytes()
+                    val bodyBytes = if (response.header("Content-Encoding")?.equals("gzip", ignoreCase = true) ==
+                        true
+                    ) {
+                        runCatching { GZIPInputStream(bytes.inputStream()).use { it.readBytes() } }
+                            .getOrElse { bytes }
+                    } else {
+                        bytes
+                    }
+                    Base64.getEncoder().encodeToString(bodyBytes)
                 }
             }.getOrElse { error ->
                 logcat(LogPriority.WARN, error) {

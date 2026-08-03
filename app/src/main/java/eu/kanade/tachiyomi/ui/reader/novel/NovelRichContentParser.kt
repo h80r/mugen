@@ -18,6 +18,8 @@ internal fun parseNovelRichContent(rawHtml: String): NovelRichContentParseResult
     }
 
     blockRoots.forEach { element ->
+        // Anchors are read and applied inside parseBlockElement, on any nesting level, so blocks
+        // inside section wrappers (an-book-section, nb-chapter) keep their (chapterId, blockIndex).
         blocks += parseBlockElement(element, context)
     }
 
@@ -48,12 +50,71 @@ internal fun parseNovelRichContent(rawHtml: String): NovelRichContentParseResult
     )
 }
 
+/**
+ * Writes the block address of [chapterId] into [rawHtml] and returns the annotated body markup.
+ *
+ * Every top-level element that produces at least one block gets `data-an-b="<chapterId>:<index>"`,
+ * where the index is the position of its first block in the chapter's block stream - the very number
+ * the TTS model reports as `sourceBlockIndex`. An element that expands into several blocks is
+ * therefore addressed by the index of its first one, and the anchors stay dense and monotonic.
+ *
+ * The blocks are parsed here only to count them; the result is discarded. That costs one parse per
+ * section, paid once because the annotated markup is what the section cache stores.
+ */
+internal fun annotateNovelBlockAnchors(rawHtml: String, chapterId: Long): String {
+    if (rawHtml.isBlank() || chapterId == BookLocator.NO_CHAPTER_ID) return rawHtml
+    return runCatching {
+        val document = Jsoup.parseBodyFragment(rawHtml)
+        document.outputSettings().prettyPrint(false)
+        val context = parseBlockStyleContext(document)
+        var blockIndex = 0
+        blockAnchorRoots(document.body()).forEach { element ->
+            val produced = parseBlockElement(element, context).size
+            if (produced > 0) {
+                element.attr(
+                    NovelBlockAnchor.DOM_ATTRIBUTE,
+                    NovelBlockAnchor(chapterId = chapterId, blockIndex = blockIndex).domId,
+                )
+                blockIndex += produced
+            }
+        }
+        document.body().html()
+    }.getOrElse { rawHtml }
+}
+
+/**
+ * The elements that carry one anchor each.
+ *
+ * A compiled artifact wraps the whole chapter in a single `section.nb-chapter`; annotating that
+ * wrapper would give the entire chapter one anchor and make follow-along jump to the chapter start
+ * for every paragraph. A lone container is therefore unwrapped until the real blocks are reached.
+ */
+private fun blockAnchorRoots(body: Element): List<Element> {
+    var current: Element = body
+    repeat(BLOCK_ANCHOR_MAX_UNWRAP) {
+        val children = current.children()
+        val single = children.singleOrNull() ?: return current.children()
+        if (single.tagName().lowercase(Locale.US) !in richContainerBlockTags) return current.children()
+        current = single
+    }
+    return current.children()
+}
+
+/** How deep a lone wrapper is unwrapped before its children are treated as the blocks. */
+private const val BLOCK_ANCHOR_MAX_UNWRAP = 3
+
 private fun parseBlockElement(
     element: Element,
     context: NovelRichParseContext,
 ): List<NovelRichContentBlock> {
+    // A book section carries the chapter address of its blocks in the markup itself (see
+    // annotateNovelBlockAnchors). Reading it back here - on any level, not just on the top level -
+    // is what lets the native renderer answer "which block is the voice reading" without searching
+    // for the spoken text. An element that expands into several blocks is addressed by the index of
+    // its first one, so later blocks shift by their offset.
+    val anchor = NovelBlockAnchor.parse(element.attr(NovelBlockAnchor.DOM_ATTRIBUTE))
     val tag = element.tagName().lowercase(Locale.US)
-    return when (tag) {
+    val parsed = when (tag) {
         "p", "div", "article", "section", "main" -> {
             parseParagraphLikeOrContainerBlocks(element, tag, context)
         }
@@ -86,7 +147,7 @@ private fun parseBlockElement(
                 )
             }
         }
-        "hr" -> listOf(NovelRichContentBlock.HorizontalRule)
+        "hr" -> listOf(NovelRichContentBlock.HorizontalRule())
         "img", "picture", "source" -> {
             parseImageBlockFromElement(element)?.let(::listOf).orEmpty()
         }
@@ -99,6 +160,13 @@ private fun parseBlockElement(
                 val segments = parseInlineSegments(element)
                 if (segments.isEmpty()) emptyList() else listOf(NovelRichContentBlock.Paragraph(segments))
             }
+        }
+    }
+    return if (anchor == null) {
+        parsed
+    } else {
+        parsed.mapIndexed { offset, block ->
+            block.withAnchor(anchor.copy(blockIndex = anchor.blockIndex + offset))
         }
     }
 }

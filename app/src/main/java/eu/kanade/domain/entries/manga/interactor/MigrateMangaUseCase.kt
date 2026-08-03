@@ -60,7 +60,12 @@ class MigrateMangaUseCase(
         val localNewManga = networkToLocalManga.await(newManga)
         if (oldManga.id == localNewManga.id) return
 
-        val chapters = source.getChapterList(localNewManga.toSManga())
+        val chapters = source.getMangaUpdate(
+            manga = localNewManga.toSManga(),
+            chapters = emptyList(),
+            fetchDetails = false,
+            fetchChapters = true,
+        ).chapters
 
         migrateMangaInternal(
             oldSource = prevSource,

@@ -79,6 +79,7 @@ fun AnimeActionCard(
                 } else {
                     stringResource(MR.strings.add_to_library)
                 },
+                isActive = anime.favorite,
                 onClick = onAddToLibraryClicked,
                 onLongClick = onAddToLibraryLongClicked,
                 modifier = Modifier.weight(1f),
@@ -117,6 +118,7 @@ fun AnimeActionCard(
                     } else {
                         pluralStringResource(MR.plurals.num_trackers, count = trackingCount, trackingCount)
                     },
+                    isActive = trackingCount > 0,
                     onClick = onTrackingClicked,
                     modifier = Modifier.weight(1f),
                 )
@@ -149,6 +151,7 @@ private fun ActionButton(
     label: String,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    isActive: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val colors = AuroraTheme.colors
@@ -165,7 +168,13 @@ private fun ActionButton(
         Box(
             modifier = Modifier
                 .size(36.dp)
-                .background(colors.accent.copy(alpha = 0.12f), CircleShape),
+                .then(
+                    if (isActive) {
+                        Modifier.background(colors.accent.copy(alpha = 0.2f), CircleShape)
+                    } else {
+                        Modifier
+                    },
+                ),
             contentAlignment = Alignment.Center,
         ) {
             icon()
@@ -173,9 +182,9 @@ private fun ActionButton(
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = label,
-            color = colors.textPrimary.copy(alpha = 0.8f),
+            color = if (isActive) colors.accent else colors.textPrimary.copy(alpha = 0.8f),
             fontSize = 10.sp,
-            fontWeight = FontWeight.Normal,
+            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
             textAlign = TextAlign.Center,
             maxLines = 2,
             lineHeight = 12.sp,

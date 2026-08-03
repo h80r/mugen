@@ -248,8 +248,9 @@ internal fun shouldUseEarlyWebViewReveal(rawHtml: String): Boolean {
 
 internal fun shouldEnableJavaScriptInReaderWebView(
     pluginRequestsJavaScript: Boolean,
+    bookModeEnabled: Boolean = false,
 ): Boolean {
-    return pluginRequestsJavaScript
+    return pluginRequestsJavaScript || bookModeEnabled
 }
 
 @Suppress("DEPRECATION")
@@ -537,6 +538,10 @@ internal fun buildWebReaderCssText(
         append("  --an-reader-size: ${fontSizePx}px;\n")
         append("  --an-reader-line-height: ${lineHeightMultiplier.coerceAtLeast(1f)};\n")
         append("  --an-reader-paragraph-spacing: ${resolvedParagraphSpacingPx}px;\n")
+        append("  --an-reader-padding-top: ${paddingTop}px;\n")
+        append("  --an-reader-padding-bottom: ${paddingBottom}px;\n")
+        append("  --an-reader-padding-left: ${paddingHorizontal}px;\n")
+        append("  --an-reader-padding-right: ${paddingHorizontal}px;\n")
         if (!textShadowCss.isNullOrBlank()) {
             append("  --an-reader-text-shadow: $textShadowCss;\n")
         }
@@ -554,10 +559,10 @@ internal fun buildWebReaderCssText(
         append("  color: var(--an-reader-fg) !important;\n")
         append("}\n")
         append("body {\n")
-        append("  padding-top: ${paddingTop}px !important;\n")
-        append("  padding-bottom: ${paddingBottom}px !important;\n")
-        append("  padding-left: ${paddingHorizontal}px !important;\n")
-        append("  padding-right: ${paddingHorizontal}px !important;\n")
+        append("  padding-top: var(--an-reader-padding-top) !important;\n")
+        append("  padding-bottom: var(--an-reader-padding-bottom) !important;\n")
+        append("  padding-left: var(--an-reader-padding-left) !important;\n")
+        append("  padding-right: var(--an-reader-padding-right) !important;\n")
         append("  font-size: var(--an-reader-size) !important;\n")
         append("  line-height: var(--an-reader-line-height) !important;\n")
         if (!textAlignCss.isNullOrBlank()) {
@@ -1104,6 +1109,7 @@ internal fun buildWebReaderCssFingerprint(
     textShadowCss: String?,
     forceBoldText: Boolean,
     forceItalicText: Boolean,
+    bionicReadingEnabled: Boolean,
 ): String {
     return buildString {
         append(chapterId)
@@ -1126,6 +1132,7 @@ internal fun buildWebReaderCssFingerprint(
         append('|').append(textShadowCss ?: "<none>")
         append('|').append(forceBoldText)
         append('|').append(forceItalicText)
+        append('|').append(bionicReadingEnabled)
     }
 }
 

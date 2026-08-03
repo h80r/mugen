@@ -74,8 +74,8 @@ fun LogoHeader(
                 ),
                 fill = SolidColor(onSurfaceColor),
             )
-        }
-    }.build()
+        }.build()
+    }
 
     Column(
         modifier = Modifier

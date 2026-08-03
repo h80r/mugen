@@ -1,6 +1,10 @@
 package eu.kanade.tachiyomi.ui.browse.manga.extension
 
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
+import eu.kanade.tachiyomi.extension.manga.model.selectMangaInstalledRepoDisplayName
+import eu.kanade.tachiyomi.extension.manga.model.selectMangaRegularUpdate
+import eu.kanade.tachiyomi.extension.manga.model.selectMangaReinstallCandidates
+import eu.kanade.tachiyomi.extension.manga.model.selectMangaSameRepoUpdate
 import eu.kanade.tachiyomi.extension.manga.toInstalledMangaExtensionPkgName
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull

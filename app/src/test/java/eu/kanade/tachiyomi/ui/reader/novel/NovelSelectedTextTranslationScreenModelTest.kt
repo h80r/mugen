@@ -3,18 +3,22 @@ package eu.kanade.tachiyomi.ui.reader.novel
 import android.app.Application
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.items.novelchapter.interactor.SyncNovelChaptersWithSource
+import eu.kanade.domain.source.novel.interactor.GetNovelIncognitoState
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.model.AutoTrackState
 import eu.kanade.domain.track.novel.interactor.TrackNovelChapter
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.tachiyomi.data.download.novel.NovelDownloadManager
 import eu.kanade.tachiyomi.data.translation.TranslationQueueItem
 import eu.kanade.tachiyomi.data.translation.TranslationQueueManager
+import eu.kanade.tachiyomi.extension.novel.NovelExtensionManager
 import eu.kanade.tachiyomi.extension.novel.repo.NovelPluginPackage
 import eu.kanade.tachiyomi.extension.novel.repo.NovelPluginStorage
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.novelsource.NovelSource
 import eu.kanade.tachiyomi.novelsource.model.SNovelChapter
 import eu.kanade.tachiyomi.source.novel.NovelWebUrlSource
+import eu.kanade.tachiyomi.test.PersistingPreferenceStore
 import eu.kanade.tachiyomi.ui.reader.novel.NovelReaderChapterPrefetchCache
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextTranslationErrorReason
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
@@ -38,6 +42,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.runBlocking
@@ -51,6 +56,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Isolated
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.achievement.repository.ActivityDataRepository
@@ -107,6 +113,46 @@ class NovelSelectedTextTranslationScreenModelTest {
     }
 
     private fun setupInjektApplication() {
+        runCatching { Injekt.get<NovelReaderPreferences>() }
+            .getOrElse {
+                Injekt.addSingleton(
+                    fullType<NovelReaderPreferences>(),
+                    NovelReaderPreferences(PersistingPreferenceStore()),
+                )
+            }
+
+        runCatching { Injekt.get<GetNovelIncognitoState>() }
+            .getOrElse {
+                // Registered in DomainModule for the app; unit tests never run that module. Build the
+                // real interactor so incognito preferences behave exactly as they do in production.
+                val basePreferences = runCatching { Injekt.get<BasePreferences>() }
+                    .getOrElse {
+                        // ReactivePreferenceStore, not InMemoryPreferenceStore: the latter hands out a
+                        // fresh preference per lookup, so a set() in a test would be invisible here.
+                        BasePreferences(mockk(relaxed = true), PersistingPreferenceStore())
+                            .also { Injekt.addSingleton(fullType<BasePreferences>(), it) }
+                    }
+                val sourcePreferences = runCatching { Injekt.get<SourcePreferences>() }
+                    .getOrElse {
+                        SourcePreferences(PersistingPreferenceStore())
+                            .also { Injekt.addSingleton(fullType<SourcePreferences>(), it) }
+                    }
+                val extensionManager = runCatching { Injekt.get<NovelExtensionManager>() }
+                    .getOrElse {
+                        mockk<NovelExtensionManager>(relaxed = true).also { manager ->
+                            every { manager.getPluginId(any()) } returns null
+                            every { manager.getPluginIdAsFlow(any()) } returns flowOf(null)
+                            every { manager.isNsfwForSource(any()) } returns false
+                            every { manager.isNsfwForSourceAsFlow(any()) } returns flowOf(false)
+                            Injekt.addSingleton(fullType<NovelExtensionManager>(), manager)
+                        }
+                    }
+                Injekt.addSingleton(
+                    fullType<GetNovelIncognitoState>(),
+                    GetNovelIncognitoState(basePreferences, sourcePreferences, extensionManager),
+                )
+            }
+
         val application = mockk<Application>(relaxed = true)
         val filesDir = java.io.File(System.getProperty("java.io.tmpdir"), "novel-translation-test-files")
             .apply { mkdirs() }
@@ -156,6 +202,42 @@ class NovelSelectedTextTranslationScreenModelTest {
                 Injekt.addSingleton(fullType<TrackNovelChapter>(), mockk<TrackNovelChapter>(relaxed = true))
             }
 
+        runCatching { Injekt.get<tachiyomi.domain.book.novel.interactor.GetNovelBookState>() }
+            .getOrElse {
+                // Registered in DomainModule with addFactory for the app; unit tests never run that
+                // module, so back the interactor with a repository that reports no saved book state.
+                val bookStateRepository =
+                    mockk<tachiyomi.domain.book.novel.repository.NovelBookStateRepository>(relaxed = true)
+                io.mockk.coEvery { bookStateRepository.getBookState(any()) } returns null
+                every { bookStateRepository.subscribeBookState(any()) } returns flowOf(null)
+                every { bookStateRepository.subscribeEnabledBookStates() } returns flowOf(emptyList())
+                io.mockk.coEvery { bookStateRepository.getAllBookStates() } returns emptyList()
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.repository.NovelBookStateRepository>(),
+                    bookStateRepository,
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.GetNovelBookState>(),
+                    tachiyomi.domain.book.novel.interactor.GetNovelBookState(bookStateRepository),
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.SetNovelBookProgress>(),
+                    tachiyomi.domain.book.novel.interactor.SetNovelBookProgress(bookStateRepository),
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.SetNovelBookEnabled>(),
+                    tachiyomi.domain.book.novel.interactor.SetNovelBookEnabled(bookStateRepository),
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.UpsertNovelBookState>(),
+                    tachiyomi.domain.book.novel.interactor.UpsertNovelBookState(bookStateRepository),
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.DeleteNovelBookState>(),
+                    tachiyomi.domain.book.novel.interactor.DeleteNovelBookState(bookStateRepository),
+                )
+            }
+
         Injekt.addSingleton(fullType<Json>(), Json { encodeDefaults = true })
         every { getNovelSeriesWithEntries.subscribe(any()) } returns MutableStateFlow(null)
         Injekt.addSingleton(fullType<GetNovelSeriesWithEntries>(), getNovelSeriesWithEntries)
@@ -185,8 +267,10 @@ class NovelSelectedTextTranslationScreenModelTest {
 
             val state = screenModel.state.value.shouldBeInstanceOf<NovelReaderScreenModel.State.Success>()
             state.selectedTextTranslationSelection shouldBe selection
+            // A selection without a trigger action stays Idle: the toolbar action drives the flow
+            // (Idle -> Translating -> Result), there is no intermediate SelectionAvailable card.
             state.selectedTextTranslationUiState.shouldBeInstanceOf<
-                NovelSelectedTextTranslationUiState.SelectionAvailable,
+                NovelSelectedTextTranslationUiState.Idle,
                 >()
         }
     }

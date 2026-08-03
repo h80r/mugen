@@ -18,8 +18,9 @@ import tachiyomi.core.common.preference.PreferenceStore
  * This wrapper is registered at 187f. It is safe to call the individual migrations again
  * because they are defensive (they check whether the work has already been done).
  *
- * Includes ExtensionRepoToStoreMigration for completeness (even though it is now ALWAYS
- * and has additional resilience inside the store repositories).
+ * ExtensionRepoToStoreMigration is NOT always-on: it is registered at 187f like this class, so an
+ * upgrade that jumps past 187 never runs it. That is fine because the port also runs on demand from
+ * ExtensionStoreRepository.getAll(), which trust checks and the store screens both go through.
  */
 class ForceMissedMigrations187 : Migration {
     override val version: Float = 187f
@@ -37,7 +38,7 @@ class ForceMissedMigrations187 : Migration {
         // Intentionally do nothing heavy here.
         // Launching the sub-migrations (even in post/IO) was causing timing issues with the Home defer flags and repeated content re-renders, leading to visible skeleton-then-content on first launch.
         // The migration system marks this as "done" so the low-version ones are considered handled for this version bump.
-        // The critical Extension port is handled on-demand when opening extension store screens (via Get* + screen models).
+        // The critical Extension port is handled on demand by ExtensionStoreRepository.getAll().
         // Other missed migrations can be re-evaluated in future bumps if needed.
         // This preserves the instant first-frame perf from the defer commits.
 

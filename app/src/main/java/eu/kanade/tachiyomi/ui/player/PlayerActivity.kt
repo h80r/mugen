@@ -416,10 +416,12 @@ class PlayerActivity : BaseActivity() {
         windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            window.attributes.layoutInDisplayCutoutMode = if (playerPreferences.playerFullscreen().get()) {
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-            } else {
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = if (playerPreferences.playerFullscreen().get()) {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                } else {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER
+                }
             }
         }
 
@@ -464,7 +466,9 @@ class PlayerActivity : BaseActivity() {
             }
         }
         copyAssets(mpvDir)
-        copyFontsDirectory(mpvDir)
+        // Stage the user fonts synchronously so they are on disk before MPV initializes its
+        // subtitle renderer; the fonts directory is registered right after initialize below.
+        val fontsDirectory = PlayerFontBridge.copyFontsDirectory(storageManager, mpvDir)
 
         MPVLib.setOptionString("sub-ass-force-margins", "yes")
         MPVLib.setOptionString("sub-use-margins", "yes")
@@ -474,6 +478,7 @@ class PlayerActivity : BaseActivity() {
             cacheDir = applicationContext.cacheDir.path,
             logLvl = logLevel,
         )
+        PlayerFontBridge.setFontsDirectories(fontsDirectory)
         MPVLib.addLogObserver(playerObserver)
         MPVLib.addObserver(playerObserver)
     }
@@ -583,12 +588,6 @@ class PlayerActivity : BaseActivity() {
                 ins?.close()
                 out?.close()
             }
-        }
-    }
-
-    private fun copyFontsDirectory(mpvDir: UniFile) {
-        lifecycleScope.launchIO {
-            PlayerFontBridge.copyFontsDirectory(storageManager, mpvDir)
         }
     }
 
@@ -1358,8 +1357,11 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun endFile(eofReached: Boolean) {
-        if (eofReached && playerPreferences.autoplayEnabled().get()) {
+        if (!eofReached) return
+        if (playerPreferences.autoplayEnabled().get()) {
             viewModel.changeEpisode(previous = false, autoPlay = true)
+        } else {
+            viewModel.pause()
         }
     }
 }

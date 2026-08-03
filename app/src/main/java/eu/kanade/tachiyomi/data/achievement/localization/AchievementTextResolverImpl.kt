@@ -176,6 +176,7 @@ internal fun achievementTextResourceRefs(achievementId: String): AchievementText
         "persistent_clicker" -> featureResources("persistent_clicker")
         "secret_hall_unlocked" -> featureResources("secret_hall_unlocked")
         "void_broadcast_unlocked" -> featureResources("void_broadcast_unlocked")
+        "lattice_resonance" -> featureResources("lattice_resonance")
 
         "secret_crybaby" -> text(
             AYMR.strings.achievement_secret_crybaby_title,
@@ -659,6 +660,11 @@ private fun featureResources(achievementId: String): AchievementTextResourceRefs
             title = AYMR.strings.achievement_void_broadcast_unlocked_title,
             description = AYMR.strings.achievement_void_broadcast_unlocked_desc,
             hintVague = AYMR.strings.achievement_void_broadcast_unlocked_hint_vague,
+        )
+        "lattice_resonance" -> text(
+            title = AYMR.strings.achievement_lattice_resonance_title,
+            description = AYMR.strings.achievement_lattice_resonance_desc,
+            hintVague = AYMR.strings.achievement_lattice_resonance_hint_vague,
         )
         else -> AchievementTextResourceRefs(null, null)
     }

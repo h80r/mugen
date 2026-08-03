@@ -7,4 +7,9 @@ data class ExtensionRepo(
     val website: String,
     val signingKeyFingerprint: String,
     val discord: String? = null,
+    /**
+     * The url the store is actually indexed by. Legacy repos, store indexes and novel plugin repos
+     * use different file names, so it cannot be derived from [baseUrl].
+     */
+    val indexUrl: String? = null,
 )

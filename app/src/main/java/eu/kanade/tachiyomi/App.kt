@@ -209,6 +209,39 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
                     unlockableManager.setUnlockableUnlocked("special_navbar_aurora_celestial")
                 }
             }
+
+            // Render pipeline maintenance (opaque service hook)
+            eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(this).onAppStart()
+            eu.kanade.domain.easteregg.lattice.LatticeSignalBus.onUnlocked = { payload ->
+                achievementScope.launch {
+                    val repo = Injekt
+                        .get<tachiyomi.domain.achievement.repository.AchievementRepository>()
+                    val pointsManager = Injekt
+                        .get<tachiyomi.data.achievement.handler.PointsManager>()
+                    val userProfileManager = Injekt
+                        .get<tachiyomi.data.achievement.UserProfileManager>()
+                    val activityDataRepository = Injekt
+                        .get<tachiyomi.domain.achievement.repository.ActivityDataRepository>()
+
+                    repo.insertOrUpdateProgress(
+                        tachiyomi.domain.achievement.model.AchievementProgress.createStandard(
+                            achievementId = payload.achievementId ?: "lattice_resonance",
+                            progress = 1,
+                            maxProgress = 1,
+                            isUnlocked = true,
+                            unlockedAt = System.currentTimeMillis(),
+                        ),
+                    )
+                    pointsManager.addPoints(payload.bonusPoints ?: 0)
+                    pointsManager.incrementUnlocked()
+                    activityDataRepository.recordAchievementUnlock()
+
+                    payload.themeId?.let { userProfileManager.unlockTheme(it) }
+
+                    val unlockableManager = Injekt.get<tachiyomi.data.achievement.UnlockableManager>()
+                    payload.unlockables.forEach { unlockableManager.setUnlockableUnlocked(it) }
+                }
+            }
         }
         SingletonImageLoader.setUnsafe { context -> newImageLoader(context) }
 

@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.data.suggestions.manga
 
 import eu.kanade.tachiyomi.data.suggestions.SuggestionSeed
 import eu.kanade.tachiyomi.data.suggestions.sources.SuggestionMediaType
+import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -169,5 +170,35 @@ class MangaSearchFallbackEngineTest {
         val success = outcome as MangaFallbackOutcome.Success
         assertEquals(1, success.items.size)
         assertEquals("Волейбол", success.items.first().title)
+    }
+
+    @Test
+    fun `fetchSearchFallback survives getFilterList LinkageError and still searches`() = runTest {
+        val manga = Manga.create().copy(id = 123L, title = "Solo Leveling", url = "/solo-link-error")
+        val source = object : FakeMangaCatalogueSource() {
+            override fun getFilterList(): FilterList {
+                throw NoSuchMethodError(
+                    "No static method runBlockingK in class kotlinx.coroutines.BuildersKt",
+                )
+            }
+        }
+        source.searchMangasToReturn = listOf(
+            SManga.create().apply {
+                title = "Solo Leveling Side Stories"
+                url = "/solo-1"
+            },
+        )
+
+        val seed = SuggestionSeed(
+            mediaType = SuggestionMediaType.MANGA,
+            primaryTitle = "Solo Leveling",
+            candidateTitles = listOf("Solo Leveling"),
+            description = "",
+        )
+
+        val outcome = MangaSearchFallbackEngine().fetchSearchFallback(manga, source, seed)
+
+        assertTrue(outcome is MangaFallbackOutcome.Success)
+        assertEquals(1, (outcome as MangaFallbackOutcome.Success).items.size)
     }
 }

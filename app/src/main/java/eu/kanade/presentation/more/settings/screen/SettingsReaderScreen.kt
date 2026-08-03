@@ -1,12 +1,17 @@
 package eu.kanade.presentation.more.settings.screen
 
 import android.os.Build
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.presentation.more.settings.widget.BasePreferenceWidget
+import eu.kanade.presentation.reader.settings.ReaderTapZonesEditor
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -226,6 +231,8 @@ object SettingsReaderScreen : SearchableSettings {
         val rotateToFitPref = readerPreferences.dualPageRotateToFit()
 
         val navMode by navModePref.collectAsState()
+        val customTapZonesPref = readerPreferences.customTapZoneActions()
+        val customTapZones by customTapZonesPref.collectAsState()
         val imageScaleType by imageScaleTypePref.collectAsState()
         val dualPageSplit by dualPageSplitPref.collectAsState()
         val rotateToFit by rotateToFitPref.collectAsState()
@@ -241,6 +248,22 @@ object SettingsReaderScreen : SearchableSettings {
                         .toImmutableMap(),
                     title = stringResource(MR.strings.pref_viewer_nav),
                 ),
+                Preference.PreferenceItem.CustomPreference(
+                    title = stringResource(MR.strings.pref_custom_tap_zones),
+                ) {
+                    if (navMode == 6) {
+                        BasePreferenceWidget(
+                            title = stringResource(MR.strings.pref_custom_tap_zones),
+                            subcomponent = {
+                                ReaderTapZonesEditor(
+                                    serializedActions = customTapZones,
+                                    onSerializedActionsChange = customTapZonesPref::set,
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                )
+                            },
+                        )
+                    }
+                },
                 Preference.PreferenceItem.ListPreference(
                     preference = readerPreferences.pagerNavInverted(),
                     entries = persistentListOf(
@@ -273,6 +296,11 @@ object SettingsReaderScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.cropBorders(),
                     title = stringResource(MR.strings.pref_crop_borders),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.enablePinchToZoom(),
+                    title = stringResource(MR.strings.pref_zoom_dual_taps),
+                    subtitle = stringResource(MR.strings.pref_zoom_dual_taps_summary),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.landscapeZoom(),
@@ -325,6 +353,8 @@ object SettingsReaderScreen : SearchableSettings {
         val webtoonSidePaddingPref = readerPreferences.webtoonSidePadding()
 
         val navMode by navModePref.collectAsState()
+        val customTapZonesPref = readerPreferences.customTapZoneActions()
+        val customTapZones by customTapZonesPref.collectAsState()
         val dualPageSplit by dualPageSplitPref.collectAsState()
         val rotateToFit by rotateToFitPref.collectAsState()
         val webtoonSidePadding by webtoonSidePaddingPref.collectAsState()
@@ -340,6 +370,22 @@ object SettingsReaderScreen : SearchableSettings {
                         .toImmutableMap(),
                     title = stringResource(MR.strings.pref_viewer_nav),
                 ),
+                Preference.PreferenceItem.CustomPreference(
+                    title = stringResource(MR.strings.pref_custom_tap_zones),
+                ) {
+                    if (navMode == 6) {
+                        BasePreferenceWidget(
+                            title = stringResource(MR.strings.pref_custom_tap_zones),
+                            subcomponent = {
+                                ReaderTapZonesEditor(
+                                    serializedActions = customTapZones,
+                                    onSerializedActionsChange = customTapZonesPref::set,
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                )
+                            },
+                        )
+                    }
+                },
                 Preference.PreferenceItem.ListPreference(
                     preference = readerPreferences.webtoonNavInverted(),
                     entries = persistentListOf(
@@ -378,6 +424,11 @@ object SettingsReaderScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.cropBordersWebtoon(),
                     title = stringResource(MR.strings.pref_crop_borders),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.enablePinchToZoom(),
+                    title = stringResource(MR.strings.pref_zoom_dual_taps),
+                    subtitle = stringResource(MR.strings.pref_zoom_dual_taps_summary),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = dualPageSplitPref,

@@ -14,6 +14,7 @@ import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.MangaUpdateStrategyColumnAdapter
+import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.mi.data.AnimeDatabase
 import tachiyomi.novel.data.NovelDatabase
@@ -27,8 +28,10 @@ class StatsReadCountSqlTest {
         MangaDatabase.Schema.create(driver)
         val db = MangaDatabase(
             driver = driver,
+            chaptersAdapter = data.Chapters.Adapter(memoAdapter = MemoColumnAdapter),
             historyAdapter = History.Adapter(last_readAdapter = DateColumnAdapter),
             mangasAdapter = Mangas.Adapter(
+                memoAdapter = MemoColumnAdapter,
                 genreAdapter = StringListColumnAdapter,
                 custom_genreAdapter = StringListColumnAdapter,
                 update_strategyAdapter = MangaUpdateStrategyColumnAdapter,
@@ -52,8 +55,10 @@ class StatsReadCountSqlTest {
         NovelDatabase.Schema.create(driver)
         val db = NovelDatabase(
             driver = driver,
+            novel_chaptersAdapter = datanovel.Novel_chapters.Adapter(memoAdapter = MemoColumnAdapter),
             novel_historyAdapter = Novel_history.Adapter(last_readAdapter = DateColumnAdapter),
             novelsAdapter = Novels.Adapter(
+                memoAdapter = MemoColumnAdapter,
                 genreAdapter = StringListColumnAdapter,
                 custom_genreAdapter = StringListColumnAdapter,
                 update_strategyAdapter = MangaUpdateStrategyColumnAdapter,
@@ -77,8 +82,10 @@ class StatsReadCountSqlTest {
         AnimeDatabase.Schema.create(driver)
         val db = AnimeDatabase(
             driver = driver,
+            episodesAdapter = dataanime.Episodes.Adapter(memoAdapter = MemoColumnAdapter),
             animehistoryAdapter = Animehistory.Adapter(last_seenAdapter = DateColumnAdapter),
             animesAdapter = Animes.Adapter(
+                memoAdapter = MemoColumnAdapter,
                 genreAdapter = StringListColumnAdapter,
                 custom_genreAdapter = StringListColumnAdapter,
                 update_strategyAdapter = tachiyomi.data.AnimeUpdateStrategyColumnAdapter,
@@ -122,6 +129,7 @@ class StatsReadCountSqlTest {
             calculateInterval = 0L,
             version = 0L,
             rating = -1.0,
+            memo = kotlinx.serialization.json.JsonObject(emptyMap()),
         )
     }
 
@@ -139,6 +147,7 @@ class StatsReadCountSqlTest {
             dateFetch = 0L,
             dateUpload = 0L,
             version = 0L,
+            memo = kotlinx.serialization.json.JsonObject(emptyMap()),
         )
     }
 

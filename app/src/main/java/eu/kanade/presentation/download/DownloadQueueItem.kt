@@ -233,6 +233,7 @@ fun DownloadQueueItem(
                         style = MaterialTheme.typography.bodySmall.copy(
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,
+                            lineHeight = 14.sp,
                         ),
                         color = (
                             if (isAurora) {
@@ -241,7 +242,7 @@ fun DownloadQueueItem(
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             }
                             ).copy(alpha = 0.82f),
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 3.dp),
                     )

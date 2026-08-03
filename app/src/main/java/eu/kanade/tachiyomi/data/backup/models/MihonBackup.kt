@@ -3,9 +3,6 @@ package eu.kanade.tachiyomi.data.backup.models
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.protobuf.ProtoNumber
-import tachiyomi.domain.source.anime.service.AnimeSourceManager
-import tachiyomi.domain.source.manga.service.MangaSourceManager
-import tachiyomi.domain.source.novel.service.NovelSourceManager
 
 @Serializable
 data class MihonBackup(
@@ -15,33 +12,25 @@ data class MihonBackup(
     @ProtoNumber(104) var backupPreferences: List<BackupPreference> = emptyList(),
     @ProtoNumber(105) var backupSourcePreferences: List<BackupSourcePreferences> = emptyList(),
     @ProtoNumber(106) var backupExtensionRepo: List<BackupExtensionRepos> = emptyList(),
+    /**
+     * Tadami's own compatibility manifest.
+     *
+     * Lives on a very high, unclaimed field number so Mihon, TachiyomiSY and Komikku simply skip it
+     * as an unknown field, while we can restore the real media type of every flattened entry.
+     */
+    @ProtoNumber(TadamiSisterManifest.PROTO_FIELD) var tadamiManifest: TadamiSisterManifest? = null,
 ) {
-    fun toTadamiBackup(
-        mangaSourceManager: MangaSourceManager,
-        novelSourceManager: NovelSourceManager,
-        animeSourceManager: AnimeSourceManager,
-    ): Backup {
-        return toTadamiBackup(
-            mangaSourceClassifier = { sourceId ->
-                mangaSourceManager.get(sourceId) != null ||
-                    mangaSourceManager.getStubSources().any { it.id == sourceId }
-            },
-            novelSourceClassifier = { sourceId ->
-                novelSourceManager.get(sourceId) != null ||
-                    novelSourceManager.getStubSources().any { it.id == sourceId }
-            },
-            animeSourceClassifier = { sourceId ->
-                animeSourceManager.get(sourceId) != null ||
-                    animeSourceManager.getStubSources().any { it.id == sourceId }
-            },
-        )
+    /**
+     * Manifest hints, but only from a manifest we actually wrote and understand.
+     *
+     * Returns null when the field is absent or carries a foreign/newer payload, so the caller falls
+     * back to treating the file as a plain manga library instead of trusting unknown data.
+     */
+    fun validManifestHints(): Map<Pair<Long, String>, TadamiMediaType>? {
+        return tadamiManifest?.takeIf { it.isValid }?.hintsByKey()
     }
 
-    internal fun toTadamiBackup(
-        mangaSourceClassifier: (Long) -> Boolean,
-        novelSourceClassifier: (Long) -> Boolean,
-        animeSourceClassifier: (Long) -> Boolean,
-    ): Backup {
+    fun toTadamiBackup(): Backup {
         return Backup(
             backupManga = backupManga.map { it.toBackupManga() },
             backupCategories = backupCategories,
@@ -50,15 +39,24 @@ data class MihonBackup(
             backupSourcePreferences = backupSourcePreferences,
             backupMangaExtensionRepo = backupExtensionRepo,
             isLegacy = false,
-        ).routeSharedMangaEntriesBySource(
-            mangaSourceClassifier = mangaSourceClassifier,
-            novelSourceClassifier = novelSourceClassifier,
-            animeSourceClassifier = animeSourceClassifier,
         )
     }
 }
 
+/**
+ * Flatten a Tadami backup into the Mihon shape so other apps can read it.
+ *
+ * Manga and novels share Mihon's field 1 because that is the only library section the format has.
+ * The accompanying manifest records what each entry really was, which is what lets us restore the
+ * exact same split later without ever guessing from a source id.
+ */
 internal fun Backup.toMihonBackup(): MihonBackup {
+    val hints = backupManga.map {
+        TadamiMediaTypeHint(sourceId = it.source, url = it.url, mediaType = TadamiMediaType.MANGA)
+    } + backupNovel.map {
+        TadamiMediaTypeHint(sourceId = it.source, url = it.url, mediaType = TadamiMediaType.NOVEL)
+    }
+
     return MihonBackup(
         backupManga = (backupManga + backupNovel.map { it.toBackupManga() })
             .map { it.toMihonBackupManga() },
@@ -67,58 +65,7 @@ internal fun Backup.toMihonBackup(): MihonBackup {
         backupPreferences = backupPreferences,
         backupSourcePreferences = backupSourcePreferences,
         backupExtensionRepo = backupMangaExtensionRepo,
-    )
-}
-
-internal fun Backup.routeSharedMangaEntriesBySource(
-    mangaSourceClassifier: (Long) -> Boolean,
-    novelSourceClassifier: (Long) -> Boolean,
-    animeSourceClassifier: (Long) -> Boolean,
-): Backup {
-    val mangas = mutableListOf<BackupManga>()
-    val novels = backupNovel.toMutableList()
-    val animes = backupAnime.toMutableList()
-
-    val knownAnimeSourceIds = backupAnimeSources.map { it.sourceId }.toSet()
-    val knownNovelSourceIds = backupNovelSources.map { it.sourceId }.toSet()
-
-    backupManga.forEach { entry ->
-        val sourceId = entry.source
-        when {
-            novelSourceClassifier(sourceId) -> novels.add(entry.toBackupNovel())
-            animeSourceClassifier(sourceId) -> animes.add(entry.toBackupAnime())
-            mangaSourceClassifier(sourceId) -> mangas.add(entry)
-            sourceId in knownNovelSourceIds -> novels.add(entry.toBackupNovel())
-            sourceId in knownAnimeSourceIds -> animes.add(entry.toBackupAnime())
-            else -> mangas.add(entry)
-        }
-    }
-
-    val routedNovelSources = novels
-        .map { novel ->
-            backupSources.firstOrNull { it.sourceId == novel.source }
-                ?: BackupSource(name = "", sourceId = novel.source)
-        }
-        .distinctBy { it.sourceId }
-    val routedAnimeSources = animes
-        .map { anime ->
-            val source = backupSources.firstOrNull { it.sourceId == anime.source }
-            BackupAnimeSource(name = source?.name.orEmpty(), sourceId = anime.source)
-        }
-        .distinctBy { it.sourceId }
-
-    return copy(
-        backupManga = mangas,
-        backupNovel = novels,
-        backupAnime = animes,
-        backupNovelCategories = backupNovelCategories.ifEmpty {
-            if (novels.isNotEmpty()) backupCategories else emptyList()
-        },
-        backupAnimeCategories = backupAnimeCategories.ifEmpty {
-            if (animes.isNotEmpty()) backupCategories else emptyList()
-        },
-        backupNovelSources = (backupNovelSources + routedNovelSources).distinctBy { it.sourceId },
-        backupAnimeSources = (backupAnimeSources + routedAnimeSources).distinctBy { it.sourceId },
+        tadamiManifest = TadamiSisterManifest(entries = hints),
     )
 }
 

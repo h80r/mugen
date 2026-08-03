@@ -19,7 +19,7 @@ class ExtensionUpdateNotifier(
 
     fun promptUpdates(names: List<String>, anime: Boolean = false) {
         context.notify(
-            Notifications.ID_UPDATES_TO_EXTS,
+            notificationId(anime),
             Notifications.CHANNEL_EXTENSIONS_UPDATE,
         ) {
             setContentTitle(
@@ -44,7 +44,41 @@ class ExtensionUpdateNotifier(
         }
     }
 
-    fun dismiss() {
-        context.cancelNotification(Notifications.ID_UPDATES_TO_EXTS)
+    fun dismiss(anime: Boolean = false) {
+        context.cancelNotification(notificationId(anime))
+    }
+
+    /**
+     * Auto-updates happen without any user interaction, so the result is reported instead of a
+     * prompt. The pending-update prompt shares the id and is replaced by this notification.
+     */
+    fun notifyAutoUpdated(names: List<String>, anime: Boolean = false) {
+        if (names.isEmpty()) return
+        context.notify(
+            notificationId(anime),
+            Notifications.CHANNEL_EXTENSIONS_UPDATE,
+        ) {
+            setContentTitle(context.getString(I18nR.string.ext_auto_update_notif_title))
+            if (!securityPreferences.hideNotificationContent().get()) {
+                val extNames = names.joinToString(", ")
+                setContentText(extNames)
+                setStyle(NotificationCompat.BigTextStyle().bigText(extNames))
+            }
+            setSmallIcon(R.drawable.ic_extension_24dp)
+            if (!anime) {
+                setContentIntent(NotificationReceiver.openExtensionsPendingActivity(context))
+            } else {
+                setContentIntent(NotificationReceiver.openAnimeExtensionsPendingActivity(context))
+            }
+            setAutoCancel(true)
+        }
+    }
+
+    /**
+     * Anime and manga post their own notification: a shared id meant each media type dismissed the
+     * other's pending update prompt.
+     */
+    private fun notificationId(anime: Boolean): Int {
+        return if (anime) Notifications.ID_UPDATES_TO_ANIME_EXTS else Notifications.ID_UPDATES_TO_EXTS
     }
 }

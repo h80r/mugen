@@ -1,15 +1,20 @@
 package eu.kanade.tachiyomi.data.backup
 
+import android.content.ContentResolver
+import android.content.Context
+import android.net.Uri
 import eu.kanade.tachiyomi.data.backup.models.Backup
 import eu.kanade.tachiyomi.data.backup.models.BackupAnime
 import eu.kanade.tachiyomi.data.backup.models.BackupAnimeSource
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.LegacyBackup
+import eu.kanade.tachiyomi.data.backup.models.MediaRoutingPolicy
 import eu.kanade.tachiyomi.data.backup.models.MihonBackup
 import eu.kanade.tachiyomi.data.backup.models.mergeLegacyPayloadIfPresent
-import eu.kanade.tachiyomi.data.backup.models.routeSharedMangaEntriesBySource
 import eu.kanade.tachiyomi.data.backup.models.toMihonBackupManga
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.serialization.protobuf.ProtoBuf
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -104,24 +109,112 @@ class AniyomiBackupRestoreDiagnosisTest {
     }
 
     @Test
-    fun `shared manga entries route to anime when source id is listed in backupAnimeSources`() {
+    fun `native decoder preserves declared media sections when source ids collide`() {
+        val native = Backup(
+            backupManga = listOf(sampleManga("Manga collision").copy(source = 77, url = "/manga")),
+            backupNovel = listOf(
+                eu.kanade.tachiyomi.data.backup.models.BackupNovel(
+                    source = 77,
+                    url = "/novel",
+                    title = "Novel collision",
+                ),
+            ),
+            backupNovelSources = listOf(
+                eu.kanade.tachiyomi.data.backup.models.BackupSource(name = "NovelSrc", sourceId = 77),
+            ),
+            isLegacy = false,
+        )
+        val bytes = parser.encodeToByteArray(Backup.serializer(), native)
+        val contentResolver = mockk<ContentResolver>()
+        val context = mockk<Context>()
+        val uri = mockk<Uri>()
+        every { context.contentResolver } returns contentResolver
+        every { contentResolver.openInputStream(uri) } returns bytes.inputStream()
+
+        val decoded = BackupDecoder(
+            context = context,
+            parser = parser,
+            mangaSourceManager = mockk(relaxed = true),
+            novelSourceManager = mockk(relaxed = true),
+            animeSourceManager = mockk(relaxed = true),
+        ).decode(uri)
+
+        assertEquals(listOf("Manga collision"), decoded.backupManga.map { it.title })
+        assertEquals(listOf("Novel collision"), decoded.backupNovel.map { it.title })
+        assertTrue(decoded.backupAnime.isEmpty())
+    }
+
+    @Test
+    fun `external mihon entries never become anime even when an anime source is declared`() {
         val backup = Backup(
             backupManga = listOf(sampleManga("Anime entry").copy(source = 99)),
             backupAnimeSources = listOf(BackupAnimeSource(name = "AnimeSrc", sourceId = 99)),
         )
 
-        val routed = backup.routeSharedMangaEntriesBySource(
-            mangaSourceClassifier = { false },
+        val routed = MediaRoutingPolicy.ExternalMihonAsManga(
             novelSourceClassifier = { false },
-            animeSourceClassifier = { false },
-        )
+            animeSourceClassifier = { it == 99L },
+        ).route(backup)
 
-        assertEquals(emptyList(), routed.backupManga.map { it.title })
-        assertEquals(listOf("Anime entry"), routed.backupAnime.map { it.title })
+        // A Mihon field 1 library is a manga library. The colliding id is only reported.
+        assertEquals(listOf("Anime entry"), routed.backup.backupManga.map { it.title })
+        assertTrue(routed.backup.backupAnime.isEmpty())
+        assertEquals(1, routed.ambiguousEntries)
     }
 
     @Test
-    fun `Mihon backup anime entries route when anime source is installed`() {
+    fun `opt-in fallback keeps entry as manga when the id is known to two libraries`() {
+        val backup = Backup(
+            backupManga = listOf(sampleManga("Collision").copy(source = 77)),
+        )
+
+        val routed = MediaRoutingPolicy.LegacySisterExplicitFallback(
+            mangaSourceClassifier = { it == 77L },
+            novelSourceClassifier = { it == 77L },
+            animeSourceClassifier = { false },
+        ).route(backup)
+
+        assertEquals(listOf("Collision"), routed.backup.backupManga.map { it.title })
+        assertTrue(routed.backup.backupNovel.isEmpty())
+        assertTrue(routed.backup.backupAnime.isEmpty())
+        assertEquals(1, routed.ambiguousEntries)
+    }
+
+    @Test
+    fun `opt-in fallback moves an entry only when its source is novel-only`() {
+        val backup = Backup(
+            backupManga = listOf(sampleManga("Novel entry").copy(source = 66)),
+        )
+
+        val routed = MediaRoutingPolicy.LegacySisterExplicitFallback(
+            mangaSourceClassifier = { false },
+            novelSourceClassifier = { it == 66L },
+            animeSourceClassifier = { false },
+        ).route(backup)
+
+        assertTrue(routed.backup.backupManga.isEmpty())
+        assertEquals(listOf("Novel entry"), routed.backup.backupNovel.map { it.title })
+        assertEquals(0, routed.ambiguousEntries)
+    }
+
+    @Test
+    fun `opt-in fallback leaves unknown sources as manga`() {
+        val backup = Backup(
+            backupManga = listOf(sampleManga("Unknown").copy(source = 88)),
+        )
+
+        val routed = MediaRoutingPolicy.LegacySisterExplicitFallback(
+            mangaSourceClassifier = { false },
+            novelSourceClassifier = { false },
+            animeSourceClassifier = { false },
+        ).route(backup)
+
+        assertEquals(listOf("Unknown"), routed.backup.backupManga.map { it.title })
+        assertTrue(routed.backup.backupNovel.isEmpty())
+    }
+
+    @Test
+    fun `Mihon field one entries stay manga when anime source is installed`() {
         val mihon = MihonBackup(
             backupManga = listOf(
                 sampleManga("Manga A").copy(source = 1).toMihonBackupManga(),
@@ -134,36 +227,17 @@ class AniyomiBackupRestoreDiagnosisTest {
         )
         val bytes = parser.encodeToByteArray(MihonBackup.serializer(), mihon)
 
-        val withAnimeExt = decodeViaMihon(
-            bytes,
-            mangaSourceClassifier = { it == 1L },
-            novelSourceClassifier = { false },
-            animeSourceClassifier = { it == 99L },
+        val withAnimeExt = decodeViaMihon(bytes)
+        assertEquals(
+            listOf("Manga A", "Anime posing as manga"),
+            withAnimeExt.backupManga.map { it.title },
         )
-        assertEquals(listOf("Manga A"), withAnimeExt.backupManga.map { it.title })
-        assertEquals(listOf("Anime posing as manga"), withAnimeExt.backupAnime.map { it.title })
+        assertTrue(withAnimeExt.backupAnime.isEmpty())
+        assertTrue(withAnimeExt.backupNovel.isEmpty())
     }
 
-    private fun decodeViaMihon(
-        bytes: ByteArray,
-        mangaSourceClassifier: (Long) -> Boolean,
-        novelSourceClassifier: (Long) -> Boolean,
-        animeSourceClassifier: (Long) -> Boolean,
-    ): Backup {
-        val mihon = parser.decodeFromByteArray(MihonBackup.serializer(), bytes)
-        return Backup(
-            backupManga = mihon.backupManga.map { it.toBackupManga() },
-            backupCategories = mihon.backupCategories,
-            backupSources = mihon.backupSources,
-            backupPreferences = mihon.backupPreferences,
-            backupSourcePreferences = mihon.backupSourcePreferences,
-            backupMangaExtensionRepo = mihon.backupExtensionRepo,
-            isLegacy = false,
-        ).routeSharedMangaEntriesBySource(
-            mangaSourceClassifier = mangaSourceClassifier,
-            novelSourceClassifier = novelSourceClassifier,
-            animeSourceClassifier = animeSourceClassifier,
-        )
+    private fun decodeViaMihon(bytes: ByteArray): Backup {
+        return parser.decodeFromByteArray(MihonBackup.serializer(), bytes).toTadamiBackup()
     }
 
     private fun sampleManga(title: String): BackupManga {

@@ -67,6 +67,10 @@
     <string name="pref_disable_home_header_scroll_hide_summary">Оставлять шапку с приветствием всегда видимой и не скрывать её при прокрутке.</string>
     <string name="pref_aurora_library_swipe_switches_categories">Свайп переключает категории</string>
     <string name="pref_aurora_library_swipe_switches_categories_summary">Горизонтальные свайпы в библиотеке переключают категории вместо разделов (аниме/манга/ранобэ).</string>
+    <string name="action_display_full_number_of_items">Отображение полного числа в категориях библиотеки</string>
+    <string name="action_display_full_number_of_items_summary">Отображает количество полностью: вместо 99+ → 123.</string>
+    <string name="action_display_grouped_number_of_items">Отображение классов чисел</string>
+    <string name="action_display_grouped_number_of_items_summary">Дополнительное разделение числа, например 1234 → 1 234.</string>
     <string name="label_player_settings">Настройки проигрывателя</string>
     <string name="action_search_player_settings">Поиск по настройкам проигрывателя</string>
     <string name="pref_player_internal">Внутренний проигрыватель</string>
@@ -287,7 +291,7 @@
     <string name="timer_title">Автоотключение</string>
     <string name="timer_remaining">%s осталось</string>
     <string name="timer_picker_enter_timer">Введите длительность</string>
-    <string name="timer_picker_pick_time">Выбор длительности</string>
+    <string name="timer_picker_pick_time">��ыбор длительности</string>
     <string name="timer_cancel_timer">Отмена текущего таймера</string>
     <string name="player_sheets_speed_slider_label">Скорость</string>
     <string name="player_sheets_speed_make_default">Задать нормальную скорость</string>
@@ -336,7 +340,7 @@
     <string name="label_manga">Манга</string>
     <string name="label_novel">Ранобэ</string>
     <string name="label_novel_library">Библиотека</string>
-    <string name="novel_library_import_epub">Импортировать EPUB</string>
+    <string name="novel_library_import_epub">Импортировать книгу</string>
     <string name="novel_library_import_success">EPUB успешно импортирован</string>
     <string name="novel_library_import_failed">Не удалось импортировать EPUB</string>
     <string name="novel_reader_settings_title">Для этого источника</string>
@@ -443,7 +447,7 @@
     <string name="novel_reader_prefer_webview_renderer_summary">По умолчанию открывать главу в WebView. Отключите, чтобы вернуться к нативному рендереру.</string>
     <string name="novel_reader_rich_native_renderer_experimental">Расширенный нативный режим(рекомендуется)</string>
     <string name="novel_reader_rich_native_renderer_experimental_summary">Сохранять базовые HTML-стили в нативном ридере с автоматическим переходом в WebView для неподдерживаемого содержимого.</string>
-    <string name="novel_reader_renderer_disabled_page_mode_summary">Недоступно, пока включён постраничный режим.</string>
+    <string name="novel_reader_renderer_disabled_page_mode_summary">��едоступно, пока включён постраничный режим.</string>
     <string name="novel_reader_renderer_disabled_webview_summary">Недоступно, пока глава открыта в WebView.</string>
     <string name="novel_reader_renderer_disabled_bionic_summary">Недоступно, пока включено Bionic Reading.</string>
     <string name="novel_reader_settings_surface_strategy">Доступность настроек</string>
@@ -507,7 +511,7 @@
     <string name="novel_reader_dictionary_quick_access">История словаря в читалке</string>
     <string name="novel_reader_dictionary_quick_access_summary">Показывать кнопку истории словаря в нижней панели читалки ранобэ</string>
     <string name="novel_reader_dictionary_history">История словаря</string>
-    <string name="novel_reader_dictionary_history_summary">Ваши слова: поиск, избранное, повторение</string>
+    <string name="novel_reader_dictionary_history_summary">Ваши слов��: поиск, избранное, повторение</string>
     <string name="novel_reader_dictionary_history_search_hint">Поиск слов</string>
     <string name="novel_reader_dictionary_history_stats">%1$s слов &#8226; %2$s сегодня</string>
     <string name="novel_reader_dictionary_history_top_language">топ %1$s</string>
@@ -581,6 +585,10 @@
     <string name="novel_reader_tts_voice_settings">Настройки озвучки</string>
     <string name="novel_reader_tts_behavior_settings">Параметры озвучки</string>
     <string name="novel_reader_tts_disable">Выключить TTS</string>
+    <string name="novel_reader_tts_done">Готово</string>
+    <string name="novel_reader_tts_preview_action">Прослушать</string>
+    <string name="novel_reader_tts_preview_sample">This is a short sample to test how this voice sounds when reading a novel.</string>
+    <string name="novel_reader_tts_preview_sample_ru">Это короткий фрагмент, чтобы проверить, как звучит этот голос при чтении новеллы.</string>
     <string name="novel_reader_tts_action_previous">Предыдущий фрагмент</string>
     <string name="novel_reader_tts_action_pause">Пауза</string>
     <string name="novel_reader_tts_action_play">Воспроизвести</string>
@@ -925,6 +933,7 @@
     <string name="novel_export_destination_folder">Папка назначения (необязательно)</string>
     <string name="novel_export_select_folder">Выбрать папку</string>
     <string name="novel_export_apply_reader_theme">Применить тему ридера к EPUB</string>
+    <string name="novel_export_include_cover">Включить изображение обложки</string>
     <string name="novel_export_include_custom_css">Включить пользовательский CSS</string>
     <string name="novel_export_include_custom_js">Включить пользовательский JavaScript</string>
     <string name="novel_export_custom_js_warning">Пользовательский JavaScript поддерживается не всеми EPUB-ридерами</string>
@@ -958,6 +967,11 @@
     <string name="pref_bottom_nav_appearance">Внешний вид нижней навигации</string>
     <string name="pref_bottom_nav_classic">Классическая</string>
     <string name="pref_bottom_nav_aurora">Aurora</string>
+    <string name="pref_episode_list_density">Плотность списка эпизодов</string>
+    <string name="pref_episode_list_density_summary">Выберите, сколько места занимает каждый эпизод в списке</string>
+    <string name="pref_episode_list_density_comfortable">Обычная</string>
+    <string name="pref_episode_list_density_compact">Компактная</string>
+    <string name="pref_episode_list_density_dense">Плотная</string>
     <string name="pref_bottom_nav_style">Компоновка нижней навигации</string>
     <string name="pref_category_motion">Анимация</string>
     <string name="pref_navigation_transition_mode">Режим анимации переходов</string>
@@ -998,7 +1012,7 @@
     <string name="pref_download_new_unseen_episodes_only">Пропуск загрузки дублированных просмотренных эпизодов</string>
     <string name="pref_download_new_unread_novel_chapters_only">Пропуск загрузки дублированных прочитанных глав ранобэ</string>
     <string name="auto_download_while_watching">Автоматическая загрузка во время просмотра</string>
-    <string name="download_ahead_info_anime">Работает только для эпизодов в библиотеке и если текущий и следующий эпизоды уже загружены</string>
+    <string name="download_ahead_info_anime">Работает только для эпизодов в библиотеке и если текущий и следующий эп��зоды уже загружены</string>
     <string name="pref_track_on_add_library">Открывать меню отслеживания при добавлении в библиотеку</string>
     <string name="pref_show_next_episode_airing_time">Показать время показа следующего эпизода</string>
     <string name="pref_backup_flags_summary">Какую информацию следует включить в файл резервной копии</string>
@@ -1038,7 +1052,7 @@
     <string name="also_set_novel_chapter_settings_for_library">Также применить ко всем ранобэ в моей библиотеке</string>
     <string name="no_episodes_error">Эпизоды не найдены</string>
     <string name="watching">Смотрю</string>
-    <string name="currently_reading">Сейчас читается</string>
+    <string name="currently_reading">Сейчас читае��ся</string>
     <string name="currently_watching">Сейчас смотрю</string>
     <string name="plan_to_watch">Планирую смотреть</string>
     <string name="not_interesting">Не интересно</string>
@@ -1299,7 +1313,7 @@
     <string name="aurora_episode_progress">Эпизод %d</string>
     <string name="aurora_tap_to_change">Нажмите для изменения</string>
     <string name="aurora_nothing_to_continue">Нечего продолжать</string>
-    <string name="aurora_add_anime_to_library">Добавьте аниме в библиотеку, чтобы увидеть их здесь</string>
+    <string name="aurora_add_anime_to_library">Добавьте ан��ме в библиотеку, чтобы увидеть их здесь</string>
 
     <!-- Dynamic Greetings -->
     <string name="aurora_greeting_ready">Запасы вкусняшек готовы? Начинаем!</string>
@@ -1443,7 +1457,7 @@
     <string name="aurora_greeting_absence_amnesia">Ты помнишь, на чём остановился, или у нас арка амнезии? 🤕</string>
     <string name="aurora_greeting_frequent_touch_grass">Говорят, на улице есть такая штука... «трава». Не хочешь потрогать? 🌱</string>
     <string name="aurora_greeting_frequent_coffee_iv">Тебе чайник по венам пустить или сам нальёшь? ☕🩸</string>
-    <string name="aurora_greeting_frequent_resident">Твоя виртуальная 2D-комната уже готова. Заходи! 🚪</string>
+    <string name="aurora_greeting_frequent_resident">Твоя виртуальная 2D-комната уже ��отова. Заходи! 🚪</string>
     <string name="aurora_greeting_streak_30">Месяц без перерывов. Настоящий хикки-профессионал! 🏆</string>
     <string name="aurora_greeting_streak_100">100 дней?! Ты познал дзен и слился с 2D миром 🧘‍♂️</string>
     <string name="aurora_greeting_streak_dedication">Твоей целеустремлённости позавидует любой сёнэн-герой! 💪</string>
@@ -1591,7 +1605,7 @@
     <string name="download_folder_not_set">Папка загрузок не задана</string>
     <string name="no_file_manager_found">Файловый менеджер не найден</string>
     <string name="aurora_updating_library">Обновление всей библиотеки</string>
-    <string name="aurora_update_already_running">Обновление уже запущено</string>
+    <string name="aurora_update_already_running">Обновление уже за��ущено</string>
 
     <!-- Statistics Screen -->
     <string name="aurora_anime_statistics">Статистика аниме</string>
@@ -1637,6 +1651,10 @@
     <string name="debug_updated_changelog_preview_summary">Открыть экран списка изменений после обновления с тестовыми данными</string>
     <string name="debug_reset_aurora_heart">Сбросить «Сердце Авроры» (пасхалка)</string>
     <string name="debug_reset_aurora_heart_summary">Полностью очищает прогресс квеста, кодекс эхо, счётчик ночей и секретное достижение (только debug-сборки)</string>
+    <string name="debug_reset_lattice_resonance">Сбросить «Резонанс Каркаса» (пасхалка)</string>
+    <string name="debug_reset_lattice_resonance_summary">Очищает прогресс несущих, топологию платы и состояние синтеза (только debug-сборки)</string>
+    <string name="debug_force_lattice_breach">Форс-пролом Каркаса (debug)</string>
+    <string name="debug_force_lattice_breach_summary">Захватывает все несущие и открывает оболочку Грида</string>
     <string name="aurora_library">Библиотека</string>
     <string name="aurora_categories">Категории</string>
     <string name="aurora_data_storage">Данные и хранилище</string>
@@ -1878,10 +1896,18 @@
     <string name="achievement_filter_master_desc">Используйте фильтры 20 раз</string>
     <string name="achievement_backup_master_title">Мастер резервных копий</string>
     <string name="achievement_backup_master_desc">Создайте 1 резервную копию</string>
+    <!-- Backup wizard (backup-refactor UI) -->
+    <string name="backup_not_included_info">Не входит: скачанные главы и эпизоды, файлы локальных источников и пользовательские обложки.</string>
+    <string name="backup_compat_drops_warning">Совместимый формат сохраняет мангу и новеллы (новеллы превращаются в записи манги). Аниме, достижения, статистика, ленты и пользовательские кнопки в этом режиме не экспортируются.</string>
+    <string name="backup_restore_origin_tadami">Резервная копия Tadami</string>
+    <string name="backup_restore_origin_legacy">Старая резервная копия Aniyomi</string>
+    <string name="backup_restore_legacy_sister_option">Файл создан в старом приложении, совместимом с Tadami</string>
+    <string name="backup_restore_legacy_sister_info">Включайте только если вы сами выгрузили этот файл из старой сборки. Записи будут распределены в ранобэ по установленным источникам; всё неоднозначное останется в манге.</string>
+    <string name="backup_restore_ambiguous_sources">У %d записей идентификатор источника принадлежит сразу нескольким библиотекам. Они будут восстановлены как манга, чтобы ничего не угадывать.</string>
     <string name="achievement_settings_explorer_title">Исследователь настроек</string>
     <string name="achievement_settings_explorer_desc">Откройте настройки 15 раз</string>
     <string name="achievement_stats_viewer_title">Просмотрщик статистики</string>
-    <string name="achievement_stats_viewer_desc">Откройте статистику 5 раз</string>
+    <string name="achievement_stats_viewer_desc">Откройте стати��тику 5 раз</string>
     <string name="achievement_theme_changer_title">Сменщик тем</string>
     <string name="achievement_theme_changer_desc">Измените тему 10 раз</string>
     <string name="achievement_persistent_clicker_title">Настойчивый кликер</string>
@@ -2126,6 +2152,16 @@
     <string name="novel_reader_swipe_to_next">Свайп вверх к следующей главе</string>
     <string name="novel_reader_swipe_to_prev">Свайп вниз к предыдущей главе</string>
     <string name="novel_reader_tap_to_scroll">Навигация касанием краев</string>
+    <string name="novel_reader_custom_tap_zones">Свои зоны касания</string>
+    <string name="novel_reader_custom_tap_zones_summary">Выберите действие для каждой из девяти зон экрана</string>
+    <string name="novel_reader_tap_zones_editor_title">Раскладка зон касания</string>
+    <string name="novel_reader_tap_zones_editor_hint">Нажмите на зону, чтобы сменить действие</string>
+    <string name="novel_reader_tap_zone_action_none">Ничего</string>
+    <string name="novel_reader_tap_zone_action_toggle_ui">Показать/скрыть интерфейс</string>
+    <string name="novel_reader_tap_zone_action_forward">Листать вперёд</string>
+    <string name="novel_reader_tap_zone_action_backward">Листать назад</string>
+    <string name="novel_reader_tap_zone_action_next_chapter">Следующая глава</string>
+    <string name="novel_reader_tap_zone_action_prev_chapter">Предыдущая глава</string>
     <string name="novel_reader_auto_scroll">Автопрокрутка</string>
     <string name="novel_reader_auto_scroll_speed">Скорость автопрокрутки</string>
     <string name="reader_auto_scroll_speed_value">%1$s: %2$d</string>
@@ -2161,6 +2197,40 @@
     <string name="novel_reader_cache_read_chapters_summary">Сохранять открытые главы во временный сжатый кэш для быстрого повторного открытия (размер ограничен автоматически)</string>
     <string name="novel_reader_cache_read_chapters_unlimited">Безлимитный кэш глав</string>
     <string name="novel_reader_cache_read_chapters_unlimited_summary">Отключить ограничения по размеру и количеству глав в кэше (может занять много места)</string>
+    <string name="novel_reader_reading_mode">Режим чтения</string>
+    <string name="novel_reader_reading_mode_chapters">По главам</string>
+    <string name="novel_reader_reading_mode_book">Книга</string>
+    <string name="novel_reader_reading_mode_summary">В режиме «Книга» текст остаётся одним непрерывным документом, а соседние главы подгружаются на ходу, без отдельной загрузки каждой главы</string>
+    <string name="novel_reader_book_mode_show_chapter_headings">Показывать названия глав в режиме книги</string>
+    <string name="novel_reader_book_mode_show_chapter_headings_summary">На границе глав всегда есть тонкий разделитель; названия можно скрыть для непрерывного чтения</string>
+    <string name="novel_reader_book_mode_prepare_ahead">Готовить главы заранее</string>
+    <string name="novel_reader_book_mode_prepare_ahead_summary">Сколько следующих глав подготавливать в фоне, чтобы чтение не прерывалось загрузкой</string>
+    <string name="novel_reader_book_mode_prepare_book">Подготовить книгу</string>
+    <string name="novel_reader_book_mode_prepare_book_summary">Скачать и подготовить остальные главы, чтобы читать книгу целиком без сети</string>
+    <string name="pref_auto_compile_local_epub_book">(Экспериментально) Автоматически собирать EPUB/FB2 в книгу</string>
+    <string name="pref_auto_compile_local_epub_book_summary">При отключении локальные файлы импортируются и открываются как обычный список глав</string>
+    <string name="novel_book_make">Собрать книгу (экспериментально)</string>
+    <string name="novel_book_rebuild">Пересобрать книгу (экспериментально)</string>
+    <string name="novel_book_building">Компиляция книги…</string>
+    <string name="novel_book_downloading_chapters">Загрузка глав…</string>
+    <string name="novel_book_delete">Удалить скомпилированную книгу</string>
+    <string name="novel_book_read_as_book">Режим чтения: Книга</string>
+    <string name="novel_book_read_as_chapters">Режим чтения: Поглавно</string>
+    <string name="novel_book_missing_downloads_title">Не все главы загружены</string>
+    <string name="novel_book_missing_downloads_body">Отсутствует %1$d глав. Загрузите их сейчас и скомпилируйте книгу целиком, либо соберите книгу из уже имеющихся на диске глав.</string>
+    <string name="novel_book_missing_downloads_download">Скачать и скомпилировать</string>
+    <string name="novel_book_missing_downloads_partial">Собрать из скачанного</string>
+    <string name="novel_book_delete_source_chapters">Удалить файлы глав после компиляции</string>
+    <string name="novel_book_up_to_date">Книга не требует обновления</string>
+    <string name="novel_book_outdated">Доступны новые главы — пересоберите книгу</string>
+    <string name="novel_book_append">Добавить новые главы</string>
+    <string name="novel_book_append_available">Добавить новые главы (%1$d)</string>
+    <string name="novel_book_appending">Добавление глав…</string>
+    <string name="novel_book_cleanup_source_chapters">Удалить поглавные файлы</string>
+    <string name="novel_book_toc_title">Содержание книги</string>
+    <string name="novel_book_renderer_fallback_bionic">Бионическое чтение работает только в веб-отрисовщике, поэтому нативный отрисовщик книги отключён</string>
+    <string name="novel_book_renderer_fallback_custom_styles">Ваши пользовательские CSS/JS работают только в веб-отрисовщике, поэтому нативный отрисовщик книги отключён</string>
+    <string name="novel_book_renderer_fallback_unsupported_content">В книге есть оформление, которое нативный отрисовщик не показывает, поэтому используется веб-отрисовщик</string>
     <string name="novel_reader_chapter_cache_size">Размер кэша глав</string>
     <string name="novel_reader_chapter_cache_size_summary_limited">%1$s • %2$s записей • лимит %3$s / %4$s глав</string>
     <string name="novel_reader_chapter_cache_size_summary_unlimited">%1$s • %2$s записей • без лимита</string>
@@ -2342,7 +2412,7 @@
     <string name="pref_disable_aniskip_chapter">Отключать AniSkip, если видео уже содержит главы</string>
     <!-- Subtitle exact match -->
     <string name="pref_player_subtitle_exact_match">Предпочитать точное совпадение языка субтитров</string>
-    <string name="pref_player_subtitle_exact_match_summary">Выбирать субтитры с точным совпадением метки языка до перехода к более широким совпадениям</string>
+    <string name="pref_player_subtitle_exact_match_summary">Выбирать субтитры с точным совпадением метки языка до перехода �� более широким совпадениям</string>
     <string name="pref_player_subtitle_invalid_lang">Неверный код: \"%s\"</string>
     <!-- Skip button text -->
     <string name="player_skip_action">Пропустить %1$s</string>
@@ -2619,6 +2689,7 @@
     <string name="anixart_import_matched_query">Найдено по запросу: %1$s</string>
     <string name="anixart_import_matched_source">Источник: %1$s</string>
     <string name="anixart_import_matching_report">Авто %1$d · Проверка %2$d · Не найдено %3$d</string>
+    <string name="anixart_import_duplicates_report">Объединено с уже совпавшей записью: %1$d</string>
     <string name="anixart_import_background_started">Импорт продолжается в фоне. По завершении придёт уведомление.</string>
     <string name="anixart_import_tracker_report">Shikimori: синхр. %1$d, пропущено %2$d, ошибок %3$d</string>
 
@@ -2780,7 +2851,53 @@
     <string name="aurora_reader_preview_title">Превью фильтров</string>
     <string name="aurora_reader_preview_hint">Пример панели — фильтры сразу видны здесь</string>
     <string name="aurora_reader_processing">Обработка изображения</string>
+    <!-- Lattice Resonance (hidden) -->
+    <string name="theme_lattice_protocol">Протокол Каркаса</string>
+    <string name="treasury_tagline_lattice_protocol">Каркас под оболочкой</string>
+    <string name="lattice_carrier_node_a11y">Служебный узел</string>
+    <string name="lattice_carrier_latched">НЕСУЩАЯ %1$d/3 ЗАХВАЧЕНА</string>
+    <string name="lattice_carrier_signal">СИГНАЛ ЗАХВАЧЕН</string>
+    <string name="lattice_frame_whisper">ОБНАРУЖЕН ДРЕЙФ КАРКАСА</string>
+    <string name="lattice_breach_line1">ОБОЛОЧКА СНЯТА</string>
+    <string name="lattice_breach_line2">ПРОВЕДИ СИГНАЛ ОТ ПОРТА К ЯДРУ</string>
+    <string name="lattice_routing_line1">РЕЖИМ ТР��ССИРОВКИ</string>
+    <string name="lattice_track_hint">ЗАМКНИ ТРАССУ ЧЕРЕЗ ВСЕ УЗЛЫ</string>
+    <string name="lattice_track_closed_title">ТРАССА ЗАМКНУТА</string>
+    <string name="lattice_track_closed_sub">ЯДРО ОНЛАЙН · СВЕТ-ЦИКЛ НА КОНТУРЕ</string>
+    <string name="lattice_track_nodes">УЗЛЫ// %1$d/%2$d</string>
+    <string name="lattice_track_ring_open">КОНТУР// РАЗОМКНУТ</string>
+    <string name="lattice_track_ring_closed">КОНТУР// ЗАМКНУТ</string>
+    <string name="lattice_board_a11y">Плата маршрутизации сигнала</string>
+    <string name="lattice_synthesis_commit">СИНТЕЗ</string>
+    <string name="lattice_commit_hint">УДЕРЖИВАЙ ДЛЯ СИНТЕЗА</string>
+    <string name="lattice_core_online">ЯДРО АКТИВНО</string>
+    <string name="lattice_synthesis_line1">ТОПОЛОГИЯ ПОДТВЕРЖДЕНА</string>
+    <string name="lattice_synthesis_line2">СИНТЕЗ ЗАВЕРШЁН. АРХИТЕКТОР ОПОЗНАН.</string>
+    <string name="lattice_synthesis_reward">НАГРАДА · ПРОТОКОЛ КАРКАСА · КРОМКА КОНТУРА</string>
+    <string name="lattice_synthesis_continue">ОТКРЫТИЕ ХРАНИЛИЩА НАГРАД…</string>
+    <string name="lattice_circuit_locked">КОНТУР ЗАМКНУТ · СИНТЕЗ</string>
+    <string name="lattice_synth_failed">СБОЙ СИНТЕЗА · ПОДСТРОЙ ТОПОЛОГИЮ</string>
+    <string name="lattice_accept">ПРИНЯТЬ</string>
+    <string name="lattice_accept_sealed">ЛИЧНОСТЬ ЗАПЕЧАТАНА</string>
+    <string name="lattice_residual">КАРКАС ПОМНИТ ТЕБЯ, АРХИТЕКТОР.</string>
+    <string name="lattice_overlay_close">Закрыть</string>
+    <string name="lattice_open_manual">Открыть Каркас</string>
+    <string name="lattice_open_manual_summary">Вернуться к сетке резонанса Каркаса</string>
+    <string name="lattice_rewards_kicker">— ДОПУСК АРХИТЕКТОРА —</string>
+    <string name="lattice_rewards_title">ХРАНИЛИЩЕ НАГРАД</string>
+    <string name="lattice_rewards_subtitle">Грид выдаёт два артефакта поверхности. Только превью — включение в Сокровищнице.</string>
+    <string name="lattice_rewards_kind_theme">ТЕМА</string>
+    <string name="lattice_rewards_kind_navbar">НАВБАР</string>
+    <string name="lattice_rewards_theme_desc">Тема пустоты с циановыми трассами сигнала и янтарными сервисными акцентами.</string>
+    <string name="lattice_rewards_circuit_title">Кромка контура</string>
+    <string name="lattice_rewards_circuit_desc">Нижний rim-light вдоль донца навигационной капсулы.</string>
+    <string name="lattice_rewards_preview_badge">ПРЕВЬЮ · НЕ ВКЛЮЧАЕТСЯ ЗДЕСЬ</string>
+    <string name="lattice_rewards_preview_only">ВИЗУАЛЬНЫЙ ПОКАЗ  ПЕРЕКЛЮЧЕНИЕ В СОКРОВИЩНИЦЕ</string>
+    <string name="achievement_lattice_resonance_title">Резонанс Каркаса</string>
+    <string name="achievement_lattice_resonance_desc">Оболочка снята. Сигнал дошёл до ядра. Архитектор опознан.</string>
+    <string name="achievement_lattice_resonance_hint_vague">Что-то дрейфует под оболочкой рендера…</string>
+    <string name="novel_reader_book_mode_section_failed">Не удалось загрузить эту главу</string>
+    <string name="novel_reader_book_mode_section_retry">Повторить</string>
+    <string name="novel_reader_seamless_chapter_transition">Бесшовный переход между главами (эксперимент)</string>
+    <string name="novel_reader_seamless_chapter_transition_summary">Менять главу внутри читалки: без экрана перезагрузки для длинных страниц и без промежуточной страницы главы в постраничном режиме</string>
 </resources>
-
-
-

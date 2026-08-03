@@ -3,13 +3,15 @@ package eu.kanade.tachiyomi.network
 import android.content.Context
 import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
 import eu.kanade.tachiyomi.network.interceptor.CoverRecoveryInterceptor
-import eu.kanade.tachiyomi.network.interceptor.IgnoreGzipInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UncaughtExceptionInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UserAgentInterceptor
 import okhttp3.Cache
+import okhttp3.CompressionInterceptor
+import okhttp3.Gzip
 import okhttp3.OkHttpClient
-import okhttp3.brotli.BrotliInterceptor
+import okhttp3.brotli.Brotli
 import okhttp3.logging.HttpLoggingInterceptor
+import okhttp3.zstd.Zstd
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -52,8 +54,10 @@ class NetworkHelper(
             .addInterceptor(UncaughtExceptionInterceptor())
             .addInterceptor(UserAgentInterceptor(::defaultUserAgentProvider))
             .addInterceptor(CoverRecoveryInterceptor())
-            .addNetworkInterceptor(IgnoreGzipInterceptor())
-            .addNetworkInterceptor(BrotliInterceptor)
+            // OkHttp 5 + KeiSource (extensions-lib 1.6): compression is an *application*
+            // interceptor. Network-level IgnoreGzipInterceptor/BrotliInterceptor are rejected
+            // by KeiSource with "must not be present in default client" (e.g. 3Hentai).
+            .addInterceptor(CompressionInterceptor(Zstd, Brotli, Gzip))
 
         if (isDebug && preferences.verboseLogging().get()) {
             val httpLoggingInterceptor = HttpLoggingInterceptor().apply {

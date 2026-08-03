@@ -14,6 +14,9 @@ import eu.kanade.tachiyomi.extension.InstallStep
 import eu.kanade.tachiyomi.extension.anime.AnimeExtensionManager
 import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
 import eu.kanade.tachiyomi.extension.anime.model.newestByVersion
+import eu.kanade.tachiyomi.extension.anime.model.selectAnimeInstalledRepoDisplayName
+import eu.kanade.tachiyomi.extension.anime.model.selectAnimeRegularUpdate
+import eu.kanade.tachiyomi.extension.anime.model.selectAnimeReinstallCandidates
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -379,105 +382,6 @@ object AnimeExtensionUiModel {
         val repoSourceCount: Int = 1,
         val repoDisplayName: String? = null,
     )
-}
-
-internal fun selectAnimeInstalledRepoDisplayName(
-    extension: AnimeExtension.Installed,
-    variants: List<AnimeExtension.Available>,
-): String? {
-    extension.repoUrl?.let { repoUrl ->
-        return extension.repoName?.takeIf { it.isNotBlank() } ?: repoUrl
-    }
-
-    val exactVersionMatches = variants.filter {
-        it.versionCode == extension.versionCode && it.libVersion == extension.libVersion
-    }
-    val displayCandidate = exactVersionMatches.singleOrNull()
-        ?: variants.singleOrNull()
-
-    return displayCandidate?.repoName?.ifBlank { displayCandidate.repoUrl }
-}
-
-private fun inferAnimeInstalledRepo(
-    extension: AnimeExtension.Installed,
-    variants: List<AnimeExtension.Available>,
-): AnimeExtension.Available? {
-    extension.repoUrl?.let { repoUrl ->
-        return variants.firstOrNull { it.repoUrl == repoUrl }
-    }
-
-    val exactVersionMatches = variants.filter {
-        it.versionCode == extension.versionCode && it.libVersion == extension.libVersion
-    }
-
-    return exactVersionMatches.singleOrNull()
-        ?: variants.singleOrNull()
-        ?: variants
-            .map { it.repoUrl }
-            .distinct()
-            .singleOrNull()
-            ?.let { repoUrl -> variants.first { it.repoUrl == repoUrl } }
-}
-
-internal fun selectAnimeSameRepoUpdate(
-    extension: AnimeExtension.Installed,
-    variants: List<AnimeExtension.Available>,
-): AnimeExtension.Available? {
-    val repoUrl = inferAnimeInstalledRepo(extension, variants)?.repoUrl ?: return null
-    return variants
-        .filter { it.repoUrl == repoUrl && isNewer(extension, it) }
-        .latestVersionGroup()
-        .firstOrNull()
-}
-
-internal fun selectAnimeRegularUpdate(
-    extension: AnimeExtension.Installed,
-    variants: List<AnimeExtension.Available>,
-): AnimeExtension.Available? {
-    selectAnimeSameRepoUpdate(extension, variants)?.let { return it }
-
-    if (inferAnimeInstalledRepo(extension, variants) != null) return null
-
-    val latestVersionGroup = variants
-        .filter { isNewer(extension, it) }
-        .latestVersionGroup()
-
-    if (variants.size == 1) return latestVersionGroup.singleOrNull()
-    return latestVersionGroup.takeIf { it.size > 1 }?.firstOrNull()
-}
-
-internal fun selectAnimeReinstallCandidates(
-    extension: AnimeExtension.Installed,
-    variants: List<AnimeExtension.Available>,
-): List<AnimeExtension.Available> {
-    if (selectAnimeRegularUpdate(extension, variants) != null) return emptyList()
-
-    val installedRepoUrl = inferAnimeInstalledRepo(extension, variants)?.repoUrl
-
-    return variants
-        .filter { installedRepoUrl == null || it.repoUrl != installedRepoUrl }
-        .filter { isNewer(extension, it) }
-        .latestVersionGroup()
-}
-
-private fun List<AnimeExtension.Available>.latestVersionGroup(): List<AnimeExtension.Available> {
-    val latest = maxWithOrNull(
-        compareBy<AnimeExtension.Available> { it.versionCode }
-            .thenBy { it.libVersion },
-    ) ?: return emptyList()
-
-    return filter { it.versionCode == latest.versionCode && it.libVersion == latest.libVersion }
-        .sortedWith(
-            compareBy<AnimeExtension.Available> { it.repoName.ifBlank { it.repoUrl } }
-                .thenBy { it.repoUrl },
-        )
-}
-
-private fun isNewer(
-    extension: AnimeExtension.Installed,
-    candidate: AnimeExtension.Available,
-): Boolean {
-    return candidate.versionCode > extension.versionCode || candidate.libVersion > extension.libVersion
 }
 
 private fun AnimeExtension.Installed.fallbackRepoDisplayName(

@@ -41,12 +41,15 @@ import eu.kanade.presentation.entries.components.aurora.rememberAuroraPosterColo
 import eu.kanade.presentation.entries.components.aurora.resolveAuroraPosterScrimBrush
 import eu.kanade.presentation.entries.components.aurora.shouldDrawAuroraPosterBlurOverlay
 import eu.kanade.presentation.theme.AuroraTheme
+import eu.kanade.tachiyomi.data.cache.MangaCoverCache
 import eu.kanade.tachiyomi.data.coil.AuroraPosterRequest
 import eu.kanade.tachiyomi.util.debugTitleCoverFlow
 import eu.kanade.tachiyomi.util.previewTitleCoverUrl
 import kotlinx.coroutines.flow.collectLatest
 import tachiyomi.domain.entries.manga.model.Manga
 import tachiyomi.domain.entries.manga.model.MangaCover
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 /**
  * Fixed fullscreen poster background with scroll-based dimming and blur effects.
@@ -72,14 +75,29 @@ fun FullscreenPosterBackground(
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val placeholderPainter = rememberAuroraCoverPlaceholderPainter(AuroraCoverPlaceholderVariant.Wide)
-    val posterRequest = remember(resolvedCoverUrl, resolvedCoverUrlFallback, refererUrl, manga.thumbnailUrl) {
+    val coverCache = remember { Injekt.get<MangaCoverCache>() }
+    // Issue #154: surface the user-set custom cover on the details poster,
+    // matching what the library grid already shows.
+    val customCoverFile = remember(manga.id, manga.coverLastModified) {
+        coverCache.getCustomCoverFile(manga.id).takeIf { it.exists() }
+    }
+    val posterRequest = remember(
+        resolvedCoverUrl,
+        resolvedCoverUrlFallback,
+        refererUrl,
+        manga.thumbnailUrl,
+        customCoverFile,
+        manga.coverLastModified,
+    ) {
         AuroraPosterRequest(
             primaryUrl = resolvedCoverUrl?.takeIf { it.isNotBlank() },
             fallbackUrl = resolvedCoverUrlFallback?.takeIf { it.isNotBlank() } ?: manga.thumbnailUrl,
             refererUrl = refererUrl?.takeIf { it.isNotBlank() },
+            customCoverFile = customCoverFile,
+            coverLastModified = manga.coverLastModified,
         )
     }
-    val posterModel = posterRequest.primaryUrl ?: posterRequest.fallbackUrl
+    val posterModel = posterRequest.primaryUrl ?: posterRequest.fallbackUrl ?: posterRequest.customCoverFile?.path
     val posterColorFilter = rememberAuroraPosterColorFilter()
 
     val hasScrolledAway = firstVisibleItemIndex > 0 || scrollOffset > 100
@@ -129,7 +147,7 @@ fun FullscreenPosterBackground(
     }
     // Stable preview from manga's thumbnail (the one visible in library/browse grid).
     // Full/resolves poster will fade in over it.
-    val previewCoverModel = remember(manga.id) {
+    val previewCoverModel = remember(manga.id, manga.thumbnailUrl, manga.coverLastModified) {
         MangaCover(
             mangaId = manga.id,
             sourceId = manga.source,
@@ -203,7 +221,7 @@ fun FullscreenPosterBackground(
 
             // Preview layer from original thumbnail for instant non-black on enter.
             // Full poster (with resolved if any) overlays via fade animation.
-            val previewRequest = remember(manga.id) {
+            val previewRequest = remember(manga.id, previewCoverModel) {
                 ImageRequest.Builder(context)
                     .data(previewCoverModel)
                     .size(containerWidthPx, containerHeightPx)

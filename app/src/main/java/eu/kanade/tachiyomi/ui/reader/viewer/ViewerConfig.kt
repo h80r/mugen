@@ -34,9 +34,9 @@ abstract class ViewerConfig(
     var alwaysShowChapterTransition = true
     var preloadNextChapter = true
     var navigationMode = 0
-        protected set
 
-    var forceNavigationOverlay = false
+    var customTapZoneActions = readerPreferences.customTapZoneActions().get()
+        protected set
 
     var navigationOverlayOnStart = false
 
@@ -90,13 +90,11 @@ abstract class ViewerConfig(
         readerPreferences.preloadNextChapter()
             .register({ preloadNextChapter = it })
 
-        forceNavigationOverlay = readerPreferences.showNavigationOverlayNewUser().get()
-        if (forceNavigationOverlay) {
-            readerPreferences.showNavigationOverlayNewUser().set(false)
-        }
-
         readerPreferences.showNavigationOverlayOnStart()
             .register({ navigationOverlayOnStart = it })
+
+        readerPreferences.customTapZoneActions()
+            .register({ customTapZoneActions = it }, { updateNavigation(navigationMode) })
     }
 
     protected abstract fun defaultNavigation(): ViewerNavigation

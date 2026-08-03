@@ -1,6 +1,10 @@
 package eu.kanade.tachiyomi.ui.browse.anime.extension
 
 import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
+import eu.kanade.tachiyomi.extension.anime.model.selectAnimeInstalledRepoDisplayName
+import eu.kanade.tachiyomi.extension.anime.model.selectAnimeRegularUpdate
+import eu.kanade.tachiyomi.extension.anime.model.selectAnimeReinstallCandidates
+import eu.kanade.tachiyomi.extension.anime.model.selectAnimeSameRepoUpdate
 import eu.kanade.tachiyomi.extension.anime.toInstalledAnimeExtensionPkgName
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull

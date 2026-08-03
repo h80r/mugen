@@ -907,7 +907,7 @@ internal fun buildRichPageReaderBlockText(
         is NovelRichContentBlock.Paragraph -> buildNovelRichAnnotatedString(block.segments)
         is NovelRichContentBlock.Heading -> buildNovelRichAnnotatedString(block.segments)
         is NovelRichContentBlock.BlockQuote -> buildNovelRichAnnotatedString(block.segments)
-        NovelRichContentBlock.HorizontalRule -> AnnotatedString("* * *")
+        is NovelRichContentBlock.HorizontalRule -> AnnotatedString("* * *")
         is NovelRichContentBlock.Image -> AnnotatedString("")
     }
     if (blockText.text.isBlank()) {

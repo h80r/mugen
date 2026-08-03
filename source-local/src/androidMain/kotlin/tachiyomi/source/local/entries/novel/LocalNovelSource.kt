@@ -27,7 +27,9 @@ import tachiyomi.domain.entries.novel.model.Novel
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.source.local.filter.novel.NovelOrderBy
 import tachiyomi.source.local.image.novel.LocalNovelCoverManager
+import tachiyomi.source.local.io.novel.LocalNovelFormats
 import tachiyomi.source.local.io.novel.LocalNovelSourceFileSystem
+import tachiyomi.source.local.io.novel.resolveLocalNovelEntry
 import java.util.concurrent.TimeUnit
 import tachiyomi.source.local.io.ArchiveManga.isSupported as isArchiveSupported
 
@@ -253,7 +255,7 @@ actual class LocalNovelSource(
 
         runCatching {
             val cover = book.coverImageBytes() ?: return
-            cover.inputStream().use { coverManager.update(novel, it) }
+            cover.inputStream().use { coverManager.generateCover(novel, it) }
         }.onFailure { e ->
             logcat(LogPriority.WARN, e) { "Unable to extract embedded cover from $fileName" }
         }
@@ -266,7 +268,7 @@ actual class LocalNovelSource(
             epubFile.epubReader(context).use { epub ->
                 val cover = epub.getCoverImage() ?: return
                 epub.getInputStream(cover)?.use { stream ->
-                    coverManager.update(novel, stream)
+                    coverManager.generateCover(novel, stream)
                 }
             }
         }.onFailure { e ->
@@ -372,7 +374,18 @@ actual class LocalNovelSource(
 
     // Chapter text — supports multi-chapter epubs via #href in URL
     override suspend fun getChapterText(chapter: SNovelChapter): String = withIOContext {
-        try {
+        readChapterText(chapter)
+    }
+
+    /**
+     * Synchronous chapter-text reader shared by [getChapterText] and the book artifact builder.
+     *
+     * The builder merges a whole local book on a single IO thread and loads chapter bodies through
+     * a plain (non-suspending) provider, so the actual reading logic lives here and
+     * [getChapterText] only adds the IO dispatcher on top of it.
+     */
+    fun readChapterText(chapter: SNovelChapter): String {
+        return try {
             val urlParts = chapter.url.split("#", limit = 2)
             val filePath = urlParts[0]
             val chapterFragment = urlParts.getOrNull(1)
@@ -389,7 +402,7 @@ actual class LocalNovelSource(
                     }
             } else {
                 fileSystem.getBaseDirectory()?.findFile(novelDir)?.takeIf { !it.isDirectory }
-            } ?: return@withIOContext EMPTY_CHAPTER_HTML
+            } ?: return EMPTY_CHAPTER_HTML
 
             when {
                 chapterFile.isDirectory -> {
@@ -474,8 +487,7 @@ actual class LocalNovelSource(
 
     private fun isChapterSupported(file: UniFile): Boolean {
         if (file.isDirectory) return true
-        val ext = file.extension?.lowercase() ?: return false
-        return ext in SUPPORTED_EXTENSIONS
+        return LocalNovelFormats.isSupportedExtension(file.extension)
     }
 
     private data class LocalChapterFile(
@@ -485,7 +497,13 @@ actual class LocalNovelSource(
     )
 
     private fun collectChapterFiles(novelEntry: UniFile): List<LocalChapterFile> {
+        // Standalone files must pass the same format whitelist as Browse.
+        // Otherwise unsupported roots (e.g. PDF) create a single empty chapter
+        // that history/hub keep alive after the file is gone or was never novel.
         if (!novelEntry.isDirectory) {
+            if (!LocalNovelFormats.isSupportedExtension(novelEntry.extension)) {
+                return emptyList()
+            }
             return listOf(
                 LocalChapterFile(
                     file = novelEntry,
@@ -589,11 +607,7 @@ actual class LocalNovelSource(
     }
 
     private fun resolveNovelEntry(url: String): UniFile? {
-        val base = fileSystem.getBaseDirectory() ?: return null
-        return base.findFile(url)
-            ?: base.listFiles().orEmpty().firstOrNull {
-                !it.isDirectory && it.nameWithoutExtension.orEmpty().equals(url, ignoreCase = true)
-            }
+        return fileSystem.resolveLocalNovelEntry(url)
     }
 
     companion object {
@@ -602,16 +616,6 @@ actual class LocalNovelSource(
 
         private val LATEST_THRESHOLD = TimeUnit.MILLISECONDS.convert(7, TimeUnit.DAYS)
         private const val EMPTY_CHAPTER_HTML = "<html><body></body></html>"
-
-        private val SUPPORTED_EXTENSIONS = setOf(
-            "txt", "text",
-            "md", "markdown",
-            "html", "htm", "xhtml",
-            "epub",
-            "fb2",
-            "zip", "cbz",
-            "rar", "cbr",
-        )
 
         private const val FB2_FRAGMENT_PREFIX = "fb2:"
 

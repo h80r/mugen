@@ -60,7 +60,7 @@ class NovelTtsChapterModelBuilderTest {
                 NovelRichContentBlock.Paragraph(
                     segments = listOf(NovelRichTextSegment(longSentence)),
                 ),
-                NovelRichContentBlock.HorizontalRule,
+                NovelRichContentBlock.HorizontalRule(),
                 NovelRichContentBlock.Image(url = "https://example.org/scene.jpg"),
             ),
             options = NovelTtsChapterModelBuildOptions(

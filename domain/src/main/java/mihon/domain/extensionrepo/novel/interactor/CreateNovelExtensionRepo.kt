@@ -5,6 +5,7 @@ import logcat.LogPriority
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.extensionstore.model.ExtensionStore
 import mihon.domain.extensionstore.model.legacyBaseUrl
+import mihon.domain.extensionstore.model.toExtensionStoreBaseUrl
 import mihon.domain.extensionstore.novel.repository.NovelExtensionStoreRepository
 import mihon.domain.extensionstore.toExtensionRepo
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -30,11 +31,16 @@ class CreateNovelExtensionRepo(
                     applyDisplayName(normalizedUrl, displayName)
                     Result.Success
                 } else if (forceLocalInsert) {
-                    val baseUrl = normalizedUrl.removeSuffix(indexSuffix).removeSuffix("/repo.json")
+                    val baseUrl = normalizedUrl.toExtensionStoreBaseUrl()
                     insertPluginStyleStore(baseUrl, displayName)
                     Result.Success
                 } else {
-                    handleInsertionError(normalizedUrl, displayName, baseUrlHint = normalizedUrl)
+                    handleInsertionError(
+                        indexUrl = normalizedUrl,
+                        displayName = displayName,
+                        baseUrlHint = normalizedUrl,
+                        failure = insertResult.exceptionOrNull(),
+                    )
                 }
             }
             pluginsSuffixes.any { normalizedUrl.endsWith(it) } -> {
@@ -54,7 +60,12 @@ class CreateNovelExtensionRepo(
                     )
                     Result.Success
                 } else {
-                    handleInsertionError(normalizedUrl, displayName, baseUrlHint = normalizedUrl)
+                    handleInsertionError(
+                        indexUrl = normalizedUrl,
+                        displayName = displayName,
+                        baseUrlHint = normalizedUrl,
+                        failure = insertResult.exceptionOrNull(),
+                    )
                 }
             }
         }
@@ -96,8 +107,11 @@ class CreateNovelExtensionRepo(
 
     private suspend fun applyDisplayName(indexUrl: String, displayName: String?) {
         if (displayName.isNullOrBlank()) return
-        val store = repository.getAll().find { it.indexUrl == indexUrl } ?: return
-        repository.upsertStore(store.copy(name = displayName, badgeLabel = displayName))
+        // insert() persists the canonical url (e.g. .../index.min.json becomes .../repo.json), so the
+        // pasted url will not match; compare the suffix-stripped bases instead.
+        val base = indexUrl.toExtensionStoreBaseUrl().trimEnd('/')
+        val store = repository.getAll().find { it.legacyBaseUrl().trimEnd('/') == base } ?: return
+        repository.setCustomName(store.indexUrl, displayName.takeIf { it != store.name })
     }
 
     private fun extractRepoName(baseUrl: String): String {
@@ -121,6 +135,7 @@ class CreateNovelExtensionRepo(
         indexUrl: String,
         displayName: String?,
         baseUrlHint: String,
+        failure: Throwable?,
     ): Result {
         val stores = repository.getAll()
         if (stores.any { it.indexUrl == indexUrl }) {
@@ -130,7 +145,7 @@ class CreateNovelExtensionRepo(
         val matching = stores.find { it.signingKey == fingerprint }
         if (matching != null) {
             val newRepo = ExtensionRepo(
-                baseUrl = baseUrlHint.removeSuffix(indexSuffix).removeSuffix("/repo.json"),
+                baseUrl = baseUrlHint.toExtensionStoreBaseUrl(),
                 name = displayName?.takeIf { it.isNotBlank() } ?: extractRepoName(baseUrlHint),
                 shortName = null,
                 website = baseUrlHint,
@@ -138,8 +153,10 @@ class CreateNovelExtensionRepo(
             )
             return Result.DuplicateFingerprint(matching.toExtensionRepo(), newRepo)
         }
-        logcat(LogPriority.WARN) { "Failed to add novel extension store $indexUrl" }
-        return Result.InvalidUrl
+        logcat(LogPriority.WARN, failure) { "Failed to add novel extension store $indexUrl" }
+        // A DNS failure, a non-2xx response or a malformed index is not a bad url; telling the user
+        // the url is invalid sends them to fix something that is not broken.
+        return if (failure != null) Result.Error else Result.InvalidUrl
     }
 
     sealed interface Result {

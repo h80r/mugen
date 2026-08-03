@@ -6,11 +6,20 @@ import eu.kanade.tachiyomi.data.suggestions.SuggestionItem
 import eu.kanade.tachiyomi.data.suggestions.SuggestionReason
 import eu.kanade.tachiyomi.data.suggestions.SuggestionSeed
 import eu.kanade.tachiyomi.data.suggestions.sources.SuggestionMediaType
+import eu.kanade.tachiyomi.data.suggestions.util.ExtensionInterop
 import eu.kanade.tachiyomi.novelsource.NovelCatalogueSource
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.entries.novel.model.Novel
+import java.util.concurrent.atomic.AtomicInteger
 
 class NovelRelatedSuggestionCoordinator {
+
+    private companion object {
+        const val TAG = "NovelRelatedSuggestionCoordinator"
+
+        /** Max extra detail requests per fetch, used only to backfill missing thumbnails. */
+        const val MAX_THUMBNAIL_DETAIL_LOOKUPS = 6
+    }
 
     suspend fun fetchRelatedSuggestions(
         novel: Novel,
@@ -51,13 +60,18 @@ class NovelRelatedSuggestionCoordinator {
                 SuggestionCache.put(cacheKey, emptyList())
                 NovelFallbackOutcome.Empty(NovelFallbackReason.RELATED_EMPTY)
             } else {
+                val thumbnailDetailBudget = AtomicInteger(MAX_THUMBNAIL_DETAIL_LOOKUPS)
+                // take() BEFORE map(): the previous order resolved thumbnails
+                // (potentially one details request each) for the entire related
+                // list only to throw most of it away afterwards.
                 val items = relatedNovels
                     .distinctBy { it.url }
+                    .take(maxResults)
                     .map { sNovel ->
                         SuggestionItem(
                             title = sNovel.title,
                             searchQueries = listOf(sNovel.title),
-                            thumbnailUrl = resolveThumbnail(source, sNovel),
+                            thumbnailUrl = resolveThumbnail(source, sNovel, thumbnailDetailBudget),
                             providerName = source.name,
                             providerUrl = sNovel.url,
                             providerId = "${source.id}:${sNovel.url}",
@@ -65,7 +79,6 @@ class NovelRelatedSuggestionCoordinator {
                             reason = SuggestionReason.RELATED,
                         )
                     }
-                    .take(maxResults)
 
                 logcat { "[NovelRelatedSuggestionCoordinator] Successfully loaded ${items.size} related novels" }
                 SuggestionCache.put(cacheKey, items)
@@ -73,6 +86,9 @@ class NovelRelatedSuggestionCoordinator {
             }
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
+        } catch (e: LinkageError) {
+            logcat { "[NovelRelatedSuggestionCoordinator] Incompatible extension ABI: ${e.message}" }
+            NovelFallbackOutcome.Empty(NovelFallbackReason.RELATED_EMPTY)
         } catch (e: Exception) {
             logcat { "[NovelRelatedSuggestionCoordinator] Failed to fetch related novels: ${e.message}" }
             NovelFallbackOutcome.Empty(NovelFallbackReason.RELATED_EMPTY)
@@ -82,9 +98,12 @@ class NovelRelatedSuggestionCoordinator {
     private suspend fun resolveThumbnail(
         source: NovelCatalogueSource,
         novel: eu.kanade.tachiyomi.novelsource.model.SNovel,
+        detailBudget: AtomicInteger,
     ): String? {
-        return novel.thumbnail_url?.takeIf { it.isNotBlank() }
-            ?: runCatching { source.getNovelDetails(novel.copy()).thumbnail_url?.takeIf { it.isNotBlank() } }
-                .getOrNull()
+        novel.thumbnail_url?.takeIf { it.isNotBlank() }?.let { return it }
+        if (detailBudget.getAndDecrement() <= 0) return null
+        return ExtensionInterop.runInterop(TAG, "getNovelDetails(thumbnail)") {
+            source.getNovelDetails(novel.copy()).thumbnail_url?.takeIf { it.isNotBlank() }
+        }
     }
 }

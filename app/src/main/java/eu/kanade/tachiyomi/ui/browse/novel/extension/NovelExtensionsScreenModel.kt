@@ -75,9 +75,10 @@ class NovelExtensionsScreenModel(
             }
 
             combine(
+                sourcePreferences.showNsfwSource().changes(),
                 sourcePreferences.enabledLanguages().changes(),
                 listingFlow,
-            ) { enabledLanguages, input ->
+            ) { showNsfwSources, enabledLanguages, input ->
                 val variantsMap = input.available.groupBy { it.id }
                 allPluginVariants.value = variantsMap
                 val repoCounts = variantsMap.mapValues { (_, plugins) ->
@@ -121,15 +122,18 @@ class NovelExtensionsScreenModel(
                 val availableSorted = available
                     .filter { it.id !in installedIds }
                     .filter(matches)
+                    .filter { showNsfwSources || !it.isNsfw }
                     .filter { it.lang in enabledLanguages }
                     .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
                     .groupBy { it.lang }
                     .toSortedMap(LocaleHelper.comparator)
 
                 val updatesList = input.installed.filter { it.id in updateIds }.filter(matches)
+                    .filter { showNsfwSources || !it.isNsfw }
                     .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
 
                 val installedList = input.installed.filter { it.id !in updateIds }.filter(matches)
+                    .filter { showNsfwSources || !it.isNsfw }
                     .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
 
                 val untrustedList = input.untrusted.filter(matches)

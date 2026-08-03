@@ -240,6 +240,7 @@ class MangaRestorer(
                     chapter.dateFetch,
                     chapter.dateUpload,
                     chapter.version,
+                    chapter.memo,
                 )
             }
         }
@@ -299,6 +300,7 @@ class MangaRestorer(
                 dateAdded = manga.dateAdded,
                 updateStrategy = manga.updateStrategy,
                 version = manga.version,
+                memo = manga.memo,
             )
             val mangaId = db.mangasQueries.selectLastInsertedRowId().executeAsOne()
             db.mangasQueries.updateMetadata(

@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import kotlinx.coroutines.withTimeout
+import tachiyomi.core.common.source.IncompatibleExtensionException
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.domain.entries.anime.interactor.NetworkToLocalAnime
 import tachiyomi.domain.entries.anime.model.Anime
@@ -81,6 +82,10 @@ abstract class AnimeSourcePagingSource(
                     }
                 }
             }
+        } catch (e: LinkageError) {
+            // An extension compiled against different app APIs: contain it as a load error for
+            // this source instead of letting the LinkageError kill the process.
+            LoadResult.Error(IncompatibleExtensionException(e))
         } catch (e: Exception) {
             LoadResult.Error(e)
         }

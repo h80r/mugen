@@ -4,6 +4,7 @@ import android.app.Application
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.track.manga.interactor.AddMangaTracks
 import eu.kanade.domain.track.manga.model.toDomainTrack
+import eu.kanade.domain.track.novel.model.toNovelTrack
 import eu.kanade.tachiyomi.data.database.models.manga.MangaTrack
 import eu.kanade.tachiyomi.data.track.model.MangaTrackSearch
 import eu.kanade.tachiyomi.util.system.toast
@@ -13,6 +14,7 @@ import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.track.manga.interactor.InsertMangaTrack
+import tachiyomi.domain.track.novel.interactor.InsertNovelTrack
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -20,6 +22,7 @@ import tachiyomi.domain.track.manga.model.MangaTrack as DomainTrack
 
 private val addTracks: AddMangaTracks by injectLazy()
 private val insertTrack: InsertMangaTrack by injectLazy()
+private val insertNovelTrack: InsertNovelTrack by injectLazy()
 
 interface MangaTracker {
 
@@ -53,6 +56,12 @@ interface MangaTracker {
     suspend fun searchManga(query: String): List<MangaTrackSearch>
 
     /**
+     * Searches the tracker for novel entries. Defaults to the regular manga search
+     * for trackers that do not distinguish between manga and novels.
+     */
+    suspend fun searchNovel(query: String): List<MangaTrackSearch> = searchManga(query)
+
+    /**
      * Fetches remote metadata for an already-linked entry by its remote id.
      * Returns null when the tracker cannot resolve entries by id; callers should
      * fall back to search-based matching.
@@ -70,15 +79,15 @@ interface MangaTracker {
         }
     }
 
-    suspend fun setRemoteMangaStatus(track: MangaTrack, status: Long) {
+    suspend fun setRemoteMangaStatus(track: MangaTrack, status: Long, isNovelEntry: Boolean = false) {
         track.status = status
         if (track.status == getCompletionStatus() && track.total_chapters != 0L) {
             track.last_chapter_read = track.total_chapters.toDouble()
         }
-        updateRemote(track)
+        updateRemote(track, isNovelEntry)
     }
 
-    suspend fun setRemoteLastChapterRead(track: MangaTrack, chapterNumber: Int) {
+    suspend fun setRemoteLastChapterRead(track: MangaTrack, chapterNumber: Int, isNovelEntry: Boolean = false) {
         if (track.last_chapter_read == 0.0 &&
             track.last_chapter_read < chapterNumber &&
             track.status != getRereadingStatus()
@@ -92,34 +101,40 @@ interface MangaTracker {
             track.status = getCompletionStatus()
             track.finished_reading_date = System.currentTimeMillis()
         }
-        updateRemote(track)
+        updateRemote(track, isNovelEntry)
     }
 
-    suspend fun setRemoteScore(track: MangaTrack, scoreString: String) {
+    suspend fun setRemoteScore(track: MangaTrack, scoreString: String, isNovelEntry: Boolean = false) {
         track.score = indexToScore(getScoreList().indexOf(scoreString))
-        updateRemote(track)
+        updateRemote(track, isNovelEntry)
     }
 
-    suspend fun setRemoteStartDate(track: MangaTrack, epochMillis: Long) {
+    suspend fun setRemoteStartDate(track: MangaTrack, epochMillis: Long, isNovelEntry: Boolean = false) {
         track.started_reading_date = epochMillis
-        updateRemote(track)
+        updateRemote(track, isNovelEntry)
     }
 
-    suspend fun setRemoteFinishDate(track: MangaTrack, epochMillis: Long) {
+    suspend fun setRemoteFinishDate(track: MangaTrack, epochMillis: Long, isNovelEntry: Boolean = false) {
         track.finished_reading_date = epochMillis
-        updateRemote(track)
+        updateRemote(track, isNovelEntry)
     }
 
-    suspend fun setRemotePrivate(track: MangaTrack, private: Boolean) {
+    suspend fun setRemotePrivate(track: MangaTrack, private: Boolean, isNovelEntry: Boolean = false) {
         track.private = private
-        updateRemote(track)
+        updateRemote(track, isNovelEntry)
     }
 
-    private suspend fun updateRemote(track: MangaTrack): Unit = withIOContext {
+    private suspend fun updateRemote(track: MangaTrack, isNovelEntry: Boolean = false): Unit = withIOContext {
         try {
             update(track)
-            track.toDomainTrack(idRequired = false)?.let {
-                insertTrack.await(it)
+            if (isNovelEntry) {
+                track.toNovelTrack(idRequired = false)?.let {
+                    insertNovelTrack.await(it)
+                }
+            } else {
+                track.toDomainTrack(idRequired = false)?.let {
+                    insertTrack.await(it)
+                }
             }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to update remote track data id=${track.id}" }

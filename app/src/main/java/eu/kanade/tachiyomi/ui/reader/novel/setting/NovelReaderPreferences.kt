@@ -85,6 +85,8 @@ data class NovelReaderSettings(
     val swipeToNextChapter: Boolean,
     val swipeToPrevChapter: Boolean,
     val tapToScroll: Boolean,
+    val customTapZones: Boolean = false,
+    val tapZoneActions: String = NOVEL_READER_DEFAULT_TAP_ZONE_ACTIONS,
     val autoScroll: Boolean,
     val autoScrollInterval: Int,
     val autoScrollOffset: Int,
@@ -93,6 +95,7 @@ data class NovelReaderSettings(
     val autoScrollEndPauseMs: Long = 5000L,
     val showAutoScrollFloatingButton: Boolean,
     val prefetchNextChapter: Boolean,
+    val seamlessChapterTransition: Boolean = false,
 
     // Accessibility
     val fullScreenMode: Boolean,
@@ -356,6 +359,8 @@ data class NovelReaderOverride(
     val swipeToNextChapter: Boolean? = null,
     val swipeToPrevChapter: Boolean? = null,
     val tapToScroll: Boolean? = null,
+    val customTapZones: Boolean? = null,
+    val tapZoneActions: String? = null,
     val autoScroll: Boolean? = null,
     val autoScrollInterval: Int? = null,
     val autoScrollOffset: Int? = null,
@@ -364,6 +369,7 @@ data class NovelReaderOverride(
     val autoScrollEndPauseMs: Long? = null,
     val showAutoScrollFloatingButton: Boolean? = null,
     val prefetchNextChapter: Boolean? = null,
+    val seamlessChapterTransition: Boolean? = null,
 
     // Accessibility
     val fullScreenMode: Boolean? = null,
@@ -602,6 +608,11 @@ class NovelReaderPreferences(
 
     fun tapToScroll() = preferenceStore.getBoolean("novel_reader_tap_to_scroll", true)
 
+    fun customTapZones() = preferenceStore.getBoolean("novel_reader_custom_tap_zones", false)
+
+    fun tapZoneActions() =
+        preferenceStore.getString("novel_reader_tap_zone_actions", NOVEL_READER_DEFAULT_TAP_ZONE_ACTIONS)
+
     fun autoScroll() = preferenceStore.getBoolean("novel_reader_auto_scroll", false)
 
     fun autoScrollInterval() = preferenceStore.getInt("novel_reader_auto_scroll_interval", DEFAULT_AUTO_SCROLL_INTERVAL)
@@ -623,11 +634,39 @@ class NovelReaderPreferences(
     fun showAutoScrollFloatingButton() =
         preferenceStore.getBoolean("novel_reader_show_auto_scroll_floating_button", false)
 
-    fun prefetchNextChapter() = preferenceStore.getBoolean("novel_reader_prefetch_next_chapter", false)
+    // Experimental, disabled by default: switch to the next/previous chapter inside the already
+    // running reader (no screen reload, no loading screen, no intermediate chapter page in the
+    // paged reader). When it is off, chapter changes use the classic screen replacement.
+    fun seamlessChapterTransition() =
+        preferenceStore.getBoolean("novel_reader_seamless_chapter_transition", false)
+
+    // Enabled by default: chapter changes are seamless (no loading screen), which only works well
+    // when the next chapter text is already warmed up in the cache.
+    fun prefetchNextChapter() = preferenceStore.getBoolean("novel_reader_prefetch_next_chapter", true)
 
     fun cacheReadChapters() = preferenceStore.getBoolean("novel_reader_cache_read_chapters", true)
 
     fun cacheReadChaptersUnlimited() = preferenceStore.getBoolean("novel_reader_cache_read_chapters_unlimited", false)
+
+    // Book mode (continuous whole-novel reading)
+    fun readingMode() = preferenceStore.getEnum("novel_reader_reading_mode", NovelReadingMode.CHAPTERS)
+
+    fun bookModeShowChapterHeadings() =
+        preferenceStore.getBoolean("novel_reader_book_mode_show_chapter_headings", true)
+
+    fun bookModePrepareAhead() =
+        preferenceStore.getInt("novel_reader_book_mode_prepare_ahead", DEFAULT_BOOK_MODE_PREPARE_AHEAD)
+
+    // Book-mode refactor (phase 0). Hidden debug flag with no settings UI: it lets the current
+    // book-mode pipeline and the reworked one (single content pipeline, single locator,
+    // unidirectional position flow) coexist while the refactor lands phase by phase. Off by
+    // default, so shipping an unfinished phase cannot change behaviour for readers.
+    fun novelBookModeV2() = preferenceStore.getBoolean(NOVEL_BOOK_MODE_V2_KEY, false)
+
+    // Hidden debug flag for the structured `NovelBook` trace. Book-mode tracing used to be pinned
+    // on in release builds, which floods logcat and leaks reading data; it is now opt-in and only
+    // meant to be enabled while reproducing a book-mode issue.
+    fun bookModeTraceLogging() = preferenceStore.getBoolean(NOVEL_BOOK_MODE_TRACE_LOGGING_KEY, false)
 
     // Accessibility
     fun fullScreenMode() = preferenceStore.getBoolean("novel_reader_fullscreen", true)
@@ -863,6 +902,8 @@ class NovelReaderPreferences(
 
     fun epubExportUseCustomJS() = preferenceStore.getBoolean("novel_epub_export_use_custom_js", false)
 
+    fun epubExportIncludeCover() = preferenceStore.getBoolean("novel_epub_export_include_cover", true)
+
     fun sourceOverrides() = preferenceStore.getObject(
         "novel_reader_source_overrides",
         emptyMap(),
@@ -1059,6 +1100,8 @@ class NovelReaderPreferences(
                 swipeToNextChapter = swipeToNextChapter().get(),
                 swipeToPrevChapter = swipeToPrevChapter().get(),
                 tapToScroll = tapToScroll().get(),
+                customTapZones = customTapZones().get(),
+                tapZoneActions = tapZoneActions().get(),
                 autoScroll = autoScroll().get(),
                 autoScrollInterval = autoScrollInterval().get(),
                 autoScrollOffset = autoScrollOffset().get(),
@@ -1067,6 +1110,7 @@ class NovelReaderPreferences(
                 autoScrollEndPauseMs = autoScrollEndPauseMs().get(),
                 showAutoScrollFloatingButton = showAutoScrollFloatingButton().get(),
                 prefetchNextChapter = prefetchNextChapter().get(),
+                seamlessChapterTransition = seamlessChapterTransition().get(),
                 fullScreenMode = fullScreenMode().get(),
                 keepScreenOn = keepScreenOn().get(),
                 showScrollPercentage = showScrollPercentage().get(),
@@ -1217,6 +1261,8 @@ class NovelReaderPreferences(
             swipeToNextChapter = override?.swipeToNextChapter ?: swipeToNextChapter().get(),
             swipeToPrevChapter = override?.swipeToPrevChapter ?: swipeToPrevChapter().get(),
             tapToScroll = override?.tapToScroll ?: tapToScroll().get(),
+            customTapZones = override?.customTapZones ?: customTapZones().get(),
+            tapZoneActions = override?.tapZoneActions ?: tapZoneActions().get(),
             autoScroll = override?.autoScroll ?: autoScroll().get(),
             autoScrollInterval = override?.autoScrollInterval ?: autoScrollInterval().get(),
             autoScrollOffset = override?.autoScrollOffset ?: autoScrollOffset().get(),
@@ -1229,6 +1275,7 @@ class NovelReaderPreferences(
             showAutoScrollFloatingButton =
             override?.showAutoScrollFloatingButton ?: showAutoScrollFloatingButton().get(),
             prefetchNextChapter = override?.prefetchNextChapter ?: prefetchNextChapter().get(),
+            seamlessChapterTransition = override?.seamlessChapterTransition ?: seamlessChapterTransition().get(),
             fullScreenMode = override?.fullScreenMode ?: fullScreenMode().get(),
             keepScreenOn = override?.keepScreenOn ?: keepScreenOn().get(),
             showScrollPercentage = override?.showScrollPercentage ?: showScrollPercentage().get(),
@@ -1413,6 +1460,9 @@ class NovelReaderPreferences(
             autoScrollEndPauseMs().changes(),
             showAutoScrollFloatingButton().changes(),
             prefetchNextChapter().changes(),
+            customTapZones().changes(),
+            tapZoneActions().changes(),
+            seamlessChapterTransition().changes(),
         ) { values: Array<Any?> ->
             NavigationSettings(
                 values[0] as Boolean,
@@ -1439,6 +1489,9 @@ class NovelReaderPreferences(
                 values[21] as Long,
                 values[22] as Boolean,
                 values[23] as Boolean,
+                values[24] as Boolean,
+                values[25] as String,
+                values[26] as Boolean,
             )
         }.distinctUntilChanged()
 
@@ -1701,6 +1754,8 @@ class NovelReaderPreferences(
                 swipeToNextChapter = override?.swipeToNextChapter ?: navigation.swipeToNextChapter,
                 swipeToPrevChapter = override?.swipeToPrevChapter ?: navigation.swipeToPrevChapter,
                 tapToScroll = override?.tapToScroll ?: navigation.tapToScroll,
+                customTapZones = override?.customTapZones ?: navigation.customTapZones,
+                tapZoneActions = override?.tapZoneActions ?: navigation.tapZoneActions,
                 autoScroll = override?.autoScroll ?: navigation.autoScroll,
                 autoScrollInterval = override?.autoScrollInterval ?: navigation.autoScrollInterval,
                 autoScrollOffset = override?.autoScrollOffset ?: navigation.autoScrollOffset,
@@ -1713,6 +1768,7 @@ class NovelReaderPreferences(
                 showAutoScrollFloatingButton =
                 override?.showAutoScrollFloatingButton ?: navigation.showAutoScrollFloatingButton,
                 prefetchNextChapter = override?.prefetchNextChapter ?: navigation.prefetchNextChapter,
+                seamlessChapterTransition = override?.seamlessChapterTransition ?: navigation.seamlessChapterTransition,
                 fullScreenMode = override?.fullScreenMode ?: accessibility.fullScreenMode,
                 keepScreenOn = override?.keepScreenOn ?: accessibility.keepScreenOn,
                 showScrollPercentage = override?.showScrollPercentage ?: accessibility.showScrollPercentage,
@@ -1859,6 +1915,9 @@ class NovelReaderPreferences(
         val autoScrollEndPauseMs: Long,
         val showAutoScrollFloatingButton: Boolean,
         val prefetchNextChapter: Boolean,
+        val customTapZones: Boolean,
+        val tapZoneActions: String,
+        val seamlessChapterTransition: Boolean,
     )
 
     private data class AccessibilitySettings(
@@ -1953,6 +2012,13 @@ class NovelReaderPreferences(
         const val DEFAULT_AUTO_SCROLL_INTERVAL = 10
         const val DEFAULT_AUTO_SCROLL_OFFSET = 0
         const val DEFAULT_BACKGROUND_PRESET_ID = "linen_paper"
+        const val DEFAULT_BOOK_MODE_PREPARE_AHEAD = 3
+
+        /** Hidden debug flag guarding the reworked book-mode pipeline. */
+        const val NOVEL_BOOK_MODE_V2_KEY = "novel_reader_book_mode_v2"
+
+        /** Hidden debug flag guarding the structured `NovelBook` trace. */
+        const val NOVEL_BOOK_MODE_TRACE_LOGGING_KEY = "novel_reader_book_mode_trace_logging"
 
         private val overrideSerializer = MapSerializer(
             Long.serializer(),

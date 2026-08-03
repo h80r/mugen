@@ -1,5 +1,5 @@
 {
-  "version": 22,
+  "version": 24,
   "achievements": [
     {
       "id": "first_chapter",
@@ -2977,6 +2977,38 @@
           "id": "special_navbar_aurora_celestial",
           "title": "Celestial Navigation",
           "description": "Night sky, travelling light wave and polar halo for the Aurora bottom bar"
+        }
+      ],
+      "season": null
+    },
+    {
+      "id": "lattice_resonance",
+      "type": "secret",
+      "category": "secret",
+      "threshold": 1,
+      "points": 0,
+      "title": "Lattice Resonance",
+      "description": "The shell peeled back. Signal reached the core. Architect identified.",
+      "is_hidden": true,
+      "is_secret": true,
+      "rarity": "mythic",
+      "badge_icon": "ic_badge_lattice_resonance",
+      "tags": [
+        "secret",
+        "secret"
+      ],
+      "rewards": [
+        {
+          "type": "THEME",
+          "id": "theme_LATTICE_PROTOCOL",
+          "title": "Lattice Protocol",
+          "description": "Circuit-etched void theme with cyan signal traces"
+        },
+        {
+          "type": "SPECIAL",
+          "id": "special_navbar_lattice_circuit",
+          "title": "Circuit Edge",
+          "description": "Bottom-only rim-light along the navigation bar underside"
         }
       ],
       "season": null

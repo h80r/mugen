@@ -4,6 +4,8 @@ import android.app.Application
 import android.graphics.Bitmap
 import okio.Buffer
 import okio.BufferedSource
+import org.junit.Assume
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -11,9 +13,23 @@ import org.robolectric.annotation.Config
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+/**
+ * ImageUtil.isTallImage decodes through tachiyomi.decoder.ImageDecoder, whose static initializer
+ * loads the native "imagedecoder" library. That AAR ships Android ABI binaries only - there is no
+ * host build - so these cases cannot run on the JVM, Robolectric included. They are skipped rather
+ * than deleted: run them as an instrumentation test when the behaviour needs verifying.
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [30], application = Application::class)
 class ImageUtilTest {
+
+    @Before
+    fun requireNativeDecoder() {
+        val decoderAvailable = runCatching {
+            ImageUtil.isTallImage(createImageSource(width = 10, height = 10))
+        }.isSuccess
+        Assume.assumeTrue("native imagedecoder is not available on the host JVM", decoderAvailable)
+    }
 
     @Test
     fun `very tall image is detected as tall`() {

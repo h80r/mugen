@@ -278,9 +278,8 @@ class NovelTtsSessionController(
         if (model.utterances.isEmpty()) return null
         val utteranceIndex = utteranceId
             ?.takeIf { it.isNotBlank() }
-            ?.let { requestedId ->
-                model.utterances.indexOfFirst { it.id == requestedId }.takeIf { it >= 0 }
-            } ?: 0
+            ?.let { requestedId -> model.indexOfUtterance(requestedId).takeIf { it >= 0 } }
+            ?: 0
         if (utteranceIndex !in model.utterances.indices) return null
         return NovelTtsSession(
             chapterId = resolvedChapter.chapterId,

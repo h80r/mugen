@@ -5,6 +5,15 @@ import tachiyomi.domain.achievement.model.AchievementProgress
 
 object AchievementRevealHelper {
 
+    /**
+     * Ultra-secret one-shot easter eggs (threshold ≤ 1): invisible in lists until unlocked.
+     * Progressive secrets (threshold > 1) still use spoiler/obfuscation in place.
+     */
+    fun isCompletelyHiddenUntilUnlocked(achievement: Achievement): Boolean {
+        if (!achievement.isHidden || !achievement.isSecret) return false
+        return (achievement.threshold ?: 1) <= 1
+    }
+
     fun getDisplayName(achievement: Achievement, progress: AchievementProgress?): String {
         val isUnlocked = progress?.isUnlocked == true
         if (!achievement.isHidden || isUnlocked) return achievement.title

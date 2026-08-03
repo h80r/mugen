@@ -6,14 +6,14 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.entries.novel.model.toSNovel
 import eu.kanade.domain.items.novelchapter.interactor.SyncNovelChaptersWithSource
-import eu.kanade.domain.items.novelchapter.model.toSNovelChapter
 import eu.kanade.domain.source.interactor.NovelReaderIncognitoState
 import eu.kanade.domain.source.novel.interactor.GetNovelIncognitoState
-import eu.kanade.domain.track.novel.interactor.TrackNovelChapter
 import eu.kanade.presentation.reader.novel.NovelAutoScrollHandoffState
 import eu.kanade.presentation.reader.novel.NovelReaderAutoScrollHandoffPolicy
+import eu.kanade.presentation.reader.novel.NovelReaderPageReaderHandoffTarget
 import eu.kanade.presentation.reader.novel.NovelReaderTtsChapterHandoffPolicy
 import eu.kanade.presentation.reader.novel.SeriesInterstitialState
+import eu.kanade.presentation.reader.novel.resolveReaderProgressToPersist
 import eu.kanade.tachiyomi.data.download.novel.NovelDownloadManager
 import eu.kanade.tachiyomi.data.prefetch.AllowAllContentPrefetchEnvironment
 import eu.kanade.tachiyomi.data.prefetch.AndroidContentPrefetchEnvironment
@@ -30,7 +30,6 @@ import eu.kanade.tachiyomi.source.novel.NovelWebUrlSource
 import eu.kanade.tachiyomi.ui.novel.resolveNovelResumeChapter
 import eu.kanade.tachiyomi.ui.novel.sortedByNovelReadingOrder
 import eu.kanade.tachiyomi.ui.reader.novel.dictionary.CompositeNovelDictionaryProvider
-import eu.kanade.tachiyomi.ui.reader.novel.dictionary.NovelDictionaryHistory
 import eu.kanade.tachiyomi.ui.reader.novel.dictionary.OfflineStarDictDictionaryProvider
 import eu.kanade.tachiyomi.ui.reader.novel.setting.GeminiPromptMode
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderOverride
@@ -42,50 +41,41 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTranslationStylePreset
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTtsHighlightMode
 import eu.kanade.tachiyomi.ui.reader.novel.translation.DeepSeekModelsService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.DeepSeekPromptResolver
-import eu.kanade.tachiyomi.ui.reader.novel.translation.DeepSeekTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.DeepSeekTranslationService
-import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiPrivateBridge
-import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiPromptModifiers
 import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiPromptResolver
-import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiTranslationCacheEntry
-import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.GeminiTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.GoogleTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.GoogleTranslationService
-import eu.kanade.tachiyomi.ui.reader.novel.translation.GoogleTranslationSessionCache
 import eu.kanade.tachiyomi.ui.reader.novel.translation.GoogleUnofficialSelectedTextTranslationProvider
 import eu.kanade.tachiyomi.ui.reader.novel.translation.MistralModelsService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.MistralPromptResolver
-import eu.kanade.tachiyomi.ui.reader.novel.translation.MistralTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.MistralTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelDictionaryProvider
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelDictionaryProviderOutcome
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelDictionaryRequest
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelReaderTranslationCacheResolver
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelReaderTranslationDiskCacheStore
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelSelectedTextTranslationProvider
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelSelectedTextTranslationProviderOutcome
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelSelectedTextTranslationRequest
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelTranslationPromptFamily
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelTranslationStylePresets
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NvidiaModelsService
-import eu.kanade.tachiyomi.ui.reader.novel.translation.NvidiaTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NvidiaTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OllamaCloudModelsService
-import eu.kanade.tachiyomi.ui.reader.novel.translation.OllamaCloudTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OllamaCloudTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OnlineDictionaryProvider
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OpenRouterModelsService
-import eu.kanade.tachiyomi.ui.reader.novel.translation.OpenRouterTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.OpenRouterTranslationService
 import eu.kanade.tachiyomi.ui.reader.novel.translation.TranslationPhase
-import eu.kanade.tachiyomi.ui.reader.novel.translation.buildNovelSelectedTextTranslationRequestKey
-import eu.kanade.tachiyomi.ui.reader.novel.translation.formatAiTranslationThrowableForLog
-import eu.kanade.tachiyomi.ui.reader.novel.translation.normalizeGeminiModelId
-import eu.kanade.tachiyomi.ui.reader.novel.translation.normalizeTranslationReasoningEffort
-import eu.kanade.tachiyomi.ui.reader.novel.translation.resolveNovelTranslationPromptFamily
+import eu.kanade.tachiyomi.ui.reader.novel.translation.effectiveTranslationBatchSize
+import eu.kanade.tachiyomi.ui.reader.novel.translation.hasConfiguredTranslationProvider
+import eu.kanade.tachiyomi.ui.reader.novel.translation.isPrivateBridgeUnlocked
+import eu.kanade.tachiyomi.ui.reader.novel.translation.requiresPrivateBridgeUnlock
+import eu.kanade.tachiyomi.ui.reader.novel.translation.shouldUseSinglePrivateChapterRequestMode
+import eu.kanade.tachiyomi.ui.reader.novel.translation.toDeepSeekTranslationParams
+import eu.kanade.tachiyomi.ui.reader.novel.translation.toGeminiTranslationParams
+import eu.kanade.tachiyomi.ui.reader.novel.translation.toMistralTranslationParams
+import eu.kanade.tachiyomi.ui.reader.novel.translation.toNvidiaTranslationParams
+import eu.kanade.tachiyomi.ui.reader.novel.translation.toOllamaCloudTranslationParams
+import eu.kanade.tachiyomi.ui.reader.novel.translation.toOpenRouterTranslationParams
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toTranslationCacheRequirements
 import eu.kanade.tachiyomi.ui.reader.novel.translation.translationCacheModelId
+import eu.kanade.tachiyomi.ui.reader.novel.translation.translationConcurrencyLimit
 import eu.kanade.tachiyomi.ui.reader.novel.tts.AndroidNovelTtsAudioFocusBridge
 import eu.kanade.tachiyomi.ui.reader.novel.tts.AndroidNovelTtsEngineInfoSource
 import eu.kanade.tachiyomi.ui.reader.novel.tts.AndroidNovelTtsPlatformFactory
@@ -110,12 +100,10 @@ import eu.kanade.tachiyomi.ui.reader.novel.tts.SharedNovelTtsSessionStore
 import eu.kanade.tachiyomi.ui.reader.novel.tts.resolveNovelTtsVoiceSelection
 import eu.kanade.tachiyomi.util.system.isNightMode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -123,10 +111,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.decodeFromString
@@ -146,25 +130,22 @@ import org.jsoup.nodes.TextNode
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.achievement.handler.AchievementEventBus
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.achievement.repository.ActivityDataRepository
 import tachiyomi.domain.entries.novel.interactor.GetNovel
 import tachiyomi.domain.entries.novel.model.Novel
-import tachiyomi.domain.history.novel.model.NovelHistoryUpdate
 import tachiyomi.domain.history.novel.repository.NovelHistoryRepository
 import tachiyomi.domain.items.novelchapter.model.NovelChapter
 import tachiyomi.domain.items.novelchapter.model.NovelChapterUpdate
 import tachiyomi.domain.items.novelchapter.repository.NovelChapterRepository
 import tachiyomi.domain.series.novel.interactor.GetNovelSeriesWithEntries
 import tachiyomi.domain.source.novel.service.NovelSourceManager
+import tachiyomi.i18n.MR
 import tachiyomi.i18n.aniyomi.AYMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.util.Date
 import java.util.LinkedHashMap
 import java.util.Locale
 import java.util.concurrent.TimeUnit
-import kotlin.math.roundToInt
 
 enum class ProviderApiTestStatus {
     Idle,
@@ -183,6 +164,9 @@ class NovelReaderScreenModel(
     private val getNovelSeriesWithEntries: GetNovelSeriesWithEntries = Injekt.get(),
     private val sourceManager: NovelSourceManager = Injekt.get(),
     private val novelDownloadManager: NovelDownloadManager = NovelDownloadManager(),
+    private val getNovelBookState: tachiyomi.domain.book.novel.interactor.GetNovelBookState = Injekt.get(),
+    private val setNovelBookProgress: tachiyomi.domain.book.novel.interactor.SetNovelBookProgress =
+        Injekt.get(),
     private val pluginStorage: NovelPluginStorage = Injekt.get(),
     private val historyRepository: NovelHistoryRepository? = null,
     private val basePreferences: BasePreferences = Injekt.get(),
@@ -353,7 +337,14 @@ class NovelReaderScreenModel(
         GoogleTranslationService(client = networkHelper.client)
     },
     private val translationQueueManager: TranslationQueueManager = Injekt.get(),
-) : StateScreenModel<NovelReaderScreenModel.State>(State.Loading()) {
+) : StateScreenModel<NovelReaderScreenModel.State>(State.Loading()),
+    NovelBookReaderHost,
+    NovelTtsHost,
+    NovelAiProviderHost,
+    NovelTranslationHost,
+    NovelProgressPersistenceHost,
+    NovelSelectionTranslationHost,
+    NovelTranslationBatchHost {
     private val contentPrefetchService = ContentPrefetchService(
         environment = runCatching {
             AndroidContentPrefetchEnvironment(Injekt.get<Application>())
@@ -362,47 +353,390 @@ class NovelReaderScreenModel(
         },
     )
     private val application = Injekt.get<Application>()
-    private val ttsChapterModelBuilder = NovelTtsChapterModelBuilder(NovelTtsWordTokenizer)
-    private val ttsHighlightEstimator = NovelTtsHighlightEstimator()
-    private val ttsEngineRegistry = NovelTtsEngineRegistry(AndroidNovelTtsEngineInfoSource(application))
-    private val ttsEngine = NovelTtsEngine(AndroidNovelTtsPlatformFactory(application))
-    private val ttsAudioFocusManager = NovelTtsAudioFocusManager(
-        bridge = AndroidNovelTtsAudioFocusBridge(application),
-        onPauseRequested = {
-            screenModelScope.launch {
-                ttsSessionController.pause()
-            }
-        },
-    )
-    private val ttsSessionStore = SharedNovelTtsSessionStore
-    private val ttsSessionController = NovelTtsSessionController(
-        chapterSource = object : eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsChapterSource {
-            override suspend fun loadChapter(chapterId: Long): NovelTtsResolvedChapter? {
-                return resolveTtsChapter(chapterId)
-            }
-        },
-        speaker = object : eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackSpeaker {
-            override suspend fun speak(
-                utterance: eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsUtterance,
-                flushQueue: Boolean,
-                startWordIndex: Int,
-            ) {
-                val resumedText = utterance.wordRanges
-                    .getOrNull(startWordIndex.coerceAtLeast(0))
-                    ?.startChar
-                    ?.let { startChar -> utterance.text.substring(startChar) }
-                    ?: utterance.text
-                ttsEngine.speak(utterance.id, resumedText, flushQueue)
-            }
 
-            override fun stop() {
-                ttsEngine.stop()
+    /**
+     * Book-mode subsystem, extracted into its own controller so the screen model stays focused on
+     * the chapter-by-chapter reader. The controller reaches the shared reader state through
+     * [NovelBookReaderHost] implemented below.
+     */
+    private val bookController = NovelBookReaderController(host = this)
+
+    /** Window the mounted renderer holds; renderers pull their sections from it themselves. */
+    internal val bookWindow: kotlinx.coroutines.flow.StateFlow<NovelBookWindowState> =
+        bookController.bookWindow
+
+    /** Section markup for a renderer that is missing it. */
+    internal suspend fun loadBookSectionHtml(sectionIndex: Int): String? =
+        bookController.bookSectionHtml(sectionIndex)
+
+    internal val bookEngineSpine: NovelBookSpine
+        get() = bookController.bookEngineSpine
+
+    internal val bookEngineLocation: NovelBookLocation
+        get() = bookController.bookEngineLocation
+
+    /** Explicit renderer moves; the current position is never pushed back into the renderer. */
+    internal val bookSeekRequests: kotlinx.coroutines.flow.StateFlow<BookSeekRequest?> =
+        bookController.bookSeekRequests
+
+    internal fun onBookSeekApplied(seekRequestId: Long) =
+        bookController.onBookSeekApplied(seekRequestId)
+
+    /** Writes the book position through right away, e.g. on ON_STOP or when leaving the reader. */
+    internal fun flushBookModeProgress() = bookController.flushBookModeProgress()
+
+    internal suspend fun loadBookEngineDocument(section: NovelBookSection): NovelBookDocument =
+        bookController.loadBookEngineDocument(section)
+
+    fun nativeBookBlocksForSection(sectionIndex: Int): List<NovelRichContentBlock>? =
+        bookController.nativeBookBlocksForSection(sectionIndex)
+
+    // ---------------------------------------------------------------------------------------------
+    // Book mode delegates. All book-mode logic lives in [bookController]; the screen model only
+    // forwards the reader's calls and hosts the shared state through [NovelBookReaderHost].
+    // ---------------------------------------------------------------------------------------------
+
+    fun observeReadingModeChanges(loadedChapter: NovelChapter) {
+        bookController.observeReadingModeChanges(loadedChapter)
+    }
+
+    internal fun onBookModeScroll(sectionIndex: Int, sectionFraction: Float) =
+        bookController.onBookModeScroll(sectionIndex, sectionFraction)
+
+    internal fun onBookEngineLocationChanged(location: NovelBookLocation) =
+        bookController.onBookEngineLocationChanged(location)
+
+    internal fun seekBookModeToProgress(fraction: Float) = bookController.seekBookModeToProgress(fraction)
+
+    internal fun onBookModeChapterSelected(chapterId: Long): Boolean =
+        bookController.onBookModeChapterSelected(chapterId)
+
+    internal fun onBookModeRetrySection(sectionIndex: Int) =
+        bookController.onBookModeRetrySection(sectionIndex)
+
+    internal fun prepareWholeBook() = bookController.prepareWholeBook()
+
+    // ---------------------------------------------------------------------------------------------
+    // NovelBookReaderHost implementation: the book controller reaches the shared reader state here.
+    // ---------------------------------------------------------------------------------------------
+
+    override val bookScope: CoroutineScope get() = screenModelScope
+
+    override fun bookCurrentNovel(): Novel? = currentNovel
+
+    override fun bookCurrentChapter(): NovelChapter? = currentChapter
+
+    override fun bookChapterOrderList(): List<NovelChapter> = chapterOrderList
+
+    override fun bookFullChapterOrderList(): List<NovelChapter> = fullChapterOrderList
+
+    override fun bookMarkChapterReadInMemory(chapterId: Long) {
+        val chapterIndex = chapterOrderList.indexOfFirst { it.id == chapterId }
+        if (chapterIndex >= 0 && !chapterOrderList[chapterIndex].read) {
+            chapterOrderList[chapterIndex] = chapterOrderList[chapterIndex].copy(read = true)
+        }
+    }
+
+    override fun bookUpdateSuccessState(
+        transform: (NovelReaderScreenModel.State.Success) -> NovelReaderScreenModel.State.Success,
+    ) {
+        val successState = mutableState.value as? State.Success ?: return
+        mutableState.value = transform(successState)
+    }
+
+    override fun bookAdoptBookModeChapter(chapterId: Long) = adoptBookModeChapter(chapterId)
+
+    /**
+     * Moves the session's chapter anchor to the chapter under the caret.
+     *
+     * Over a book the reader never opens a new chapter, so the anchor stayed on the chapter the
+     * session was entered from: history, the exit snapshot and the read threshold all described
+     * chapter one no matter how far the reader had scrolled. The anchor now follows the text, so
+     * the stored position and the history entry describe the same chapter and resuming lands where
+     * reading stopped.
+     */
+    private fun adoptBookModeChapter(chapterId: Long) {
+        val chapter = chapterOrderList.firstOrNull { it.id == chapterId }
+            ?: fullChapterOrderList.firstOrNull { it.id == chapterId }
+            ?: return
+        val previousChapterId = currentChapter?.id
+        if (previousChapterId == chapter.id) return
+        currentChapter = chapter
+        // The overlay indicator follows the text, not the session: the queue may be working on a
+        // chapter the reader has already left behind.
+        translationController.onActiveChapterChanged(chapter.id)
+        lastSavedRead = chapter.read
+        lastSavedProgress = chapter.lastPageRead
+        initialProgressIndex = 0
+        hasProgressChanged = true
+        progressPersistenceController.resetSessionReadTimer()
+        if (previousChapterId != null) {
+            screenModelScope.launch {
+                withContext(NonCancellable) {
+                    progressPersistenceController.flushPendingHistorySnapshot(previousChapterId)
+                }
             }
-        },
-        sessionStore = ttsSessionStore,
+        }
+    }
+
+    override fun bookEnqueueProgressPersistence(update: PendingProgressPersistence) =
+        progressPersistenceController.enqueueProgressPersistence(update)
+
+    override fun bookApplyBookSectionTranslation(chapterId: Long, bodyHtml: String): String =
+        applyBookSectionTranslation(chapterId, bodyHtml)
+
+    override fun bookGeminiTranslationVisible(): Boolean = translationState.isGeminiTranslationVisible
+
+    override fun bookGoogleTranslationVisible(): Boolean = translationState.isGoogleTranslationVisible
+
+    override fun bookTtsChapterRepository(): NovelTtsChapterRepository = ttsChapterRepository
+
+    // ---------------------------------------------------------------------------------------------
+    // NovelTtsHost implementation.
+    // ---------------------------------------------------------------------------------------------
+
+    override val ttsScope: CoroutineScope get() = screenModelScope
+
+    override fun ttsCurrentNovel(): Novel? = currentNovel
+
+    override fun ttsCurrentChapter(): NovelChapter? = currentChapter
+
+    override fun ttsReaderSettings(): NovelReaderSettings? =
+        (mutableState.value as? State.Success)?.readerSettings
+
+    override fun ttsUpdateSuccessState(
+        transform: (NovelReaderScreenModel.State.Success) -> NovelReaderScreenModel.State.Success,
+    ) {
+        val successState = mutableState.value as? State.Success ?: return
+        mutableState.value = transform(successState)
+    }
+
+    override fun ttsRefreshTtsUiState(uiState: NovelReaderTtsUiState) {
+        val state = mutableState.value
+        if (state is State.Success) {
+            mutableState.value = state.copy(ttsUiState = uiState)
+        }
+    }
+
+    override fun ttsSetTtsUiState(uiState: NovelReaderTtsUiState) {
+        ttsController.setTtsUiStateFromReader(uiState)
+    }
+
+    override fun ttsBookChapterAtReadingPosition(): NovelChapter? =
+        bookController.bookModeChapterAtReadingPosition()
+
+    override fun ttsActiveTranslationChapterId(): Long? = activeTranslationChapterId()
+
+    override fun ttsIsGeminiTranslating(): Boolean = translationState.isGeminiTranslating
+
+    override fun ttsGeminiTranslationJob(): Job? = translationController.geminiTranslationJob()
+
+    override fun ttsIsGeminiTranslationVisible(): Boolean = translationState.isGeminiTranslationVisible
+
+    override fun ttsIsGoogleTranslationVisible(): Boolean = translationState.isGoogleTranslationVisible
+
+    override fun ttsTranslationHolderEmpty(provider: String): Boolean = translationHolder.isEmpty(provider)
+
+    override fun ttsApplyGeminiTranslationToContentBlocks(
+        blocks: List<ContentBlock>,
+        forceTranslation: Boolean,
+    ): List<ContentBlock> = applyGeminiTranslationToContentBlocks(blocks, forceTranslation)
+
+    override fun ttsApplyGoogleTranslationToContentBlocks(
+        blocks: List<ContentBlock>,
+    ): List<ContentBlock> = applyGoogleTranslationToContentBlocks(blocks)
+
+    override fun ttsUpdateGeminiSetting(
+        setGlobal: () -> Unit,
+        setOverride: (NovelReaderOverride) -> NovelReaderOverride,
+    ) = updateGeminiSetting(setGlobal, setOverride)
+
+    override fun ttsUpdateContent(settings: NovelReaderSettings) = updateContent(settings)
+
+    // ---------------------------------------------------------------------------------------------
+    // NovelAiProviderHost implementation.
+    // ---------------------------------------------------------------------------------------------
+
+    override val providerScope: CoroutineScope get() = screenModelScope
+
+    override fun providerCurrentNovel(): Novel? = currentNovel
+
+    override fun providerReaderSettings(): NovelReaderSettings? =
+        (mutableState.value as? State.Success)?.readerSettings
+
+    override fun providerUpdateContent(settings: NovelReaderSettings) = updateContent(settings)
+
+    override fun providerAddLog(message: String) = addAiTranslationLog(message)
+
+    override suspend fun providerRequestTranslationBatch(
+        segments: List<String>,
+        settings: NovelReaderSettings,
+        onMessage: (String) -> Unit,
+    ): List<String?>? = translationBatchExecutor.requestTranslationBatch(segments, settings, onMessage)
+
+    override fun providerApplyAiProvidersState(state: NovelAiProviderState) {
+        val successState = mutableState.value as? State.Success ?: return
+        mutableState.value = successState.copy(
+            aiProviders = State.ReaderAiProvidersState(
+                openRouterModelIds = state.openRouterModelIds,
+                isOpenRouterModelsLoading = state.isOpenRouterModelsLoading,
+                isTestingOpenRouterConnection = state.isTestingOpenRouterConnection,
+                openRouterApiTestStatus = state.openRouterApiTestStatus,
+                openRouterApiTestMessage = state.openRouterApiTestMessage,
+                deepSeekModelIds = state.deepSeekModelIds,
+                isDeepSeekModelsLoading = state.isDeepSeekModelsLoading,
+                isTestingDeepSeekConnection = state.isTestingDeepSeekConnection,
+                deepSeekApiTestStatus = state.deepSeekApiTestStatus,
+                deepSeekApiTestMessage = state.deepSeekApiTestMessage,
+                mistralModelIds = state.mistralModelIds,
+                isMistralModelsLoading = state.isMistralModelsLoading,
+                isTestingMistralConnection = state.isTestingMistralConnection,
+                mistralApiTestStatus = state.mistralApiTestStatus,
+                mistralApiTestMessage = state.mistralApiTestMessage,
+                nvidiaModelIds = state.nvidiaModelIds,
+                isNvidiaModelsLoading = state.isNvidiaModelsLoading,
+                isTestingNvidiaConnection = state.isTestingNvidiaConnection,
+                nvidiaApiTestStatus = state.nvidiaApiTestStatus,
+                nvidiaApiTestMessage = state.nvidiaApiTestMessage,
+                ollamaCloudModelIds = state.ollamaCloudModelIds,
+                isOllamaCloudModelsLoading = state.isOllamaCloudModelsLoading,
+                isTestingOllamaCloudConnection = state.isTestingOllamaCloudConnection,
+                ollamaCloudApiTestStatus = state.ollamaCloudApiTestStatus,
+                ollamaCloudApiTestMessage = state.ollamaCloudApiTestMessage,
+            ),
+        )
+    }
+
+    override fun providerHasConfiguredTranslationProvider(settings: NovelReaderSettings): Boolean =
+        settings.hasConfiguredTranslationProvider()
+
+    // ---------------------------------------------------------------------------------------------
+    // NovelTranslationHost implementation: the translation controller reaches the shared reader
+    // state here.
+    // ---------------------------------------------------------------------------------------------
+
+    override val translationScope: CoroutineScope get() = screenModelScope
+
+    override fun translationCurrentChapter(): NovelChapter? = currentChapter
+
+    override fun translationReaderSettings(): NovelReaderSettings? =
+        (mutableState.value as? State.Success)?.readerSettings
+
+    override fun translationActiveChapterId(): Long? = activeTranslationChapterId()
+
+    override fun translationCurrentParsedTextBlocks(): List<String> = currentParsedTextBlocks()
+
+    override fun translationHolderClear(provider: String) = translationHolder.clear(provider)
+
+    override fun translationHolderPut(provider: String, map: Map<Int, String>) {
+        // The in-memory maps belong to one chapter, and over a book that chapter is not necessarily
+        // the one the reader was opened with. Remembering it here is what lets a neighbouring
+        // resident chapter keep its own (cached) translation instead of being served this one.
+        translationHolderChapterId = activeTranslationChapterId()
+        translationHolder.put(provider, map)
+    }
+
+    override fun translationHolderIsEmpty(provider: String): Boolean = translationHolder.isEmpty(provider)
+
+    override fun translationHolderMap(provider: String): Map<Int, String> = translationHolder.map(provider)
+
+    override fun translationUpdateContent(settings: NovelReaderSettings) = updateContent(settings)
+
+    override fun translationRefreshBookModeSection(chapterId: Long) = refreshBookModeSection(chapterId)
+
+    override fun translationRefreshBookModeTranslationVariant() {
+        bookController.refreshSectionsAfterTranslationVisibilityChange()
+    }
+
+    override fun translationIsGeminiTranslating(): Boolean = translationState.isGeminiTranslating
+
+    override fun translationIsGeminiTranslationVisible(): Boolean = translationState.isGeminiTranslationVisible
+
+    override fun translationIsBookRuntimeActive(): Boolean = bookController.isBookRuntimeActive()
+
+    override fun translationHasConfiguredProvider(settings: NovelReaderSettings): Boolean =
+        settings.hasConfiguredTranslationProvider()
+
+    override fun translationApplyTranslationState(
+        gemini: State.ReaderGeminiState,
+        google: State.ReaderGoogleState,
+    ) {
+        val successState = mutableState.value as? State.Success ?: return
+        mutableState.value = successState.copy(
+            geminiTranslation = gemini,
+            googleTranslation = google,
+        )
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // NovelProgressPersistenceHost implementation: the progress persistence controller reaches the
+    // shared reader state here.
+    // ---------------------------------------------------------------------------------------------
+
+    override val progressScope: CoroutineScope get() = screenModelScope
+
+    override fun progressCurrentChapterId(): Long? = currentChapter?.id
+
+    override fun progressCurrentNovel(): Novel? = currentNovel
+
+    // ---------------------------------------------------------------------------------------------
+    // NovelSelectionTranslationHost implementation: the selected-text translation + dictionary
+    // controller reaches the shared reader state here.
+    // ---------------------------------------------------------------------------------------------
+
+    override val selectionScope: CoroutineScope get() = screenModelScope
+
+    override fun selectionReaderSettings(): NovelReaderSettings? =
+        (mutableState.value as? State.Success)?.readerSettings
+
+    override fun selectionNovel(): Novel? = currentNovel
+
+    override fun selectionChapter(): NovelChapter? = currentChapter
+
+    override fun selectionSourceLanguage(): String? =
+        currentNovel?.source?.let { sourceManager.get(it)?.lang }
+
+    override fun selectionUpdateContent(settings: NovelReaderSettings) = updateContent(settings)
+
+    // ---------------------------------------------------------------------------------------------
+    // NovelTranslationBatchHost implementation: the batch executor reaches the shared reader state
+    // here for whole-chapter batches and next-chapter prefetch.
+    // ---------------------------------------------------------------------------------------------
+
+    override fun batchReaderSettings(): NovelReaderSettings? =
+        (mutableState.value as? State.Success)?.readerSettings
+
+    override fun batchCurrentNovel(): Novel? = currentNovel
+
+    override fun batchCurrentChapter(): NovelChapter? = currentChapter
+
+    override fun batchSourceManager(): NovelSourceManager = sourceManager
+
+    override fun batchFindNextChapter(chapter: NovelChapter): NovelChapter? = findNextChapter(chapter)
+
+    override fun batchCoroutineScope(): CoroutineScope = screenModelScope
+
+    override fun batchCacheReadChapters(): Boolean = novelReaderPreferences.cacheReadChapters().get()
+
+    override fun batchAddAiTranslationLog(message: String) = addAiTranslationLog(message)
+
+    /**
+     * TTS subsystem, extracted into its own controller. The screen model hosts the shared state
+     * through [NovelTtsHost] and forwards the reader's `tts*` calls.
+     */
+    private val ttsController = NovelTtsController(
+        host = this,
+        application = application,
+        novelReaderPreferences = novelReaderPreferences,
+        ttsChapterRepository = ttsChapterRepository,
+        sourceManager = sourceManager,
     )
+
+    /** Snapshot of the TTS UI state, merged into the reader state by the screen model. */
+    private val ttsUiState: NovelReaderTtsUiState
+        get() = ttsController.snapshot()
+
     private var settingsJob: Job? = null
-    private var ttsWordProgressJob: Job? = null
     private var contentModel: NovelReaderContentModel? = null
     private var currentNovel: Novel? = null
     private var currentChapter: NovelChapter? = null
@@ -416,130 +750,125 @@ class NovelReaderScreenModel(
     private var lastSavedRead: Boolean? = null
     private var initialProgressIndex: Int = 0
     private var hasProgressChanged: Boolean = false
-    private var chapterReadStartTimeMs: Long = System.currentTimeMillis()
-    private var pendingHistoryReadDurationMs: Long = 0L
     private var nextChapterPrefetchJob: Job? = null
+
+    /**
+     * Chapter currently owned by this screen model. It starts as the chapter the screen was opened
+     * with, but a seamless in-place chapter switch moves it forward/backward without recreating the
+     * screen.
+     */
+    private var currentSessionChapterId: Long = chapterId
+    private var seamlessChapterSwitchJob: Job? = null
+    private var seamlessChapterSwitchToken: Long = 0L
     private var hasTriggeredNextChapterPrefetch: Boolean = false
-    private var nextChapterGeminiPrefetchJob: Job? = null
     private var adjacentJaomixPageJob: Job? = null
     private val attemptedJaomixPages = mutableSetOf<Int>()
-    private var hasTriggeredNextChapterGeminiPrefetch: Boolean = false
-    private var hasTriggeredGeminiAutoStart: Boolean = false
-    private var pendingAutoStartGeminiTranslation: Boolean = autoStartGeminiTranslation
-    private var geminiTranslationJob: Job? = null
-    private var queueProgressJob: Job? = null
-    private val translationHolder = NovelReaderTranslationHolder { currentParsedTextBlocks() }
-    private var isGeminiTranslating: Boolean = false
-    private var geminiTranslationProgress: Int = 0
-    private var isGeminiTranslationVisible: Boolean = false
-    private var hasGeminiTranslationCache: Boolean = false
-    private var geminiLogs: List<String> = emptyList()
 
-    // Google Translation
-    private var googleTranslationJob: Job? = null
-    private var isGoogleTranslating: Boolean = false
-    private var googleTranslationProgress: Int = 0
-    private var isGoogleTranslationVisible: Boolean = false
-    private var hasGoogleTranslationCache: Boolean = false
-    private var googleLogs: List<String> = emptyList()
-    private var googleRateLimited: Boolean = false
-    private var translationPhase: TranslationPhase = TranslationPhase.IDLE
-    private val googleSessionCache = GoogleTranslationSessionCache()
-    private var ttsUiState: NovelReaderTtsUiState = NovelReaderTtsUiState()
+    /**
+     * Rendered translation holder: the content pipeline reads translated text straight from here.
+     * The translation controller writes into it through [NovelTranslationHost].
+     */
+    private val translationHolder = NovelReaderTranslationHolder { currentParsedTextBlocks() }
+
+    /** Chapter the in-memory translation maps were produced for, null when there are none. */
+    private var translationHolderChapterId: Long? = null
+
+    /**
+     * Whole-chapter translation subsystem (Gemini/AI queue + Google). Owns the jobs, visibility and
+     * cache flags and the per-provider logs.
+     */
+    private val translationController = NovelTranslationController(
+        host = this,
+        application = application,
+        novelReaderPreferences = novelReaderPreferences,
+        googleTranslationService = googleTranslationService,
+        translationQueueManager = translationQueueManager,
+    ).also { controller ->
+        controller.setPendingAutoStart(autoStartGeminiTranslation)
+    }
+
+    /**
+     * Dispatches whole-chapter translation batches to the configured provider service.
+     */
+    private val translationBatchExecutor = NovelTranslationBatchExecutor(
+        host = this,
+        geminiTranslationService = geminiTranslationService,
+        openRouterTranslationService = openRouterTranslationService,
+        deepSeekTranslationService = deepSeekTranslationService,
+        mistralTranslationService = mistralTranslationService,
+        nvidiaTranslationService = nvidiaTranslationService,
+        ollamaCloudTranslationService = ollamaCloudTranslationService,
+    )
+
+    /** Snapshot of the translation UI state, merged into the reader state by the screen model. */
+    private val translationState: NovelTranslationState
+        get() = translationController.snapshot()
+
     private var seriesInterstitialState: SeriesInterstitialState? = null
     private var seriesInterstitialShownForChapterId: Long? = null
-    private var initializedTtsEnginePackage: String? = null
-    private var pendingTtsStartRequest: eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackStartRequest? = null
 
-    private var openRouterModelIds: List<String> = emptyList()
-    private var isOpenRouterModelsLoading: Boolean = false
-    private var isTestingOpenRouterConnection: Boolean = false
-    private var openRouterApiTestStatus: ProviderApiTestStatus = ProviderApiTestStatus.Idle
-    private var openRouterApiTestMessage: String? = null
-    private var deepSeekModelIds: List<String> = emptyList()
-    private var isDeepSeekModelsLoading: Boolean = false
-    private var isTestingDeepSeekConnection: Boolean = false
-    private var deepSeekApiTestStatus: ProviderApiTestStatus = ProviderApiTestStatus.Idle
-    private var deepSeekApiTestMessage: String? = null
-    private var mistralModelIds: List<String> = emptyList()
-    private var isMistralModelsLoading: Boolean = false
-    private var isTestingMistralConnection: Boolean = false
-    private var mistralApiTestStatus: ProviderApiTestStatus = ProviderApiTestStatus.Idle
-    private var mistralApiTestMessage: String? = null
-    private var nvidiaModelIds: List<String> = emptyList()
-    private var isNvidiaModelsLoading: Boolean = false
-    private var isTestingNvidiaConnection: Boolean = false
-    private var nvidiaApiTestStatus: ProviderApiTestStatus = ProviderApiTestStatus.Idle
-    private var nvidiaApiTestMessage: String? = null
-    private var ollamaCloudModelIds: List<String> = emptyList()
-    private var isOllamaCloudModelsLoading: Boolean = false
-    private var isTestingOllamaCloudConnection: Boolean = false
-    private var ollamaCloudApiTestStatus: ProviderApiTestStatus = ProviderApiTestStatus.Idle
-    private var ollamaCloudApiTestMessage: String? = null
-    private var selectedTextTranslationSelection: NovelSelectedTextSelection? = null
-    private var selectedTextTranslationUiState: NovelSelectedTextTranslationUiState =
-        NovelSelectedTextTranslationUiState.Idle
-    private var selectedTextTranslationJob: Job? = null
-    private val selectedTextTranslationSessionCache = NovelSelectedTextTranslationSessionCache()
-    private var novelDictionaryUiState: NovelDictionaryUiState = NovelDictionaryUiState.Idle
-    private var novelDictionaryJob: Job? = null
-    private val novelDictionarySessionCache = NovelDictionarySessionCache()
-    private val progressPersistenceMutex = Mutex()
-    private val ttsRuntimeMutex = Mutex()
-    private var ttsRuntimeGeneration: Long = 0L
-    private val pendingProgressPersistenceByChapterId = linkedMapOf<Long, PendingProgressPersistence>()
-    private var progressPersistenceJob: Job? = null
+    /**
+     * AI translation providers subsystem (model lists, connection tests). Owns its state and
+     * pushes it into the reader state through [NovelAiProviderHost].
+     */
+    private val aiProviderController = NovelAiProviderController(
+        host = this,
+        application = application,
+        novelReaderPreferences = novelReaderPreferences,
+        openRouterModelsService = openRouterModelsService,
+        deepSeekModelsService = deepSeekModelsService,
+        mistralModelsService = mistralModelsService,
+        nvidiaModelsService = nvidiaModelsService,
+        ollamaCloudModelsService = ollamaCloudModelsService,
+    )
+
+    /** Snapshot of the AI provider UI state, merged into the reader state by the screen model. */
+    private val aiProvidersState: NovelAiProviderState
+        get() = aiProviderController.snapshot()
+
+    /**
+     * Chapter progress + reading-history persistence subsystem. Owns the pending-progress queue and
+     * the bounded flush pipeline; the screen model forwards the reader's persistence calls here.
+     */
+    private val progressPersistenceController = NovelProgressPersistenceController(
+        host = this,
+        novelChapterRepository = novelChapterRepository,
+        getIncognitoState = getIncognitoState,
+        eventBus = eventBus,
+        activityDataRepository = activityDataRepository,
+        historyRepository = historyRepository,
+    )
+
+    private val selectionTranslationController = NovelSelectionTranslationController(
+        host = this,
+        application = application,
+        novelReaderPreferences = novelReaderPreferences,
+        selectedTextTranslationProvider = selectedTextTranslationProvider,
+        novelDictionaryProvider = novelDictionaryProvider,
+    )
+
+    /** Snapshot of the selection/dictionary UI state, merged into the reader state below. */
+    private val selectionTranslationSnapshot: NovelSelectionTranslationSnapshot
+        get() = selectionTranslationController.snapshot()
     private var incognitoObservationJob: Job? = null
 
-    @Volatile
-    private var progressPersistenceScheduled = false
     private val structuredJson = Json {
         ignoreUnknownKeys = true
         isLenient = true
     }
-    private val resolvedHistoryRepository by lazy {
-        historyRepository ?: runCatching { Injekt.get<NovelHistoryRepository>() }.getOrNull()
-    }
     init {
-        ttsEngine.setProgressListener(
-            object : NovelTtsPlaybackProgressListener {
-                override fun onUtteranceStart(utteranceId: String) {
-                    screenModelScope.launch {
-                        handleTtsUtteranceStarted(utteranceId)
-                    }
-                }
-
-                override fun onUtteranceDone(utteranceId: String) {
-                    screenModelScope.launch {
-                        ttsWordProgressJob?.cancel()
-                        ttsSessionController.onUtteranceCompleted(utteranceId)
-                    }
-                }
-
-                override fun onUtteranceError(utteranceId: String) {
-                    screenModelScope.launch {
-                        ttsWordProgressJob?.cancel()
-                        ttsUiState = ttsUiState.copy(errorMessage = "Failed to speak utterance")
-                        refreshTtsUiState()
-                    }
-                }
-            },
-        )
-        screenModelScope.launch {
-            refreshTtsEngines()
-        }
-        screenModelScope.launch {
-            ttsSessionController.state.collect { sessionState ->
-                onTtsSessionStateChanged(sessionState)
-            }
-        }
+        ttsController.attach()
         screenModelScope.launch {
             loadChapter()
         }
     }
-    private suspend fun loadChapter() {
+    private suspend fun loadChapter(
+        targetChapterId: Long = currentSessionChapterId,
+        seamless: Boolean = false,
+    ) {
+        currentSessionChapterId = targetChapterId
         val snapshot = try {
-            ttsChapterRepository.loadChapterSnapshot(chapterId)
+            ttsChapterRepository.loadChapterSnapshot(targetChapterId)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to load novel chapter snapshot" }
             return setError(e.message)
@@ -570,8 +899,8 @@ class NovelReaderScreenModel(
         initialProgressIndex = snapshot.lastSavedIndex
         hasProgressChanged = false
         hasTriggeredNextChapterPrefetch = false
-        hasTriggeredNextChapterGeminiPrefetch = false
-        hasTriggeredGeminiAutoStart = false
+        translationBatchExecutor.resetNextChapterGeminiPrefetchTriggered()
+        translationController.resetAutoStartFlags()
         customCss = snapshot.customCss
         customJs = snapshot.customJs
         pluginSite = snapshot.pluginSite
@@ -583,10 +912,16 @@ class NovelReaderScreenModel(
             pluginSite = pluginSite,
         )
         val initialSettings = novelReaderPreferences.resolveSettings(novel.source)
-        mutableState.value = State.Loading(initialSettings)
+        // A seamless switch keeps the previous Success state on screen while the next chapter is
+        // prepared, so the reader never flashes the full-screen chapter loading state.
+        if (!seamless) {
+            mutableState.value = State.Loading(initialSettings)
+        }
         if (contentModel == null) return setError("Chapter content is empty")
-        chapterReadStartTimeMs = System.currentTimeMillis()
-        restoreGeminiTranslationFromCache(
+        progressPersistenceController.resetSessionReadTimer()
+        bookController.startForChapter(chapter)
+        observeReadingModeChanges(chapter)
+        translationController.restoreGeminiTranslationFromCache(
             chapterId = chapter.id,
             settings = initialSettings,
         )
@@ -603,15 +938,24 @@ class NovelReaderScreenModel(
                     }
                     skippedInitialEmission = true
                     updateContent(settings)
-                    initializeTtsRuntime()
+                    ttsController.initializeTtsRuntimePublic()
                     maybeAutoStartGeminiTranslation(settings)
                     maybeAutoStartGoogleTranslation()
                 }
         }
-        saveHistorySnapshot(chapter.id, sessionReadDurationMs = 0L)
+        if (eu.kanade.domain.entries.novel.LocalNovelIntegrity.shouldRecordHistoryForChapterHtml(
+                normalizedChapterHtml,
+            )
+        ) {
+            progressPersistenceController.saveHistorySnapshot(chapter.id, sessionReadDurationMs = 0L)
+        } else {
+            logcat(LogPriority.DEBUG) {
+                "Skip novel history for empty chapter content novelId=${novel.id} chapterId=${chapter.id}"
+            }
+        }
         updateContent(initialSettings)
-        initializeTtsRuntime()
-        maybeRestoreTtsAfterChapterHandoff(
+        ttsController.initializeTtsRuntimePublic()
+        ttsController.restoreTtsAfterChapterHandoff(
             chapterId = chapter.id,
             settings = initialSettings,
         )
@@ -640,60 +984,60 @@ class NovelReaderScreenModel(
             fullChapterOrderList = loadChapterOrderList(novel.id)
             val successState = mutableState.value as? State.Success ?: return@launch
             mutableState.value = successState.copy(fullChapterOrderList = fullChapterOrderList)
+            // Book mode builds its spine from the full chapter list. When the reader opened before
+            // that list was available, the spine only covered the loaded window, so the resume
+            // position mapped to the wrong section and everything above it was missing from the
+            // document. Rebuild the spine once the real list arrives.
+            val chapter = currentChapter
+            if (chapter != null && fullChapterOrderList.isNotEmpty()) {
+                bookController.rebuildSpineIfNeeded(chapter, fullChapterOrderList)
+            }
         }
     }
 
     private fun setError(message: String?) {
         mutableState.value = State.Error(message)
     }
-    private fun subscribeToQueueProgress(chapterId: Long) {
-        queueProgressJob?.cancel()
-        queueProgressJob = screenModelScope.launch {
-            translationQueueManager.progressUpdates
-                .filter { it.chapterId == chapterId }
-                .onEach { update ->
-                    if (update.logMessage != null) {
-                        addAiTranslationLog(update.logMessage)
-                        return@onEach
-                    }
-                    when (update.status) {
-                        TranslationStatus.IN_PROGRESS -> {
-                            isGeminiTranslating = true
-                            geminiTranslationProgress = update.progress
-                            refreshGeminiUiState()
-                        }
-                        TranslationStatus.COMPLETED -> {
-                            isGeminiTranslating = false
-                            geminiTranslationProgress = 100
-                            val settings = (mutableState.value as? State.Success)?.readerSettings
-                            if (settings != null) {
-                                restoreGeminiTranslationFromCache(update.chapterId, settings)
-                                updateContent(settings)
-                            }
-                            refreshGeminiUiState()
-                        }
-                        TranslationStatus.FAILED -> {
-                            isGeminiTranslating = false
-                            geminiTranslationProgress = 0
-                            addAiTranslationLog("Queue translation failed: ${update.errorMessage ?: "Unknown error"}")
-                            refreshGeminiUiState()
-                        }
-                        TranslationStatus.CANCELLED -> {
-                            isGeminiTranslating = false
-                            geminiTranslationProgress = 0
-                            addAiTranslationLog("Translation cancelled.")
-                            refreshGeminiUiState()
-                        }
-                        TranslationStatus.PENDING -> {
-                            isGeminiTranslating = true
-                            geminiTranslationProgress = 0
-                            refreshGeminiUiState()
-                        }
-                    }
-                }
-                .collect { }
+
+    /**
+     * Switches to another chapter without leaving the reader screen: no screen replacement and no
+     * loading state, so the live document stays visible until the next chapter is ready.
+     *
+     * Returns false when an in-place switch is not possible (book mode owns its own continuous
+     * document, the reader is not ready yet, or a switch is already running), so callers can fall
+     * back to the classic screen replacement.
+     */
+    fun openChapterInPlace(targetChapterId: Long): Boolean {
+        val successState = mutableState.value as? State.Success ?: return false
+        // Opt-in feature: without it the reader keeps the classic screen replacement behaviour.
+        if (!novelReaderPreferences.seamlessChapterTransition().get()) return false
+        if (successState.bookMode.isEnabled) return false
+        if (targetChapterId == currentChapter?.id) return false
+        if (seamlessChapterSwitchJob?.isActive == true) return false
+        val hasTargetChapter = fullChapterOrderList.any { it.id == targetChapterId } ||
+            chapterOrderList.any { it.id == targetChapterId }
+        if (!hasTargetChapter) return false
+        seamlessChapterSwitchJob = screenModelScope.launch {
+            // Leave the current frame before touching reader state. A chapter switch is triggered
+            // from gesture/tap callbacks that can run inside a composition or layout pass, and
+            // swapping the reader content there crashes the Compose runtime while it is disposing
+            // subcompositions ("Cannot start a writer when another writer is pending").
+            kotlinx.coroutines.yield()
+            persistCurrentChapterExitState()
+            seamlessChapterSwitchToken += 1L
+            loadChapter(targetChapterId = targetChapterId, seamless = true)
         }
+        return true
     }
+
+    private fun subscribeToQueueProgress(chapterId: Long) =
+        translationController.subscribeToQueueProgress(
+            chapterId = chapterId,
+            // Over a book one session covers the whole novel, so the queue has to be watched for
+            // every chapter of it, not just the chapter the reader was opened with.
+            novelId = currentNovel?.id,
+        )
+
     private fun scheduleNextChapterPrefetch(
         novel: Novel,
         currentChapter: NovelChapter,
@@ -717,20 +1061,8 @@ class NovelReaderScreenModel(
             }
         }
     }
-    private fun maybeAutoStartGeminiTranslation(settings: NovelReaderSettings) {
-        if (hasTriggeredGeminiAutoStart) return
-        val requestedAutoStart = pendingAutoStartGeminiTranslation
-        val englishSourceAutoStart = settings.geminiAutoTranslateEnglishSource &&
-            isGeminiSourceLanguageEnglish(settings.geminiSourceLang)
-        if (!settings.geminiEnabled || !(requestedAutoStart || englishSourceAutoStart)) return
-        if (!settings.hasConfiguredTranslationProvider()) return
-        if (currentParsedTextBlocks().isEmpty()) return
-        if (isGeminiTranslating || hasGeminiTranslationCache || !translationHolder.isEmpty("gemini")) return
-        hasTriggeredGeminiAutoStart = true
-        pendingAutoStartGeminiTranslation = false
-        addAiTranslationLog("?? Auto-start translation for English source")
-        startGeminiTranslation()
-    }
+    private fun maybeAutoStartGeminiTranslation(settings: NovelReaderSettings) =
+        translationController.maybeAutoStartGeminiTranslation(settings)
     private fun findNextChapter(currentChapter: NovelChapter): NovelChapter? {
         val list = if (fullChapterOrderList.isNotEmpty()) fullChapterOrderList else chapterOrderList
         return list
@@ -864,24 +1196,16 @@ class NovelReaderScreenModel(
     }
     private fun updateContent(settings: NovelReaderSettings) {
         if (!settings.selectedTextTranslationEnabled && !settings.novelDictionaryEnabled) {
-            clearSelectedTextTranslationSelection(refreshUi = false)
+            selectionTranslationController.clearSelection(refreshUi = false)
         }
         val model = contentModel ?: return
         val html = model.canonicalHtml
         val novel = currentNovel ?: return
         val chapter = currentChapter ?: return
-        if (!settings.geminiEnabled && isGeminiTranslating) {
-            geminiTranslationJob?.cancel()
-            geminiTranslationJob = null
-            isGeminiTranslating = false
-            isGeminiTranslationVisible = false
-            geminiTranslationProgress = 0
-            addAiTranslationLog("AI translation stopped because AI translation is disabled.")
-        }
-        val geminiVisibleInUi = settings.geminiEnabled && isGeminiTranslationVisible
-        val geminiCacheAvailableInUi = settings.geminiEnabled && hasGeminiTranslationCache
-        val googleVisibleInUi = settings.googleTranslationEnabled && isGoogleTranslationVisible
-        val googleCacheAvailableInUi = settings.googleTranslationEnabled && hasGoogleTranslationCache
+        val geminiVisibleInUi = settings.geminiEnabled && translationState.isGeminiTranslationVisible
+        val geminiCacheAvailableInUi = settings.geminiEnabled && translationState.hasGeminiTranslationCache
+        val googleVisibleInUi = settings.googleTranslationEnabled && translationState.isGoogleTranslationVisible
+        val googleCacheAvailableInUi = settings.googleTranslationEnabled && translationState.hasGoogleTranslationCache
         val decodedNativeProgress = decodeNativeScrollProgress(chapter.lastPageRead)
         val decodedWebProgressPercent = decodeWebScrollProgressPercent(chapter.lastPageRead)
         val decodedPageReaderProgress = decodePageReaderProgress(chapter.lastPageRead)
@@ -971,7 +1295,7 @@ class NovelReaderScreenModel(
         }
         val displayContent = when {
             geminiVisibleInUi && !translationHolder.isEmpty("gemini") -> normalizeHtml(
-                rawHtml = buildTranslatedRawHtmlForDisplay(
+                rawHtml = NovelContentHtmlMapper.buildTranslatedRawHtmlForDisplay(
                     templateHtml = html,
                     fallbackBlocks = displayContentBlocks,
                     translatedByIndex = translationHolder.map("gemini"),
@@ -981,7 +1305,7 @@ class NovelReaderScreenModel(
                 customJs = pluginJs,
             )
             googleVisibleInUi && !translationHolder.isEmpty("google") -> normalizeHtml(
-                rawHtml = buildTranslatedRawHtmlForDisplay(
+                rawHtml = NovelContentHtmlMapper.buildTranslatedRawHtmlForDisplay(
                     templateHtml = html,
                     fallbackBlocks = displayContentBlocks,
                     translatedByIndex = translationHolder.map("google"),
@@ -992,12 +1316,13 @@ class NovelReaderScreenModel(
             )
             else -> baseContent
         }
-        ttsSessionController.setPreferredTranslatedText(shouldPreferTranslatedTts(settings))
-        maybeSyncActiveTtsSessionOptions(settings)
-        maybeSwitchActiveTtsTextSource(settings)
+        ttsController.setPreferredTranslatedText(settings)
+        ttsController.syncActiveTtsSessionOptions(settings)
+        ttsController.switchActiveTtsTextSource(settings)
         mutableState.value = State.Success(
             novel = novel,
             chapter = chapter,
+            seamlessSwitchToken = seamlessChapterSwitchToken,
             html = displayContent,
             enableJs = !pluginJs.isNullOrBlank() ||
                 settings.selectedTextTranslationEnabled ||
@@ -1021,27 +1346,28 @@ class NovelReaderScreenModel(
             nextChapterName = chapterNavigation.nextChapterName,
             seriesInterstitialState = seriesInterstitialState,
             chapterWebUrl = chapterWebUrl,
-            selectedTextTranslationSelection = selectedTextTranslationSelection,
-            selectedTextTranslationUiState = selectedTextTranslationUiState,
-            novelDictionaryUiState = novelDictionaryUiState,
+            selectedTextTranslationSelection = selectionTranslationSnapshot.selection,
+            selectedTextTranslationUiState = selectionTranslationSnapshot.translationUiState,
+            novelDictionaryUiState = selectionTranslationSnapshot.dictionaryUiState,
             novelDictionaryEnabled = novelReaderPreferences.novelDictionaryEnabled().get(),
             novelDictionaryTargetLanguage = novelReaderPreferences.novelDictionaryTargetLanguage().get(),
             geminiTranslation = State.ReaderGeminiState(
-                isGeminiTranslating = isGeminiTranslating,
-                geminiTranslationProgress = geminiTranslationProgress,
+                isGeminiTranslating = translationState.isGeminiTranslating,
+                geminiTranslationProgress = translationState.geminiTranslationProgress,
                 isGeminiTranslationVisible = geminiVisibleInUi,
                 hasGeminiTranslationCache = geminiCacheAvailableInUi,
-                geminiLogs = geminiLogs,
+                geminiLogs = translationState.geminiLogs,
+                chapterProgress = translationState.chapterProgress,
             ),
             googleTranslation = State.ReaderGoogleState(
-                isGoogleTranslating = isGoogleTranslating,
-                googleTranslationProgress = googleTranslationProgress,
+                isGoogleTranslating = translationState.isGoogleTranslating,
+                googleTranslationProgress = translationState.googleTranslationProgress,
                 isGoogleTranslationVisible = googleVisibleInUi,
                 hasGoogleTranslationCache = googleCacheAvailableInUi,
-                googleLogs = googleLogs,
-                translationPhase = translationPhase,
+                googleLogs = translationState.googleLogs,
+                translationPhase = translationState.translationPhase,
             ),
-            ttsUiState = ttsUiState.copy(
+            ttsUiState = ttsController.snapshot().copy(
                 enabled = settings.ttsEnabled,
                 selectedEnginePackage = settings.ttsEnginePackage,
                 selectedVoiceId = settings.ttsVoiceId,
@@ -1050,423 +1376,40 @@ class NovelReaderScreenModel(
                 pitch = settings.ttsPitch,
             ),
             aiProviders = State.ReaderAiProvidersState(
-                openRouterModelIds = openRouterModelIds,
-                isOpenRouterModelsLoading = isOpenRouterModelsLoading,
-                isTestingOpenRouterConnection = isTestingOpenRouterConnection,
-                openRouterApiTestStatus = openRouterApiTestStatus,
-                openRouterApiTestMessage = openRouterApiTestMessage,
-                deepSeekModelIds = deepSeekModelIds,
-                isDeepSeekModelsLoading = isDeepSeekModelsLoading,
-                isTestingDeepSeekConnection = isTestingDeepSeekConnection,
-                deepSeekApiTestStatus = deepSeekApiTestStatus,
-                deepSeekApiTestMessage = deepSeekApiTestMessage,
-                mistralModelIds = mistralModelIds,
-                isMistralModelsLoading = isMistralModelsLoading,
-                isTestingMistralConnection = isTestingMistralConnection,
-                mistralApiTestStatus = mistralApiTestStatus,
-                mistralApiTestMessage = mistralApiTestMessage,
-                nvidiaModelIds = nvidiaModelIds,
-                isNvidiaModelsLoading = isNvidiaModelsLoading,
-                isTestingNvidiaConnection = isTestingNvidiaConnection,
-                nvidiaApiTestStatus = nvidiaApiTestStatus,
-                nvidiaApiTestMessage = nvidiaApiTestMessage,
-                ollamaCloudModelIds = ollamaCloudModelIds,
-                isOllamaCloudModelsLoading = isOllamaCloudModelsLoading,
-                isTestingOllamaCloudConnection = isTestingOllamaCloudConnection,
-                ollamaCloudApiTestStatus = ollamaCloudApiTestStatus,
-                ollamaCloudApiTestMessage = ollamaCloudApiTestMessage,
+                openRouterModelIds = aiProvidersState.openRouterModelIds,
+                isOpenRouterModelsLoading = aiProvidersState.isOpenRouterModelsLoading,
+                isTestingOpenRouterConnection = aiProvidersState.isTestingOpenRouterConnection,
+                openRouterApiTestStatus = aiProvidersState.openRouterApiTestStatus,
+                openRouterApiTestMessage = aiProvidersState.openRouterApiTestMessage,
+                deepSeekModelIds = aiProvidersState.deepSeekModelIds,
+                isDeepSeekModelsLoading = aiProvidersState.isDeepSeekModelsLoading,
+                isTestingDeepSeekConnection = aiProvidersState.isTestingDeepSeekConnection,
+                deepSeekApiTestStatus = aiProvidersState.deepSeekApiTestStatus,
+                deepSeekApiTestMessage = aiProvidersState.deepSeekApiTestMessage,
+                mistralModelIds = aiProvidersState.mistralModelIds,
+                isMistralModelsLoading = aiProvidersState.isMistralModelsLoading,
+                isTestingMistralConnection = aiProvidersState.isTestingMistralConnection,
+                mistralApiTestStatus = aiProvidersState.mistralApiTestStatus,
+                mistralApiTestMessage = aiProvidersState.mistralApiTestMessage,
+                nvidiaModelIds = aiProvidersState.nvidiaModelIds,
+                isNvidiaModelsLoading = aiProvidersState.isNvidiaModelsLoading,
+                isTestingNvidiaConnection = aiProvidersState.isTestingNvidiaConnection,
+                nvidiaApiTestStatus = aiProvidersState.nvidiaApiTestStatus,
+                nvidiaApiTestMessage = aiProvidersState.nvidiaApiTestMessage,
+                ollamaCloudModelIds = aiProvidersState.ollamaCloudModelIds,
+                isOllamaCloudModelsLoading = aiProvidersState.isOllamaCloudModelsLoading,
+                isTestingOllamaCloudConnection = aiProvidersState.isTestingOllamaCloudConnection,
+                ollamaCloudApiTestStatus = aiProvidersState.ollamaCloudApiTestStatus,
+                ollamaCloudApiTestMessage = aiProvidersState.ollamaCloudApiTestMessage,
             ),
-        )
-    }
-    private suspend fun refreshTtsEngines() {
-        val engines = runCatching { ttsEngineRegistry.listEngines() }
-            .getOrElse { emptyList() }
-        ttsUiState = ttsUiState.copy(availableEngines = engines)
-        refreshTtsUiState()
-        initializeTtsRuntime()
-    }
-
-    private fun readRecentTtsLanguageTags(): List<String> {
-        return novelReaderPreferences.ttsRecentLanguageTags().get()
-            .split('|')
-            .map(String::trim)
-            .filter(String::isNotBlank)
-            .distinct()
-    }
-
-    private fun rememberRecentTtsLanguage(localeTag: String) {
-        if (localeTag.isBlank()) return
-        val updatedTags = buildList {
-            add(localeTag)
-            addAll(readRecentTtsLanguageTags().filterNot { it.equals(localeTag, ignoreCase = true) })
-        }.take(5)
-        novelReaderPreferences.ttsRecentLanguageTags().set(updatedTags.joinToString("|"))
-        ttsUiState = ttsUiState.copy(recentLanguageTags = updatedTags)
-        refreshTtsUiState()
-    }
-
-    private suspend fun initializeTtsRuntime() = ttsRuntimeMutex.withLock {
-        val generation = ++ttsRuntimeGeneration
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: currentNovel?.source
-            ?.let(novelReaderPreferences::resolveSettings)
-            ?: return@withLock
-        val recentLanguageTags = readRecentTtsLanguageTags()
-        val preferredEngine = ttsEngineRegistry.resolvePreferredEngine(
-            settings.ttsEnginePackage.takeIf { it.isNotBlank() },
-        )
-        if (!settings.ttsEnabled) {
-            ttsWordProgressJob?.cancel()
-            ttsWordProgressJob = null
-            pendingTtsStartRequest = null
-            ttsAudioFocusManager.abandonPlaybackFocus()
-            ttsSessionController.stop()
-            ttsEngine.shutdown()
-            initializedTtsEnginePackage = null
-            ttsUiState = ttsUiState.copy(
-                enabled = false,
-                playbackState = NovelTtsPlaybackState.IDLE,
-                activeSession = null,
-                activeHighlightMode = NovelTtsHighlightMode.OFF,
-                activeWordRange = null,
-                activeUtteranceText = null,
-                activeSourceBlockIndex = null,
-                availableVoices = emptyList(),
-                availableLocales = emptyList(),
-                recentLanguageTags = recentLanguageTags,
-                isLoadingVoices = false,
-                selectedEnginePackage = "",
-                selectedVoiceId = "",
-                selectedLocaleTag = "",
-                speechRate = settings.ttsSpeechRate,
-                pitch = settings.ttsPitch,
-                errorMessage = null,
-            )
-            refreshTtsUiState()
-            return@withLock
-        }
-
-        val targetEnginePackage = preferredEngine?.packageName
-        val enginePackageChanged = initializedTtsEnginePackage != targetEnginePackage
-        if (enginePackageChanged || ttsUiState.availableVoices.isEmpty()) {
-            ttsUiState = ttsUiState.copy(
-                enabled = true,
-                availableVoices = emptyList(),
-                availableLocales = emptyList(),
-                recentLanguageTags = recentLanguageTags,
-                isLoadingVoices = true,
-                selectedEnginePackage = targetEnginePackage.orEmpty(),
-                selectedVoiceId = "",
-                selectedLocaleTag = settings.ttsLocaleTag,
-                speechRate = settings.ttsSpeechRate,
-                pitch = settings.ttsPitch,
-                errorMessage = null,
-            )
-            refreshTtsUiState()
-        }
-
-        runCatching {
-            ttsEngine.initialize(targetEnginePackage)
-            ttsEngine.setSpeechRate(settings.ttsSpeechRate)
-            ttsEngine.setPitch(settings.ttsPitch)
-            val capabilities = ttsEngine.capabilities()
-            val availableVoices = ttsEngine.availableVoices()
-            val availableLocales = ttsEngine.availableLocales()
-            val selection = resolveNovelTtsVoiceSelection(
-                availableVoices = availableVoices,
-                availableLocales = availableLocales,
-                capabilities = capabilities,
-                preferredVoiceId = settings.ttsVoiceId,
-                preferredLocaleTag = settings.ttsLocaleTag,
-            )
-            ttsEngine.setLocale(selection.selectedLocaleTag.takeIf { it.isNotBlank() })
-            ttsEngine.setVoice(selection.selectedVoiceId.takeIf { it.isNotBlank() })
-            if (generation != ttsRuntimeGeneration) return@withLock
-            initializedTtsEnginePackage = targetEnginePackage
-            ttsUiState = ttsUiState.copy(
-                enabled = true,
-                availableVoices = availableVoices,
-                availableLocales = availableLocales,
-                recentLanguageTags = recentLanguageTags,
-                isLoadingVoices = false,
-                selectedEnginePackage = targetEnginePackage.orEmpty(),
-                selectedVoiceId = selection.selectedVoiceId,
-                selectedLocaleTag = selection.selectedLocaleTag,
-                speechRate = settings.ttsSpeechRate,
-                pitch = settings.ttsPitch,
-                capabilities = capabilities,
-                activeHighlightMode = capabilities.resolveHighlightMode(settings.ttsHighlightMode),
-                errorMessage = null,
-            )
-        }.onFailure { error ->
-            logcat(LogPriority.WARN, error) { "Failed to initialize novel reader TTS" }
-            initializedTtsEnginePackage = null
-            ttsUiState = ttsUiState.copy(
-                enabled = settings.ttsEnabled,
-                availableVoices = emptyList(),
-                availableLocales = emptyList(),
-                recentLanguageTags = recentLanguageTags,
-                isLoadingVoices = false,
-                selectedEnginePackage = targetEnginePackage.orEmpty(),
-                selectedVoiceId = settings.ttsVoiceId,
-                selectedLocaleTag = settings.ttsLocaleTag,
-                speechRate = settings.ttsSpeechRate,
-                pitch = settings.ttsPitch,
-                errorMessage = error.message,
-            )
-        }
-        refreshTtsUiState()
-    }
-
-    private suspend fun maybeRestoreTtsAfterChapterHandoff(
-        chapterId: Long,
-        settings: NovelReaderSettings,
-    ) {
-        if (!settings.ttsEnabled) return
-        if (!NovelReaderTtsChapterHandoffPolicy.consumePendingRestore(chapterId)) return
-        if (!ttsAudioFocusManager.requestPlaybackFocus()) return
-        ttsSessionController.restoreFromCheckpoint()
-    }
-
-    private suspend fun resolveTtsChapter(targetChapterId: Long): NovelTtsResolvedChapter? {
-        val snapshot = ttsChapterRepository.loadChapterSnapshot(targetChapterId)
-        val source = sourceManager.getOrStub(snapshot.novel.source)
-        val normalizedHtml = withContext(Dispatchers.Default) {
-            val withHeading = prependChapterHeadingIfMissing(
-                rawHtml = snapshot.rawHtml.normalizeStructuredChapterPayload(),
-                chapterName = snapshot.chapter.name,
-            )
-            val sanitized = sanitizeChapterHtmlForReader(withHeading)
-            if (sanitized.isBlank()) withHeading else sanitized
-        }
-        val chapterWebUrl = resolveChapterWebUrl(
-            source = source,
-            chapterUrl = snapshot.chapter.url,
-            novelUrl = snapshot.novel.url,
-            pluginSite = snapshot.pluginSite,
-        )
-        val parsedBlocks = withContext(Dispatchers.Default) {
-            extractContentBlocks(
-                rawHtml = normalizedHtml,
-                chapterWebUrl = chapterWebUrl,
-                novelUrl = snapshot.novel.url,
-                pluginSite = snapshot.pluginSite,
-            ).ifEmpty {
-                extractTextBlocks(normalizedHtml).map(ContentBlock::Text)
-            }
-        }
-        val normalizedContent = normalizeHtml(
-            rawHtml = normalizedHtml,
-            settings = novelReaderPreferences.resolveSettings(snapshot.novel.source),
-            customCss = snapshot.customCss,
-            customJs = snapshot.customJs,
-        )
-        val richBlocks = parseNovelRichContent(normalizedContent)
-            .let { parsed ->
-                resolveRichContentBlocks(
-                    blocks = parsed.blocks,
-                    chapterWebUrl = chapterWebUrl,
-                    novelUrl = snapshot.novel.url,
-                    pluginSite = snapshot.pluginSite,
-                )
-            }
-        val currentSettings = novelReaderPreferences.resolveSettings(snapshot.novel.source)
-        val originalModel = ttsChapterModelBuilder.build(
-            chapterId = snapshot.chapter.id,
-            chapterTitle = snapshot.chapter.name,
-            contentBlocks = parsedBlocks,
-            richContentBlocks = richBlocks,
-            options = NovelTtsChapterModelBuildOptions(
-                includeChapterTitle = currentSettings.ttsReadChapterTitle,
-            ),
-        )
-        val translatedModel = resolveTranslatedTtsChapterModel(
-            chapterId = targetChapterId,
-            chapterTitle = snapshot.chapter.name,
-            originalContentBlocks = parsedBlocks,
-            richContentBlocks = richBlocks,
-            settings = currentSettings,
-        )
-        val nextChapterId = snapshot.chapterOrderList
-            .indexOfFirst { it.id == snapshot.chapter.id }
-            .takeIf { it >= 0 }
-            ?.let { snapshot.chapterOrderList.getOrNull(it + 1)?.id }
-        return NovelTtsResolvedChapter(
-            chapterId = snapshot.chapter.id,
-            nextChapterId = nextChapterId,
-            originalModel = originalModel,
-            translatedModel = translatedModel,
-        )
-    }
-
-    private fun resolveTranslatedTtsChapterModel(
-        chapterId: Long,
-        chapterTitle: String,
-        originalContentBlocks: List<ContentBlock>,
-        richContentBlocks: List<NovelRichContentBlock>,
-        settings: NovelReaderSettings,
-    ): eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsChapterModel? {
-        if (!shouldPreferTranslatedTts(settings)) return null
-        val translatedBlocks = if (chapterId == currentChapter?.id) {
-            // Current chapter: use in-memory translation holder (fast path)
-            when {
-                settings.geminiEnabled && !translationHolder.isEmpty("gemini") -> {
-                    applyGeminiTranslationToContentBlocks(originalContentBlocks, forceTranslation = true)
-                }
-                settings.googleTranslationEnabled && !translationHolder.isEmpty("google") -> {
-                    applyGoogleTranslationToContentBlocks(originalContentBlocks)
-                }
-                else -> return null
-            }
-        } else {
-            // Non-current chapter (e.g. next chapter during TTS auto-advance):
-            // The in-memory holder belongs to the current chapter only.
-            // Check the disk cache — the prefetch job may have already written a translation here.
-            if (!settings.geminiEnabled) return null
-            val cached = NovelReaderTranslationDiskCacheStore.get(chapterId) ?: return null
-            val settingsMatch = NovelReaderTranslationCacheResolver.matches(
-                cached = cached,
-                requirements = settings.toTranslationCacheRequirements(),
-            )
-            if (!settingsMatch) return null
-            applyTranslationMapToContentBlocks(originalContentBlocks, cached.translatedByIndex)
-        }
-        return ttsChapterModelBuilder.build(
-            chapterId = chapterId,
-            chapterTitle = chapterTitle,
-            contentBlocks = translatedBlocks,
-            richContentBlocks = emptyList(),
-            options = NovelTtsChapterModelBuildOptions(
-                includeChapterTitle = settings.ttsReadChapterTitle,
-            ),
-        )
-    }
-
-    /**
-     * Applies a pre-built translation map (block index -> translated text) directly to a list of
-     * content blocks without going through the in-memory [translationHolder].
-     *
-     * Used when resolving translated TTS content for a chapter that is not the one currently
-     * displayed (e.g. the next chapter during TTS auto-advance), where the translation lives only
-     * in the disk cache rather than in the in-memory holder.
-     */
-    private fun applyTranslationMapToContentBlocks(
-        blocks: List<ContentBlock>,
-        translationMap: Map<Int, String>,
-    ): List<ContentBlock> {
-        var textIndex = 0
-        return blocks.map { block ->
-            when (block) {
-                is ContentBlock.Image -> block
-                is ContentBlock.Text -> {
-                    val translated = translationMap[textIndex]
-                    textIndex += 1
-                    if (translated.isNullOrBlank()) block else ContentBlock.Text(translated)
-                }
-            }
-        }
-    }
-
-    private suspend fun onTtsSessionStateChanged(sessionState: NovelTtsSessionUiState) {
-        val session = sessionState.session
-        val activeUtterance = session?.utterance
-        ttsUiState = ttsUiState.copy(
-            playbackState = sessionState.playbackState,
-            activeSession = session,
-            pendingChapterHandoffId = sessionState.pendingChapterHandoffId,
-            activeUtteranceText = activeUtterance?.text,
-            activeSourceBlockIndex = activeUtterance?.sourceBlockIndex,
-            activeWordRange = activeUtterance?.wordRanges?.getOrNull(session.wordIndex),
-        )
-        refreshTtsUiState()
-    }
-
-    private suspend fun handleTtsUtteranceStarted(utteranceId: String) {
-        val session = ttsSessionController.state.value.session ?: return
-        if (session.utterance.id != utteranceId) return
-        ttsWordProgressJob?.cancel()
-        startEstimatedTtsWordProgress(session)
-    }
-
-    private fun startEstimatedTtsWordProgress(session: NovelTtsSession) {
-        val highlightMode = ttsUiState.activeHighlightMode
-        if (highlightMode == NovelTtsHighlightMode.OFF) return
-        ttsWordProgressJob = screenModelScope.launch {
-            val utterance = session.utterance
-            val estimatedDurationMs = estimateTtsUtteranceDurationMs(
-                utterance = utterance,
-                speechRate = ttsUiState.speechRate,
-            )
-            val startTimeMs = SystemClock.elapsedRealtime()
-            while (isActive) {
-                val elapsedMs = (SystemClock.elapsedRealtime() - startTimeMs).coerceAtLeast(0L)
-                val selection = ttsHighlightEstimator.estimateWordRange(
-                    utterance = utterance,
-                    elapsedMs = elapsedMs,
-                    durationMs = estimatedDurationMs,
-                    mode = highlightMode,
-                    startWordIndex = session.wordIndex,
-                )
-                if (selection != null) {
-                    val currentSession = ttsSessionController.state.value.session
-                    if (currentSession?.utterance?.id != utterance.id) break
-                    if (ttsSessionController.state.value.playbackState != NovelTtsPlaybackState.PLAYING) break
-                    ttsSessionController.updateWordProgress(selection.wordIndex)
-                    ttsUiState = ttsUiState.copy(activeWordRange = selection.wordRange)
-                    refreshTtsUiState()
-                }
-                if (elapsedMs >= estimatedDurationMs) break
-                delay(TTS_WORD_PROGRESS_UPDATE_INTERVAL_MS)
-            }
-        }
-    }
-
-    private fun estimateTtsUtteranceDurationMs(
-        utterance: eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsUtterance,
-        speechRate: Float,
-    ): Long {
-        val words = utterance.wordRanges.size.coerceAtLeast(1)
-        val effectiveRate = speechRate.coerceAtLeast(0.5f)
-        val millisPerWord = (TTS_BASE_MILLIS_PER_WORD / effectiveRate).roundToInt()
-        return (words * millisPerWord)
-            .coerceAtLeast(TTS_MIN_UTTERANCE_DURATION_MS.toInt())
-            .toLong()
-    }
-
-    private fun refreshTtsUiState() {
-        val state = mutableState.value
-        if (state is State.Success) {
-            mutableState.value = state.copy(ttsUiState = ttsUiState)
-        }
-    }
-
-    private suspend fun resolveChapterWebUrl(
-        source: eu.kanade.tachiyomi.novelsource.NovelSource,
-        chapterUrl: String,
-        novelUrl: String,
-        pluginSite: String?,
-    ): String? {
-        val sourceResolved = (source as? NovelWebUrlSource)
-            ?.getChapterWebUrl(chapterPath = chapterUrl, novelPath = novelUrl)
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-        if (sourceResolved != null) {
-            sourceResolved.toHttpUrlOrNull()?.let { return it.toString() }
-            resolveNovelChapterWebUrl(
-                chapterUrl = sourceResolved,
-                pluginSite = pluginSite,
-                novelUrl = novelUrl,
-            )?.let { return it }
-        }
-        return resolveNovelChapterWebUrl(
-            chapterUrl = chapterUrl,
-            pluginSite = pluginSite,
-            novelUrl = novelUrl,
+            bookMode = bookController.bookModeUiState(),
         )
     }
     fun updateReadingProgress(
         currentIndex: Int,
         totalItems: Int,
         persistedProgress: Long? = null,
+        isInitialPositionRestored: Boolean = false,
     ) {
         val chapter = currentChapter ?: return
         if (totalItems <= 0 || currentIndex < 0) return
@@ -1484,16 +1427,18 @@ class NovelReaderScreenModel(
         val reachedReadThreshold = totalItems == 1 ||
             ((currentIndex + 1).toFloat() / totalItems.toFloat()) >= readThreshold
         val shouldPersistRead = (lastSavedRead == true) || chapter.read || reachedReadThreshold
-        val newProgress = resolveProgressToPersist(
+        val newProgress = resolveReaderProgressToPersist(
             shouldPersistRead = shouldPersistRead,
             currentIndex = currentIndex,
             resolvedPersistedProgress = resolvedPersistedProgress,
+            previousProgress = lastSavedProgress,
+            isInitialPositionRestored = isInitialPositionRestored,
         ) ?: return
         maybePrefetchNextChapterOnProgress(
             currentIndex = currentIndex,
             totalItems = totalItems,
         )
-        maybePrefetchNextChapterGeminiTranslationOnProgress(
+        translationBatchExecutor.maybePrefetchNextChapterGeminiTranslationOnProgress(
             currentIndex = currentIndex,
             totalItems = totalItems,
         )
@@ -1513,7 +1458,7 @@ class NovelReaderScreenModel(
             becameRead = becameRead,
         )
         val shouldEmitNovelCompleted = becameRead && chapterOrderList.all { it.read }
-        enqueueProgressPersistence(
+        progressPersistenceController.enqueueProgressPersistence(
             PendingProgressPersistence(
                 chapterId = chapter.id,
                 novelId = chapter.novelId,
@@ -1522,301 +1467,60 @@ class NovelReaderScreenModel(
                 lastPageRead = newProgress,
                 emitReadEvent = becameRead,
                 emitNovelCompleted = shouldEmitNovelCompleted,
-                sessionReadDurationMs = System.currentTimeMillis() - chapterReadStartTimeMs,
+                sessionReadDurationMs = progressPersistenceController.sessionReadDurationMs(),
             ),
         )
     }
+    // ---------------------------------------------------------------------------------------------
+    // TTS delegates. All TTS logic lives in [ttsController]; the screen model forwards the
+    // reader's calls and hosts the shared state through [NovelTtsHost].
+    // ---------------------------------------------------------------------------------------------
 
-    private fun resolveProgressToPersist(
-        shouldPersistRead: Boolean,
-        currentIndex: Int,
-        resolvedPersistedProgress: Long,
-    ): Long? {
-        val previousProgress = lastSavedProgress ?: return resolvedPersistedProgress
-        if (!shouldPersistRead) return resolvedPersistedProgress
-        if (resolvedPersistedProgress >= previousProgress) return resolvedPersistedProgress
-        if (currentIndex <= 0) return null
-        return resolvedPersistedProgress
-    }
     fun toggleTtsPlayback(
         startRequest: eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackStartRequest =
             eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackStartRequest(),
     ) {
-        val state = mutableState.value as? State.Success ?: return
-        if (!state.readerSettings.ttsEnabled) return
-        screenModelScope.launch {
-            initializeTtsRuntime()
-            val playbackState = ttsSessionController.state.value.playbackState
-            when (playbackState) {
-                eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackState.PLAYING -> {
-                    pendingTtsStartRequest = null
-                    ttsWordProgressJob?.cancel()
-                    ttsWordProgressJob = null
-                    ttsSessionController.pause()
-                }
-                eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackState.PAUSED -> {
-                    val pendingRequest = pendingTtsStartRequest
-                    if (!ttsAudioFocusManager.requestPlaybackFocus()) return@launch
-                    if (pendingRequest != null) {
-                        startTtsFromRequest(pendingRequest, state.readerSettings)
-                    } else {
-                        ttsSessionController.resume()
-                    }
-                    pendingTtsStartRequest = null
-                }
-                else -> {
-                    if (!ttsAudioFocusManager.requestPlaybackFocus()) return@launch
-                    startTtsFromRequest(startRequest, state.readerSettings)
-                    pendingTtsStartRequest = null
-                }
-            }
-        }
+        // Handing the book over to TTS is a flush point: the reading position at the moment playback
+        // takes over is written through instead of waiting out the debounce window.
+        flushBookModeProgress()
+        ttsController.toggleTtsPlayback(startRequest)
     }
 
-    fun stopTtsPlayback() {
-        screenModelScope.launch {
-            ttsWordProgressJob?.cancel()
-            ttsWordProgressJob = null
-            ttsAudioFocusManager.abandonPlaybackFocus()
-            ttsSessionController.stop()
-        }
-    }
+    fun stopTtsPlayback() = ttsController.stopTtsPlayback()
 
-    fun skipToNextTtsSegment() {
-        screenModelScope.launch {
-            ttsWordProgressJob?.cancel()
-            ttsWordProgressJob = null
-            ttsSessionController.skipNext()
-        }
-    }
+    fun skipToNextTtsSegment() = ttsController.skipToNextTtsSegment()
 
-    fun skipToPreviousTtsSegment() {
-        screenModelScope.launch {
-            ttsWordProgressJob?.cancel()
-            ttsWordProgressJob = null
-            ttsSessionController.skipPrevious()
-        }
-    }
+    fun skipToPreviousTtsSegment() = ttsController.skipToPreviousTtsSegment()
 
     fun pauseTtsForManualNavigation(
         startRequest: eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackStartRequest,
-    ) {
-        val state = mutableState.value as? State.Success ?: return
-        if (!state.readerSettings.ttsPauseOnManualNavigation) return
-        if (ttsSessionController.state.value.playbackState !=
-            eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackState.PLAYING
-        ) {
-            pendingTtsStartRequest = startRequest
-            return
-        }
-        screenModelScope.launch {
-            pendingTtsStartRequest = startRequest
-            ttsWordProgressJob?.cancel()
-            ttsWordProgressJob = null
-            ttsSessionController.pause()
-        }
-    }
+    ) = ttsController.pauseTtsForManualNavigation(startRequest)
 
-    fun setTtsEnginePackage(value: String) = updateTtsSetting(
-        setGlobal = { novelReaderPreferences.ttsEnginePackage().set(value) },
-        setOverride = { it.copy(ttsEnginePackage = value) },
-        restartPlayback = true,
-    )
+    fun setTtsEnginePackage(value: String) = ttsController.setTtsEnginePackage(value)
 
-    fun setTtsVoiceId(value: String) {
-        val localeTag = ttsUiState.availableVoices
-            .firstOrNull { it.id == value }
-            ?.localeTag
-            ?: ttsUiState.selectedLocaleTag
-        updateTtsSetting(
-            setGlobal = {
-                novelReaderPreferences.ttsVoiceId().set(value)
-                if (localeTag.isNotBlank()) {
-                    novelReaderPreferences.ttsLocaleTag().set(localeTag)
-                }
-            },
-            setOverride = {
-                it.copy(
-                    ttsVoiceId = value,
-                    ttsLocaleTag = localeTag.takeIf(String::isNotBlank) ?: it.ttsLocaleTag,
-                )
-            },
-            restartPlayback = true,
-        )
-        rememberRecentTtsLanguage(localeTag)
-    }
+    fun setTtsVoiceId(value: String) = ttsController.setTtsVoiceId(value)
 
-    fun setTtsLocaleTag(value: String) {
-        updateTtsSetting(
-            setGlobal = { novelReaderPreferences.ttsLocaleTag().set(value) },
-            setOverride = { it.copy(ttsLocaleTag = value) },
-            restartPlayback = true,
-        )
-        rememberRecentTtsLanguage(value)
-    }
+    fun setTtsLocaleTag(value: String) = ttsController.setTtsLocaleTag(value)
 
-    fun setTtsSpeechRate(value: Float) = updateTtsSetting(
-        setGlobal = { novelReaderPreferences.ttsSpeechRate().set(value) },
-        setOverride = { it.copy(ttsSpeechRate = value) },
-    )
+    fun setTtsSpeechRate(value: Float) = ttsController.setTtsSpeechRate(value)
 
-    fun setTtsPitch(value: Float) = updateTtsSetting(
-        setGlobal = { novelReaderPreferences.ttsPitch().set(value) },
-        setOverride = { it.copy(ttsPitch = value) },
-    )
+    fun setTtsPitch(value: Float) = ttsController.setTtsPitch(value)
 
-    fun disableTts() {
-        val currentState = mutableState.value as? State.Success ?: return
-        if (!currentState.readerSettings.ttsEnabled) return
-        val sourceId = currentNovel?.source ?: return
-        screenModelScope.launch {
-            ttsWordProgressJob?.cancel()
-            ttsWordProgressJob = null
-            pendingTtsStartRequest = null
-            ttsAudioFocusManager.abandonPlaybackFocus()
-            ttsSessionController.stop()
-            if (novelReaderPreferences.getSourceOverride(sourceId) != null) {
-                novelReaderPreferences.updateSourceOverride(sourceId) {
-                    it.copy(ttsEnabled = false)
-                }
-            } else {
-                novelReaderPreferences.ttsEnabled().set(false)
-            }
-            updateContent(currentState.readerSettings.copy(ttsEnabled = false))
-        }
-    }
+    fun previewTtsVoice(voiceId: String) = ttsController.previewTtsVoice(voiceId)
 
-    fun createTtsPlaybackServiceRuntime(): NovelTtsPlaybackServiceRuntime {
-        return NovelTtsPlaybackServiceRuntime(
-            controller = ttsSessionController,
-            audioFocusManager = ttsAudioFocusManager,
-        )
-    }
+    fun stopTtsVoicePreview() = ttsController.stopTtsVoicePreview()
 
-    private suspend fun startTtsFromRequest(
-        startRequest: eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackStartRequest,
-        settings: NovelReaderSettings,
-    ) {
-        // Fix: if translation of the current chapter is still in progress and TTS prefers
-        // translated text, wait briefly for it to finish before building the utterance list.
-        // Without this wait the in-memory translation holder may be empty at snapshot time,
-        // causing TTS to fall back to the original untranslated text.
-        if (shouldPreferTranslatedTts(settings) && isGeminiTranslating) {
-            withTimeoutOrNull(5_000) {
-                geminiTranslationJob?.join()
-            }
-        }
-        val resolvedChapter = resolveTtsChapter(targetChapterId = currentChapter?.id ?: return) ?: return
-        val useTranslatedText = shouldPreferTranslatedTts(settings) &&
-            resolvedChapter.translatedModel != null
-        val sessionModel = if (useTranslatedText) {
-            resolvedChapter.translatedModel
-        } else {
-            resolvedChapter.originalModel
-        }
-        ttsSessionController.setPreferredTranslatedText(useTranslatedText)
-        val utteranceId = startRequest.pageReaderPosition?.let { pageReaderPosition ->
-            val utteranceAnchors = eu.kanade.tachiyomi.ui.reader.novel.tts.resolvePlainPageReaderTtsAnchors(
-                textBlocks = pageReaderPosition.blockTexts,
-                pages = pageReaderPosition.pages,
-                chapterModel = sessionModel,
-            )
-            eu.kanade.tachiyomi.ui.reader.novel.tts.resolvePageReaderTtsStartUtteranceId(
-                pageIndex = pageReaderPosition.pageIndex,
-                fallbackBlockIndex = startRequest.fallbackBlockIndex,
-                chapterModel = sessionModel,
-                utteranceAnchors = utteranceAnchors,
-            )
-        } ?: sessionModel.utterances
-            .firstOrNull { it.sourceBlockIndex >= startRequest.fallbackBlockIndex }
-            ?.id
-            ?: sessionModel.utterances.firstOrNull()?.id
-        ttsSessionController.startFromCurrentPosition(
-            chapterId = resolvedChapter.chapterId,
-            utteranceId = utteranceId,
-            preferTranslatedText = useTranslatedText,
-            autoAdvanceChapter = settings.ttsAutoAdvanceChapter,
-        )
-    }
+    fun disableTts() = ttsController.disableTts()
 
-    private fun shouldPreferTranslatedTts(settings: NovelReaderSettings): Boolean {
-        return settings.ttsPreferTranslatedText ||
-            isGeminiTranslationVisible ||
-            isGoogleTranslationVisible
-    }
+    fun createTtsPlaybackServiceRuntime(): NovelTtsPlaybackServiceRuntime =
+        ttsController.createTtsPlaybackServiceRuntime()
 
-    private fun hasCurrentTranslatedTtsContent(settings: NovelReaderSettings): Boolean {
-        return (settings.geminiEnabled && !translationHolder.isEmpty("gemini")) ||
-            (settings.googleTranslationEnabled && !translationHolder.isEmpty("google"))
-    }
+    suspend fun awaitPendingProgressPersistence() =
+        progressPersistenceController.awaitPendingProgressPersistence()
 
-    private fun maybeSyncActiveTtsSessionOptions(settings: NovelReaderSettings) {
-        val session = ttsSessionController.state.value.session ?: return
-        if (session.autoAdvanceChapter == settings.ttsAutoAdvanceChapter) return
-        screenModelScope.launch {
-            ttsSessionController.setAutoAdvanceChapter(settings.ttsAutoAdvanceChapter)
-        }
-    }
+    suspend fun persistCurrentChapterExitState() =
+        progressPersistenceController.persistCurrentChapterExitState()
 
-    private fun maybeSwitchActiveTtsTextSource(settings: NovelReaderSettings) {
-        val session = ttsSessionController.state.value.session ?: return
-        val chapter = currentChapter ?: return
-        if (session.chapterId != chapter.id) return
-        val preferTranslated = shouldPreferTranslatedTts(settings) && hasCurrentTranslatedTtsContent(settings)
-        val targetTextSource = if (preferTranslated) {
-            NovelTtsTextSource.TRANSLATED
-        } else {
-            NovelTtsTextSource.ORIGINAL
-        }
-        if (session.textSource == targetTextSource) return
-        screenModelScope.launch {
-            ttsSessionController.switchToPreferredTextSource(preferTranslated)
-        }
-    }
-    private fun enqueueProgressPersistence(update: PendingProgressPersistence) {
-        progressPersistenceScheduled = true
-        screenModelScope.launch(NonCancellable) {
-            progressPersistenceMutex.withLock {
-                pendingProgressPersistenceByChapterId[update.chapterId] =
-                    pendingProgressPersistenceByChapterId[update.chapterId]?.merge(update) ?: update
-                if (progressPersistenceJob?.isActive == true) {
-                    return@launch
-                }
-                progressPersistenceJob = screenModelScope.launch(NonCancellable) {
-                    try {
-                        flushPendingProgressPersistence()
-                    } finally {
-                        progressPersistenceMutex.withLock {
-                            progressPersistenceJob = null
-                            progressPersistenceScheduled = pendingProgressPersistenceByChapterId.isNotEmpty()
-                        }
-                    }
-                }
-            }
-        }
-    }
-    suspend fun awaitPendingProgressPersistence() {
-        while (true) {
-            val activeJob = progressPersistenceMutex.withLock {
-                progressPersistenceJob?.takeIf { it.isActive }
-            }
-            if (activeJob != null) {
-                activeJob.join()
-                continue
-            }
-            if (!progressPersistenceScheduled) return
-            kotlinx.coroutines.yield()
-        }
-    }
-    suspend fun persistCurrentChapterExitState() {
-        val chapterId = currentChapter?.id ?: return
-        val finalReadDurationMs = (System.currentTimeMillis() - chapterReadStartTimeMs).coerceAtLeast(0L)
-        awaitPendingProgressPersistence()
-        flushPendingHistorySnapshot(
-            chapterId = chapterId,
-            additionalReadDurationMs = finalReadDurationMs,
-        )
-    }
     suspend fun awaitDisposalCleanup() {
         withTimeoutOrNull(2_000) {
             screenModelScope.coroutineContext[kotlinx.coroutines.Job]?.children?.forEach {
@@ -1824,66 +1528,7 @@ class NovelReaderScreenModel(
             }
         }
     }
-    private suspend fun flushPendingProgressPersistence() {
-        while (true) {
-            val nextUpdate = progressPersistenceMutex.withLock {
-                val iterator = pendingProgressPersistenceByChapterId.entries.iterator()
-                if (!iterator.hasNext()) return
-                val next = iterator.next().value
-                iterator.remove()
-                next
-            }
 
-            if (getIncognitoState.shouldPauseHistory(currentNovel?.source, currentNovel?.favorite == true)) {
-                return
-            }
-
-            novelChapterRepository.updateChapter(
-                NovelChapterUpdate(
-                    id = nextUpdate.chapterId,
-                    read = nextUpdate.read,
-                    lastPageRead = nextUpdate.lastPageRead,
-                ),
-            )
-
-            if (nextUpdate.emitReadEvent) {
-                if (eu.kanade.domain.easteregg.aurora.AuroraNight.isVeilThin()) {
-                    val manager = Injekt.get<eu.kanade.domain.easteregg.aurora.AuroraHeartManager>()
-                    manager.registerNightAction()
-                    manager.revealHint()
-                }
-                eventBus?.tryEmit(
-                    AchievementEvent.NovelChapterRead(
-                        novelId = nextUpdate.novelId,
-                        chapterNumber = nextUpdate.chapterNumber,
-                    ),
-                )
-                if (nextUpdate.emitNovelCompleted) {
-                    eventBus?.tryEmit(AchievementEvent.NovelCompleted(nextUpdate.novelId))
-                }
-                activityDataRepository.recordReading(
-                    id = nextUpdate.chapterId,
-                    chaptersCount = 1,
-                    durationMs = nextUpdate.sessionReadDurationMs.coerceAtLeast(0L),
-                )
-                if (Injekt.get<eu.kanade.domain.track.service.TrackPreferences>().autoUpdateTrack().get()) {
-                    val context = Injekt.get<Application>()
-                    Injekt.get<TrackNovelChapter>().await(
-                        context,
-                        nextUpdate.novelId,
-                        nextUpdate.chapterNumber.toDouble(),
-                    )
-                }
-            }
-
-            val now = System.currentTimeMillis()
-            pendingHistoryReadDurationMs += nextUpdate.sessionReadDurationMs.coerceAtLeast(0L)
-            if (nextUpdate.emitReadEvent) {
-                flushPendingHistorySnapshot(nextUpdate.chapterId)
-            }
-            chapterReadStartTimeMs = now
-        }
-    }
     private fun maybePrefetchNextChapterOnProgress(
         currentIndex: Int,
         totalItems: Int,
@@ -1902,29 +1547,6 @@ class NovelReaderScreenModel(
             source = source,
         )
     }
-    private fun maybePrefetchNextChapterGeminiTranslationOnProgress(
-        currentIndex: Int,
-        totalItems: Int,
-    ) {
-        if (hasTriggeredNextChapterGeminiPrefetch) return
-        if (!hasReachedGeminiNextChapterTranslationPrefetchThreshold(currentIndex, totalItems)) return
-        val state = mutableState.value as? State.Success ?: return
-        val settings = state.readerSettings
-        if (!settings.geminiEnabled || !settings.geminiPrefetchNextChapterTranslation) return
-        if (settings.geminiDisableCache) return
-        if (!settings.hasConfiguredTranslationProvider()) return
-        val novel = currentNovel ?: return
-        val chapter = currentChapter ?: return
-        val source = sourceManager.get(novel.source) ?: return
-        val nextChapter = findNextChapter(chapter) ?: return
-        if (hasReusableTranslationCache(nextChapter.id, settings)) return
-        hasTriggeredNextChapterGeminiPrefetch = true
-        scheduleNextChapterGeminiTranslationPrefetch(
-            nextChapter = nextChapter,
-            source = source,
-            settings = settings,
-        )
-    }
     private fun hasReachedNextChapterPrefetchThreshold(
         currentIndex: Int,
         totalItems: Int,
@@ -1935,94 +1557,6 @@ class NovelReaderScreenModel(
         } else {
             totalItems > 1 && ((currentIndex + 1).toFloat() / totalItems.toFloat()) >= 0.5f
         }
-    }
-    private fun scheduleNextChapterGeminiTranslationPrefetch(
-        nextChapter: NovelChapter,
-        source: eu.kanade.tachiyomi.novelsource.NovelSource,
-        settings: NovelReaderSettings,
-    ) {
-        if (hasReusableTranslationCache(nextChapter.id, settings)) return
-        nextChapterGeminiPrefetchJob?.cancel()
-        nextChapterGeminiPrefetchJob = screenModelScope.launch(Dispatchers.IO) {
-            runCatching {
-                if (hasReusableTranslationCache(nextChapter.id, settings)) return@runCatching
-                val cacheReadChapters = novelReaderPreferences.cacheReadChapters().get()
-                val nextHtml = NovelReaderChapterPrefetchCache.get(nextChapter.id)
-                    ?: source.getChapterText(nextChapter.toSNovelChapter()).also { fetchedHtml ->
-                        NovelReaderChapterPrefetchCache.put(nextChapter.id, fetchedHtml)
-                        if (cacheReadChapters) {
-                            NovelReaderChapterDiskCacheStore.put(nextChapter.id, fetchedHtml)
-                        }
-                    }
-                if (nextHtml.isBlank()) return@runCatching
-                val normalizedNextHtml = prependChapterHeadingIfMissing(
-                    rawHtml = nextHtml.normalizeStructuredChapterPayload(),
-                    chapterName = nextChapter.name,
-                )
-                val sanitizedNextHtml = sanitizeChapterHtmlForReader(normalizedNextHtml)
-                    .ifBlank { normalizedNextHtml }
-                val nextTextBlocks = extractTextBlocks(sanitizedNextHtml)
-                if (nextTextBlocks.isEmpty()) return@runCatching
-                val chunkSize = settings.effectiveTranslationBatchSize()
-                val chunks = nextTextBlocks.chunked(chunkSize)
-                val semaphore = Semaphore(settings.translationConcurrencyLimit())
-                val translated = mutableMapOf<Int, String>()
-                addAiTranslationLog("?? ${settings.translationRequestConfigLog()} (prefetch)")
-                coroutineScope {
-                    chunks.mapIndexed { chunkIndex, chunk ->
-                        async {
-                            semaphore.withPermit {
-                                val result = requestTranslationBatch(
-                                    segments = chunk,
-                                    settings = settings,
-                                ) { message ->
-                                    addAiTranslationLog("?? Next chapter: $message")
-                                }
-                                if (result == null && !settings.geminiRelaxedMode) {
-                                    throw IllegalStateException(
-                                        "${settings.translationProvider} returned empty response for prefetched chunk ${chunkIndex + 1}",
-                                    )
-                                }
-                                result.orEmpty().forEachIndexed { localIndex, text ->
-                                    if (!text.isNullOrBlank()) {
-                                        val globalIndex = chunkIndex * chunkSize + localIndex
-                                        translated[globalIndex] = text
-                                    }
-                                }
-                            }
-                        }
-                    }.awaitAll()
-                }
-                if (translated.isEmpty()) return@runCatching
-                NovelReaderTranslationDiskCacheStore.put(
-                    GeminiTranslationCacheEntry(
-                        chapterId = nextChapter.id,
-                        translatedByIndex = translated.toMap(),
-                        provider = settings.translationProvider,
-                        model = settings.translationCacheModelId(),
-                        sourceLang = settings.geminiSourceLang,
-                        targetLang = settings.geminiTargetLang,
-                        promptMode = settings.geminiPromptMode,
-                        stylePreset = settings.geminiStylePreset,
-                    ),
-                )
-                addAiTranslationLog(
-                    "?? Cached ${settings.translationProvider} translation for next chapter ${nextChapter.id}",
-                )
-            }.onFailure { error ->
-                logcat(LogPriority.WARN, error) { "Failed to prefetch AI translation for next chapter" }
-                addAiTranslationLog("?? Next chapter prefetch failed: ${formatAiTranslationThrowableForLog(error)}")
-            }
-        }
-    }
-    private fun hasReusableTranslationCache(
-        chapterId: Long,
-        settings: NovelReaderSettings,
-    ): Boolean {
-        return NovelReaderTranslationDiskCacheStore.has(
-            chapterId = chapterId,
-            requirements = settings.toTranslationCacheRequirements(),
-        )
     }
     private fun applyLocalChapterProgress(
         chapter: NovelChapter,
@@ -2108,6 +1642,26 @@ class NovelReaderScreenModel(
     }
 
     fun toggleChapterBookmark() {
+        // Over an artifact the reader never switches chapters, so `currentChapter` stays the entry
+        // point of the session while the reader is already deep inside another chapter. Bookmarking
+        // has to follow the character offset instead, or it would flag the wrong chapter.
+        val scrolledChapter = bookController.bookModeChapterAtReadingPosition()
+        if (scrolledChapter != null && scrolledChapter.id != currentChapter?.id) {
+            val scrolledBookmarked = !scrolledChapter.bookmark
+            val scrolledIndex = chapterOrderList.indexOfFirst { it.id == scrolledChapter.id }
+            if (scrolledIndex >= 0) {
+                chapterOrderList[scrolledIndex] = chapterOrderList[scrolledIndex].copy(bookmark = scrolledBookmarked)
+            }
+            screenModelScope.launch {
+                novelChapterRepository.updateChapter(
+                    NovelChapterUpdate(
+                        id = scrolledChapter.id,
+                        bookmark = scrolledBookmarked,
+                    ),
+                )
+            }
+            return
+        }
         val chapter = currentChapter ?: return
         val bookmarked = !chapter.bookmark
         val updatedChapter = chapter.copy(bookmark = bookmarked)
@@ -2132,26 +1686,18 @@ class NovelReaderScreenModel(
         // Each job is independently cancelled; cleanup happens in clearChapterTransientState().
         settingsJob?.cancel()
         nextChapterPrefetchJob?.cancel()
-        nextChapterGeminiPrefetchJob?.cancel()
+        translationBatchExecutor.cancelNextChapterGeminiPrefetchJob()
         adjacentJaomixPageJob?.cancel()
-        geminiTranslationJob?.cancel()
-        queueProgressJob?.cancel()
-        googleTranslationJob?.cancel()
-        selectedTextTranslationJob?.cancel()
-        novelDictionaryJob?.cancel()
-        novelDictionaryJob = null
-        dictionaryTts?.stop()
-        dictionaryTts?.shutdown()
-        dictionaryTts = null
-        progressPersistenceJob?.cancel()
-        pendingProgressPersistenceByChapterId.clear()
-        progressPersistenceScheduled = false
-        ttsWordProgressJob?.cancel()
+        selectionTranslationController.dispose()
+        progressPersistenceController.dispose()
+        // Flush the debounced book-mode position before the jobs die: leaving the reader mid-section
+        // would otherwise lose up to one debounce window of reading progress, and chapters the reader
+        // scrolled past would never be marked read.
+        bookController.flushAndStop()
+        ttsController.shutdown()
         incognitoObservationJob?.cancel()
         NovelReaderIncognitoState.set(false)
         clearChapterTransientState()
-        ttsAudioFocusManager.abandonPlaybackFocus()
-        ttsEngine.shutdown()
         super.onDispose()
     }
 
@@ -2181,74 +1727,29 @@ class NovelReaderScreenModel(
         initialProgressIndex = 0
         hasProgressChanged = false
         hasTriggeredNextChapterPrefetch = false
-        hasTriggeredNextChapterGeminiPrefetch = false
-        hasTriggeredGeminiAutoStart = false
         adjacentJaomixPageJob?.cancel()
         adjacentJaomixPageJob = null
         nextChapterPrefetchJob?.cancel()
         nextChapterPrefetchJob = null
-        nextChapterGeminiPrefetchJob?.cancel()
-        nextChapterGeminiPrefetchJob = null
-        geminiTranslationJob?.cancel()
-        geminiTranslationJob = null
-        queueProgressJob?.cancel()
-        queueProgressJob = null
-        googleTranslationJob?.cancel()
-        googleTranslationJob = null
-        clearSelectedTextTranslationSelection(refreshUi = false)
-        selectedTextTranslationSessionCache.clear()
+        translationBatchExecutor.clearChapterScopedPrefetchState()
+        translationController.resetTransientState()
+        selectionTranslationController.clearChapterScopedState()
         attemptedJaomixPages.clear()
         translationHolder.clear("gemini")
         translationHolder.clear("google")
-        isGeminiTranslating = false
-        isGoogleTranslating = false
-        geminiTranslationProgress = 0
-        googleTranslationProgress = 0
-        isGeminiTranslationVisible = false
-        isGoogleTranslationVisible = false
-        hasGeminiTranslationCache = false
-        hasGoogleTranslationCache = false
-        geminiLogs = emptyList()
-        googleLogs = emptyList()
-        googleRateLimited = false
-        isOpenRouterModelsLoading = false
-        isTestingOpenRouterConnection = false
-        openRouterApiTestStatus = ProviderApiTestStatus.Idle
-        openRouterApiTestMessage = null
-        isDeepSeekModelsLoading = false
-        isTestingDeepSeekConnection = false
-        deepSeekApiTestStatus = ProviderApiTestStatus.Idle
-        deepSeekApiTestMessage = null
-        isMistralModelsLoading = false
-        isTestingMistralConnection = false
-        mistralApiTestStatus = ProviderApiTestStatus.Idle
-        mistralApiTestMessage = null
-        ttsWordProgressJob?.cancel()
-        ttsWordProgressJob = null
-        pendingTtsStartRequest = null
+        translationHolderChapterId = null
+        aiProviderController.resetTransientState()
+        ttsController.resetTransientState()
         seriesInterstitialState = null
         seriesInterstitialShownForChapterId = null
-        chapterReadStartTimeMs = System.currentTimeMillis()
+        progressPersistenceController.resetSessionReadTimer()
     }
-    fun addAiTranslationLog(message: String) {
-        val text = message.trim()
-        if (text.isBlank()) return
-        geminiLogs = (listOf(text) + geminiLogs).take(100)
-        refreshGeminiUiState()
-    }
-    fun clearGeminiLogs() {
-        geminiLogs = emptyList()
-        refreshGeminiUiState()
-    }
-    fun clearAllGeminiTranslationCache() {
-        NovelReaderTranslationDiskCacheStore.clear()
-        addAiTranslationLog("??? Clear ALL cache")
-        val chapter = currentChapter ?: return
-        if (NovelReaderTranslationDiskCacheStore.get(chapter.id) == null) {
-            hasGeminiTranslationCache = false
-            refreshGeminiUiState()
-        }
-    }
+    fun addAiTranslationLog(message: String) = translationController.addAiTranslationLog(message)
+
+    fun clearGeminiLogs() = translationController.clearGeminiLogs()
+
+    fun clearAllGeminiTranslationCache() = translationController.clearAllGeminiTranslationCache()
+
     fun setGeminiApiKey(value: String) = updateGeminiSetting(
         setGlobal = { novelReaderPreferences.geminiApiKey().set(value) },
         setOverride = { it.copy(geminiApiKey = value) },
@@ -2336,16 +1837,7 @@ class NovelReaderScreenModel(
         setGlobal = { novelReaderPreferences.translationProvider().set(value) },
         setOverride = { it.copy(translationProvider = value) },
     ).also {
-        openRouterApiTestStatus = ProviderApiTestStatus.Idle
-        openRouterApiTestMessage = null
-        deepSeekApiTestStatus = ProviderApiTestStatus.Idle
-        deepSeekApiTestMessage = null
-        mistralApiTestStatus = ProviderApiTestStatus.Idle
-        mistralApiTestMessage = null
-        nvidiaApiTestStatus = ProviderApiTestStatus.Idle
-        nvidiaApiTestMessage = null
-        ollamaCloudApiTestStatus = ProviderApiTestStatus.Idle
-        ollamaCloudApiTestMessage = null
+        aiProviderController.resetAllApiTestStates()
         when (value) {
             NovelTranslationProvider.GEMINI -> Unit
             NovelTranslationProvider.GEMINI_PRIVATE -> Unit
@@ -2356,476 +1848,81 @@ class NovelReaderScreenModel(
             NovelTranslationProvider.OLLAMA_CLOUD -> refreshOllamaCloudModels()
         }
     }
-    private fun setProviderApiTestState(
-        provider: NovelTranslationProvider,
-        status: ProviderApiTestStatus,
-        message: String? = null,
-    ) {
-        when (provider) {
-            NovelTranslationProvider.OPENROUTER -> {
-                openRouterApiTestStatus = status
-                openRouterApiTestMessage = message
-            }
-            NovelTranslationProvider.DEEPSEEK -> {
-                deepSeekApiTestStatus = status
-                deepSeekApiTestMessage = message
-            }
-            NovelTranslationProvider.MISTRAL -> {
-                mistralApiTestStatus = status
-                mistralApiTestMessage = message
-            }
-            NovelTranslationProvider.NVIDIA -> {
-                nvidiaApiTestStatus = status
-                nvidiaApiTestMessage = message
-            }
-            NovelTranslationProvider.OLLAMA_CLOUD -> {
-                ollamaCloudApiTestStatus = status
-                ollamaCloudApiTestMessage = message
-            }
-            NovelTranslationProvider.GEMINI,
-            NovelTranslationProvider.GEMINI_PRIVATE,
-            -> Unit
-        }
-    }
+    // ---------------------------------------------------------------------------------------------
+    // AI provider delegates. Model lists, connection tests and provider settings live in
+    // [aiProviderController]; the screen model forwards the reader's calls.
+    // ---------------------------------------------------------------------------------------------
+
+    fun setOpenRouterBaseUrl(value: String) = aiProviderController.setOpenRouterBaseUrl(value)
+
+    fun setOpenRouterApiKey(value: String) = aiProviderController.setOpenRouterApiKey(value)
+
+    fun setOpenRouterModel(value: String) = aiProviderController.setOpenRouterModel(value)
+
+    fun setDeepSeekBaseUrl(value: String) = aiProviderController.setDeepSeekBaseUrl(value)
+
+    fun setDeepSeekApiKey(value: String) = aiProviderController.setDeepSeekApiKey(value)
+
+    fun setDeepSeekModel(value: String) = aiProviderController.setDeepSeekModel(value)
+
+    fun setMistralBaseUrl(value: String) = aiProviderController.setMistralBaseUrl(value)
+
+    fun setMistralApiKey(value: String) = aiProviderController.setMistralApiKey(value)
+
+    fun setMistralModel(value: String) = aiProviderController.setMistralModel(value)
+
+    fun setNvidiaBaseUrl(value: String) = aiProviderController.setNvidiaBaseUrl(value)
+
+    fun setNvidiaApiKey(value: String) = aiProviderController.setNvidiaApiKey(value)
+
+    fun setNvidiaModel(value: String) = aiProviderController.setNvidiaModel(value)
+
+    fun setOllamaCloudBaseUrl(value: String) = aiProviderController.setOllamaCloudBaseUrl(value)
+
+    fun setOllamaCloudApiKey(value: String) = aiProviderController.setOllamaCloudApiKey(value)
+
+    fun setOllamaCloudModel(value: String) = aiProviderController.setOllamaCloudModel(value)
+
+    fun refreshOpenRouterModels() = aiProviderController.refreshOpenRouterModels()
+
+    fun refreshNvidiaModels() = aiProviderController.refreshNvidiaModels()
+
+    fun testNvidiaConnection() = aiProviderController.testNvidiaConnection()
+
+    fun refreshOllamaCloudModels() = aiProviderController.refreshOllamaCloudModels()
+
+    fun testOllamaCloudConnection() = aiProviderController.testOllamaCloudConnection()
+
+    fun testOpenRouterConnection() = aiProviderController.testOpenRouterConnection()
+
+    fun refreshDeepSeekModels() = aiProviderController.refreshDeepSeekModels()
+
+    fun testDeepSeekConnection() = aiProviderController.testDeepSeekConnection()
+
+    fun refreshMistralModels() = aiProviderController.refreshMistralModels()
+
+    fun testMistralConnection() = aiProviderController.testMistralConnection()
+
     fun setGoogleTranslationEnabled(value: Boolean) {
         novelReaderPreferences.googleTranslationEnabled().set(value)
     }
+
     fun setGoogleTranslationAutoStart(value: Boolean) {
         novelReaderPreferences.googleTranslationAutoStart().set(value)
     }
+
     fun setGoogleTranslationSourceLang(value: String) {
         novelReaderPreferences.googleTranslationSourceLang().set(value)
     }
+
     fun setGoogleTranslationTargetLang(value: String) {
         novelReaderPreferences.googleTranslationTargetLang().set(value)
     }
-    fun setOpenRouterBaseUrl(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.openRouterBaseUrl().set(value) },
-        setOverride = { it.copy(openRouterBaseUrl = value) },
-    )
-    fun setOpenRouterApiKey(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.openRouterApiKey().set(value) },
-        setOverride = { it.copy(openRouterApiKey = value) },
-    )
-    fun setOpenRouterModel(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.openRouterModel().set(value) },
-        setOverride = { it.copy(openRouterModel = value) },
-    )
-    fun setDeepSeekBaseUrl(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.deepSeekBaseUrl().set(value) },
-        setOverride = { it.copy(deepSeekBaseUrl = value) },
-    )
-    fun setDeepSeekApiKey(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.deepSeekApiKey().set(value) },
-        setOverride = { it.copy(deepSeekApiKey = value) },
-    )
-    fun setDeepSeekModel(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.deepSeekModel().set(value) },
-        setOverride = { it.copy(deepSeekModel = value) },
-    )
-    fun setMistralBaseUrl(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.mistralBaseUrl().set(value) },
-        setOverride = { it.copy(mistralBaseUrl = value) },
-    )
-    fun setMistralApiKey(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.mistralApiKey().set(value) },
-        setOverride = { it.copy(mistralApiKey = value) },
-    )
-    fun setMistralModel(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.mistralModel().set(value) },
-        setOverride = { it.copy(mistralModel = value) },
-    )
-    fun setNvidiaBaseUrl(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.nvidiaBaseUrl().set(value) },
-        setOverride = { it.copy(nvidiaBaseUrl = value) },
-    )
-    fun setNvidiaApiKey(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.nvidiaApiKey().set(value) },
-        setOverride = { it.copy(nvidiaApiKey = value) },
-    )
-    fun setNvidiaModel(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.nvidiaModel().set(value) },
-        setOverride = { it.copy(nvidiaModel = value) },
-    )
-    fun setOllamaCloudBaseUrl(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.ollamaCloudBaseUrl().set(value) },
-        setOverride = { it.copy(ollamaCloudBaseUrl = value) },
-    )
-    fun setOllamaCloudApiKey(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.ollamaCloudApiKey().set(value) },
-        setOverride = { it.copy(ollamaCloudApiKey = value) },
-    )
-    fun setOllamaCloudModel(value: String) = updateGeminiSetting(
-        setGlobal = { novelReaderPreferences.ollamaCloudModel().set(value) },
-        setOverride = { it.copy(ollamaCloudModel = value) },
-    )
-    fun refreshOpenRouterModels() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (settings.translationProvider != NovelTranslationProvider.OPENROUTER) return
-        if (settings.openRouterApiKey.isBlank()) return
-        if (settings.openRouterBaseUrl.isBlank()) return
-        isOpenRouterModelsLoading = true
-        updateContent(settings)
-        screenModelScope.launch(Dispatchers.IO) {
-            val fetched = runCatching {
-                openRouterModelsService.fetchModels(
-                    baseUrl = settings.openRouterBaseUrl,
-                    apiKey = settings.openRouterApiKey,
-                )
-            }.getOrElse { error ->
-                addAiTranslationLog("? OpenRouter models load failed: ${formatAiTranslationThrowableForLog(error)}")
-                emptyList()
-            }
-            openRouterModelIds = fetched
-            isOpenRouterModelsLoading = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun refreshNvidiaModels() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (settings.translationProvider != NovelTranslationProvider.NVIDIA) return
-        if (settings.nvidiaBaseUrl.isBlank()) return
-        if (settings.nvidiaApiKey.isBlank()) return
-        isNvidiaModelsLoading = true
-        updateContent(settings)
-        screenModelScope.launch(Dispatchers.IO) {
-            val fetched = runCatching {
-                nvidiaModelsService.fetchModels(
-                    baseUrl = settings.nvidiaBaseUrl,
-                    apiKey = settings.nvidiaApiKey,
-                )
-            }.getOrElse { error ->
-                addAiTranslationLog("? NVIDIA models load failed: ${formatAiTranslationThrowableForLog(error)}")
-                emptyList()
-            }
-            nvidiaModelIds = fetched
-            isNvidiaModelsLoading = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun testNvidiaConnection() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (isTestingNvidiaConnection) return
-        if (settings.translationProvider != NovelTranslationProvider.NVIDIA) return
-        if (!settings.hasConfiguredTranslationProvider()) {
-            addAiTranslationLog("? NVIDIA config invalid: fill Base URL, API key and Model")
-            setProviderApiTestState(
-                provider = NovelTranslationProvider.NVIDIA,
-                status = ProviderApiTestStatus.Error,
-                message = application.stringResource(AYMR.strings.novel_reader_ai_translator_api_invalid_config),
-            )
-            updateContent(settings)
-            return
-        }
-        isTestingNvidiaConnection = true
-        setProviderApiTestState(
-            provider = NovelTranslationProvider.NVIDIA,
-            status = ProviderApiTestStatus.Loading,
-        )
-        updateContent(settings)
-        screenModelScope.launch {
-            runCatching {
-                val result = requestTranslationBatch(
-                    segments = listOf("Connection test"),
-                    settings = settings,
-                ) { message ->
-                    addAiTranslationLog("?? Test: $message")
-                }
-                if (result.isNullOrEmpty() || result.firstOrNull().isNullOrBlank()) {
-                    error(application.stringResource(AYMR.strings.novel_reader_ai_translator_api_empty_response))
-                }
-            }.onSuccess {
-                addAiTranslationLog("? NVIDIA connection OK")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.NVIDIA,
-                    status = ProviderApiTestStatus.Success,
-                )
-            }.onFailure { error ->
-                addAiTranslationLog("? NVIDIA connection failed: ${formatAiTranslationThrowableForLog(error)}")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.NVIDIA,
-                    status = ProviderApiTestStatus.Error,
-                    message = formatAiTranslationThrowableForLog(error),
-                )
-            }
-            isTestingNvidiaConnection = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun refreshOllamaCloudModels() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (settings.translationProvider != NovelTranslationProvider.OLLAMA_CLOUD) return
-        if (settings.ollamaCloudBaseUrl.isBlank()) return
-        if (settings.ollamaCloudApiKey.isBlank()) return
-        isOllamaCloudModelsLoading = true
-        updateContent(settings)
-        screenModelScope.launch(Dispatchers.IO) {
-            val fetched = runCatching {
-                ollamaCloudModelsService.fetchModels(
-                    baseUrl = settings.ollamaCloudBaseUrl,
-                    apiKey = settings.ollamaCloudApiKey,
-                )
-            }.getOrElse { error ->
-                addAiTranslationLog("? Ollama Cloud models load failed: ${formatAiTranslationThrowableForLog(error)}")
-                emptyList()
-            }
-            ollamaCloudModelIds = fetched
-            isOllamaCloudModelsLoading = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun testOllamaCloudConnection() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (isTestingOllamaCloudConnection) return
-        if (settings.translationProvider != NovelTranslationProvider.OLLAMA_CLOUD) return
-        if (!settings.hasConfiguredTranslationProvider()) {
-            addAiTranslationLog("? Ollama Cloud config invalid: fill Base URL, API key and Model")
-            setProviderApiTestState(
-                provider = NovelTranslationProvider.OLLAMA_CLOUD,
-                status = ProviderApiTestStatus.Error,
-                message = application.stringResource(AYMR.strings.novel_reader_ai_translator_api_invalid_config),
-            )
-            updateContent(settings)
-            return
-        }
-        isTestingOllamaCloudConnection = true
-        setProviderApiTestState(
-            provider = NovelTranslationProvider.OLLAMA_CLOUD,
-            status = ProviderApiTestStatus.Loading,
-        )
-        updateContent(settings)
-        screenModelScope.launch {
-            runCatching {
-                val result = requestTranslationBatch(
-                    segments = listOf("Connection test"),
-                    settings = settings,
-                ) { message ->
-                    addAiTranslationLog("?? Test: $message")
-                }
-                if (result.isNullOrEmpty() || result.firstOrNull().isNullOrBlank()) {
-                    error(application.stringResource(AYMR.strings.novel_reader_ai_translator_api_empty_response))
-                }
-            }.onSuccess {
-                addAiTranslationLog("? Ollama Cloud connection OK")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.OLLAMA_CLOUD,
-                    status = ProviderApiTestStatus.Success,
-                )
-            }.onFailure { error ->
-                addAiTranslationLog("? Ollama Cloud connection failed: ${formatAiTranslationThrowableForLog(error)}")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.OLLAMA_CLOUD,
-                    status = ProviderApiTestStatus.Error,
-                    message = formatAiTranslationThrowableForLog(error),
-                )
-            }
-            isTestingOllamaCloudConnection = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun testOpenRouterConnection() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (isTestingOpenRouterConnection) return
-        if (settings.translationProvider != NovelTranslationProvider.OPENROUTER) return
-        if (!settings.hasConfiguredTranslationProvider()) {
-            addAiTranslationLog("? OpenRouter config invalid: fill Base URL, API key and Model")
-            setProviderApiTestState(
-                provider = NovelTranslationProvider.OPENROUTER,
-                status = ProviderApiTestStatus.Error,
-                message = application.stringResource(
-                    AYMR.strings.novel_reader_ai_translator_api_invalid_openrouter_config,
-                ),
-            )
-            updateContent(settings)
-            return
-        }
-        isTestingOpenRouterConnection = true
-        setProviderApiTestState(
-            provider = NovelTranslationProvider.OPENROUTER,
-            status = ProviderApiTestStatus.Loading,
-        )
-        updateContent(settings)
-        screenModelScope.launch {
-            runCatching {
-                val result = requestTranslationBatch(
-                    segments = listOf("Connection test"),
-                    settings = settings,
-                ) { message ->
-                    addAiTranslationLog("?? Test: $message")
-                }
-                if (result.isNullOrEmpty() || result.firstOrNull().isNullOrBlank()) {
-                    error(application.stringResource(AYMR.strings.novel_reader_ai_translator_api_empty_response))
-                }
-            }.onSuccess {
-                addAiTranslationLog("? OpenRouter connection OK")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.OPENROUTER,
-                    status = ProviderApiTestStatus.Success,
-                )
-            }.onFailure { error ->
-                addAiTranslationLog("? OpenRouter connection failed: ${formatAiTranslationThrowableForLog(error)}")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.OPENROUTER,
-                    status = ProviderApiTestStatus.Error,
-                    message = formatAiTranslationThrowableForLog(error),
-                )
-            }
-            isTestingOpenRouterConnection = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun refreshDeepSeekModels() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (settings.translationProvider != NovelTranslationProvider.DEEPSEEK) return
-        if (settings.deepSeekApiKey.isBlank()) return
-        if (settings.deepSeekBaseUrl.isBlank()) return
-        isDeepSeekModelsLoading = true
-        updateContent(settings)
-        screenModelScope.launch(Dispatchers.IO) {
-            val fetched = runCatching {
-                deepSeekModelsService.fetchModels(
-                    baseUrl = settings.deepSeekBaseUrl,
-                    apiKey = settings.deepSeekApiKey,
-                )
-            }.getOrElse { error ->
-                addAiTranslationLog("? DeepSeek models load failed: ${formatAiTranslationThrowableForLog(error)}")
-                emptyList()
-            }
-            deepSeekModelIds = fetched
-            isDeepSeekModelsLoading = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun testDeepSeekConnection() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (isTestingDeepSeekConnection) return
-        if (settings.translationProvider != NovelTranslationProvider.DEEPSEEK) return
-        if (!settings.hasConfiguredTranslationProvider()) {
-            addAiTranslationLog("? DeepSeek config invalid: fill Base URL, API key and Model")
-            setProviderApiTestState(
-                provider = NovelTranslationProvider.DEEPSEEK,
-                status = ProviderApiTestStatus.Error,
-                message = application.stringResource(AYMR.strings.novel_reader_ai_translator_api_invalid_config),
-            )
-            updateContent(settings)
-            return
-        }
-        isTestingDeepSeekConnection = true
-        setProviderApiTestState(
-            provider = NovelTranslationProvider.DEEPSEEK,
-            status = ProviderApiTestStatus.Loading,
-        )
-        updateContent(settings)
-        screenModelScope.launch {
-            runCatching {
-                val result = requestTranslationBatch(
-                    segments = listOf("Connection test"),
-                    settings = settings,
-                ) { message ->
-                    addAiTranslationLog("?? Test: $message")
-                }
-                if (result.isNullOrEmpty() || result.firstOrNull().isNullOrBlank()) {
-                    error(application.stringResource(AYMR.strings.novel_reader_ai_translator_api_empty_response))
-                }
-            }.onSuccess {
-                addAiTranslationLog("? DeepSeek connection OK")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.DEEPSEEK,
-                    status = ProviderApiTestStatus.Success,
-                )
-            }.onFailure { error ->
-                addAiTranslationLog("? DeepSeek connection failed: ${formatAiTranslationThrowableForLog(error)}")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.DEEPSEEK,
-                    status = ProviderApiTestStatus.Error,
-                    message = formatAiTranslationThrowableForLog(error),
-                )
-            }
-            isTestingDeepSeekConnection = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun refreshMistralModels() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (settings.translationProvider != NovelTranslationProvider.MISTRAL) return
-        if (settings.mistralApiKey.isBlank()) return
-        if (settings.mistralBaseUrl.isBlank()) return
-        isMistralModelsLoading = true
-        updateContent(settings)
-        screenModelScope.launch(Dispatchers.IO) {
-            val fetched = runCatching {
-                mistralModelsService.fetchModels(
-                    baseUrl = settings.mistralBaseUrl,
-                    apiKey = settings.mistralApiKey,
-                )
-            }.getOrElse { error ->
-                addAiTranslationLog("? Mistral models load failed: ${formatAiTranslationThrowableForLog(error)}")
-                emptyList()
-            }
-            mistralModelIds = fetched
-            isMistralModelsLoading = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
-    fun testMistralConnection() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (isTestingMistralConnection) return
-        if (settings.translationProvider != NovelTranslationProvider.MISTRAL) return
-        if (!settings.hasConfiguredTranslationProvider()) {
-            addAiTranslationLog("? Mistral config invalid: fill Base URL, API key and Model")
-            setProviderApiTestState(
-                provider = NovelTranslationProvider.MISTRAL,
-                status = ProviderApiTestStatus.Error,
-                message = application.stringResource(AYMR.strings.novel_reader_ai_translator_api_invalid_config),
-            )
-            updateContent(settings)
-            return
-        }
-        isTestingMistralConnection = true
-        setProviderApiTestState(
-            provider = NovelTranslationProvider.MISTRAL,
-            status = ProviderApiTestStatus.Loading,
-        )
-        updateContent(settings)
-        screenModelScope.launch {
-            runCatching {
-                val result = requestTranslationBatch(
-                    segments = listOf("Connection test"),
-                    settings = settings,
-                ) { message ->
-                    addAiTranslationLog("?? Test: $message")
-                }
-                if (result.isNullOrEmpty() || result.firstOrNull().isNullOrBlank()) {
-                    error(application.stringResource(AYMR.strings.novel_reader_ai_translator_api_empty_response))
-                }
-            }.onSuccess {
-                addAiTranslationLog("? Mistral connection OK")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.MISTRAL,
-                    status = ProviderApiTestStatus.Success,
-                )
-            }.onFailure { error ->
-                addAiTranslationLog("? Mistral connection failed: ${formatAiTranslationThrowableForLog(error)}")
-                setProviderApiTestState(
-                    provider = NovelTranslationProvider.MISTRAL,
-                    status = ProviderApiTestStatus.Error,
-                    message = formatAiTranslationThrowableForLog(error),
-                )
-            }
-            isTestingMistralConnection = false
-            val currentSettings = (mutableState.value as? State.Success)?.readerSettings ?: settings
-            updateContent(currentSettings)
-        }
-    }
+
+    /**
+     * Writes a reader setting either into the source override (when this novel has one) or into the
+     * global preference. Shared by the Gemini setters and the TTS controller.
+     */
     private fun updateGeminiSetting(
         setGlobal: () -> Unit,
         setOverride: (NovelReaderOverride) -> NovelReaderOverride,
@@ -2837,574 +1934,58 @@ class NovelReaderScreenModel(
             setGlobal()
         }
     }
-    private fun updateTtsSetting(
-        setGlobal: () -> Unit,
-        setOverride: (NovelReaderOverride) -> NovelReaderOverride,
-        restartPlayback: Boolean = false,
-    ) {
-        updateGeminiSetting(setGlobal, setOverride)
-        ttsWordProgressJob?.cancel()
-        ttsWordProgressJob = null
-        val wasPlaying = ttsSessionController.state.value.playbackState == NovelTtsPlaybackState.PLAYING
-        screenModelScope.launch {
-            if (restartPlayback && wasPlaying) {
-                ttsSessionController.pause()
-            }
-            initializeTtsRuntime()
-            if (restartPlayback && wasPlaying && ttsAudioFocusManager.requestPlaybackFocus()) {
-                ttsSessionController.resume()
-            }
-        }
-    }
-    fun updateSelectedTextSelection(selection: NovelSelectedTextSelection?) {
-        val currentSettings = (mutableState.value as? State.Success)?.readerSettings
-        val translationEnabled = currentSettings?.selectedTextTranslationEnabled == true
-        val dictionaryEnabled = novelReaderPreferences.novelDictionaryEnabled().get()
-        if (!translationEnabled && !dictionaryEnabled) {
-            clearSelectedTextTranslationSelection(refreshUi = false)
-            return
-        }
-        selectedTextTranslationJob?.cancel()
-        selectedTextTranslationJob = null
-        novelDictionaryJob?.cancel()
-        novelDictionaryJob = null
-        selectedTextTranslationSelection = selection
-        selectedTextTranslationUiState = if (selection == null) {
-            NovelSelectedTextTranslationUiState.Idle
-        } else {
-            NovelSelectedTextTranslationUiState.Idle
-        }
-        novelDictionaryUiState = if (selection == null) {
-            NovelDictionaryUiState.Idle
-        } else {
-            NovelDictionaryUiState.Idle
-        }
-        refreshSelectedTextTranslationUi()
 
-        if (selection != null) {
-            when (selection.triggerAction) {
-                SelectedTextAction.DICTIONARY -> lookupSelectedTextDefinition()
-                SelectedTextAction.TRANSLATION -> translateSelectedText()
-                null -> {}
-            }
-        }
-    }
+    // ---------------------------------------------------------------------------------------------
+    // Selected-text translation + dictionary delegates. Selection state, jobs and caches live in
+    // [selectionTranslationController]; the screen model forwards the reader's calls.
+    // ---------------------------------------------------------------------------------------------
 
-    fun translateSelectedText() {
-        val selection = selectedTextTranslationSelection ?: return
-        val currentState = mutableState.value as? State.Success ?: return
-        val settings = currentState.readerSettings
-        if (!settings.selectedTextTranslationEnabled) return
-        if (selectedTextTranslationJob?.isActive == true) return
+    fun updateSelectedTextSelection(selection: NovelSelectedTextSelection?) =
+        selectionTranslationController.updateSelectedTextSelection(selection)
 
-        // Respect the language of the selected text: detect it (using the source's declared
-        // language as a tiebreaker for Han characters) and pass it as a hint so the provider can
-        // send an explicit `sl` instead of always relying on auto-detection.
-        val sourceLanguage = currentNovel?.source?.let { sourceManager.get(it)?.lang }
-        val request = NovelSelectedTextTranslationRequest(
-            selectedText = selection.text,
-            targetLanguage = settings.selectedTextTranslationTargetLanguage,
-            sourceLanguageHint = detectNovelTextLanguage(selection.text, sourceLanguage),
-        )
-        val cacheKey = buildNovelSelectedTextTranslationRequestKey(
-            providerFingerprint = selectedTextTranslationProvider.fingerprint,
-            request = request,
-        )
-        selectedTextTranslationSessionCache.get(cacheKey)?.let { cached ->
-            selectedTextTranslationUiState = NovelSelectedTextTranslationUiState.Result(
-                selection = selection,
-                translationResult = cached,
-            )
-            refreshSelectedTextTranslationUi()
-            return
-        }
+    fun translateSelectedText() = selectionTranslationController.translateSelectedText()
 
-        selectedTextTranslationUiState = NovelSelectedTextTranslationUiState.Translating(selection)
-        refreshSelectedTextTranslationUi()
-        selectedTextTranslationJob?.cancel()
-        selectedTextTranslationJob = screenModelScope.launch {
-            val outcome = selectedTextTranslationProvider.translate(request)
-            if (isNovelSelectedTextTranslationResponseStale(selectedTextTranslationSelection, selection.sessionId)) {
-                return@launch
-            }
-            when (outcome) {
-                is NovelSelectedTextTranslationProviderOutcome.Success -> {
-                    selectedTextTranslationSessionCache.put(cacheKey, outcome.result)
-                    selectedTextTranslationUiState = NovelSelectedTextTranslationUiState.Result(
-                        selection = selection,
-                        translationResult = outcome.result,
-                    )
-                }
-                is NovelSelectedTextTranslationProviderOutcome.Unavailable -> {
-                    selectedTextTranslationUiState = when (outcome.reason) {
-                        is NovelSelectedTextTranslationErrorReason.Cooldown,
-                        NovelSelectedTextTranslationErrorReason.EmptySelection,
-                        NovelSelectedTextTranslationErrorReason.TooLongSelection,
-                        NovelSelectedTextTranslationErrorReason.WebViewUnavailable,
-                        is NovelSelectedTextTranslationErrorReason.BackendUnavailable,
-                        -> {
-                            NovelSelectedTextTranslationUiState.Unavailable(outcome.reason)
-                        }
-                        is NovelSelectedTextTranslationErrorReason.NetworkFailure,
-                        NovelSelectedTextTranslationErrorReason.ParserFailure,
-                        -> {
-                            NovelSelectedTextTranslationUiState.Error(
-                                selection = selection,
-                                reason = outcome.reason,
-                            )
-                        }
-                    }
-                }
-            }
-            refreshSelectedTextTranslationUi()
-        }
-    }
+    fun retrySelectedTextTranslation() = selectionTranslationController.retrySelectedTextTranslation()
 
-    fun retrySelectedTextTranslation() {
-        translateSelectedText()
-    }
+    fun dismissSelectedTextTranslation() = selectionTranslationController.dismissSelectedTextTranslation()
 
-    fun dismissSelectedTextTranslation() {
-        clearSelectedTextTranslationSelection()
-    }
+    fun resetSelectedTextTranslationForChapter() =
+        selectionTranslationController.resetSelectedTextTranslationForChapter()
 
-    fun resetSelectedTextTranslationForChapter() {
-        clearSelectedTextTranslationSelection()
-        selectedTextTranslationSessionCache.clear()
-    }
+    fun lookupSelectedTextDefinition() = selectionTranslationController.lookupSelectedTextDefinition()
 
-    fun lookupSelectedTextDefinition() {
-        val enabled = novelReaderPreferences.novelDictionaryEnabled().get()
-        if (!enabled) return
-        val selection = selectedTextTranslationSelection ?: return
-        if (novelDictionaryJob?.isActive == true) return
+    fun retryNovelDictionary() = selectionTranslationController.retryNovelDictionary()
 
-        val term = selection.text
-        val sourceLanguage = currentNovel?.source?.let { sourceManager.get(it)?.lang }
-        val wordLang = detectNovelTextLanguage(term, sourceLanguage)
-        val targetLangCode = novelReaderPreferences.novelDictionaryTargetLanguage().get()
+    fun dismissNovelDictionary() = selectionTranslationController.dismissNovelDictionary()
 
-        val cacheKey = buildNovelDictionaryCacheKey(
-            backendFingerprint = novelDictionaryProvider.fingerprint,
-            sourceLanguage = wordLang ?: "",
-            term = term,
-        )
-        novelDictionarySessionCache.get(cacheKey)?.let { cached ->
-            novelDictionaryUiState = NovelDictionaryUiState.Result(selection, cached)
-            recordDictionaryHistory(term, wordLang, targetLangCode, cached)
-            refreshSelectedTextTranslationUi()
-            return
-        }
+    fun resetNovelDictionaryForChapter() = selectionTranslationController.resetNovelDictionaryForChapter()
 
-        novelDictionaryUiState = NovelDictionaryUiState.Looking(selection)
-        refreshSelectedTextTranslationUi()
-        novelDictionaryJob?.cancel()
-        novelDictionaryJob = screenModelScope.launch {
-            val outcome = novelDictionaryProvider.lookup(
-                NovelDictionaryRequest(
-                    term = term,
-                    sourceLanguageHint = wordLang,
-                    targetLanguageCode = targetLangCode,
-                ),
-            )
-            if (isNovelSelectedTextTranslationResponseStale(selectedTextTranslationSelection, selection.sessionId)) {
-                return@launch
-            }
-            when (outcome) {
-                is NovelDictionaryProviderOutcome.Success -> {
-                    novelDictionarySessionCache.put(cacheKey, outcome.result)
-                    recordDictionaryHistory(term, wordLang, targetLangCode, outcome.result)
-                    novelDictionaryUiState = NovelDictionaryUiState.Result(selection, outcome.result)
-                }
-                is NovelDictionaryProviderOutcome.Unavailable -> {
-                    novelDictionaryUiState = when (outcome.reason) {
-                        is NovelSelectedTextTranslationErrorReason.Cooldown,
-                        NovelSelectedTextTranslationErrorReason.EmptySelection,
-                        NovelSelectedTextTranslationErrorReason.TooLongSelection,
-                        NovelSelectedTextTranslationErrorReason.WebViewUnavailable,
-                        is NovelSelectedTextTranslationErrorReason.BackendUnavailable,
-                        -> NovelDictionaryUiState.Unavailable(outcome.reason)
-                        is NovelSelectedTextTranslationErrorReason.NetworkFailure,
-                        NovelSelectedTextTranslationErrorReason.ParserFailure,
-                        -> NovelDictionaryUiState.Error(selection, outcome.reason)
-                    }
-                }
-            }
-            refreshSelectedTextTranslationUi()
-        }
-    }
+    fun playSelectedTextPronunciation(text: String) =
+        selectionTranslationController.playSelectedTextPronunciation(text)
+    // ---------------------------------------------------------------------------------------------
+    // Whole-chapter translation delegates. Gemini/Google jobs, visibility and logs live in
+    // [translationController]; the screen model forwards the reader's calls.
+    // ---------------------------------------------------------------------------------------------
 
-    fun retryNovelDictionary() {
-        lookupSelectedTextDefinition()
-    }
+    fun startGeminiTranslation() = translationController.startGeminiTranslation()
 
-    fun dismissNovelDictionary() {
-        novelDictionaryJob?.cancel()
-        novelDictionaryJob = null
-        novelDictionaryUiState = NovelDictionaryUiState.Idle
-        refreshSelectedTextTranslationUi()
-    }
+    fun stopGeminiTranslation() = translationController.stopGeminiTranslation()
 
-    fun resetNovelDictionaryForChapter() {
-        novelDictionaryJob?.cancel()
-        novelDictionaryJob = null
-        novelDictionarySessionCache.clear()
-        novelDictionaryUiState = NovelDictionaryUiState.Idle
-    }
+    fun toggleGeminiTranslationVisibility() = translationController.toggleGeminiTranslationVisibility()
 
-    private fun recordDictionaryHistory(
-        term: String,
-        language: String?,
-        targetLanguage: String?,
-        result: NovelDictionaryResult,
-    ) {
-        val novelTitle = currentNovel?.title
-        val chapterName = currentChapter?.name
-        screenModelScope.launch(Dispatchers.IO) {
-            runCatching {
-                NovelDictionaryHistory.record(
-                    context = Injekt.get<Application>(),
-                    term = term,
-                    language = language,
-                    targetLanguage = targetLanguage,
-                    preview = NovelDictionaryHistory.previewOf(result),
-                    novelTitle = novelTitle,
-                    chapterName = chapterName,
-                    provider = result.attribution,
-                )
-            }
-        }
-    }
+    fun clearGeminiTranslation() = translationController.clearGeminiTranslation()
 
-    private var dictionaryTts: android.speech.tts.TextToSpeech? = null
+    fun startGoogleTranslation() = translationController.startGoogleTranslation()
 
-    fun playSelectedTextPronunciation(text: String) {
-        val cleanText = text.trim()
-        if (cleanText.isEmpty()) return
-        val sourceLanguage = currentNovel?.source?.let { sourceManager.get(it)?.lang }
-        val lang = detectNovelTextLanguage(cleanText, sourceLanguage) ?: "en"
-        val locale = when (lang) {
-            "ja" -> java.util.Locale.JAPANESE
-            "zh" -> java.util.Locale.CHINESE
-            "ko" -> java.util.Locale.KOREAN
-            "ru" -> java.util.Locale.forLanguageTag("ru")
-            else -> java.util.Locale.ENGLISH
-        }
+    fun stopGoogleTranslation() = translationController.stopGoogleTranslation()
 
-        val ttsListener = android.speech.tts.TextToSpeech.OnInitListener { status ->
-            if (status == android.speech.tts.TextToSpeech.SUCCESS) {
-                dictionaryTts?.language = locale
-                dictionaryTts?.speak(
-                    cleanText,
-                    android.speech.tts.TextToSpeech.QUEUE_FLUSH,
-                    null,
-                    "dictionary_pronunciation",
-                )
-            }
-        }
+    fun resumeGoogleTranslation() = translationController.resumeGoogleTranslation()
 
-        if (dictionaryTts == null) {
-            dictionaryTts = android.speech.tts.TextToSpeech(application, ttsListener)
-        } else {
-            dictionaryTts?.language = locale
-            dictionaryTts?.speak(
-                cleanText,
-                android.speech.tts.TextToSpeech.QUEUE_FLUSH,
-                null,
-                "dictionary_pronunciation",
-            )
-        }
-    }
+    fun toggleGoogleTranslationVisibility() = translationController.toggleGoogleTranslationVisibility()
 
-    private fun clearSelectedTextTranslationSelection(refreshUi: Boolean = true) {
-        selectedTextTranslationJob?.cancel()
-        selectedTextTranslationJob = null
-        selectedTextTranslationSelection = null
-        selectedTextTranslationUiState = NovelSelectedTextTranslationUiState.Idle
-        novelDictionaryJob?.cancel()
-        novelDictionaryJob = null
-        novelDictionaryUiState = NovelDictionaryUiState.Idle
-        if (refreshUi) {
-            refreshSelectedTextTranslationUi()
-        }
-    }
+    fun clearGoogleTranslation() = translationController.clearGoogleTranslation()
 
-    private fun refreshSelectedTextTranslationUi() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        updateContent(settings)
-    }
-    private fun refreshGeminiUiState() {
-        val state = mutableState.value as? State.Success ?: return
-        mutableState.value = state.copy(
-            geminiTranslation = state.geminiTranslation.copy(
-                isGeminiTranslating = isGeminiTranslating,
-                geminiTranslationProgress = geminiTranslationProgress,
-                isGeminiTranslationVisible = isGeminiTranslationVisible,
-                hasGeminiTranslationCache = hasGeminiTranslationCache,
-                geminiLogs = geminiLogs,
-            ),
-        )
-    }
-    fun startGeminiTranslation() {
-        if (isGeminiTranslating) return
-        val currentState = mutableState.value as? State.Success ?: return
-        val chapter = currentChapter ?: return
-        val baseTextBlocks = currentParsedTextBlocks()
-        if (baseTextBlocks.isEmpty()) return
-        val settings = currentState.readerSettings
-        if (!settings.geminiEnabled) {
-            addAiTranslationLog("AI translation is disabled.")
-            return
-        }
-        if (!settings.hasConfiguredTranslationProvider()) {
-            addAiTranslationLog("? Translation provider is not configured")
-            return
-        }
-        translationHolder.clear("gemini")
-        isGeminiTranslationVisible = false
-        hasGeminiTranslationCache = false
-        isGeminiTranslating = true
-        geminiTranslationProgress = 0
-        geminiTranslationJob?.cancel()
-        geminiTranslationJob = null
-        addAiTranslationLog("AI translation queued in background.")
-        refreshGeminiUiState()
-        geminiTranslationJob = screenModelScope.launch(Dispatchers.IO) {
-            try {
-                translationQueueManager.addToQueue(listOf(chapter.id), currentState.novel.id)
-                if (!isActive) return@launch
-                val appContext = Injekt.get<Application>()
-                TranslationJob.runImmediately(appContext)
-                addAiTranslationLog("AI translation queued.")
-            } catch (_: CancellationException) {
-                // Job cancelled intentionally by the user or screen teardown.
-            } catch (error: Exception) {
-                logcat(LogPriority.WARN, error) { "Failed to queue AI translation for chapter=${chapter.id}" }
-                addAiTranslationLog(
-                    "Failed to start background translation: ${error.message ?: error::class.java.simpleName}",
-                )
-                isGeminiTranslating = false
-                geminiTranslationProgress = 0
-                refreshGeminiUiState()
-            }
-        }
-    }
-    fun stopGeminiTranslation() {
-        val chapter = currentChapter ?: return
-        geminiTranslationJob?.cancel()
-        geminiTranslationJob = null
-        isGeminiTranslating = false
-        isGeminiTranslationVisible = false
-        geminiTranslationProgress = 0
-        addAiTranslationLog("?? Stop requested")
-        screenModelScope.launch(Dispatchers.IO) {
-            val wasActive = translationQueueManager.cancelChapter(chapter.id)
-            val appContext = Injekt.get<Application>()
-            if (wasActive) {
-                TranslationJob.stop(appContext)
-                if (translationQueueManager.hasNext()) {
-                    TranslationJob.runImmediately(appContext)
-                }
-            }
-        }
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        updateContent(settings)
-    }
-    fun toggleGeminiTranslationVisibility() {
-        if (translationHolder.isEmpty("gemini")) return
-        isGeminiTranslationVisible = !isGeminiTranslationVisible
-        addAiTranslationLog("??? Visibility: ${if (isGeminiTranslationVisible) "ON" else "OFF"}")
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        updateContent(settings)
-    }
-    fun clearGeminiTranslation() {
-        val chapter = currentChapter ?: return
-        if (isGeminiTranslating) {
-            stopGeminiTranslation()
-        }
-        geminiTranslationJob?.cancel()
-        geminiTranslationJob = null
-        translationHolder.clear("gemini")
-        isGeminiTranslating = false
-        isGeminiTranslationVisible = false
-        geminiTranslationProgress = 0
-        hasGeminiTranslationCache = false
-        NovelReaderTranslationDiskCacheStore.remove(chapter.id)
-        addAiTranslationLog("??? Cleared chapter cache")
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        updateContent(settings)
-    }
-
-    // Google Translation
-    fun startGoogleTranslation() {
-        if (isGoogleTranslating) return
-        val currentState = mutableState.value as? State.Success ?: return
-        val settings = currentState.readerSettings
-        if (!settings.googleTranslationEnabled) {
-            addGoogleLog("Google Translate is disabled.")
-            updateContent(settings)
-            return
-        }
-
-        if (isGeminiTranslating) {
-            addGoogleLog("Cannot start: AI translation is active.")
-            updateContent(settings)
-            return
-        }
-
-        val baseTextBlocks = currentParsedTextBlocks()
-        if (baseTextBlocks.isEmpty()) return
-        addGoogleLog(
-            "Start: chapter=${currentChapter?.id ?: -1}, textBlocks=${baseTextBlocks.size}, source=${settings.googleTranslationSourceLang}, target=${settings.googleTranslationTargetLang}, backend=simple, autoStart=${settings.googleTranslationAutoStart}",
-        )
-        val firstText = baseTextBlocks.firstOrNull()
-        val firstTextPreview = firstText?.take(80)?.replace('\n', ' ') ?: ""
-        addGoogleLog(
-            "Sample: firstTextLen=${firstText?.length ?: 0}, firstTextPreview=$firstTextPreview",
-        )
-
-        val params = GoogleTranslationParams(
-            sourceLang = settings.googleTranslationSourceLang,
-            targetLang = settings.googleTranslationTargetLang,
-        )
-
-        translationHolder.clear("google")
-        isGoogleTranslationVisible = false
-        hasGoogleTranslationCache = false
-        isGoogleTranslating = true
-        googleTranslationProgress = 0
-        googleLogs = emptyList()
-        googleRateLimited = false
-        translationPhase = TranslationPhase.IDLE
-        updateContent(settings)
-
-        googleTranslationJob = screenModelScope.launch {
-            try {
-                val response = googleTranslationService.translateBatch(
-                    texts = baseTextBlocks,
-                    params = params,
-                    onLog = { log ->
-                        addGoogleLog(log)
-                        updateGoogleProgressFromLog(log)
-                        updateContent(settings)
-                    },
-                    onProgress = onProgress@{ phase, percent ->
-                        translationPhase = phase
-                        googleTranslationProgress = percent
-                        updateContent(settings)
-                    },
-                )
-                val results = response.translatedByIndex
-                    .filterKeys { index -> index in baseTextBlocks.indices }
-                    .filterValues { translated -> translated.isNotBlank() }
-                addGoogleLog(
-                    "Finished: translatedSegments=${results.values.count {
-                        it.isNotBlank()
-                    }}/$baseTextBlocks.size, rateLimited=false",
-                )
-                translationHolder.put("google", results)
-                val chapter = currentChapter
-                if (chapter != null) {
-                    googleSessionCache.put(
-                        chapterId = chapter.id,
-                        sourceLang = params.sourceLang,
-                        targetLang = params.targetLang,
-                        translatedByIndex = results,
-                    )
-                }
-                hasGoogleTranslationCache = results.isNotEmpty()
-                isGoogleTranslating = false
-                googleTranslationProgress = 100
-                translationPhase = TranslationPhase.IDLE
-                if (results.isNotEmpty()) {
-                    isGoogleTranslationVisible = true
-                }
-                updateContent(settings)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                addGoogleLog("Google translation failed: ${error.message ?: error::class.java.simpleName}")
-                googleRateLimited = false
-                isGoogleTranslating = false
-                googleTranslationProgress = 0
-                translationPhase = TranslationPhase.IDLE
-                updateContent(settings)
-            }
-        }
-    }
-
-    fun stopGoogleTranslation() {
-        googleTranslationJob?.cancel()
-        googleTranslationJob = null
-        isGoogleTranslating = false
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        updateContent(settings)
-    }
-
-    fun resumeGoogleTranslation() {
-        if (!googleRateLimited) return
-        googleRateLimited = false
-        addGoogleLog("Resume requested: restarting Google translation")
-        startGoogleTranslation()
-    }
-
-    fun toggleGoogleTranslationVisibility() {
-        if (translationHolder.isEmpty("google")) return
-        isGoogleTranslationVisible = !isGoogleTranslationVisible
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        updateContent(settings)
-    }
-
-    fun clearGoogleTranslation() {
-        val chapter = currentChapter ?: return
-        googleTranslationJob?.cancel()
-        googleTranslationJob = null
-        translationHolder.clear("google")
-        isGoogleTranslating = false
-        isGoogleTranslationVisible = false
-        googleTranslationProgress = 0
-        hasGoogleTranslationCache = false
-        googleLogs = emptyList()
-        googleRateLimited = false
-        translationPhase = TranslationPhase.IDLE
-        googleSessionCache.remove(
-            chapterId = chapter.id,
-            sourceLang =
-            (mutableState.value as? State.Success)?.readerSettings?.googleTranslationSourceLang ?: "auto",
-            targetLang =
-            (mutableState.value as? State.Success)?.readerSettings?.googleTranslationTargetLang ?: "Russian",
-        )
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        updateContent(settings)
-    }
-
-    private fun restoreGoogleTranslationFromSessionCache(settings: NovelReaderSettings) {
-        val chapter = currentChapter ?: return
-        val cached = googleSessionCache.get(
-            chapterId = chapter.id,
-            sourceLang = settings.googleTranslationSourceLang,
-            targetLang = settings.googleTranslationTargetLang,
-        )
-        if (cached != null && cached.isNotEmpty()) {
-            translationHolder.put("google", cached)
-            hasGoogleTranslationCache = true
-            isGoogleTranslationVisible = true
-            addGoogleLog(
-                "Restored session cache: segments=${cached.size}, source=${settings.googleTranslationSourceLang}, target=${settings.googleTranslationTargetLang}",
-            )
-            updateContent(settings)
-        }
-    }
-
-    fun maybeAutoStartGoogleTranslation() {
-        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return
-        if (!settings.googleTranslationEnabled || !settings.googleTranslationAutoStart) return
-        if (isGeminiTranslating || isGeminiTranslationVisible) return
-        restoreGoogleTranslationFromSessionCache(settings)
-        if (!hasGoogleTranslationCache) {
-            startGoogleTranslation()
-        }
-    }
+    fun maybeAutoStartGoogleTranslation() = translationController.maybeAutoStartGoogleTranslation()
 
     private fun applyGoogleTranslationToContentBlocks(blocks: List<ContentBlock>): List<ContentBlock> {
         if (translationHolder.isEmpty("google")) return blocks
@@ -3431,49 +2012,20 @@ class NovelReaderScreenModel(
         return updated
     }
 
-    private fun addGoogleLog(message: String) {
-        val text = message.trim()
-        if (text.isBlank()) return
-        googleLogs = (listOf(text) + googleLogs).take(100)
-        logcat(LogPriority.DEBUG) { "[GoogleTranslate] $text" }
-    }
+    private fun addGoogleLog(message: String) = translationController.addGoogleLogPublic(message)
 
-    private fun updateGoogleProgressFromLog(message: String) {
-        val match = Regex("""Simple chunk (\d+)/(\d+)""").find(message) ?: return
-        val current = match.groupValues[1].toIntOrNull() ?: return
-        val total = match.groupValues[2].toIntOrNull()?.takeIf { it > 0 } ?: return
-        val progress = (current * 100) / total
-        googleTranslationProgress = maxOf(googleTranslationProgress, progress.coerceIn(0, 99))
-    }
+    private fun updateGoogleProgressFromLog(message: String) =
+        translationController.updateGoogleProgressFromLogPublic(message)
 
-    private fun restoreGeminiTranslationFromCache(
-        chapterId: Long,
-        settings: NovelReaderSettings,
-    ) {
-        val cached = NovelReaderTranslationDiskCacheStore.get(chapterId)
-        if (cached == null) {
-            hasGeminiTranslationCache = false
-            return
-        }
-        val settingsMatch = NovelReaderTranslationCacheResolver.matches(
-            cached = cached,
-            requirements = settings.toTranslationCacheRequirements(),
-        )
-        if (!settingsMatch) {
-            hasGeminiTranslationCache = false
-            return
-        }
-        translationHolder.put("gemini", cached.translatedByIndex)
-        hasGeminiTranslationCache = true
-        geminiTranslationProgress = 100
-        isGeminiTranslationVisible = true
-        addAiTranslationLog("?? Restored cached translation")
-    }
     private fun applyGeminiTranslationToContentBlocks(
         blocks: List<ContentBlock>,
         forceTranslation: Boolean = false,
     ): List<ContentBlock> {
-        if ((!forceTranslation && !isGeminiTranslationVisible) || translationHolder.isEmpty("gemini")) return blocks
+        if ((!forceTranslation && !translationState.isGeminiTranslationVisible) ||
+            translationHolder.isEmpty("gemini")
+        ) {
+            return blocks
+        }
         var textIndex = 0
         return blocks.map { block ->
             when (block) {
@@ -3494,7 +2046,11 @@ class NovelReaderScreenModel(
         blocks: List<NovelRichContentBlock>,
         forceTranslation: Boolean = false,
     ): List<NovelRichContentBlock> {
-        if ((!forceTranslation && !isGeminiTranslationVisible) || translationHolder.isEmpty("gemini")) return blocks
+        if ((!forceTranslation && !translationState.isGeminiTranslationVisible) ||
+            translationHolder.isEmpty("gemini")
+        ) {
+            return blocks
+        }
         var textIndex = 0
         return blocks.map { block ->
             when (block) {
@@ -3505,7 +2061,7 @@ class NovelReaderScreenModel(
                         block
                     } else {
                         block.copy(
-                            segments = projectTranslatedTextOntoRichSegments(
+                            segments = NovelContentHtmlMapper.projectTranslatedTextOntoRichSegments(
                                 originalSegments = block.segments,
                                 translatedText = replacement,
                             ),
@@ -3519,7 +2075,7 @@ class NovelReaderScreenModel(
                         block
                     } else {
                         block.copy(
-                            segments = projectTranslatedTextOntoRichSegments(
+                            segments = NovelContentHtmlMapper.projectTranslatedTextOntoRichSegments(
                                 originalSegments = block.segments,
                                 translatedText = replacement,
                             ),
@@ -3535,7 +2091,7 @@ class NovelReaderScreenModel(
                         block
                     } else {
                         block.copy(
-                            segments = projectTranslatedTextOntoRichSegments(
+                            segments = NovelContentHtmlMapper.projectTranslatedTextOntoRichSegments(
                                 originalSegments = block.segments,
                                 translatedText = replacement,
                             ),
@@ -3550,7 +2106,11 @@ class NovelReaderScreenModel(
         blocks: List<NovelRichContentBlock>,
         forceTranslation: Boolean = false,
     ): List<NovelRichContentBlock> {
-        if ((!forceTranslation && !isGoogleTranslationVisible) || translationHolder.isEmpty("google")) return blocks
+        if ((!forceTranslation && !translationState.isGoogleTranslationVisible) ||
+            translationHolder.isEmpty("google")
+        ) {
+            return blocks
+        }
         var textIndex = 0
         var replacedCount = 0
         val updated = blocks.map { block ->
@@ -3563,7 +2123,7 @@ class NovelReaderScreenModel(
                     } else {
                         replacedCount += 1
                         block.copy(
-                            segments = projectTranslatedTextOntoRichSegments(
+                            segments = NovelContentHtmlMapper.projectTranslatedTextOntoRichSegments(
                                 originalSegments = block.segments,
                                 translatedText = replacement,
                             ),
@@ -3578,7 +2138,7 @@ class NovelReaderScreenModel(
                     } else {
                         replacedCount += 1
                         block.copy(
-                            segments = projectTranslatedTextOntoRichSegments(
+                            segments = NovelContentHtmlMapper.projectTranslatedTextOntoRichSegments(
                                 originalSegments = block.segments,
                                 translatedText = replacement,
                             ),
@@ -3595,7 +2155,7 @@ class NovelReaderScreenModel(
                     } else {
                         replacedCount += 1
                         block.copy(
-                            segments = projectTranslatedTextOntoRichSegments(
+                            segments = NovelContentHtmlMapper.projectTranslatedTextOntoRichSegments(
                                 originalSegments = block.segments,
                                 translatedText = replacement,
                             ),
@@ -3614,594 +2174,92 @@ class NovelReaderScreenModel(
         )
         return updated
     }
-    private fun buildRawHtmlFromContentBlocks(blocks: List<ContentBlock>): String {
-        return buildString {
-            blocks.forEach { block ->
-                when (block) {
-                    is ContentBlock.Image -> {
-                        append("<img src=\"")
-                        append(block.url.escapeHtmlAttribute())
-                        append("\" alt=\"")
-                        append((block.alt ?: "").escapeHtmlAttribute())
-                        append("\" />")
-                    }
-                    is ContentBlock.Text -> {
-                        append("<p>")
-                        append(block.text.escapeHtml())
-                        append("</p>")
-                    }
-                }
-            }
-        }
-    }
-    private fun buildTranslatedRawHtmlForDisplay(
-        templateHtml: String,
-        fallbackBlocks: List<ContentBlock>,
-        translatedByIndex: Map<Int, String>,
-    ): String {
-        if (translatedByIndex.isEmpty()) return buildRawHtmlFromContentBlocks(fallbackBlocks)
-        return buildTranslatedHtmlFromTemplate(
-            templateHtml = templateHtml,
-            translatedByIndex = translatedByIndex,
-        ) ?: buildRawHtmlFromContentBlocks(fallbackBlocks)
-    }
-
-    private fun buildTranslatedHtmlFromTemplate(
-        templateHtml: String,
-        translatedByIndex: Map<Int, String>,
-    ): String? {
-        if (templateHtml.isBlank() || translatedByIndex.isEmpty()) return null
-        return runCatching {
-            val document = Jsoup.parse(templateHtml)
-            document.outputSettings().prettyPrint(false)
-            val textBlocks = document.select(PARAGRAPH_LIKE_SELECTOR)
-                .filterNot { element ->
-                    element.tagName().equals("p", ignoreCase = true) &&
-                        element.parent()?.tagName()?.equals("li", ignoreCase = true) == true
-                }
-            if (textBlocks.isEmpty()) return@runCatching null
-
-            var textIndex = 0
-            var replacedCount = 0
-            textBlocks.forEach { element ->
-                val originalText = element.text().sanitizeTextBlock()
-                if (originalText.isBlank()) return@forEach
-                val translated = translatedByIndex[textIndex]
-                textIndex += 1
-                if (translated.isNullOrBlank()) return@forEach
-                replaceElementTextPreservingInlineMarkup(
-                    element = element,
-                    translatedText = translated.normalizedForHtmlElement(element),
-                )
-                replacedCount += 1
-            }
-            if (replacedCount <= 0) return@runCatching null
-            if (templateHtml.contains("<html", ignoreCase = true)) {
-                document.outerHtml()
-            } else {
-                document.body().html()
-            }
-        }.getOrNull()
-    }
-
-    private fun replaceElementTextPreservingInlineMarkup(
-        element: Element,
-        translatedText: String,
-    ) {
-        val cleanedText = translatedText.sanitizeTranslatedDisplayText()
-        if (cleanedText.isBlank()) return
-
-        val textNodes = mutableListOf<TextNode>()
-        collectInlineTextNodes(element, textNodes)
-        if (textNodes.isEmpty()) {
-            element.text(cleanedText)
-            return
-        }
-
-        val pieces = splitTranslatedTextBySourceWeights(
-            sourceParts = textNodes.map { it.text() },
-            translatedText = cleanedText,
-        )
-        textNodes.forEachIndexed { index, textNode ->
-            textNode.text(pieces.getOrNull(index).orEmpty())
-        }
-    }
-
-    private fun collectInlineTextNodes(
-        node: Node,
-        out: MutableList<TextNode>,
-    ) {
-        when (node) {
-            is TextNode -> {
-                if (node.text().isNotBlank()) {
-                    out += node
-                }
-            }
-            is Element -> {
-                val tag = node.tagName().lowercase()
-                if (tag == "script" || tag == "style" || tag == "noscript") return
-                node.childNodes().forEach { child ->
-                    collectInlineTextNodes(child, out)
-                }
-            }
-        }
-    }
-
-    private fun projectTranslatedTextOntoRichSegments(
-        originalSegments: List<NovelRichTextSegment>,
-        translatedText: String,
-    ): List<NovelRichTextSegment> {
-        val cleanedText = translatedText.sanitizeTranslatedDisplayText()
-        if (cleanedText.isBlank()) return originalSegments
-        if (originalSegments.isEmpty()) return listOf(NovelRichTextSegment(cleanedText))
-        if (originalSegments.size == 1) return listOf(originalSegments.first().copy(text = cleanedText))
-
-        val pieces = splitTranslatedTextBySourceWeights(
-            sourceParts = originalSegments.map { it.text },
-            translatedText = cleanedText,
-        )
-        return originalSegments.mapIndexedNotNull { index, segment ->
-            val piece = pieces.getOrNull(index).orEmpty()
-            when {
-                piece.isEmpty() && segment.text.isNotEmpty() -> null
-                else -> segment.copy(text = piece)
-            }
-        }.ifEmpty {
-            listOf(originalSegments.first().copy(text = cleanedText))
-        }
-    }
-
-    private fun splitTranslatedTextBySourceWeights(
-        sourceParts: List<String>,
-        translatedText: String,
-    ): List<String> {
-        if (sourceParts.isEmpty()) return emptyList()
-        val cleanedText = translatedText.sanitizeTranslatedDisplayText()
-        if (sourceParts.size == 1) return listOf(cleanedText)
-        if (cleanedText.isEmpty()) return List(sourceParts.size) { "" }
-
-        val weights = sourceParts.map { part ->
-            part.count { char -> !char.isWhitespace() }.coerceAtLeast(0)
-        }
-        val totalWeight = weights.sum()
-        if (totalWeight <= 0) {
-            return List(sourceParts.size) { index -> if (index == 0) cleanedText else "" }
-        }
-
-        val boundaries = mutableListOf<Int>()
-        var cumulativeWeight = 0
-        var previousBoundary = 0
-        weights.dropLast(1).forEach { weight ->
-            cumulativeWeight += weight
-            val preferred = ((cleanedText.length.toFloat() * cumulativeWeight.toFloat()) / totalWeight.toFloat())
-                .roundToInt()
-                .coerceIn(previousBoundary, cleanedText.length)
-            val boundary = findNearestTranslatedTextBoundary(
-                text = cleanedText,
-                preferred = preferred,
-                min = previousBoundary,
-            )
-            boundaries += boundary
-            previousBoundary = boundary
-        }
-
-        val pieces = mutableListOf<String>()
-        var start = 0
-        boundaries.forEach { boundary ->
-            pieces += cleanedText.substring(start, boundary)
-            start = boundary
-        }
-        pieces += cleanedText.substring(start)
-        return pieces
-    }
-
-    private fun findNearestTranslatedTextBoundary(
-        text: String,
-        preferred: Int,
-        min: Int,
-    ): Int {
-        if (preferred <= min) return min
-        if (preferred >= text.length) return text.length
-        val radius = maxOf(8, text.length / 32)
-        var best = preferred
-        var bestScore = boundaryScore(text, preferred) * 100
-        val start = maxOf(min, preferred - radius)
-        val end = minOf(text.length, preferred + radius)
-        for (candidate in start..end) {
-            val score = boundaryScore(text, candidate) * 100 + kotlin.math.abs(candidate - preferred)
-            if (score < bestScore) {
-                best = candidate
-                bestScore = score
-            }
-        }
-        return best.coerceIn(min, text.length)
-    }
-
-    private fun boundaryScore(text: String, index: Int): Int {
-        if (index <= 0 || index >= text.length) return 0
-        val before = text[index - 1]
-        val after = text[index]
-        return when {
-            before.isWhitespace() || after.isWhitespace() -> 0
-            before in TRANSLATED_TEXT_STRONG_BOUNDARY_CHARS -> 1
-            after in TRANSLATED_TEXT_OPENING_BOUNDARY_CHARS -> 1
-            before in TRANSLATED_TEXT_SOFT_BOUNDARY_CHARS -> 2
-            else -> 8
-        }
-    }
-
-    private fun String.normalizedForHtmlElement(element: Element): String {
-        val cleaned = sanitizeTranslatedDisplayText()
-        if (!element.tagName().equals("li", ignoreCase = true)) return cleaned
-        return cleaned
-            .removePrefix("•")
-            .removePrefix("-")
-            .removePrefix("*")
-            .trimStart()
-    }
-
-    private fun String.sanitizeTranslatedDisplayText(): String {
-        return replace('\u00A0', ' ')
-            .replace("\r", "")
-            .trim()
-    }
-
     private fun currentParsedTextBlocks(): List<String> {
         return contentModel?.textBlocks ?: emptyList()
     }
 
+    /**
+     * Chapter the translator, its cache and the TTS text source have to work on.
+     *
+     * `currentChapter` is the chapter the reader was opened with. Over a book that chapter only says
+     * where the session started: the text on screen belongs to whichever spine chapter the reading
+     * position is in. Translating, caching and switching TTS text by `currentChapter` therefore hit
+     * a chapter the user is not reading, which is why the translators looked like they did nothing.
+     */
+    private fun activeTranslationChapterId(): Long? =
+        bookController.bookModeChapterAtReadingPosition()?.id ?: currentChapter?.id
+
+    /**
+     * Source text blocks for [chapterId].
+     *
+     * The content model only ever holds the chapter the reader loaded, so over a book the blocks of
+     * any other spine chapter have to be parsed from its own payload.
+     */
+    override suspend fun translationSourceTextBlocks(chapterId: Long): List<String> {
+        if (!bookController.isBookRuntimeActive() || chapterId == currentChapter?.id) return currentParsedTextBlocks()
+        return runCatching {
+            val snapshot = ttsChapterRepository.loadChapterSnapshot(chapterId)
+            withContext(Dispatchers.Default) {
+                NovelReaderContentModel(
+                    canonicalHtml = prependChapterHeadingIfMissing(
+                        rawHtml = snapshot.rawHtml.normalizeStructuredChapterPayload(),
+                        chapterName = snapshot.chapter.name,
+                    ),
+                    chapterWebUrl = snapshot.chapterWebUrl,
+                    novelUrl = snapshot.novel.url,
+                ).textBlocks
+            }
+        }.getOrElse { emptyList() }
+    }
+
+    /**
+     * Renders a book section translated when a translation for that chapter exists.
+     *
+     * The chapter reader shows translations by rebuilding the chapter HTML in [updateContent] and
+     * handing it to the chapter WebView. Book mode never takes that path: its document is streamed
+     * section by section and the chapter HTML is deliberately empty over a book, so a finished AI or
+     * Google translation was computed, cached and then never displayed. The section pipeline applies
+     * it here instead, which is the only place the book document is built.
+     */
+    private fun applyBookSectionTranslation(chapterId: Long, bodyHtml: String): String {
+        val settings = (mutableState.value as? State.Success)?.readerSettings ?: return bodyHtml
+        // Every chapter of the book is translated, not just the one at the reading position: the
+        // in-memory maps are used for the chapter they were produced for, every other chapter falls
+        // back to its own cache entry. Gating this on the active chapter made the neighbouring
+        // resident chapters lose their translation as soon as the reader crossed a boundary.
+        val inMemory = when {
+            chapterId != translationHolderChapterId -> emptyMap()
+            translationState.isGeminiTranslationVisible && !translationHolder.isEmpty("gemini") ->
+                translationHolder.map("gemini")
+            translationState.isGoogleTranslationVisible && !translationHolder.isEmpty("google") ->
+                translationHolder.map("google")
+            else -> emptyMap()
+        }
+        val translatedByIndex = inMemory.ifEmpty {
+            val cached = NovelReaderTranslationDiskCacheStore.get(chapterId) ?: return bodyHtml
+            val settingsMatch = NovelReaderTranslationCacheResolver.matches(
+                cached = cached,
+                requirements = settings.toTranslationCacheRequirements(),
+            )
+            if (!settingsMatch) return bodyHtml
+            cached.translatedByIndex
+        }
+        if (translatedByIndex.isEmpty()) return bodyHtml
+        return NovelContentHtmlMapper.buildTranslatedHtmlFromTemplate(bodyHtml, translatedByIndex) ?: bodyHtml
+    }
+
+    /**
+     * Re-renders a book section whose translation changed.
+     *
+     * Sections are cached once they are rendered, so a translation that finishes after the section
+     * was mounted would otherwise only appear after leaving and re-entering the book.
+     */
+    private fun refreshBookModeSection(chapterId: Long) {
+        bookController.refreshSectionAfterTranslation(chapterId)
+    }
+
     private fun currentParsedContentBlocks(): List<ContentBlock> {
         return contentModel?.contentBlocks ?: emptyList()
-    }
-    private fun NovelReaderSettings.translationPromptFamily(): NovelTranslationPromptFamily {
-        return when (translationProvider) {
-            NovelTranslationProvider.GEMINI_PRIVATE,
-            -> NovelTranslationPromptFamily.RUSSIAN
-            NovelTranslationProvider.GEMINI,
-            NovelTranslationProvider.OPENROUTER,
-            NovelTranslationProvider.DEEPSEEK,
-            NovelTranslationProvider.MISTRAL,
-            NovelTranslationProvider.NVIDIA,
-            NovelTranslationProvider.OLLAMA_CLOUD,
-            -> resolveNovelTranslationPromptFamily(geminiTargetLang)
-        }
-    }
-
-    private fun NovelReaderSettings.resolveTranslationPromptModifiers(
-        family: NovelTranslationPromptFamily = NovelTranslationPromptFamily.RUSSIAN,
-    ): String {
-        val modifierText = GeminiPromptModifiers.buildPromptText(
-            enabledIds = geminiEnabledPromptModifiers,
-            customModifier = geminiCustomPromptModifier,
-            family = family,
-        )
-        val styleDirective = NovelTranslationStylePresets.promptDirective(
-            geminiStylePreset,
-            family = family,
-        ).trim()
-        return listOf(
-            styleDirective,
-            modifierText,
-            geminiPromptModifiers.trim(),
-        ).filter { it.isNotBlank() }
-            .joinToString("\n\n")
-    }
-    private fun NovelReaderSettings.toGeminiTranslationParams(): GeminiTranslationParams {
-        return GeminiTranslationParams(
-            apiKey = geminiApiKey,
-            model = geminiModel.normalizeGeminiModelId(),
-            sourceLang = geminiSourceLang,
-            targetLang = geminiTargetLang,
-            reasoningEffort = geminiReasoningEffort,
-            budgetTokens = geminiBudgetTokens,
-            temperature = geminiTemperature,
-            topP = geminiTopP,
-            topK = geminiTopK,
-            promptMode = geminiPromptMode,
-            promptModifiers = resolveTranslationPromptModifiers(family = translationPromptFamily()),
-            provider = translationProvider,
-            privateUnlocked = geminiPrivateUnlocked,
-            privatePythonLikeMode = geminiPrivatePythonLikeMode,
-        )
-    }
-    private fun NovelReaderSettings.toOpenRouterTranslationParams(): OpenRouterTranslationParams {
-        return OpenRouterTranslationParams(
-            baseUrl = openRouterBaseUrl,
-            apiKey = openRouterApiKey,
-            model = openRouterModel,
-            sourceLang = geminiSourceLang,
-            targetLang = geminiTargetLang,
-            promptMode = geminiPromptMode,
-            promptModifiers = resolveTranslationPromptModifiers(family = translationPromptFamily()),
-            temperature = geminiTemperature,
-            topP = geminiTopP,
-            reasoningEffort = normalizeTranslationReasoningEffort(
-                provider = NovelTranslationProvider.OPENROUTER,
-                model = openRouterModel,
-                value = geminiReasoningEffort,
-            ),
-        )
-    }
-    private fun NovelReaderSettings.toDeepSeekTranslationParams(): DeepSeekTranslationParams {
-        return DeepSeekTranslationParams(
-            baseUrl = deepSeekBaseUrl,
-            apiKey = deepSeekApiKey,
-            model = deepSeekModel,
-            sourceLang = geminiSourceLang,
-            targetLang = geminiTargetLang,
-            promptMode = geminiPromptMode,
-            promptModifiers = resolveTranslationPromptModifiers(family = translationPromptFamily()),
-            temperature = geminiTemperature.coerceIn(DEEPSEEK_TEMPERATURE_MIN, DEEPSEEK_TEMPERATURE_MAX),
-            topP = geminiTopP.coerceIn(DEEPSEEK_TOP_P_MIN, DEEPSEEK_TOP_P_MAX),
-            reasoningEffort = normalizeTranslationReasoningEffort(
-                provider = NovelTranslationProvider.DEEPSEEK,
-                model = deepSeekModel,
-                value = geminiReasoningEffort,
-            ) ?: "none",
-            presencePenalty = DEEPSEEK_DEFAULT_PRESENCE_PENALTY,
-            frequencyPenalty = DEEPSEEK_DEFAULT_FREQUENCY_PENALTY,
-        )
-    }
-    private fun NovelReaderSettings.toMistralTranslationParams(): MistralTranslationParams {
-        return MistralTranslationParams(
-            baseUrl = mistralBaseUrl,
-            apiKey = mistralApiKey,
-            model = mistralModel,
-            sourceLang = geminiSourceLang,
-            targetLang = geminiTargetLang,
-            promptMode = geminiPromptMode,
-            promptModifiers = resolveTranslationPromptModifiers(family = translationPromptFamily()),
-            temperature = geminiTemperature,
-            topP = geminiTopP,
-            reasoningEffort = normalizeTranslationReasoningEffort(
-                provider = NovelTranslationProvider.MISTRAL,
-                model = mistralModel,
-                value = geminiReasoningEffort,
-            ),
-        )
-    }
-    private fun NovelReaderSettings.toNvidiaTranslationParams(): NvidiaTranslationParams {
-        return NvidiaTranslationParams(
-            baseUrl = nvidiaBaseUrl,
-            apiKey = nvidiaApiKey,
-            model = nvidiaModel,
-            sourceLang = geminiSourceLang,
-            targetLang = geminiTargetLang,
-            promptMode = geminiPromptMode,
-            promptModifiers = resolveTranslationPromptModifiers(family = translationPromptFamily()),
-            temperature = geminiTemperature,
-            topP = geminiTopP,
-        )
-    }
-    private fun NovelReaderSettings.toOllamaCloudTranslationParams(): OllamaCloudTranslationParams {
-        return OllamaCloudTranslationParams(
-            baseUrl = ollamaCloudBaseUrl,
-            apiKey = ollamaCloudApiKey,
-            model = ollamaCloudModel,
-            sourceLang = geminiSourceLang,
-            targetLang = geminiTargetLang,
-            promptMode = geminiPromptMode,
-            promptModifiers = resolveTranslationPromptModifiers(family = translationPromptFamily()),
-            temperature = geminiTemperature,
-            topP = geminiTopP,
-            reasoningEffort = normalizeTranslationReasoningEffort(
-                provider = NovelTranslationProvider.OLLAMA_CLOUD,
-                model = ollamaCloudModel,
-                value = geminiReasoningEffort,
-            ),
-        )
-    }
-    private fun NovelReaderSettings.translationRequestConfigLog(): String {
-        val common = buildString {
-            append("provider=").append(translationProvider.name)
-            append(", model=").append(translationCacheModelId())
-            append(", lang=").append(geminiSourceLang).append("->").append(geminiTargetLang)
-            append(", prompt=").append(geminiPromptMode.name)
-            append(", style=").append(geminiStylePreset.name)
-            if (shouldUseSinglePrivateChapterRequestMode()) {
-                append(", batch=chapter")
-                append(", concurrency=1")
-            } else {
-                append(", batch=").append(effectiveTranslationBatchSize())
-                append(", concurrency=").append(translationConcurrencyLimit())
-            }
-            append(", relaxed=").append(geminiRelaxedMode)
-            append(", cache=").append(!geminiDisableCache)
-        }
-        val sampling = when (translationProvider) {
-            NovelTranslationProvider.GEMINI -> {
-                "temp=${geminiTemperature.toLogFloat()}, topP=${geminiTopP.toLogFloat()}, topK=$geminiTopK, " +
-                    "reasoning=$geminiReasoningEffort, budgetTokens=$geminiBudgetTokens"
-            }
-            NovelTranslationProvider.GEMINI_PRIVATE -> {
-                "temp=${geminiTemperature.toLogFloat()}, topP=${geminiTopP.toLogFloat()}, topK=$geminiTopK, " +
-                    "reasoning=$geminiReasoningEffort, budgetTokens=$geminiBudgetTokens, " +
-                    "singleRequest=${shouldUseSinglePrivateChapterRequestMode()}, " +
-                    "pythonLike=$geminiPrivatePythonLikeMode, " +
-                    "bridgeInstalled=${GeminiPrivateBridge.isInstalled()}, bridgeUnlocked=${isPrivateBridgeUnlocked()}"
-            }
-            NovelTranslationProvider.OPENROUTER -> {
-                val reasoning = normalizeTranslationReasoningEffort(
-                    provider = NovelTranslationProvider.OPENROUTER,
-                    model = openRouterModel,
-                    value = geminiReasoningEffort,
-                ) ?: "none"
-                "baseUrl=${openRouterBaseUrl.trim()}, temp=${geminiTemperature.toLogFloat()}, " +
-                    "topP=${geminiTopP.toLogFloat()}, reasoning=$reasoning"
-            }
-            NovelTranslationProvider.DEEPSEEK -> {
-                val params = toDeepSeekTranslationParams()
-                val presencePenalty = params.presencePenalty.toLogFloat()
-                val frequencyPenalty = params.frequencyPenalty.toLogFloat()
-                "baseUrl=${params.baseUrl.trim()}, temp=${params.temperature.toLogFloat()}, " +
-                    "topP=${params.topP.toLogFloat()}, " +
-                    "presencePenalty=$presencePenalty, frequencyPenalty=$frequencyPenalty, " +
-                    "stream=false"
-            }
-            NovelTranslationProvider.MISTRAL -> {
-                "baseUrl=${mistralBaseUrl.trim()}, temp=${geminiTemperature.toLogFloat()}, " +
-                    "topP=${geminiTopP.toLogFloat()}, stream=false"
-            }
-            NovelTranslationProvider.NVIDIA -> {
-                "baseUrl=${nvidiaBaseUrl.trim()}, temp=${geminiTemperature.toLogFloat()}, " +
-                    "topP=${geminiTopP.toLogFloat()}, stream=false"
-            }
-            NovelTranslationProvider.OLLAMA_CLOUD -> {
-                val params = toOllamaCloudTranslationParams()
-                val reasoning = params.reasoningEffort ?: "none"
-                "baseUrl=${params.baseUrl.trim()}, temp=${params.temperature.toLogFloat()}, " +
-                    "topP=${params.topP.toLogFloat()}, think=$reasoning, stream=false"
-            }
-        }
-        return "$common, $sampling"
-    }
-    private fun Float.toLogFloat(): String = String.format(Locale.US, "%.3f", this)
-    private suspend fun requestTranslationBatch(
-        segments: List<String>,
-        settings: NovelReaderSettings,
-        onLog: ((String) -> Unit)? = null,
-    ): List<String?>? {
-        return when (settings.translationProvider) {
-            NovelTranslationProvider.GEMINI -> {
-                geminiTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toGeminiTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-            NovelTranslationProvider.GEMINI_PRIVATE -> {
-                geminiTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toGeminiTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-            NovelTranslationProvider.OPENROUTER -> {
-                openRouterTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toOpenRouterTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-            NovelTranslationProvider.DEEPSEEK -> {
-                deepSeekTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toDeepSeekTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-            NovelTranslationProvider.MISTRAL -> {
-                mistralTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toMistralTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-            NovelTranslationProvider.NVIDIA -> {
-                nvidiaTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toNvidiaTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-            NovelTranslationProvider.OLLAMA_CLOUD -> {
-                ollamaCloudTranslationService.translateBatch(
-                    segments = segments,
-                    params = settings.toOllamaCloudTranslationParams(),
-                    onLog = onLog,
-                )
-            }
-        }
-    }
-    private fun NovelReaderSettings.hasConfiguredTranslationProvider(): Boolean {
-        if (!geminiEnabled) return false
-        return when (translationProvider) {
-            NovelTranslationProvider.GEMINI -> geminiApiKey.isNotBlank()
-            NovelTranslationProvider.GEMINI_PRIVATE -> {
-                geminiApiKey.isNotBlank() && isPrivateBridgeUnlocked()
-            }
-            NovelTranslationProvider.OPENROUTER -> {
-                openRouterBaseUrl.isNotBlank() &&
-                    openRouterApiKey.isNotBlank() &&
-                    openRouterModel.isNotBlank()
-            }
-            NovelTranslationProvider.DEEPSEEK -> {
-                deepSeekBaseUrl.isNotBlank() &&
-                    deepSeekApiKey.isNotBlank() &&
-                    deepSeekModel.isNotBlank()
-            }
-            NovelTranslationProvider.MISTRAL -> {
-                mistralBaseUrl.isNotBlank() &&
-                    mistralApiKey.isNotBlank() &&
-                    mistralModel.isNotBlank()
-            }
-            NovelTranslationProvider.NVIDIA -> {
-                nvidiaApiKey.isNotBlank() &&
-                    nvidiaModel.isNotBlank()
-            }
-            NovelTranslationProvider.OLLAMA_CLOUD -> {
-                ollamaCloudBaseUrl.isNotBlank() &&
-                    ollamaCloudApiKey.isNotBlank() &&
-                    ollamaCloudModel.isNotBlank()
-            }
-        }
-    }
-    private fun NovelReaderSettings.translationConcurrencyLimit(): Int {
-        return when (translationProvider) {
-            NovelTranslationProvider.GEMINI -> geminiConcurrency.coerceIn(1, 8)
-            NovelTranslationProvider.GEMINI_PRIVATE -> {
-                if (shouldUseSinglePrivateChapterRequestMode()) 1 else geminiConcurrency.coerceIn(1, 8)
-            }
-            NovelTranslationProvider.OPENROUTER -> 1
-            NovelTranslationProvider.DEEPSEEK -> geminiConcurrency.coerceIn(1, MAX_DEEPSEEK_CONCURRENCY)
-            NovelTranslationProvider.OLLAMA_CLOUD -> geminiConcurrency.coerceIn(1, 8)
-            else -> geminiConcurrency.coerceIn(1, 8)
-        }
-    }
-
-    private fun NovelReaderSettings.effectiveTranslationBatchSize(): Int {
-        val requested = geminiBatchSize.coerceIn(1, 80)
-        return when (translationProvider) {
-            else -> requested
-        }
-    }
-    private fun NovelReaderSettings.shouldUseSinglePrivateChapterRequestMode(): Boolean {
-        return translationProvider == NovelTranslationProvider.GEMINI_PRIVATE &&
-            GeminiPrivateBridge.isInstalled() &&
-            (GeminiPrivateBridge.forceSingleChapterRequest() || geminiPrivatePythonLikeMode)
-    }
-    private fun NovelReaderSettings.requiresPrivateBridgeUnlock(): Boolean {
-        return translationProvider == NovelTranslationProvider.GEMINI_PRIVATE &&
-            GeminiPrivateBridge.isInstalled()
-    }
-    private fun NovelReaderSettings.isPrivateBridgeUnlocked(): Boolean {
-        if (!requiresPrivateBridgeUnlock()) return true
-        return geminiPrivateUnlocked || GeminiPrivateBridge.isUnlocked()
-    }
-    private suspend fun saveHistorySnapshot(chapterId: Long, sessionReadDurationMs: Long) {
-        if (getIncognitoState.shouldPauseHistory(currentNovel?.source, currentNovel?.favorite == true)) {
-            return
-        }
-        runCatching {
-            resolvedHistoryRepository?.upsertNovelHistory(
-                NovelHistoryUpdate(
-                    chapterId = chapterId,
-                    readAt = Date(),
-                    sessionReadDuration = sessionReadDurationMs.coerceAtLeast(0L),
-                ),
-            )
-        }.onFailure { error ->
-            logcat(LogPriority.ERROR, error) { "Failed to save novel history snapshot" }
-        }
-    }
-    private suspend fun flushPendingHistorySnapshot(
-        chapterId: Long,
-        additionalReadDurationMs: Long = 0L,
-    ) {
-        val readDurationMs = (pendingHistoryReadDurationMs + additionalReadDurationMs).coerceAtLeast(0L)
-        if (readDurationMs <= 0L) return
-        pendingHistoryReadDurationMs = 0L
-        saveHistorySnapshot(chapterId, readDurationMs)
     }
     sealed interface State {
         data class Loading(val readerSettings: NovelReaderSettings? = null) : State
@@ -4234,6 +2292,12 @@ class NovelReaderScreenModel(
             val googleTranslation: ReaderGoogleState = ReaderGoogleState(),
             val ttsUiState: NovelReaderTtsUiState = NovelReaderTtsUiState(),
             val aiProviders: ReaderAiProvidersState = ReaderAiProvidersState(),
+            val bookMode: ReaderBookModeState = ReaderBookModeState(),
+            /**
+             * Incremented on every seamless in-place chapter switch. The reader UI uses it to swap
+             * the document without hiding the live WebView.
+             */
+            val seamlessSwitchToken: Long = 0L,
         ) : State {
             val textBlocks: List<String>
                 get() = contentBlocks
@@ -4253,6 +2317,12 @@ class NovelReaderScreenModel(
             val isGeminiTranslationVisible: Boolean get() = geminiTranslation.isGeminiTranslationVisible
             val hasGeminiTranslationCache: Boolean get() = geminiTranslation.hasGeminiTranslationCache
             val geminiLogs: List<String> get() = geminiTranslation.geminiLogs
+            val chapterTranslationProgress: Map<Long, NovelBookChapterTranslationProgress>
+                get() = geminiTranslation.chapterProgress
+
+            /** Chapters of the book still being translated somewhere behind or ahead of the reader. */
+            fun backgroundTranslatingChapterCount(activeChapterId: Long): Int =
+                chapterTranslationProgress.backgroundTranslatingCount(activeChapterId)
 
             val isGoogleTranslating: Boolean get() = googleTranslation.isGoogleTranslating
             val googleTranslationProgress: Int get() = googleTranslation.googleTranslationProgress
@@ -4295,12 +2365,48 @@ class NovelReaderScreenModel(
             val lastSavedPageReaderProgress: PageReaderProgress? = null,
         )
 
+        /**
+         * Book-mode (whole-novel continuous reading) UI state.
+         *
+         * Only primitives and index lists are exposed here: the spine, the section store and the
+         * render coordinator stay inside the screen model. When [isEnabled] is false the reader
+         * behaves exactly like the classic per-chapter reader.
+         */
+        data class ReaderBookModeState(
+            val isEnabled: Boolean = false,
+            val sectionCount: Int = 0,
+            val currentSectionIndex: Int = 0,
+            val currentSectionFraction: Float = 0f,
+            val bookProgressFraction: Float = 0f,
+            val renderedSectionIndices: List<Int> = emptyList(),
+            val preparingSectionIndices: List<Int> = emptyList(),
+            val failedSectionIndices: List<Int> = emptyList(),
+            val showChapterHeadings: Boolean = true,
+            val isPreparingWholeBook: Boolean = false,
+            /**
+             * The renderer is mounted but has not reached the saved position yet.
+             *
+             * A freshly loaded document paints its own start before the queued resume scroll lands,
+             * so the reader flashed the first page of the book and then jumped. The UI covers those
+             * frames instead of showing a position the reader never asked for.
+             */
+            val isRestoringPosition: Boolean = false,
+            val preparedChapterCount: Int = 0,
+            val totalChapterCount: Int = 0,
+        ) {
+            val isReady: Boolean get() = isEnabled && sectionCount > 0
+
+            val isPreparing: Boolean get() = preparingSectionIndices.isNotEmpty()
+        }
+
         data class ReaderGeminiState(
             val isGeminiTranslating: Boolean = false,
             val geminiTranslationProgress: Int = 0,
             val isGeminiTranslationVisible: Boolean = false,
             val hasGeminiTranslationCache: Boolean = false,
             val geminiLogs: List<String> = emptyList(),
+            /** Queue progress per chapter of the open book, keyed by chapter id. */
+            val chapterProgress: Map<Long, NovelBookChapterTranslationProgress> = emptyMap(),
         )
 
         data class ReaderGoogleState(
@@ -4344,29 +2450,6 @@ class NovelReaderScreenModel(
         data class Text(val text: String) : ContentBlock
         data class Image(val url: String, val alt: String?) : ContentBlock
     }
-    private data class PendingProgressPersistence(
-        val chapterId: Long,
-        val novelId: Long,
-        val chapterNumber: Int,
-        val read: Boolean,
-        val lastPageRead: Long,
-        val emitReadEvent: Boolean,
-        val emitNovelCompleted: Boolean,
-        val sessionReadDurationMs: Long,
-    ) {
-        fun merge(other: PendingProgressPersistence): PendingProgressPersistence {
-            require(chapterId == other.chapterId) {
-                "Pending progress persistence can only merge updates for the same chapter"
-            }
-            return copy(
-                read = other.read,
-                lastPageRead = other.lastPageRead,
-                emitReadEvent = emitReadEvent || other.emitReadEvent,
-                emitNovelCompleted = emitNovelCompleted || other.emitNovelCompleted,
-                sessionReadDurationMs = maxOf(sessionReadDurationMs, other.sessionReadDurationMs),
-            )
-        }
-    }
     private data class ChapterNavigation(
         val previousChapterId: Long?,
         val previousChapterName: String?,
@@ -4375,22 +2458,12 @@ class NovelReaderScreenModel(
     )
     companion object {
         private const val JAOMIX_PAGE_SOURCE_ORDER_STRIDE = 1_000L
-        private const val MAX_DEEPSEEK_CONCURRENCY = 32
         private const val PRIVATE_FALLBACK_CHUNK_SIZE = 40
         private const val PRIVATE_FALLBACK_CONCURRENCY = 1
         private const val TTS_BASE_MILLIS_PER_WORD = 360f
         private const val TTS_MIN_UTTERANCE_DURATION_MS = 700L
         private const val TTS_WORD_PROGRESS_UPDATE_INTERVAL_MS = 60L
-        private const val DEEPSEEK_TEMPERATURE_MIN = 1.3f
-        private const val DEEPSEEK_TEMPERATURE_MAX = 1.5f
-        private const val DEEPSEEK_TOP_P_MIN = 0.9f
-        private const val DEEPSEEK_TOP_P_MAX = 0.95f
-        private const val DEEPSEEK_DEFAULT_PRESENCE_PENALTY = 0.15f
-        private const val DEEPSEEK_DEFAULT_FREQUENCY_PENALTY = 0.15f
-        private const val PARAGRAPH_LIKE_SELECTOR = "p, li, blockquote, h1, h2, h3, h4, h5, h6, pre"
-        private const val TRANSLATED_TEXT_STRONG_BOUNDARY_CHARS = ".,!?;:…)]}»”’"
-        private const val TRANSLATED_TEXT_OPENING_BOUNDARY_CHARS = "([{«“‘"
-        private const val TRANSLATED_TEXT_SOFT_BOUNDARY_CHARS = "—–-"
+        private const val TTS_PREVIEW_UTTERANCE_ID = "tts-preview"
         private val STRUCTURED_NODE_TYPES = setOf(
             "doc",
             "paragraph",

@@ -4,6 +4,7 @@ import eu.kanade.domain.ui.model.AppTheme
 import eu.kanade.domain.ui.model.BottomNavAppearance
 import eu.kanade.domain.ui.model.EInkProfile
 import eu.kanade.domain.ui.model.EInkThemeMode
+import eu.kanade.domain.ui.model.EpisodeListDensity
 import eu.kanade.domain.ui.model.NavStyle
 import eu.kanade.domain.ui.model.NavTransitionMode
 import eu.kanade.domain.ui.model.StartScreen
@@ -77,6 +78,8 @@ class UiPreferences(
 
     fun bottomNavAppearance() = preferenceStore.getEnum("bottom_nav_appearance", BottomNavAppearance.Aurora)
 
+    fun episodeListDensity() = preferenceStore.getEnum("episode_list_density", EpisodeListDensity.Comfortable)
+
     fun navStyle() = preferenceStore.getEnum("bottom_rail_nav_style", NavStyle.MOVE_HISTORY_TO_MORE)
 
     fun hapticFeedbackMode() = preferenceStore.getEnum(
@@ -130,6 +133,8 @@ class UiPreferences(
     fun showTabGlow() = preferenceStore.getBoolean("show_tab_glow", false)
 
     fun showCelestialNavbar() = preferenceStore.getBoolean("show_celestial_navbar", false)
+
+    fun showCircuitNavbar() = preferenceStore.getBoolean("show_circuit_navbar", false)
 
     fun animatedAuroraBackground() = preferenceStore.getBoolean("animated_aurora_background", true)
 

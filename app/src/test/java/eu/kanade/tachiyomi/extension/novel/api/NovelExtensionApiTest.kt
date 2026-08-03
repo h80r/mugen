@@ -58,12 +58,12 @@ class NovelExtensionApiTest {
     }
 
     @Test
-    fun `when checked too soon from available list expect no work`() {
+    fun `when the fetching check runs too soon expect no work`() {
         runTest {
             nowMs = 1_000_000L
             every { lastCheckPreference.get() } returns nowMs
 
-            val result = api.checkForUpdates(fromAvailableExtensionList = true)
+            val result = api.checkForUpdates()
 
             result shouldBe null
             coVerify(exactly = 0) { updateExtensionRepo.awaitAll() }
@@ -75,7 +75,7 @@ class NovelExtensionApiTest {
     @Test
     fun `when checked normally expect update count set`() {
         runTest {
-            nowMs = 2_000_000L
+            nowMs = 200_000_000L
             every { lastCheckPreference.get() } returns 0L
 
             val repo = ExtensionRepo(
@@ -102,11 +102,7 @@ class NovelExtensionApiTest {
             coEvery { getExtensionRepo.getAll() } returns listOf(repo)
             coEvery {
                 repoUpdateInteractor.findUpdates(
-                    listOf(
-                        "https://example.org/index.min.json",
-                        "https://example.org/plugins.min.json",
-                        "https://example.org/plugins.json",
-                    ),
+                    listOf("https://example.org"),
                 )
             } returns listOf(entry)
             coJustRun { updateExtensionRepo.awaitAll() }
@@ -117,11 +113,7 @@ class NovelExtensionApiTest {
             coVerify { updateExtensionRepo.awaitAll() }
             coVerify {
                 repoUpdateInteractor.findUpdates(
-                    listOf(
-                        "https://example.org/index.min.json",
-                        "https://example.org/plugins.min.json",
-                        "https://example.org/plugins.json",
-                    ),
+                    listOf("https://example.org"),
                 )
             }
             verify { lastCheckPreference.set(nowMs) }
@@ -132,7 +124,7 @@ class NovelExtensionApiTest {
     @Test
     fun `when repo base url already points to index file expect no double suffix`() {
         runTest {
-            nowMs = 3_000_000L
+            nowMs = 300_000_000L
             every { lastCheckPreference.get() } returns 0L
 
             val repo = ExtensionRepo(

@@ -16,7 +16,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.tadami.aurora.R
 import eu.kanade.domain.extension.novel.interactor.NovelExtensionSourceItem
+import eu.kanade.presentation.browse.components.ExtensionAuroraButton
+import eu.kanade.presentation.browse.components.ExtensionDetailsGlassCard
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
@@ -173,89 +174,91 @@ private fun DetailsHeader(
 ) {
     val context = LocalContext.current
 
-    Column {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = MaterialTheme.padding.medium)
-                .padding(top = MaterialTheme.padding.medium, bottom = MaterialTheme.padding.small)
-                .clickable {
-                    val debugInfo = buildString {
-                        append("Plugin name: ${extension.name} (lang: ${extension.lang}; id: ${extension.id})\n")
-                        append("Version: ${extension.versionName} (${extension.versionCode})\n")
-                        append("Site: ${extension.site}\n")
-                        append("Store: ${extension.repoUrl}\n")
-                        append("Has settings: ${extension.hasSettings}\n")
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = MaterialTheme.padding.medium)
+            .padding(top = MaterialTheme.padding.medium, bottom = MaterialTheme.padding.small),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+    ) {
+        ExtensionDetailsGlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        val debugInfo = buildString {
+                            append("Plugin name: ${extension.name} (lang: ${extension.lang}; id: ${extension.id})\n")
+                            append("Version: ${extension.versionName} (${extension.versionCode})\n")
+                            append("Site: ${extension.site}\n")
+                            append("Store: ${extension.repoUrl}\n")
+                            append("Has settings: ${extension.hasSettings}\n")
+                        }
+                        context.copyToClipboard("Novel plugin debug information", debugInfo)
                     }
-                    context.copyToClipboard("Novel plugin debug information", debugInfo)
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            AsyncImage(
-                model = extension.iconUrl,
-                contentDescription = null,
-                modifier = Modifier.size(112.dp),
-            )
-            Text(
-                text = extension.name,
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            Text(
-                text = extension.id,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = MaterialTheme.padding.extraLarge, vertical = MaterialTheme.padding.small),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            InfoText(
-                modifier = Modifier.weight(1f),
-                primaryText = extension.versionName,
-                secondaryText = stringResource(MR.strings.ext_info_version),
-            )
-            InfoText(
-                modifier = Modifier.weight(1f),
-                primaryText = LocaleHelper.getSourceDisplayName(extension.lang, context),
-                secondaryText = stringResource(MR.strings.ext_info_language),
-            )
-        }
-
-        Row(
-            modifier = Modifier
-                .padding(horizontal = MaterialTheme.padding.medium)
-                .padding(top = MaterialTheme.padding.small),
-            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.medium),
-        ) {
-            OutlinedButton(
-                modifier = Modifier.weight(1f),
-                onClick = onClickUninstall,
+                    .padding(MaterialTheme.padding.medium),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(stringResource(MR.strings.ext_uninstall))
+                AsyncImage(
+                    model = extension.iconUrl,
+                    contentDescription = null,
+                    modifier = Modifier.size(96.dp),
+                )
+                Text(
+                    text = extension.name,
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    text = extension.id,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                )
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = MaterialTheme.padding.extraLarge, vertical = MaterialTheme.padding.small),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                InfoText(
+                    modifier = Modifier.weight(1f),
+                    primaryText = extension.versionName,
+                    secondaryText = stringResource(MR.strings.ext_info_version),
+                )
+                InfoText(
+                    modifier = Modifier.weight(1f),
+                    primaryText = LocaleHelper.getSourceDisplayName(extension.lang, context),
+                    secondaryText = stringResource(MR.strings.ext_info_language),
+                )
             }
         }
 
-        TextPreferenceWidget(
-            modifier = Modifier.padding(horizontal = MaterialTheme.padding.small),
-            title = stringResource(MR.strings.pref_incognito_mode),
-            subtitle = stringResource(MR.strings.pref_incognito_mode_extension_summary),
-            icon = ImageVector.vectorResource(R.drawable.ic_glasses_24dp),
-            widget = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(
-                        checked = extIncognitoMode,
-                        onCheckedChange = onExtIncognitoChange,
-                        modifier = Modifier.padding(start = TrailingWidgetBuffer),
-                    )
-                }
-            },
+        ExtensionAuroraButton(
+            text = stringResource(MR.strings.ext_uninstall),
+            onClick = onClickUninstall,
+            accent = MaterialTheme.colorScheme.error,
+            modifier = Modifier.fillMaxWidth(),
         )
 
-        HorizontalDivider()
+        ExtensionDetailsGlassCard(modifier = Modifier.fillMaxWidth()) {
+            TextPreferenceWidget(
+                title = stringResource(MR.strings.pref_incognito_mode),
+                subtitle = stringResource(MR.strings.pref_incognito_mode_extension_summary),
+                icon = ImageVector.vectorResource(R.drawable.ic_glasses_24dp),
+                widget = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(
+                            checked = extIncognitoMode,
+                            onCheckedChange = onExtIncognitoChange,
+                            modifier = Modifier.padding(start = TrailingWidgetBuffer),
+                        )
+                    }
+                },
+            )
+        }
     }
 }
 

@@ -236,12 +236,13 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
         }
     }
 
-    suspend fun search(search: String): List<MangaTrackSearch> {
+    suspend fun search(search: String, isNovel: Boolean = false): List<MangaTrackSearch> {
         return withIOContext {
+            val formatFilter = if (isNovel) "format_in: [NOVEL]" else "format_not_in: [NOVEL]"
             val query = """
             |query Search(${'$'}query: String) {
                 |Page (perPage: 50) {
-                    |media(search: ${'$'}query, type: MANGA, format_not_in: [NOVEL]) {
+                    |media(search: ${'$'}query, type: MANGA, $formatFilter) {
                         |id
                         |staff {
                             |edges {

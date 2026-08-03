@@ -10,7 +10,10 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.preference.asState
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.entries.novel.LocalNovelBookImport
 import eu.kanade.domain.entries.novel.interactor.UpdateNovel
+import eu.kanade.domain.entries.novel.model.toSNovel
+import eu.kanade.domain.items.novelchapter.interactor.SyncNovelChaptersWithSource
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.novel.MapNovelTrackStatusToLibrary
 import eu.kanade.presentation.components.SEARCH_DEBOUNCE_MILLIS
@@ -22,6 +25,8 @@ import eu.kanade.tachiyomi.data.download.novel.NovelDownloadQueueManager
 import eu.kanade.tachiyomi.data.download.novel.NovelTranslatedDownloadFormat
 import eu.kanade.tachiyomi.data.download.novel.NovelTranslatedDownloadManager
 import eu.kanade.tachiyomi.data.track.TrackerManager
+import eu.kanade.tachiyomi.novelsource.NovelSource
+import eu.kanade.tachiyomi.novelsource.model.SNovelChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.ui.entries.novel.NovelDownloadAction
 import eu.kanade.tachiyomi.ui.entries.novel.NovelScreenModel
@@ -85,6 +90,7 @@ import tachiyomi.domain.source.novel.service.NovelSourceManager
 import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.domain.track.novel.interactor.GetTracksPerNovel
 import tachiyomi.domain.track.novel.model.NovelTrack
+import tachiyomi.source.local.entries.novel.Fb2Book
 import tachiyomi.source.local.entries.novel.LocalNovelSource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -117,6 +123,10 @@ class NovelLibraryScreenModel(
     private val searchDebounceMillis: Long = SEARCH_DEBOUNCE_MILLIS,
     private val trackerManager: TrackerManager = Injekt.get(),
     private val startActive: Boolean = true,
+    private val localNovelBookArtifactBuilderFactory:
+    () -> eu.kanade.tachiyomi.data.book.novel.LocalNovelBookArtifactBuilder = {
+        eu.kanade.tachiyomi.data.book.novel.LocalNovelBookArtifactBuilder()
+    },
 ) : StateScreenModel<NovelLibraryScreenModel.State>(
     State(
         groupType = if (libraryPreferences.globalGroupLibrary().get()) {
@@ -1313,7 +1323,13 @@ class NovelLibraryScreenModel(
         }.distinctUntilChanged()
     }
 
-    suspend fun importEpub(uri: Uri) {
+    /**
+     * Imports a local book file (EPUB or FB2) into `localnovel/` and inserts a LocalNovel row.
+     * Kept as [importEpub] for call-site compatibility.
+     */
+    suspend fun importEpub(uri: Uri) = importLocalBook(uri)
+
+    suspend fun importLocalBook(uri: Uri) {
         withContext(Dispatchers.IO) {
             val context = Injekt.get<Application>()
             val storageManager = Injekt.get<StorageManager>()
@@ -1322,8 +1338,13 @@ class NovelLibraryScreenModel(
             val novelRepository = Injekt.get<NovelRepository>()
             val sourcePreferences = Injekt.get<SourcePreferences>()
 
-            val displayName = getEpubDisplayName(context, uri)
-            val sanitizedName = displayName.replace("[/\\\\:*?\"<>|]".toRegex(), "_")
+            val displayName = getLocalBookDisplayName(context, uri)
+            val sanitizedName = LocalNovelBookImport.sanitizeFileName(displayName)
+            if (!LocalNovelBookImport.isSupportedImportFileName(sanitizedName)) {
+                throw IOException(
+                    "Only EPUB or FB2 files can be imported as local novels (got: $sanitizedName)",
+                )
+            }
 
             val targetFile = localDir.findFile(sanitizedName)
                 ?: localDir.createFile(sanitizedName)
@@ -1333,61 +1354,121 @@ class NovelLibraryScreenModel(
                 targetFile.openOutputStream().use { output ->
                     input.copyTo(output)
                 }
-            }
+            } ?: throw IOException("Cannot open selected file")
 
-            var epubTitle: String? = null
-            var epubAuthor: String? = null
-            var epubDescription: String? = null
-            try {
-                targetFile.epubReader(context).use { epub ->
-                    val ref = epub.getPackageHref()
-                    val doc = epub.getPackageDocument(ref)
-
-                    // Multiple title fallbacks
-                    var title = doc.getElementsByTag("dc:title").firstOrNull()?.text()
-                    if (title.isNullOrBlank()) {
-                        title = doc.select("docTitle").firstOrNull()?.text()
-                    }
-                    if (title.isNullOrBlank()) {
-                        title = doc.select("meta[name=title]").firstOrNull()?.attr("content")
-                    }
-
-                    // Collection name
-                    val collection = doc.select("meta[property=belongs-to-collection]").firstOrNull()?.text()
-
-                    epubTitle = collection.takeIf { !it.isNullOrBlank() } ?: title
-                    epubAuthor = doc.getElementsByTag("dc:creator").firstOrNull()?.text()
-
-                    var desc = doc.getElementsByTag("dc:description").firstOrNull()?.text()
-                    if (desc.isNullOrBlank()) {
-                        desc = doc.select("dc\\:description").firstOrNull()?.text()
-                    }
-                    epubDescription = desc
-                }
-            } catch (e: Exception) {
-                // Ignore parsing errors, fallback to file name
-            }
-
-            val finalTitle = epubTitle?.takeIf { it.isNotBlank() }
-                ?: sanitizedName.removeSuffix(".epub").removeSuffix(".EPUB")
+            val meta = readLocalBookMetadata(context, targetFile, LocalNovelBookImport.extensionOf(sanitizedName))
+            val finalTitle = meta.title?.takeIf { it.isNotBlank() }
+                ?: LocalNovelBookImport.titleFallbackFromFileName(sanitizedName)
 
             val addToLibrary = sourcePreferences.importEpubAddToLibrary().get()
             val novel = Novel.create().copy(
                 source = LocalNovelSource.ID,
                 url = sanitizedName,
                 title = finalTitle,
-                author = epubAuthor,
-                description = epubDescription,
+                author = meta.author,
+                description = meta.description,
                 favorite = addToLibrary,
                 dateAdded = if (addToLibrary) System.currentTimeMillis() else 0L,
                 initialized = true,
             )
 
-            novelRepository.insertNovel(novel)
+            val insertedId = novelRepository.insertNovel(novel)
+
+            // Compile the book artifact right after the import if auto-compile is enabled.
+            // The explicit null check keeps the smart cast for the artifact build below.
+            if (insertedId != null &&
+                shouldCompileLocalBookArtifact(insertedId, sourcePreferences.autoCompileLocalEpubBook().get())
+            ) {
+                compileLocalBookArtifact(
+                    novel = novel.copy(id = insertedId),
+                    sourceManager = Injekt.get(),
+                    syncChapters = { rawSourceChapters, novelToSync, source ->
+                        Injekt.get<SyncNovelChaptersWithSource>().await(
+                            rawSourceChapters = rawSourceChapters,
+                            novel = novelToSync,
+                            source = source,
+                        )
+                    },
+                    compile = { novelToCompile, syncedChapters ->
+                        localNovelBookArtifactBuilderFactory()
+                            .ensureArtifact(novelToCompile, syncedChapters)
+                    },
+                )
+            }
         }
     }
 
-    private fun getEpubDisplayName(context: Application, uri: Uri): String {
+    private data class LocalBookMetadata(
+        val title: String?,
+        val author: String?,
+        val description: String?,
+    )
+
+    private fun readLocalBookMetadata(
+        context: Application,
+        targetFile: com.hippo.unifile.UniFile,
+        extension: String,
+    ): LocalBookMetadata {
+        return when (extension) {
+            "epub" -> readEpubMetadata(context, targetFile)
+            "fb2" -> readFb2Metadata(targetFile)
+            else -> LocalBookMetadata(null, null, null)
+        }
+    }
+
+    private fun readEpubMetadata(
+        context: Application,
+        targetFile: com.hippo.unifile.UniFile,
+    ): LocalBookMetadata {
+        return try {
+            targetFile.epubReader(context).use { epub ->
+                val ref = epub.getPackageHref()
+                val doc = epub.getPackageDocument(ref)
+
+                var title = doc.getElementsByTag("dc:title").firstOrNull()?.text()
+                if (title.isNullOrBlank()) {
+                    title = doc.select("docTitle").firstOrNull()?.text()
+                }
+                if (title.isNullOrBlank()) {
+                    title = doc.select("meta[name=title]").firstOrNull()?.attr("content")
+                }
+
+                val collection = doc.select("meta[property=belongs-to-collection]").firstOrNull()?.text()
+                val resolvedTitle = collection.takeIf { !it.isNullOrBlank() } ?: title
+                val author = doc.getElementsByTag("dc:creator").firstOrNull()?.text()
+
+                var desc = doc.getElementsByTag("dc:description").firstOrNull()?.text()
+                if (desc.isNullOrBlank()) {
+                    desc = doc.select("dc\\:description").firstOrNull()?.text()
+                }
+
+                LocalBookMetadata(
+                    title = resolvedTitle?.trim()?.takeIf { it.isNotBlank() },
+                    author = author?.trim()?.takeIf { it.isNotBlank() },
+                    description = desc?.trim()?.takeIf { it.isNotBlank() },
+                )
+            }
+        } catch (_: Exception) {
+            LocalBookMetadata(null, null, null)
+        }
+    }
+
+    private fun readFb2Metadata(targetFile: com.hippo.unifile.UniFile): LocalBookMetadata {
+        return try {
+            targetFile.openInputStream().use { stream ->
+                val book = Fb2Book.parse(stream)
+                LocalBookMetadata(
+                    title = book.bookTitle,
+                    author = book.authors.takeIf { it.isNotEmpty() }?.joinToString(", "),
+                    description = book.annotation,
+                )
+            }
+        } catch (_: Exception) {
+            LocalBookMetadata(null, null, null)
+        }
+    }
+
+    private fun getLocalBookDisplayName(context: Application, uri: Uri): String {
         context.contentResolver.query(
             uri,
             arrayOf(OpenableColumns.DISPLAY_NAME),
@@ -1492,4 +1573,38 @@ private fun List<NovelLibraryItem>.selectedNovelEntries(): List<tachiyomi.domain
 
 private fun List<NovelLibraryItem>.selectedNovels(): List<Novel> {
     return selectedNovelEntries().map { it.novel }
+}
+
+/**
+ * Whether the local book artifact should be compiled right after an import.
+ *
+ * Auto-compilation is opt-in via [SourcePreferences.autoCompileLocalEpubBook] and only makes
+ * sense when the novel row was actually inserted. Extracted so the import gate is unit-testable.
+ */
+internal fun shouldCompileLocalBookArtifact(insertedId: Long?, autoCompileEnabled: Boolean): Boolean {
+    return insertedId != null && autoCompileEnabled
+}
+
+/**
+ * Compiles the local book artifact of a just-imported novel, best effort only.
+ *
+ * The import itself has already succeeded, so failures here are swallowed: the title screen
+ * still compiles the artifact on open (when auto-compile is enabled). Extracted so the import
+ * flow is unit-testable without Android/Injekt — the source manager, chapter sync step and
+ * artifact builder are injected.
+ */
+internal suspend fun compileLocalBookArtifact(
+    novel: Novel,
+    sourceManager: NovelSourceManager,
+    syncChapters: suspend (List<SNovelChapter>, Novel, NovelSource) -> List<NovelChapter>,
+    compile: suspend (Novel, List<NovelChapter>) -> Boolean,
+) {
+    runCatching {
+        val localSource = sourceManager.get(LocalNovelSource.ID)
+        if (localSource != null) {
+            val sourceChapters = localSource.getChapterList(novel.toSNovel())
+            val syncedChapters = syncChapters(sourceChapters, novel, localSource)
+            compile(novel, syncedChapters)
+        }
+    }
 }

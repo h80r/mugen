@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -203,6 +204,8 @@ import tachiyomi.source.local.entries.manga.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
+import java.text.NumberFormat
+import java.util.Locale
 import eu.kanade.presentation.library.manga.components.AddToSeriesDialog as MangaAddToSeriesDialog
 import tachiyomi.domain.items.novelchapter.model.NovelChapter as DomainNovelChapter
 
@@ -280,6 +283,14 @@ data object AnimeLibraryTab : Tab {
         val showCategoryNumberOfItems by settingsScreenModel
             .libraryPreferences
             .categoryNumberOfItems()
+            .collectAsStateWithLifecycle()
+        val showFullCategoryNumberOfItems by settingsScreenModel
+            .libraryPreferences
+            .categoryFullNumberOfItems()
+            .collectAsStateWithLifecycle()
+        val groupCategoryNumberOfItems by settingsScreenModel
+            .libraryPreferences
+            .categoryGroupedNumberOfItems()
             .collectAsStateWithLifecycle()
         val isAurora = theme.isAuroraStyle
         val configuration = LocalConfiguration.current
@@ -729,7 +740,11 @@ data object AnimeLibraryTab : Tab {
                             }
                             Unit
                         }.takeIf { showContinueViewingButton },
-                        onImportEpub = { epubImportLauncher.launch(arrayOf("application/epub+zip")) },
+                        onImportEpub = {
+                            epubImportLauncher.launch(
+                                eu.kanade.domain.entries.novel.LocalNovelBookImport.PICKER_MIME_TYPES,
+                            )
+                        },
                         showInlineHeader = false,
                         libraryPreferences = activeNovelScreenModel.libraryPreferences,
                     )
@@ -1179,7 +1194,15 @@ data object AnimeLibraryTab : Tab {
                                     onRefreshCurrent = onAuroraRefreshCurrent,
                                     onRefreshGlobal = onAuroraRefreshGlobal,
                                     onOpenRandomEntry = onAuroraOpenRandom,
-                                    onImportEpub = { epubImportLauncher.launch(arrayOf("application/epub+zip")) },
+                                    onImportEpub = if (shouldShowLibraryBookImport(auroraCurrentSection)) {
+                                        {
+                                            epubImportLauncher.launch(
+                                                eu.kanade.domain.entries.novel.LocalNovelBookImport.PICKER_MIME_TYPES,
+                                            )
+                                        }
+                                    } else {
+                                        null
+                                    },
                                     categories = auroraCategories,
                                     selectedCategoryIndex = auroraCategoryIndex,
                                     showCategories = showAuroraCategoryTabs,
@@ -1200,6 +1223,13 @@ data object AnimeLibraryTab : Tab {
                                             }
                                             null -> null
                                         }
+                                    },
+                                    formatCountForCategory = { count ->
+                                        formatAuroraLibraryCategoryBadgeCount(
+                                            count = count,
+                                            showFullCount = showFullCategoryNumberOfItems,
+                                            groupDigits = groupCategoryNumberOfItems,
+                                        )
                                     },
                                 )
                             },
@@ -1660,6 +1690,7 @@ private fun AuroraLibraryPinnedHeader(
     onCategorySelected: (Int) -> Unit,
     onCategoryLongSelected: ((Int) -> Unit)? = null,
     getCountForCategory: (Category) -> Int?,
+    formatCountForCategory: (Int) -> String,
 ) {
     val colors = AuroraTheme.colors
     val appHaptics = LocalAppHaptics.current
@@ -1872,6 +1903,7 @@ private fun AuroraLibraryPinnedHeader(
                 onCategorySelected = onCategorySelected,
                 onCategoryLongSelected = onCategoryLongSelected,
                 getCountForCategory = getCountForCategory,
+                formatCountForCategory = formatCountForCategory,
             )
         }
     }
@@ -1897,6 +1929,11 @@ internal fun auroraLibraryPinnedHeaderMenuItems(
     }
 }
 
+/** Import book is a local-novel action; never expose it on anime/manga library sections. */
+internal fun shouldShowLibraryBookImport(section: AnimeLibraryTab.Section?): Boolean {
+    return section == AnimeLibraryTab.Section.Novel
+}
+
 @Composable
 private fun AuroraLibraryCategoryTabs(
     categories: List<Category>,
@@ -1904,6 +1941,7 @@ private fun AuroraLibraryCategoryTabs(
     onCategorySelected: (Int) -> Unit,
     onCategoryLongSelected: ((Int) -> Unit)? = null,
     getCountForCategory: (Category) -> Int?,
+    formatCountForCategory: (Int) -> String,
 ) {
     val colors = AuroraTheme.colors
     val appHaptics = LocalAppHaptics.current
@@ -2146,15 +2184,16 @@ private fun AuroraLibraryCategoryTabs(
                         if (badgeCount != null) {
                             Box(
                                 modifier = Modifier
-                                    .size(18.dp)
+                                    .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
                                     .background(
                                         color = tabColors.badgeBackground,
                                         shape = CircleShape,
-                                    ),
+                                    )
+                                    .padding(horizontal = 5.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
-                                    text = formatAuroraLibraryCategoryBadgeCount(badgeCount),
+                                    text = formatCountForCategory(badgeCount),
                                     color = tabColors.badgeTextColor,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.SemiBold,
@@ -2311,9 +2350,20 @@ internal fun resolveAuroraMonochromeBadgeTextColor(background: Color): Color {
     return if (background.luminance() < 0.5f) Color.White else Color.Black
 }
 
-internal fun formatAuroraLibraryCategoryBadgeCount(count: Int): String {
-    return if (count > 99) "99+" else count.toString()
+internal fun formatAuroraLibraryCategoryBadgeCount(
+    count: Int,
+    showFullCount: Boolean,
+    groupDigits: Boolean,
+    locale: Locale = Locale.getDefault(),
+): String {
+    if (!showFullCount && count > AURORA_LIBRARY_CATEGORY_BADGE_LIMIT) {
+        return "$AURORA_LIBRARY_CATEGORY_BADGE_LIMIT+"
+    }
+    if (!groupDigits) return count.toString()
+    return NumberFormat.getIntegerInstance(locale).format(count)
 }
+
+private const val AURORA_LIBRARY_CATEGORY_BADGE_LIMIT = 99
 
 /**
  * Decides whether the Aurora library should propagate a category index back to the section's

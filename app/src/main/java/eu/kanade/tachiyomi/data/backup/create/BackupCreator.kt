@@ -5,7 +5,8 @@ import android.net.Uri
 import com.hippo.unifile.UniFile
 import com.tadami.aurora.BuildConfig
 import eu.kanade.tachiyomi.data.backup.BackupDiagnosticLog
-import eu.kanade.tachiyomi.data.backup.BackupFileValidator
+import eu.kanade.tachiyomi.data.backup.BackupOrigin
+import eu.kanade.tachiyomi.data.backup.contentSummary
 import eu.kanade.tachiyomi.data.backup.create.creators.AchievementBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.AnimeBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.AnimeCategoriesBackupCreator
@@ -35,6 +36,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupCustomButtons
 import eu.kanade.tachiyomi.data.backup.models.BackupExtension
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
+import eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupNovel
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
@@ -42,11 +44,9 @@ import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import eu.kanade.tachiyomi.data.backup.models.MihonBackup
 import eu.kanade.tachiyomi.data.backup.models.toMihonBackup
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.protobuf.ProtoBuf
 import logcat.LogPriority
-import okio.buffer
-import okio.gzip
-import okio.sink
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.achievement.handler.AchievementHandler
@@ -63,7 +63,6 @@ import tachiyomi.domain.entries.novel.repository.NovelRepository
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.util.Date
@@ -108,22 +107,17 @@ class BackupCreator(
 
     suspend fun backup(uri: Uri, options: BackupOptions): String {
         var file: UniFile? = null
+        // Only the file this run created may be deleted on failure; a file the user picked is not
+        // ours to remove.
+        var createdFile: UniFile? = null
         try {
             file = BackupDiagnosticLog.measure(context, "prepare_file") {
                 if (isAutoBackup) {
                     // Get dir of file and create
                     val dir = UniFile.fromUri(context, uri)
-                    // Delete older backups
-                    val limit = backupPreferences.numberOfBackupsToKeep().get()
-                    if (limit > 0) {
-                        dir?.listFiles { _, filename -> FILENAME_REGEX.matches(filename) }
-                            .orEmpty()
-                            .sortedByDescending { it.name }
-                            .drop(limit - 1)
-                            .forEach { it.delete() }
-                    }
-                    // Create new file to place backup
-                    dir?.createFile(getFilename())
+                    // Older backups are pruned only after the new one is written and verified,
+                    // so a failure here can never leave the user with fewer backups than before.
+                    dir?.createFile(getFilename())?.also { createdFile = it }
                 } else {
                     UniFile.fromUri(context, uri)
                 }
@@ -249,9 +243,9 @@ class BackupCreator(
                     options,
                     includeNovelType,
                 ),
-                backupAnimeExtensionStore = animeExtensionStoreBackupCreator(),
-                backupMangaExtensionStore = mangaExtensionStoreBackupCreator(),
-                backupNovelExtensionStore = novelExtensionStoreBackupCreator(),
+                backupAnimeExtensionStore = backupAnimeExtensionStores(options, includeAnimeType),
+                backupMangaExtensionStore = backupMangaExtensionStores(options, includeMangaType),
+                backupNovelExtensionStore = backupNovelExtensionStores(options, includeNovelType),
                 backupAchievements = if (options.sisterAppCompatible) emptyList() else achievementData.achievements,
                 backupUserProfile = if (options.sisterAppCompatible) null else achievementData.userProfile,
                 backupActivityLog = if (options.sisterAppCompatible) emptyList() else achievementData.activityLog,
@@ -273,24 +267,29 @@ class BackupCreator(
             }
             BackupDiagnosticLog.log(context, "serialize_size", "bytes=${byteArray.size}")
 
-            BackupDiagnosticLog.measure(context, "write_gzip") {
-                file.openOutputStream()
-                    .also {
-                        // Force overwrite old file
-                        (it as? FileOutputStream)?.channel?.truncate(0)
-                    }
-                    .sink().gzip().buffer().use {
-                        it.write(byteArray)
-                    }
+            val expectedOrigin = if (options.sisterAppCompatible) {
+                BackupOrigin.TADAMI_SISTER
+            } else {
+                BackupOrigin.TADAMI
             }
+            // In sister mode novels travel inside the shared manga section, so the expected split
+            // is the one the file itself declares, not the one we started from.
+            val expectedSummary = backup.contentSummary().let {
+                if (options.sisterAppCompatible) it.copy(novelCount = 0, animeCount = 0) else it
+            }
+
+            // Writes to a staging file, verifies it decodes back to exactly this content, and only
+            // then replaces the destination.
+            BackupWriter(context).write(
+                destination = file,
+                payload = byteArray,
+                expected = expectedSummary,
+                expectedOrigin = expectedOrigin,
+            )
             val fileUri = file.uri
 
-            // Make sure it's a valid backup file
-            BackupDiagnosticLog.measure(context, "validate") {
-                BackupFileValidator(context).validate(fileUri)
-            }
-
             if (isAutoBackup) {
+                pruneOldAutoBackups(uri, keep = file)
                 backupPreferences.lastAutoBackupTimestamp().set(Instant.now().toEpochMilli())
             }
 
@@ -299,13 +298,37 @@ class BackupCreator(
                 achievementHandler.trackFeatureUsed(AchievementEvent.Feature.BACKUP)
             }
 
+            BackupDiagnosticLog.log(context, "creator_done", "origin=$expectedOrigin")
+
             return fileUri.toString()
+        } catch (e: CancellationException) {
+            BackupDiagnosticLog.log(context, "creator_cancelled")
+            createdFile?.delete()
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             BackupDiagnosticLog.logError(context, "creator_failed", e)
-            file?.delete()
+            createdFile?.delete()
             throw e
         }
+    }
+
+    /**
+     * Drop the oldest auto backups, keeping the freshly written one.
+     *
+     * Runs only after a verified write: an aborted or corrupt backup must never cost the user a
+     * known-good older file.
+     */
+    private fun pruneOldAutoBackups(dirUri: Uri, keep: UniFile?) {
+        val limit = backupPreferences.numberOfBackupsToKeep().get()
+        if (limit <= 0) return
+        val dir = UniFile.fromUri(context, dirUri) ?: return
+        dir.listFiles { _, filename -> FILENAME_REGEX.matches(filename) }
+            .orEmpty()
+            .filter { it.uri != keep?.uri }
+            .sortedByDescending { it.name }
+            .drop(limit - 1)
+            .forEach { it.delete() }
     }
 
     private suspend fun backupAnimeCategories(options: BackupOptions, includeType: Boolean): List<BackupCategory> {
@@ -388,6 +411,33 @@ class BackupCreator(
         return novelExtensionRepoBackupCreator()
     }
 
+    private suspend fun backupAnimeExtensionStores(
+        options: BackupOptions,
+        includeType: Boolean,
+    ): List<BackupExtensionStore> {
+        if (!shouldBackupExtensionStores(options, includeType)) return emptyList()
+
+        return animeExtensionStoreBackupCreator()
+    }
+
+    private suspend fun backupMangaExtensionStores(
+        options: BackupOptions,
+        includeType: Boolean,
+    ): List<BackupExtensionStore> {
+        if (!shouldBackupExtensionStores(options, includeType)) return emptyList()
+
+        return mangaExtensionStoreBackupCreator()
+    }
+
+    private suspend fun backupNovelExtensionStores(
+        options: BackupOptions,
+        includeType: Boolean,
+    ): List<BackupExtensionStore> {
+        if (!shouldBackupExtensionStores(options, includeType)) return emptyList()
+
+        return novelExtensionStoreBackupCreator()
+    }
+
     private suspend fun backupCustomButtons(options: BackupOptions): List<BackupCustomButtons> {
         if (!options.customButton) return emptyList()
 
@@ -447,4 +497,13 @@ class BackupCreator(
             return "${BuildConfig.APPLICATION_ID}_$date.tachibk"
         }
     }
+}
+
+/**
+ * Extension stores follow the same toggle as the legacy extension repos: they are the same rows in
+ * a different shape, so exporting them while the user unchecked the option would leak the very data
+ * they excluded - and re-insert it on the next restore.
+ */
+internal fun shouldBackupExtensionStores(options: BackupOptions, includeType: Boolean): Boolean {
+    return options.extensionRepoSettings && includeType
 }

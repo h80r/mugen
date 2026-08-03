@@ -48,6 +48,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -110,10 +111,12 @@ import eu.kanade.tachiyomi.ui.entries.manga.ChapterList
 import eu.kanade.tachiyomi.ui.entries.manga.MangaScreenModel
 import eu.kanade.tachiyomi.util.debugTitleCoverFlow
 import eu.kanade.tachiyomi.util.previewTitleCoverUrl
+import eu.kanade.tachiyomi.util.system.copyToClipboardSilently
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.runningFold
+import kotlinx.coroutines.launch
 import tachiyomi.domain.items.chapter.model.Chapter
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.metadata.model.MetadataSource
@@ -290,6 +293,19 @@ fun MangaScreenAuroraImpl(
         enabled = auroraEntryTranslationEnabled,
         allowedSourceFamilies = auroraEntryTranslationSourceLanguages,
     )
+
+    val scope = rememberCoroutineScope()
+    val copiedToClipboardMessage = stringResource(MR.strings.copied_to_clipboard_plain)
+    val clipboardCopyErrorMessage = stringResource(MR.strings.clipboard_copy_error)
+    val onTitleCopy: () -> Unit = {
+        val ok = context.copyToClipboardSilently(
+            "Entry title",
+            auroraEntryTranslation.title ?: manga.displayTitle,
+        )
+        scope.launch {
+            snackbarHostState.showSnackbar(if (ok) copiedToClipboardMessage else clipboardCopyErrorMessage)
+        }
+    }
 
     val lazyListState = rememberLazyListState()
     val scrollOffset by remember { derivedStateOf { lazyListState.firstVisibleItemScrollOffset } }
@@ -501,6 +517,7 @@ fun MangaScreenAuroraImpl(
                                         selectedGenres = emptySet()
                                     },
                                     onClearSelected = { selectedGenres = emptySet() },
+                                    onCopyTitle = onTitleCopy,
                                 )
                                 Spacer(modifier = Modifier.height(if (colors.isDark) 8.dp else 16.dp))
                                 MangaStatsCard(
@@ -1104,6 +1121,7 @@ fun MangaScreenAuroraImpl(
                                 selectedGenres = emptySet()
                             },
                             onClearSelected = { selectedGenres = emptySet() },
+                            onCopyTitle = onTitleCopy,
                         )
                     }
                 }

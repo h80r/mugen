@@ -12,6 +12,7 @@ import coil3.request.Options
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.data.cache.NovelCoverCache
 import eu.kanade.tachiyomi.network.await
+import eu.kanade.tachiyomi.network.toAsciiUrl
 import eu.kanade.tachiyomi.source.novel.NovelImageRequestSource
 import eu.kanade.tachiyomi.source.novel.NovelPluginImage
 import eu.kanade.tachiyomi.source.novel.NovelPluginImageResolver
@@ -396,6 +397,8 @@ internal fun buildNovelCoverRequest(
     val normalizedSiteUrl = siteUrl
         ?.trim()
         ?.takeIf { it.isNotBlank() }
+        ?.trimEnd('/')
+        ?.toAsciiUrl()
         ?.trimEnd('/')
     val normalizedPluginHeaders = pluginHeaders
         .mapNotNull { (key, value) ->

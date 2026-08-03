@@ -16,19 +16,23 @@ class TrackerManagerNovelFilteringTest {
     @Test
     fun `logged in manga trackers excludes novel trackers and anime trackers`() {
         val trackers = listOf(
+            mangaTracker(1L),
             mangaTracker(7L),
             mangaTracker(10L),
             mangaTracker(11L),
             DummyTracker(id = 2L, name = "AniList", isLoggedIn = true, valLogoColor = 0),
         )
 
-        val novelTrackerIds = setOf(10L, 11L)
+        val novelOnlyTrackerIds = setOf(10L, 11L)
+        val novelCapableTrackerIds = setOf(1L, 10L, 11L)
 
         val novelIds = filterLoggedInTrackersForEntry(
             isNovelEntry = true,
             trackers = trackers,
-            novelTrackerIds = novelTrackerIds,
+            novelCapableTrackerIds = novelCapableTrackerIds,
+            novelOnlyTrackerIds = novelOnlyTrackerIds,
         ).map { it.id }.toSet()
+        novelIds shouldContain 1L
         novelIds shouldNotContain 7L
         novelIds shouldContain 10L
         novelIds shouldContain 11L
@@ -37,8 +41,10 @@ class TrackerManagerNovelFilteringTest {
         val mangaIds = filterLoggedInTrackersForEntry(
             isNovelEntry = false,
             trackers = trackers,
-            novelTrackerIds = novelTrackerIds,
+            novelCapableTrackerIds = novelCapableTrackerIds,
+            novelOnlyTrackerIds = novelOnlyTrackerIds,
         ).map { it.id }.toSet()
+        mangaIds shouldContain 1L
         mangaIds shouldContain 7L
         mangaIds shouldNotContain 10L
         mangaIds shouldNotContain 11L

@@ -38,6 +38,13 @@ interface NovelTtsPlaybackProgressListener {
     fun onUtteranceDone(utteranceId: String) = Unit
 
     fun onUtteranceError(utteranceId: String) = Unit
+
+    /**
+     * Exact word-range progress reported by engines that support it
+     * (`UtteranceProgressListener.onRangeStart`, API 26+). Offsets are
+     * character indices into the utterance text that was passed to `speak`.
+     */
+    fun onUtteranceRangeStart(utteranceId: String, startChar: Int, endCharExclusive: Int) = Unit
 }
 
 class NovelTtsEngine(
@@ -47,12 +54,7 @@ class NovelTtsEngine(
     private var initializedEnginePackage: String? = null
     private var voices: List<NovelTtsVoiceDescriptor> = emptyList()
     private var locales: List<String> = emptyList()
-    private var engineCapabilities = NovelTtsEngineCapabilities(
-        supportsExactWordOffsets = false,
-        supportsReliablePauseResume = false,
-        supportsVoiceEnumeration = false,
-        supportsLocaleEnumeration = false,
-    )
+    private var engineCapabilities = NovelTtsEngineCapabilities.NONE
 
     suspend fun initialize(enginePackageName: String?) {
         val normalizedEnginePackage = enginePackageName?.takeIf { it.isNotBlank() }
@@ -119,5 +121,6 @@ class NovelTtsEngine(
         initializedEnginePackage = null
         voices = emptyList()
         locales = emptyList()
+        engineCapabilities = NovelTtsEngineCapabilities.NONE
     }
 }

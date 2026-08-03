@@ -188,6 +188,7 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
                 NavigationRegion.MENU -> activity.toggleMenu()
                 NavigationRegion.NEXT, NavigationRegion.RIGHT -> scrollDown()
                 NavigationRegion.PREV, NavigationRegion.LEFT -> scrollUp()
+                NavigationRegion.NONE -> Unit
             }
         }
         recycler.longTapListener = f@{ event ->
@@ -217,17 +218,21 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
             ActivityCompat.recreate(activity)
         }
 
+        frame.doubleTapZoom = config.doubleTapZoom
+        frame.zoomOutDisabled = config.zoomOutDisabled
+        frame.enablePinchToZoom = config.enablePinchToZoom
+
         config.doubleTapZoomChangedListener = {
             frame.doubleTapZoom = it
         }
 
         config.zoomPropertyChangedListener = {
             frame.zoomOutDisabled = it
+            frame.enablePinchToZoom = config.enablePinchToZoom
         }
 
         config.navigationModeChangedListener = {
-            val showOnStart = config.navigationOverlayOnStart || config.forceNavigationOverlay
-            activity.binding.navigationOverlay.setNavigation(config.navigator, showOnStart)
+            activity.binding.navigationOverlay.setNavigation(config.navigator, config.navigationOverlayOnStart)
         }
 
         // Monitor zoom state and pause auto-scroll when zoomed in

@@ -19,6 +19,7 @@ import okio.buffer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.MangaUpdateStrategyColumnAdapter
 import tachiyomi.data.MemoColumnAdapter
@@ -59,7 +60,7 @@ class MangaExtensionStoreRepositoryImplTest {
             transactionDispatcher = Dispatchers.Default,
         )
         service = ExtensionStoreService(OkHttpClient(), Json { ignoreUnknownKeys = true }, ProtoBuf)
-        repository = MangaExtensionStoreRepositoryImpl(handler, service)
+        repository = MangaExtensionStoreRepositoryImpl(handler, service, InMemoryPreferenceStore())
     }
 
     @AfterEach
@@ -102,5 +103,53 @@ class MangaExtensionStoreRepositoryImplTest {
         val buffer = Buffer()
         GzipSink(buffer).buffer().use { it.writeUtf8(body) }
         return buffer.readByteArray()
+    }
+
+    @Test
+    fun `a metadata refresh does not revert the name the user gave a store`() = runTest {
+        val store = mihon.domain.extensionstore.model.ExtensionStore(
+            indexUrl = "https://example.org/repo/repo.json",
+            name = "Remote name",
+            badgeLabel = "Remote",
+            signingKey = "abc",
+            contact = mihon.domain.extensionstore.model.ExtensionStore.Contact(
+                website = "https://example.org",
+                discord = null,
+            ),
+            isLegacy = true,
+            extensionListUrl = null,
+        )
+        repository.upsertStore(store)
+        repository.setCustomName(store.indexUrl, "My name")
+
+        // A refresh rewrites every remote field through the same upsert.
+        repository.upsertStore(store.copy(name = "Remote name v2", badgeLabel = "Remote v2"))
+
+        val stored = repository.getAll().single()
+        stored.name shouldBe "Remote name v2"
+        stored.customName shouldBe "My name"
+        stored.displayName shouldBe "My name"
+    }
+
+    @Test
+    fun `clearing the custom name falls back to the remote one`() = runTest {
+        val store = mihon.domain.extensionstore.model.ExtensionStore(
+            indexUrl = "https://example.org/repo/repo.json",
+            name = "Remote name",
+            badgeLabel = "Remote",
+            signingKey = "abc",
+            contact = mihon.domain.extensionstore.model.ExtensionStore.Contact(
+                website = "https://example.org",
+                discord = null,
+            ),
+            isLegacy = true,
+            extensionListUrl = null,
+        )
+        repository.upsertStore(store)
+        repository.setCustomName(store.indexUrl, "My name")
+
+        repository.setCustomName(store.indexUrl, null)
+
+        repository.getAll().single().displayName shouldBe "Remote name"
     }
 }

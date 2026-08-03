@@ -274,3 +274,92 @@ private fun generateStars(count: Int, seed: Int): List<CelestialStar> {
         )
     }
 }
+
+/**
+ * Вертикальный вариант звёздного бара для NavigationRail (планшет / лендскейп):
+ * то же ночное небо + волна света, бегущая по вертикали между вкладками.
+ */
+@Composable
+fun Modifier.auroraCelestialRail(
+    accent: Color,
+    accentVariant: Color,
+    isDark: Boolean,
+    selectedIndex: Int,
+    tabCount: Int,
+): Modifier {
+    val transition = rememberInfiniteTransition(label = "auroraCelestialRail")
+    val time by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 24_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "railStarTime",
+    )
+
+    val wave = remember { Animatable(1f) }
+    var previousIndex by remember { mutableIntStateOf(selectedIndex) }
+    var waveFrom by remember { mutableIntStateOf(selectedIndex) }
+    var waveTo by remember { mutableIntStateOf(selectedIndex) }
+    LaunchedEffect(selectedIndex) {
+        if (selectedIndex >= 0 && selectedIndex != previousIndex) {
+            waveFrom = previousIndex
+            waveTo = selectedIndex
+            previousIndex = selectedIndex
+            wave.snapTo(0f)
+            wave.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+            )
+        }
+    }
+
+    val stars = remember { generateStars(count = 46, seed = 20260714) }
+    val sheen = if (isDark) Color(SHEEN_DARK) else Color.White
+
+    return this.drawBehind {
+        val twoPi = 2f * PI.toFloat()
+        stars.forEach { star ->
+            val twinkle = 0.5f + 0.5f * sin(time * twoPi * star.speed + star.phase)
+            val alpha = star.baseAlpha * twinkle * (if (isDark) 1f else 0.55f)
+            if (alpha > 0.02f) {
+                val color = when (star.tint) {
+                    0 -> Color(0xFFFFFFFF)
+                    1 -> Color(0xFFE2F1FF)
+                    2 -> Color(0xFFB3D9FF)
+                    3 -> Color(0xFFE3F2FD)
+                    else -> Color(0xFF90CAF9)
+                }
+                drawCircle(
+                    color = color.copy(alpha = alpha),
+                    radius = star.radiusDp.dp.toPx(),
+                    center = Offset(star.x * size.width, star.y * size.height),
+                )
+            }
+        }
+
+        val progress = wave.value
+        if (progress < 1f && tabCount > 0) {
+            val fromY = (waveFrom + 0.5f) / tabCount * size.height
+            val toY = (waveTo + 0.5f) / tabCount * size.height
+            val y = fromY + (toY - fromY) * progress
+            val bandHeight = size.height * 0.24f
+            val fade = sin(progress * PI.toFloat())
+            val peak = if (isDark) 0.18f else 0.30f
+            drawRect(
+                brush = Brush.verticalGradient(
+                    0.00f to Color.Transparent,
+                    0.35f to accent.copy(alpha = 0.10f * fade),
+                    0.50f to sheen.copy(alpha = peak * fade),
+                    0.65f to accentVariant.copy(alpha = 0.10f * fade),
+                    1.00f to Color.Transparent,
+                    startY = y - bandHeight / 2f,
+                    endY = y + bandHeight / 2f,
+                ),
+                topLeft = Offset(0f, y - bandHeight / 2f),
+                size = Size(size.width, bandHeight),
+            )
+        }
+    }
+}

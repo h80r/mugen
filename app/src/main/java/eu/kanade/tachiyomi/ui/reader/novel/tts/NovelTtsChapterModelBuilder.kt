@@ -86,14 +86,17 @@ class NovelTtsChapterModelBuilder(
             var normalizedSearchStart = 0
 
             segmentUtteranceTexts.forEachIndexed { utteranceIndex, utteranceText ->
-                val wordRanges = tokenizer.tokenize(utteranceText)
-                totalWordRanges += wordRanges.size
                 val rawRange = findNormalizedUtteranceRange(
                     normalizedBlockText = rawTextIndexMap.text,
                     utteranceText = utteranceText,
                     searchStart = normalizedSearchStart,
                 )
                 normalizedSearchStart = rawRange?.endExclusive ?: normalizedSearchStart
+                val wordRanges = tokenizer.tokenize(utteranceText).withBlockCoordinates(
+                    utteranceRange = rawRange,
+                    normalizedToRawIndex = rawTextIndexMap.normalizedToRawIndex,
+                )
+                totalWordRanges += wordRanges.size
                 utterances += NovelTtsUtterance(
                     id = "utterance-$segmentIndex-$utteranceIndex",
                     segmentId = segmentId,
@@ -221,6 +224,29 @@ class NovelTtsChapterModelBuilder(
         val start: Int,
         val endExclusive: Int,
     )
+
+    /**
+     * Projects tokenizer word offsets (relative to the normalized utterance text) into raw
+     * source-block coordinates so the reader can highlight the exact spoken word.
+     */
+    private fun List<NovelTtsWordRange>.withBlockCoordinates(
+        utteranceRange: NormalizedTextRange?,
+        normalizedToRawIndex: List<Int>,
+    ): List<NovelTtsWordRange> {
+        if (utteranceRange == null) return this
+        return map { word ->
+            val rawStart = normalizedToRawIndex.getOrNull(utteranceRange.start + word.startChar)
+            val rawEndInclusive = normalizedToRawIndex.getOrNull(utteranceRange.start + word.endChar - 1)
+            if (rawStart != null && rawEndInclusive != null && rawStart <= rawEndInclusive) {
+                word.copy(
+                    blockStartChar = rawStart,
+                    blockEndCharExclusive = rawEndInclusive + 1,
+                )
+            } else {
+                word
+            }
+        }
+    }
 
     private fun buildNormalizedTextWithIndexMap(text: String): NormalizedTextIndexMap {
         val normalized = StringBuilder(text.length)

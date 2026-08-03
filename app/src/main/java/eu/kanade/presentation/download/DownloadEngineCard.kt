@@ -65,7 +65,7 @@ fun DownloadEngineCard(
     val auroraColors = AuroraTheme.colors
 
     // Bento-inspired design constants
-    val cardShape = RoundedCornerShape(32.dp)
+    val cardShape = RoundedCornerShape(20.dp)
     val cardBorder = if (isAurora) {
         BorderStroke(1.dp, auroraMenuRimLightBrush(auroraColors))
     } else {
@@ -106,8 +106,8 @@ fun DownloadEngineCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
-            modifier = Modifier.padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // Engine Head: Integrated Title and Status
             Row(
@@ -117,7 +117,7 @@ fun DownloadEngineCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(32.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)), RoundedCornerShape(12.dp))
                         .background(
@@ -131,7 +131,7 @@ fun DownloadEngineCard(
                         imageVector = Icons.Outlined.Download,
                         contentDescription = stringResource(AYMR.strings.download_engine_title),
                         tint = if (engineState == EngineState.ACTIVE) Color(0xFF10B981) else accentColor,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(16.dp),
                     )
                     if (engineState == EngineState.ACTIVE) {
                         Box(
@@ -149,7 +149,7 @@ fun DownloadEngineCard(
                 Text(
                     text = stringResource(AYMR.strings.download_engine_title),
                     style = MaterialTheme.typography.titleLarge.copy(
-                        fontSize = 17.sp, // Decreased size to prevent awkward wrapping
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.02).sp,
                     ),
@@ -170,138 +170,140 @@ fun DownloadEngineCard(
                 )
             }
 
-            // Statistics Horizontal Row: Strict Anti-Emoji compliant, elegant separators
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color.White.copy(alpha = 0.01f))
-                    .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(20.dp))
-                    .padding(vertical = 12.dp, horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Metric 1: Active
-                Column(
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+            if (snapshot.hasWork) {
+                // Statistics strip and engine actions are only useful while there is work.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.White.copy(alpha = 0.01f))
+                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(20.dp))
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    androidx.compose.material3.Icon(
-                        imageVector = Icons.Outlined.ArrowDownward,
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "${snapshot.activeCount}",
-                        style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
-                        fontWeight = FontWeight.Bold,
-                        color = textPrimary,
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = stringResource(AYMR.strings.download_engine_active),
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        color = textMuted,
-                    )
+                    // Metric 1: Active
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        androidx.compose.material3.Icon(
+                            imageVector = Icons.Outlined.ArrowDownward,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "${snapshot.activeCount}",
+                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary,
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(AYMR.strings.download_engine_active),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = textMuted,
+                        )
+                    }
+
+                    Box(modifier = Modifier.width(1.dp).height(28.dp).background(Color.White.copy(alpha = 0.05f)))
+
+                    // Metric 2: Queued
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        androidx.compose.material3.Icon(
+                            imageVector = Icons.Outlined.AccessTime,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "${snapshot.queuedCount}",
+                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary,
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(AYMR.strings.download_engine_queued),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = textMuted,
+                        )
+                    }
+
+                    Box(modifier = Modifier.width(1.dp).height(28.dp).background(Color.White.copy(alpha = 0.05f)))
+
+                    // Metric 3: Done
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        androidx.compose.material3.Icon(
+                            imageVector = Icons.Outlined.CheckCircle,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "${snapshot.completedCount}",
+                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary,
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(AYMR.strings.download_engine_done),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = textMuted,
+                        )
+                    }
+
+                    Box(modifier = Modifier.width(1.dp).height(28.dp).background(Color.White.copy(alpha = 0.05f)))
+
+                    // Metric 4: Free Space
+                    Column(
+                        modifier = Modifier.weight(1.3f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        androidx.compose.material3.Icon(
+                            imageVector = Icons.Outlined.Storage,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = snapshot.freeSpaceBytes?.let { Formatter.formatFileSize(context, it) } ?: "—",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 15.sp,
+                                fontFamily = FontFamily.Monospace,
+                            ),
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary,
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(AYMR.strings.download_engine_free_label, "").trim(),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = textMuted,
+                        )
+                    }
                 }
 
-                Box(modifier = Modifier.width(1.dp).height(28.dp).background(Color.White.copy(alpha = 0.05f)))
-
-                // Metric 2: Queued
-                Column(
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    androidx.compose.material3.Icon(
-                        imageVector = Icons.Outlined.AccessTime,
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "${snapshot.queuedCount}",
-                        style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
-                        fontWeight = FontWeight.Bold,
-                        color = textPrimary,
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = stringResource(AYMR.strings.download_engine_queued),
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        color = textMuted,
-                    )
-                }
-
-                Box(modifier = Modifier.width(1.dp).height(28.dp).background(Color.White.copy(alpha = 0.05f)))
-
-                // Metric 3: Done
-                Column(
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    androidx.compose.material3.Icon(
-                        imageVector = Icons.Outlined.CheckCircle,
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "${snapshot.completedCount}",
-                        style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
-                        fontWeight = FontWeight.Bold,
-                        color = textPrimary,
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = stringResource(AYMR.strings.download_engine_done),
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        color = textMuted,
-                    )
-                }
-
-                Box(modifier = Modifier.width(1.dp).height(28.dp).background(Color.White.copy(alpha = 0.05f)))
-
-                // Metric 4: Free Space
-                Column(
-                    modifier = Modifier.weight(1.3f),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    androidx.compose.material3.Icon(
-                        imageVector = Icons.Outlined.Storage,
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = snapshot.freeSpaceBytes?.let { Formatter.formatFileSize(context, it) } ?: "—",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontSize = 15.sp,
-                            fontFamily = FontFamily.Monospace,
-                        ),
-                        fontWeight = FontWeight.Bold,
-                        color = textPrimary,
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = stringResource(AYMR.strings.download_engine_free_label, "").trim(),
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        color = textMuted,
-                    )
-                }
+                DownloadEngineActionsRow(
+                    isRunning = snapshot.isRunning,
+                    activeCount = snapshot.activeCount,
+                    queuedCount = snapshot.queuedCount,
+                    onPauseAll = onPauseAll,
+                    onResumeAll = onResumeAll,
+                    onCancelAll = onCancelAll,
+                )
             }
-
-            DownloadEngineActionsRow(
-                isRunning = snapshot.isRunning,
-                activeCount = snapshot.activeCount,
-                queuedCount = snapshot.queuedCount,
-                onPauseAll = onPauseAll,
-                onResumeAll = onResumeAll,
-                onCancelAll = onCancelAll,
-            )
         }
     }
 }

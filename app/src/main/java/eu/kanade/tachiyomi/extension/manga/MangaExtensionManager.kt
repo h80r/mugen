@@ -9,7 +9,10 @@ import eu.kanade.tachiyomi.extension.InstallStep
 import eu.kanade.tachiyomi.extension.manga.api.MangaExtensionApi
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
 import eu.kanade.tachiyomi.extension.manga.model.MangaLoadResult
+import eu.kanade.tachiyomi.extension.manga.model.inferMangaInstalledRepo
 import eu.kanade.tachiyomi.extension.manga.model.newestByVersion
+import eu.kanade.tachiyomi.extension.manga.model.selectMangaRegularUpdate
+import eu.kanade.tachiyomi.extension.manga.model.selectMangaReinstallCandidates
 import eu.kanade.tachiyomi.extension.manga.util.MangaExtensionInstallReceiver
 import eu.kanade.tachiyomi.extension.manga.util.MangaExtensionInstaller
 import eu.kanade.tachiyomi.extension.manga.util.MangaExtensionLoader
@@ -23,7 +26,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -102,6 +104,15 @@ class MangaExtensionManager(
 
     fun getExtensionPackage(sourceId: Long): String? {
         return sourceIdToPackageName[sourceId]
+    }
+
+    /**
+     * Returns the extensions-lib version of the installed extension serving [sourceId],
+     * or null when the source is not backed by an installed extension.
+     */
+    fun getLibVersionForSource(sourceId: Long): Double? {
+        val pkgName = getExtensionPackage(sourceId) ?: return null
+        return installedExtensionsMapFlow.value[pkgName]?.libVersion
     }
 
     fun getExtensionPackageAsFlow(sourceId: Long): Flow<String?> {
@@ -199,7 +210,7 @@ class MangaExtensionManager(
 
         availableExtensionsStateFlow.value = extensions
         availableExtensionsMapFlow.value = extensions
-            .groupBy { it.pkgName }
+            .groupBy { it.pkgName.toInstalledMangaExtensionPkgName() }
             .mapValues { (_, variants) -> variants.newestByVersion()!! }
         updatedInstalledExtensionsStatuses(extensions, canMarkObsolete = fetched.isComplete)
         setupAvailableExtensionsSourcesDataMap(extensions)
@@ -249,7 +260,8 @@ class MangaExtensionManager(
             return
         }
 
-        val availableExtensionsByPkgName = availableExtensions.groupBy { it.pkgName }
+        val availableExtensionsByPkgName = availableExtensions
+            .groupBy { it.pkgName.toInstalledMangaExtensionPkgName() }
         val installedExtensionsMap = installedExtensionsMapFlow.value.toMutableMap()
         var changed = false
 
@@ -262,8 +274,8 @@ class MangaExtensionManager(
                 changed = true
             } else if (availableExt != null) {
                 val extensionWithRepo = extension.withInferredRepo(variants)
-                val regularUpdate = selectRegularUpdate(extensionWithRepo, variants)
-                val reinstallCandidates = selectReinstallCandidates(extensionWithRepo, variants)
+                val regularUpdate = selectMangaRegularUpdate(extensionWithRepo, variants)
+                val reinstallCandidates = selectMangaReinstallCandidates(extensionWithRepo, variants)
 
                 val updatedExtension = extensionWithRepo.copy(
                     hasUpdate = regularUpdate != null || reinstallCandidates.isNotEmpty(),
@@ -291,10 +303,17 @@ class MangaExtensionManager(
      *
      * @param extension The extension to be installed.
      */
-    fun installExtension(extension: MangaExtension.Available): Flow<InstallStep> {
+    fun installExtension(
+        extension: MangaExtension.Available,
+        isUpdateForPrivatelyInstalled: Boolean = false,
+    ): Flow<InstallStep> {
         val installableExtension = extension.copy(pkgName = extension.pkgName.toInstalledMangaExtensionPkgName())
         pendingInstallRepos[installableExtension.pkgName] = InstalledRepo(extension.repoUrl, extension.repoName)
-        return installer.downloadAndInstall(api.getApkUrl(extension), installableExtension)
+        return installer.downloadAndInstall(
+            url = api.getApkUrl(extension),
+            extension = installableExtension,
+            isUpdateForPrivatelyInstalled = isUpdateForPrivatelyInstalled,
+        )
     }
 
     /**
@@ -304,10 +323,41 @@ class MangaExtensionManager(
      *
      * @param extension The extension to be updated.
      */
-    fun updateExtension(extension: MangaExtension.Installed): Flow<InstallStep> {
-        val variants = availableExtensionsStateFlow.value.filter { it.pkgName == extension.pkgName }
-        val availableExt = selectRegularUpdate(extension, variants) ?: return emptyFlow()
-        return installExtension(availableExt)
+    fun updateExtension(extension: MangaExtension.Installed): Flow<InstallStep> = flow {
+        // The update banner only relies on the stored hasUpdate flag, while performing the update
+        // needs a matching entry in the in-memory available list. When that list is stale or was
+        // never populated in this process, the action silently did nothing, so refresh the repos
+        // once before giving up.
+        val availableExt = selectAvailableUpdate(extension)
+            ?: run {
+                findAvailableExtensions()
+                selectAvailableUpdate(extension)
+            }
+
+        if (availableExt == null) {
+            emit(InstallStep.Error)
+            return@flow
+        }
+
+        // A privately installed extension has no system package: installing its update through
+        // PackageInstaller/Shizuku would add a second, system copy next to the private one.
+        installExtension(availableExt, isUpdateForPrivatelyInstalled = !extension.isShared)
+            .collect { emit(it) }
+    }
+
+    private fun selectAvailableUpdate(extension: MangaExtension.Installed): MangaExtension.Available? {
+        val variants = availableVariantsFor(extension.pkgName)
+        return selectMangaRegularUpdate(extension.withInferredRepo(variants), variants)
+    }
+
+    /**
+     * All available builds of an installed package. Repos may publish package names carrying a
+     * numeric suffix that is stripped when installing, so both forms have to be matched.
+     */
+    private fun availableVariantsFor(pkgName: String): List<MangaExtension.Available> {
+        return availableExtensionsStateFlow.value.filter {
+            it.pkgName.toInstalledMangaExtensionPkgName() == pkgName
+        }
     }
 
     fun replaceExtensionFromRepo(
@@ -497,14 +547,15 @@ class MangaExtensionManager(
      * Extension method to set the update field of an installed extension.
      */
     private fun MangaExtension.Installed.withUpdateCheck(): MangaExtension.Installed {
-        val variants = availableExtensionsStateFlow.value.filter { it.pkgName == pkgName }
+        val variants = availableVariantsFor(pkgName)
         if (variants.isEmpty()) {
             return if (updateExists()) copy(hasUpdate = true) else this
         }
 
-        val regularUpdate = selectRegularUpdate(this, variants)
-        val reinstallCandidates = selectReinstallCandidates(this, variants)
-        return copy(
+        val extensionWithRepo = withInferredRepo(variants)
+        val regularUpdate = selectMangaRegularUpdate(extensionWithRepo, variants)
+        val reinstallCandidates = selectMangaReinstallCandidates(extensionWithRepo, variants)
+        return extensionWithRepo.copy(
             hasUpdate = regularUpdate != null || reinstallCandidates.isNotEmpty(),
             needsReinstall = regularUpdate == null && reinstallCandidates.isNotEmpty(),
         )
@@ -520,70 +571,12 @@ class MangaExtensionManager(
         return (availableExt.versionCode > versionCode || availableExt.libVersion > libVersion)
     }
 
-    private fun selectRegularUpdate(
-        extension: MangaExtension.Installed,
-        variants: List<MangaExtension.Available>,
-    ): MangaExtension.Available? {
-        extension.repoUrl
-            ?.let { repoUrl ->
-                variants
-                    .filter { it.repoUrl == repoUrl && extension.updateExists(it) }
-                    .latestVersionGroup()
-                    .firstOrNull()
-            }
-            ?.let { return it }
-
-        if (extension.repoUrl != null) return null
-
-        val latestVersionGroup = variants
-            .filter { extension.updateExists(it) }
-            .latestVersionGroup()
-
-        if (variants.size == 1) return latestVersionGroup.singleOrNull()
-        return latestVersionGroup.takeIf { it.size > 1 }?.firstOrNull()
-    }
-
-    private fun selectReinstallCandidates(
-        extension: MangaExtension.Installed,
-        variants: List<MangaExtension.Available>,
-    ): List<MangaExtension.Available> {
-        if (selectRegularUpdate(extension, variants) != null) return emptyList()
-
-        return variants
-            .filter { extension.repoUrl == null || it.repoUrl != extension.repoUrl }
-            .filter { extension.updateExists(it) }
-            .latestVersionGroup()
-    }
-
-    private fun List<MangaExtension.Available>.latestVersionGroup(): List<MangaExtension.Available> {
-        val latest = maxWithOrNull(
-            compareBy<MangaExtension.Available> { it.versionCode }
-                .thenBy { it.libVersion },
-        ) ?: return emptyList()
-
-        return filter { it.versionCode == latest.versionCode && it.libVersion == latest.libVersion }
-            .sortedWith(
-                compareBy<MangaExtension.Available> { it.repoName.ifBlank { it.repoUrl } }
-                    .thenBy { it.repoUrl },
-            )
-    }
-
     private fun MangaExtension.Installed.withInferredRepo(
         variants: List<MangaExtension.Available>,
     ): MangaExtension.Installed {
         if (repoUrl != null || variants.isEmpty()) return this
 
-        val exactVersionMatches = variants.filter {
-            it.versionCode == versionCode && it.libVersion == libVersion
-        }
-        val repoCandidate = exactVersionMatches.singleOrNull()
-            ?: variants.singleOrNull()
-            ?: variants
-                .map { InstalledRepo(url = it.repoUrl, name = it.repoName) }
-                .distinctBy { it.url }
-                .singleOrNull()
-                ?.let { repo -> variants.first { it.repoUrl == repo.url } }
-            ?: return this
+        val repoCandidate = inferMangaInstalledRepo(this, variants) ?: return this
 
         return copy(
             repoUrl = repoCandidate.repoUrl,

@@ -28,6 +28,15 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 
+internal fun resolveVerticalSeekbarDragProgress(
+    currentProgress: Float,
+    deltaPx: Float,
+    trackHeightPx: Float,
+): Float {
+    if (trackHeightPx <= 0f) return currentProgress.coerceIn(0f, 1f)
+    return (currentProgress + (deltaPx / trackHeightPx)).coerceIn(0f, 1f)
+}
+
 @Composable
 internal fun LnReaderVerticalSeekbar(
     progress: Float,
@@ -35,6 +44,7 @@ internal fun LnReaderVerticalSeekbar(
     bottomLabel: String?,
     tickFractions: List<Float> = emptyList(),
     onProgressChange: (Float) -> Unit,
+    onProgressChangeFinished: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var containerHeightPx by remember { mutableFloatStateOf(0f) }
@@ -72,18 +82,27 @@ internal fun LnReaderVerticalSeekbar(
                     val newProgress = normalizeProgressFromY(offset.y)
                     scrubProgress = newProgress
                     onProgressChange(newProgress)
+                    onProgressChangeFinished(newProgress)
                 }
             }
             .draggable(
                 orientation = Orientation.Vertical,
                 interactionSource = interactionSource,
                 state = rememberDraggableState { delta ->
-                    val trackTop = containerHeightPx * 0.125f
                     val trackHeight = (containerHeightPx * 0.75f).coerceAtLeast(1f)
-                    val currentY = trackTop + (trackHeight * thumbProgress)
-                    val newProgress = normalizeProgressFromY(currentY + delta)
+                    val newProgress = resolveVerticalSeekbarDragProgress(
+                        currentProgress = scrubProgress,
+                        deltaPx = delta,
+                        trackHeightPx = trackHeight,
+                    )
                     scrubProgress = newProgress
                     onProgressChange(newProgress)
+                },
+                onDragStarted = {
+                    scrubProgress = progress.coerceIn(0f, 1f)
+                },
+                onDragStopped = {
+                    onProgressChangeFinished(scrubProgress)
                 },
             ),
     ) {

@@ -3,6 +3,8 @@ package eu.kanade.tachiyomi.ui.reader.novel
 import android.app.Application
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.items.novelchapter.interactor.SyncNovelChaptersWithSource
+import eu.kanade.domain.source.novel.interactor.GetNovelIncognitoState
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.model.AutoTrackState
 import eu.kanade.domain.track.novel.interactor.TrackNovelChapter
 import eu.kanade.domain.track.service.TrackPreferences
@@ -12,6 +14,7 @@ import eu.kanade.tachiyomi.data.translation.TranslationProgressUpdate
 import eu.kanade.tachiyomi.data.translation.TranslationQueueItem
 import eu.kanade.tachiyomi.data.translation.TranslationQueueManager
 import eu.kanade.tachiyomi.data.translation.TranslationStatus
+import eu.kanade.tachiyomi.extension.novel.NovelExtensionManager
 import eu.kanade.tachiyomi.extension.novel.repo.NovelPluginPackage
 import eu.kanade.tachiyomi.extension.novel.repo.NovelPluginRepoEntry
 import eu.kanade.tachiyomi.extension.novel.repo.NovelPluginStorage
@@ -19,6 +22,7 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.novelsource.NovelSource
 import eu.kanade.tachiyomi.novelsource.model.SNovelChapter
 import eu.kanade.tachiyomi.source.novel.NovelWebUrlSource
+import eu.kanade.tachiyomi.test.PersistingPreferenceStore
 import eu.kanade.tachiyomi.ui.reader.novel.SelectedTextAction
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
@@ -51,6 +55,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.runBlocking
@@ -245,21 +250,40 @@ class NovelReaderScreenModelTest {
             holder.put("gemini", mapOf(0 to "g"))
             holder.put("google", mapOf(0 to "g"))
             setPrivateField(screenModel, "translationHolder", holder)
-            setPrivateField(screenModel, "geminiLogs", listOf("gemini"))
-            setPrivateField(screenModel, "googleLogs", listOf("google"))
-            setPrivateField(screenModel, "isGeminiTranslating", true)
-            setPrivateField(screenModel, "isGoogleTranslating", true)
-            setPrivateField(screenModel, "isGeminiTranslationVisible", true)
-            setPrivateField(screenModel, "isGoogleTranslationVisible", true)
-            setPrivateField(screenModel, "hasGeminiTranslationCache", true)
-            setPrivateField(screenModel, "hasGoogleTranslationCache", true)
-            setPrivateField(screenModel, "geminiTranslationProgress", 77)
-            setPrivateField(screenModel, "googleTranslationProgress", 88)
+            getPrivateField<NovelTranslationController>(screenModel, "translationController")
+                .restoreFromReaderState(
+                    gemini = NovelReaderScreenModel.State.ReaderGeminiState(
+                        isGeminiTranslating = true,
+                        geminiTranslationProgress = 77,
+                        isGeminiTranslationVisible = true,
+                        hasGeminiTranslationCache = true,
+                        geminiLogs = listOf("gemini"),
+                    ),
+                    google = NovelReaderScreenModel.State.ReaderGoogleState(
+                        isGoogleTranslating = true,
+                        googleTranslationProgress = 88,
+                        isGoogleTranslationVisible = true,
+                        hasGoogleTranslationCache = true,
+                        googleLogs = listOf("google"),
+                    ),
+                )
             setPrivateField(screenModel, "hasTriggeredNextChapterPrefetch", true)
-            setPrivateField(screenModel, "hasTriggeredNextChapterGeminiPrefetch", true)
-            setPrivateField(screenModel, "hasTriggeredGeminiAutoStart", true)
+            setPrivateField(
+                getPrivateField<Any>(screenModel, "translationBatchExecutor"),
+                "hasTriggeredNextChapterGeminiPrefetch",
+                true,
+            )
+            setPrivateField(
+                getPrivateField<Any>(screenModel, "translationController"),
+                "hasTriggeredGeminiAutoStart",
+                true,
+            )
             setPrivateField(screenModel, "attemptedJaomixPages", mutableSetOf(1))
-            setPrivateField(screenModel, "chapterReadStartTimeMs", sentinelTime)
+            setPrivateField(
+                getPrivateField<Any>(screenModel, "progressPersistenceController"),
+                "chapterReadStartTimeMs",
+                sentinelTime,
+            )
 
             invokePrivateClearChapterTransientState(screenModel)
 
@@ -268,21 +292,34 @@ class NovelReaderScreenModelTest {
                 true
             getPrivateField<NovelReaderTranslationHolder>(screenModel, "translationHolder").isEmpty("google") shouldBe
                 true
-            getPrivateField<List<Any?>>(screenModel, "geminiLogs") shouldBe emptyList<Any?>()
-            getPrivateField<List<Any?>>(screenModel, "googleLogs") shouldBe emptyList<Any?>()
-            getPrivateField<Boolean>(screenModel, "isGeminiTranslating") shouldBe false
-            getPrivateField<Boolean>(screenModel, "isGoogleTranslating") shouldBe false
-            getPrivateField<Boolean>(screenModel, "isGeminiTranslationVisible") shouldBe false
-            getPrivateField<Boolean>(screenModel, "isGoogleTranslationVisible") shouldBe false
-            getPrivateField<Boolean>(screenModel, "hasGeminiTranslationCache") shouldBe false
-            getPrivateField<Boolean>(screenModel, "hasGoogleTranslationCache") shouldBe false
-            getPrivateField<Int>(screenModel, "geminiTranslationProgress") shouldBe 0
-            getPrivateField<Int>(screenModel, "googleTranslationProgress") shouldBe 0
+            val translationState =
+                getPrivateField<NovelTranslationController>(screenModel, "translationController").snapshot()
+            translationState.geminiLogs shouldBe emptyList()
+            translationState.googleLogs shouldBe emptyList()
+            translationState.isGeminiTranslating shouldBe false
+            translationState.isGoogleTranslating shouldBe false
+            translationState.isGeminiTranslationVisible shouldBe false
+            translationState.isGoogleTranslationVisible shouldBe false
+            translationState.hasGeminiTranslationCache shouldBe false
+            translationState.hasGoogleTranslationCache shouldBe false
+            translationState.geminiTranslationProgress shouldBe 0
+            translationState.googleTranslationProgress shouldBe 0
             getPrivateField<Boolean>(screenModel, "hasTriggeredNextChapterPrefetch") shouldBe false
-            getPrivateField<Boolean>(screenModel, "hasTriggeredNextChapterGeminiPrefetch") shouldBe false
-            getPrivateField<Boolean>(screenModel, "hasTriggeredGeminiAutoStart") shouldBe false
+            getPrivateField<Boolean>(
+                getPrivateField<Any>(screenModel, "translationBatchExecutor"),
+                "hasTriggeredNextChapterGeminiPrefetch",
+            ) shouldBe false
+            getPrivateField<Boolean>(
+                getPrivateField<Any>(screenModel, "translationController"),
+                "hasTriggeredGeminiAutoStart",
+            ) shouldBe false
             getPrivateField<MutableSet<Int>>(screenModel, "attemptedJaomixPages") shouldBe emptySet()
-            (getPrivateField<Long>(screenModel, "chapterReadStartTimeMs") > sentinelTime) shouldBe true
+            (
+                getPrivateField<Long>(
+                    getPrivateField<Any>(screenModel, "progressPersistenceController"),
+                    "chapterReadStartTimeMs",
+                ) > sentinelTime
+                ) shouldBe true
         }
     }
 
@@ -369,10 +406,16 @@ class NovelReaderScreenModelTest {
             val holder = NovelReaderTranslationHolder { successState.textBlocks }
             holder.put("gemini", translatedByIndex)
             setPrivateField(screenModel, "translationHolder", holder)
-            setPrivateField(screenModel, "isGeminiTranslationVisible", true)
-            setPrivateField(screenModel, "hasGeminiTranslationCache", true)
-            setPrivateField(screenModel, "isGeminiTranslating", false)
-            setPrivateField(screenModel, "geminiTranslationProgress", 100)
+            getPrivateField<NovelTranslationController>(screenModel, "translationController")
+                .restoreFromReaderState(
+                    gemini = NovelReaderScreenModel.State.ReaderGeminiState(
+                        isGeminiTranslating = false,
+                        geminiTranslationProgress = 100,
+                        isGeminiTranslationVisible = true,
+                        hasGeminiTranslationCache = true,
+                    ),
+                    google = NovelReaderScreenModel.State.ReaderGoogleState(),
+                )
             invokePrivateUpdateContent(screenModel, translatedSettings)
 
             val before = screenModel.state.value.shouldBeInstanceOf<NovelReaderScreenModel.State.Success>()
@@ -752,7 +795,11 @@ class NovelReaderScreenModelTest {
             val holder = NovelReaderTranslationHolder { emptyList() }
             holder.put("gemini", mapOf(0 to "Переведенный абзац"))
             setPrivateField(screenModel, "translationHolder", holder)
-            setPrivateField(screenModel, "isGeminiTranslationVisible", false)
+            getPrivateField<NovelTranslationController>(screenModel, "translationController")
+                .restoreFromReaderState(
+                    gemini = NovelReaderScreenModel.State.ReaderGeminiState(isGeminiTranslationVisible = false),
+                    google = NovelReaderScreenModel.State.ReaderGoogleState(),
+                )
 
             val translatedModel = invokePrivateResolveTranslatedTtsChapterModel(
                 target = screenModel,
@@ -821,7 +868,11 @@ class NovelReaderScreenModelTest {
             val holder = NovelReaderTranslationHolder { emptyList() }
             holder.put("google", mapOf(0 to "Переведенный абзац"))
             setPrivateField(screenModel, "translationHolder", holder)
-            setPrivateField(screenModel, "isGoogleTranslationVisible", true)
+            getPrivateField<NovelTranslationController>(screenModel, "translationController")
+                .restoreFromReaderState(
+                    gemini = NovelReaderScreenModel.State.ReaderGeminiState(),
+                    google = NovelReaderScreenModel.State.ReaderGoogleState(isGoogleTranslationVisible = true),
+                )
 
             val translatedModel = invokePrivateResolveTranslatedTtsChapterModel(
                 target = screenModel,
@@ -871,16 +922,20 @@ class NovelReaderScreenModelTest {
             val holder = NovelReaderTranslationHolder { emptyList() }
             holder.put("google", mapOf(0 to "Переведённый абзац"))
             setPrivateField(screenModel, "translationHolder", holder)
-            setPrivateField(screenModel, "isGoogleTranslationVisible", true)
-            setPrivateField(screenModel, "isGoogleTranslationVisible", true)
+            getPrivateField<NovelTranslationController>(screenModel, "translationController")
+                .restoreFromReaderState(
+                    gemini = NovelReaderScreenModel.State.ReaderGeminiState(),
+                    google = NovelReaderScreenModel.State.ReaderGoogleState(isGoogleTranslationVisible = true),
+                )
 
             invokePrivateUpdateContent(
                 target = screenModel,
                 settings = state.readerSettings.copy(googleTranslationEnabled = true),
             )
 
-            val ttsController = getPrivateField<Any>(screenModel, "ttsSessionController")
-            getPrivateField<Boolean>(ttsController, "preferredTranslatedText") shouldBe true
+            val ttsController = getPrivateField<Any>(screenModel, "ttsController")
+            val ttsSessionController = getPrivateField<Any>(ttsController, "ttsSessionController")
+            getPrivateField<Boolean>(ttsSessionController, "preferredTranslatedText") shouldBe true
         }
     }
 
@@ -2647,24 +2702,14 @@ class NovelReaderScreenModelTest {
         richContentBlocks: List<NovelRichContentBlock>,
         settings: NovelReaderSettings,
     ): eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsChapterModel? {
-        val method = target.javaClass.getDeclaredMethod(
-            "resolveTranslatedTtsChapterModel",
-            Long::class.javaPrimitiveType,
-            String::class.java,
-            List::class.java,
-            List::class.java,
-            NovelReaderSettings::class.java,
+        val ttsController = getPrivateField<NovelTtsController>(target, "ttsController")
+        return ttsController.resolveTranslatedTtsChapterModel(
+            chapterId = chapterId,
+            chapterTitle = chapterTitle,
+            originalContentBlocks = originalContentBlocks,
+            richContentBlocks = richContentBlocks,
+            settings = settings,
         )
-        method.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        return method.invoke(
-            target,
-            chapterId,
-            chapterTitle,
-            originalContentBlocks,
-            richContentBlocks,
-            settings,
-        ) as eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsChapterModel?
     }
 
     private class FakeNovelChapterRepository(
@@ -2862,6 +2907,46 @@ class NovelReaderScreenModelTest {
         } returns MutableStateFlow<TranslationQueueItem?>(null)
         Injekt.addSingleton(fullType<TranslationQueueManager>(), testTranslationQueueManager)
 
+        runCatching { Injekt.get<NovelReaderPreferences>() }
+            .getOrElse {
+                Injekt.addSingleton(
+                    fullType<NovelReaderPreferences>(),
+                    NovelReaderPreferences(PersistingPreferenceStore()),
+                )
+            }
+
+        runCatching { Injekt.get<GetNovelIncognitoState>() }
+            .getOrElse {
+                // Registered in DomainModule for the app; unit tests never run that module. Build the
+                // real interactor so incognito preferences behave exactly as they do in production.
+                val basePreferences = runCatching { Injekt.get<BasePreferences>() }
+                    .getOrElse {
+                        // ReactivePreferenceStore, not InMemoryPreferenceStore: the latter hands out a
+                        // fresh preference per lookup, so a set() in a test would be invisible here.
+                        BasePreferences(mockk(relaxed = true), PersistingPreferenceStore())
+                            .also { Injekt.addSingleton(fullType<BasePreferences>(), it) }
+                    }
+                val sourcePreferences = runCatching { Injekt.get<SourcePreferences>() }
+                    .getOrElse {
+                        SourcePreferences(PersistingPreferenceStore())
+                            .also { Injekt.addSingleton(fullType<SourcePreferences>(), it) }
+                    }
+                val extensionManager = runCatching { Injekt.get<NovelExtensionManager>() }
+                    .getOrElse {
+                        mockk<NovelExtensionManager>(relaxed = true).also { manager ->
+                            every { manager.getPluginId(any()) } returns null
+                            every { manager.getPluginIdAsFlow(any()) } returns flowOf(null)
+                            every { manager.isNsfwForSource(any()) } returns false
+                            every { manager.isNsfwForSourceAsFlow(any()) } returns flowOf(false)
+                            Injekt.addSingleton(fullType<NovelExtensionManager>(), manager)
+                        }
+                    }
+                Injekt.addSingleton(
+                    fullType<GetNovelIncognitoState>(),
+                    GetNovelIncognitoState(basePreferences, sourcePreferences, extensionManager),
+                )
+            }
+
         runCatching { Injekt.get<TrackPreferences>() }
             .getOrElse {
                 val trackPreferences = mockk<TrackPreferences>(relaxed = true)
@@ -2890,6 +2975,42 @@ class NovelReaderScreenModelTest {
         runCatching { Injekt.get<TrackNovelChapter>() }
             .getOrElse {
                 Injekt.addSingleton(fullType<TrackNovelChapter>(), mockk<TrackNovelChapter>(relaxed = true))
+            }
+
+        runCatching { Injekt.get<tachiyomi.domain.book.novel.interactor.GetNovelBookState>() }
+            .getOrElse {
+                // Registered in DomainModule with addFactory for the app; unit tests never run that
+                // module, so back the interactor with a repository that reports no saved book state.
+                val bookStateRepository =
+                    mockk<tachiyomi.domain.book.novel.repository.NovelBookStateRepository>(relaxed = true)
+                coEvery { bookStateRepository.getBookState(any()) } returns null
+                every { bookStateRepository.subscribeBookState(any()) } returns flowOf(null)
+                every { bookStateRepository.subscribeEnabledBookStates() } returns flowOf(emptyList())
+                coEvery { bookStateRepository.getAllBookStates() } returns emptyList()
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.repository.NovelBookStateRepository>(),
+                    bookStateRepository,
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.GetNovelBookState>(),
+                    tachiyomi.domain.book.novel.interactor.GetNovelBookState(bookStateRepository),
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.SetNovelBookProgress>(),
+                    tachiyomi.domain.book.novel.interactor.SetNovelBookProgress(bookStateRepository),
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.SetNovelBookEnabled>(),
+                    tachiyomi.domain.book.novel.interactor.SetNovelBookEnabled(bookStateRepository),
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.UpsertNovelBookState>(),
+                    tachiyomi.domain.book.novel.interactor.UpsertNovelBookState(bookStateRepository),
+                )
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.book.novel.interactor.DeleteNovelBookState>(),
+                    tachiyomi.domain.book.novel.interactor.DeleteNovelBookState(bookStateRepository),
+                )
             }
 
         every { getNovelSeriesWithEntries.subscribe(any()) } returns MutableStateFlow(null)

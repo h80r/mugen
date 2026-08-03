@@ -9,7 +9,10 @@ import eu.kanade.tachiyomi.extension.InstallStep
 import eu.kanade.tachiyomi.extension.anime.api.AnimeExtensionApi
 import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
 import eu.kanade.tachiyomi.extension.anime.model.AnimeLoadResult
+import eu.kanade.tachiyomi.extension.anime.model.inferAnimeInstalledRepo
 import eu.kanade.tachiyomi.extension.anime.model.newestByVersion
+import eu.kanade.tachiyomi.extension.anime.model.selectAnimeRegularUpdate
+import eu.kanade.tachiyomi.extension.anime.model.selectAnimeReinstallCandidates
 import eu.kanade.tachiyomi.extension.anime.util.AnimeExtensionInstallReceiver
 import eu.kanade.tachiyomi.extension.anime.util.AnimeExtensionInstaller
 import eu.kanade.tachiyomi.extension.anime.util.AnimeExtensionLoader
@@ -23,7 +26,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -204,7 +206,7 @@ class AnimeExtensionManager(
 
         availableExtensionsStateFlow.value = extensions
         availableExtensionsMapFlow.value = extensions
-            .groupBy { it.pkgName }
+            .groupBy { it.pkgName.toInstalledAnimeExtensionPkgName() }
             .mapValues { (_, variants) -> variants.newestByVersion()!! }
         updatedInstalledAnimeExtensionsStatuses(extensions, canMarkObsolete = fetched.isComplete)
         setupAvailableAnimeExtensionsSourcesDataMap(extensions)
@@ -254,7 +256,8 @@ class AnimeExtensionManager(
             return
         }
 
-        val availableExtensionsByPkgName = availableExtensions.groupBy { it.pkgName }
+        val availableExtensionsByPkgName = availableExtensions
+            .groupBy { it.pkgName.toInstalledAnimeExtensionPkgName() }
         val installedExtensionsMap = installedExtensionsMapFlow.value.toMutableMap()
         var changed = false
 
@@ -267,8 +270,8 @@ class AnimeExtensionManager(
                 changed = true
             } else if (availableExt != null) {
                 val extensionWithRepo = extension.withInferredRepo(variants)
-                val regularUpdate = selectRegularUpdate(extensionWithRepo, variants)
-                val reinstallCandidates = selectReinstallCandidates(extensionWithRepo, variants)
+                val regularUpdate = selectAnimeRegularUpdate(extensionWithRepo, variants)
+                val reinstallCandidates = selectAnimeReinstallCandidates(extensionWithRepo, variants)
 
                 val updatedExtension = extensionWithRepo.copy(
                     hasUpdate = regularUpdate != null || reinstallCandidates.isNotEmpty(),
@@ -296,10 +299,17 @@ class AnimeExtensionManager(
      *
      * @param extension The anime extension to be installed.
      */
-    fun installExtension(extension: AnimeExtension.Available): Flow<InstallStep> {
+    fun installExtension(
+        extension: AnimeExtension.Available,
+        isUpdateForPrivatelyInstalled: Boolean = false,
+    ): Flow<InstallStep> {
         val installableExtension = extension.copy(pkgName = extension.pkgName.toInstalledAnimeExtensionPkgName())
         pendingInstallRepos[installableExtension.pkgName] = InstalledRepo(extension.repoUrl, extension.repoName)
-        return installer.downloadAndInstall(api.getApkUrl(extension), installableExtension)
+        return installer.downloadAndInstall(
+            url = api.getApkUrl(extension),
+            extension = installableExtension,
+            isUpdateForPrivatelyInstalled = isUpdateForPrivatelyInstalled,
+        )
     }
 
     /**
@@ -309,10 +319,41 @@ class AnimeExtensionManager(
      *
      * @param extension The anime extension to be updated.
      */
-    fun updateExtension(extension: AnimeExtension.Installed): Flow<InstallStep> {
-        val variants = availableExtensionsStateFlow.value.filter { it.pkgName == extension.pkgName }
-        val availableExt = selectRegularUpdate(extension, variants) ?: return emptyFlow()
-        return installExtension(availableExt)
+    fun updateExtension(extension: AnimeExtension.Installed): Flow<InstallStep> = flow {
+        // The update banner only relies on the stored hasUpdate flag, while performing the update
+        // needs a matching entry in the in-memory available list. When that list is stale or was
+        // never populated in this process, the action silently did nothing, so refresh the repos
+        // once before giving up.
+        val availableExt = selectAvailableUpdate(extension)
+            ?: run {
+                findAvailableExtensions()
+                selectAvailableUpdate(extension)
+            }
+
+        if (availableExt == null) {
+            emit(InstallStep.Error)
+            return@flow
+        }
+
+        // A privately installed extension has no system package: installing its update through
+        // PackageInstaller/Shizuku would add a second, system copy next to the private one.
+        installExtension(availableExt, isUpdateForPrivatelyInstalled = !extension.isShared)
+            .collect { emit(it) }
+    }
+
+    private fun selectAvailableUpdate(extension: AnimeExtension.Installed): AnimeExtension.Available? {
+        val variants = availableVariantsFor(extension.pkgName)
+        return selectAnimeRegularUpdate(extension.withInferredRepo(variants), variants)
+    }
+
+    /**
+     * All available builds of an installed package. Repos may publish package names carrying a
+     * numeric suffix that is stripped when installing, so both forms have to be matched.
+     */
+    private fun availableVariantsFor(pkgName: String): List<AnimeExtension.Available> {
+        return availableExtensionsStateFlow.value.filter {
+            it.pkgName.toInstalledAnimeExtensionPkgName() == pkgName
+        }
     }
 
     fun replaceExtensionFromRepo(
@@ -502,14 +543,15 @@ class AnimeExtensionManager(
      * AnimeExtension method to set the update field of an installed anime extension.
      */
     private fun AnimeExtension.Installed.withUpdateCheck(): AnimeExtension.Installed {
-        val variants = availableExtensionsStateFlow.value.filter { it.pkgName == pkgName }
+        val variants = availableVariantsFor(pkgName)
         if (variants.isEmpty()) {
             return if (updateExists()) copy(hasUpdate = true) else this
         }
 
-        val regularUpdate = selectRegularUpdate(this, variants)
-        val reinstallCandidates = selectReinstallCandidates(this, variants)
-        return copy(
+        val extensionWithRepo = withInferredRepo(variants)
+        val regularUpdate = selectAnimeRegularUpdate(extensionWithRepo, variants)
+        val reinstallCandidates = selectAnimeReinstallCandidates(extensionWithRepo, variants)
+        return extensionWithRepo.copy(
             hasUpdate = regularUpdate != null || reinstallCandidates.isNotEmpty(),
             needsReinstall = regularUpdate == null && reinstallCandidates.isNotEmpty(),
         )
@@ -525,70 +567,12 @@ class AnimeExtensionManager(
         return (availableExt.versionCode > versionCode || availableExt.libVersion > libVersion)
     }
 
-    private fun selectRegularUpdate(
-        extension: AnimeExtension.Installed,
-        variants: List<AnimeExtension.Available>,
-    ): AnimeExtension.Available? {
-        extension.repoUrl
-            ?.let { repoUrl ->
-                variants
-                    .filter { it.repoUrl == repoUrl && extension.updateExists(it) }
-                    .latestVersionGroup()
-                    .firstOrNull()
-            }
-            ?.let { return it }
-
-        if (extension.repoUrl != null) return null
-
-        val latestVersionGroup = variants
-            .filter { extension.updateExists(it) }
-            .latestVersionGroup()
-
-        if (variants.size == 1) return latestVersionGroup.singleOrNull()
-        return latestVersionGroup.takeIf { it.size > 1 }?.firstOrNull()
-    }
-
-    private fun selectReinstallCandidates(
-        extension: AnimeExtension.Installed,
-        variants: List<AnimeExtension.Available>,
-    ): List<AnimeExtension.Available> {
-        if (selectRegularUpdate(extension, variants) != null) return emptyList()
-
-        return variants
-            .filter { extension.repoUrl == null || it.repoUrl != extension.repoUrl }
-            .filter { extension.updateExists(it) }
-            .latestVersionGroup()
-    }
-
-    private fun List<AnimeExtension.Available>.latestVersionGroup(): List<AnimeExtension.Available> {
-        val latest = maxWithOrNull(
-            compareBy<AnimeExtension.Available> { it.versionCode }
-                .thenBy { it.libVersion },
-        ) ?: return emptyList()
-
-        return filter { it.versionCode == latest.versionCode && it.libVersion == latest.libVersion }
-            .sortedWith(
-                compareBy<AnimeExtension.Available> { it.repoName.ifBlank { it.repoUrl } }
-                    .thenBy { it.repoUrl },
-            )
-    }
-
     private fun AnimeExtension.Installed.withInferredRepo(
         variants: List<AnimeExtension.Available>,
     ): AnimeExtension.Installed {
         if (repoUrl != null || variants.isEmpty()) return this
 
-        val exactVersionMatches = variants.filter {
-            it.versionCode == versionCode && it.libVersion == libVersion
-        }
-        val repoCandidate = exactVersionMatches.singleOrNull()
-            ?: variants.singleOrNull()
-            ?: variants
-                .map { InstalledRepo(url = it.repoUrl, name = it.repoName) }
-                .distinctBy { it.url }
-                .singleOrNull()
-                ?.let { repo -> variants.first { it.repoUrl == repo.url } }
-            ?: return this
+        val repoCandidate = inferAnimeInstalledRepo(this, variants) ?: return this
 
         return copy(
             repoUrl = repoCandidate.repoUrl,
@@ -650,7 +634,7 @@ class AnimeExtensionManager(
         val pendingUpdateCount = installedExtensionsMapFlow.value.values.count { it.hasUpdate }
         preferences.animeExtensionUpdatesCount().set(pendingUpdateCount)
         if (pendingUpdateCount == 0) {
-            ExtensionUpdateNotifier(context).dismiss()
+            ExtensionUpdateNotifier(context).dismiss(anime = true)
         }
     }
 

@@ -54,6 +54,7 @@ fun EntryToolbar(
     titleAlphaProvider: () -> Float,
     backgroundAlphaProvider: () -> Float,
     isManga: Boolean,
+    overflowActions: List<AppBar.OverflowAction> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     val isActionMode = actionModeCounter > 0
@@ -135,6 +136,7 @@ fun EntryToolbar(
                             ),
                         )
                     }
+                    overflowActions.forEach { add(it) }
                     add(
                         AppBar.OverflowAction(
                             title = stringResource(MR.strings.action_webview_refresh),

@@ -14,10 +14,15 @@ import tachiyomi.presentation.core.i18n.stringResource
 @Composable
 fun ChaptersHeader(
     chapterCount: Int,
+    isBookToc: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     AuroraCoverSectionHeader(
-        title = stringResource(AYMR.strings.aurora_chapters_header),
+        title = if (isBookToc) {
+            stringResource(AYMR.strings.novel_book_toc_title)
+        } else {
+            stringResource(AYMR.strings.aurora_chapters_header)
+        },
         icon = Icons.Default.Book,
         count = chapterCount.toString(),
         modifier = modifier,

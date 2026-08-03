@@ -16,13 +16,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Launch
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
@@ -44,13 +45,18 @@ import androidx.compose.ui.unit.dp
 import com.tadami.aurora.R
 import eu.kanade.domain.extension.anime.interactor.AnimeExtensionSourceItem
 import eu.kanade.presentation.browse.anime.components.AnimeExtensionIcon
+import eu.kanade.presentation.browse.components.ExtensionAuroraButton
+import eu.kanade.presentation.browse.components.ExtensionBannerTone
+import eu.kanade.presentation.browse.components.ExtensionDetailsGlassCard
+import eu.kanade.presentation.browse.components.ExtensionStatusBanner
 import eu.kanade.presentation.browse.manga.NsfwWarningDialog
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
-import eu.kanade.presentation.components.WarningBanner
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.TrailingWidgetBuffer
+import eu.kanade.presentation.theme.AuroraTheme
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
+import eu.kanade.tachiyomi.extension.InstallStep
 import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
 import eu.kanade.tachiyomi.ui.browse.anime.extension.details.AnimeExtensionDetailsScreenModel
 import eu.kanade.tachiyomi.util.system.LocaleHelper
@@ -73,6 +79,8 @@ fun AnimeExtensionDetailsScreen(
     onClickDisableAll: () -> Unit,
     onClickClearCookies: () -> Unit,
     onClickUninstall: () -> Unit,
+    onClickUpdate: () -> Unit,
+    onClickReinstall: () -> Unit,
     onClickSource: (sourceId: Long) -> Unit,
     onClickIncognito: (Boolean) -> Unit,
 ) {
@@ -142,10 +150,13 @@ fun AnimeExtensionDetailsScreen(
         AnimeExtensionDetails(
             contentPadding = paddingValues,
             extension = state.extension,
+            installStep = state.installStep,
             sources = state.sources,
             incognitoMode = state.isIncognito,
             onClickSourcePreferences = onClickSourcePreferences,
             onClickUninstall = onClickUninstall,
+            onClickUpdate = onClickUpdate,
+            onClickReinstall = onClickReinstall,
             onClickSource = onClickSource,
             onClickIncognito = onClickIncognito,
         )
@@ -156,10 +167,13 @@ fun AnimeExtensionDetailsScreen(
 private fun AnimeExtensionDetails(
     contentPadding: PaddingValues,
     extension: AnimeExtension.Installed,
+    installStep: InstallStep,
     sources: ImmutableList<AnimeExtensionSourceItem>,
     incognitoMode: Boolean,
     onClickSourcePreferences: (sourceId: Long) -> Unit,
     onClickUninstall: () -> Unit,
+    onClickUpdate: () -> Unit,
+    onClickReinstall: () -> Unit,
     onClickSource: (sourceId: Long) -> Unit,
     onClickIncognito: (Boolean) -> Unit,
 ) {
@@ -169,10 +183,13 @@ private fun AnimeExtensionDetails(
     ScrollbarLazyColumn(
         contentPadding = contentPadding,
     ) {
-        if (extension.isObsolete) {
-            item {
-                WarningBanner(MR.strings.obsolete_extension_message)
-            }
+        item {
+            ExtensionProblemBanners(
+                extension = extension,
+                installStep = installStep,
+                onClickUpdate = onClickUpdate,
+                onClickReinstall = onClickReinstall,
+            )
         }
 
         item {
@@ -216,6 +233,55 @@ private fun AnimeExtensionDetails(
 }
 
 @Composable
+private fun ExtensionProblemBanners(
+    extension: AnimeExtension.Installed,
+    installStep: InstallStep,
+    onClickUpdate: () -> Unit,
+    onClickReinstall: () -> Unit,
+) {
+    val busy = !installStep.isCompleted()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = MaterialTheme.padding.medium),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+    ) {
+        if (extension.isObsolete) {
+            ExtensionStatusBanner(
+                icon = Icons.Outlined.ErrorOutline,
+                title = stringResource(MR.strings.ext_obsolete),
+                message = stringResource(MR.strings.obsolete_extension_message),
+                tone = ExtensionBannerTone.Error,
+            )
+        }
+        when {
+            extension.needsReinstall -> ExtensionStatusBanner(
+                icon = Icons.Outlined.Warning,
+                title = stringResource(MR.strings.ext_reinstall_required),
+                message = stringResource(MR.strings.ext_reinstall_required_hint),
+                tone = ExtensionBannerTone.Warning,
+                actionLabel = stringResource(
+                    if (busy) MR.strings.ext_installing else MR.strings.ext_reinstall_required,
+                ),
+                actionEnabled = !busy,
+                onAction = onClickReinstall,
+            )
+            extension.hasUpdate -> ExtensionStatusBanner(
+                icon = Icons.Outlined.GetApp,
+                title = stringResource(MR.strings.ext_update),
+                message = stringResource(MR.strings.ext_update_available_banner),
+                tone = ExtensionBannerTone.Info,
+                actionLabel = stringResource(
+                    if (busy) MR.strings.ext_installing else MR.strings.ext_update,
+                ),
+                actionEnabled = !busy,
+                onAction = onClickUpdate,
+            )
+        }
+    }
+}
+
+@Composable
 private fun DetailsHeader(
     extension: AnimeExtension,
     extIncognitoMode: Boolean,
@@ -226,149 +292,152 @@ private fun DetailsHeader(
 ) {
     val context = LocalContext.current
 
-    Column {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = MaterialTheme.padding.medium)
-                .padding(
-                    top = MaterialTheme.padding.medium,
-                    bottom = MaterialTheme.padding.small,
-                )
-                .clickable {
-                    val extDebugInfo = buildString {
-                        append(
-                            """
-                            Extension name: ${extension.name} (lang: ${extension.lang}; package: ${extension.pkgName})
-                            Extension version: ${extension.versionName} (lib: ${extension.libVersion}; version code: ${extension.versionCode})
-                            NSFW: ${extension.isNsfw}
-                            """.trimIndent(),
-                        )
-
-                        if (extension is AnimeExtension.Installed) {
-                            append("\n\n")
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = MaterialTheme.padding.medium)
+            .padding(
+                top = MaterialTheme.padding.small,
+                bottom = MaterialTheme.padding.small,
+            ),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+    ) {
+        ExtensionDetailsGlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        val extDebugInfo = buildString {
                             append(
                                 """
-                                Update available: ${extension.hasUpdate}
-                                Orphaned: ${extension.isObsolete}
-                                Shared: ${extension.isShared}
-                                Store: ${extension.repoUrl}
+                                Extension name: ${extension.name} (lang: ${extension.lang}; package: ${extension.pkgName})
+                                Extension version: ${extension.versionName} (lib: ${extension.libVersion}; version code: ${extension.versionCode})
+                                NSFW: ${extension.isNsfw}
                                 """.trimIndent(),
                             )
+
+                            if (extension is AnimeExtension.Installed) {
+                                append("\n\n")
+                                append(
+                                    """
+                                    Update available: ${extension.hasUpdate}
+                                    Orphaned: ${extension.isObsolete}
+                                    Shared: ${extension.isShared}
+                                    Store: ${extension.repoUrl}
+                                    """.trimIndent(),
+                                )
+                            }
                         }
+                        context.copyToClipboard("Extension Debug information", extDebugInfo)
                     }
-                    context.copyToClipboard("Extension Debug information", extDebugInfo)
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            AnimeExtensionIcon(
+                    .padding(MaterialTheme.padding.medium),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                AnimeExtensionIcon(
+                    modifier = Modifier
+                        .size(96.dp),
+                    extension = extension,
+                    density = DisplayMetrics.DENSITY_XXXHIGH,
+                )
+
+                Text(
+                    text = extension.name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center,
+                )
+
+                val strippedPkgName = extension.pkgName.substringAfter(
+                    "eu.kanade.tachiyomi.animeextension.",
+                )
+
+                Text(
+                    text = strippedPkgName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AuroraTheme.colors.textSecondary,
+                )
+            }
+
+            HorizontalDivider(color = AuroraTheme.colors.textPrimary.copy(alpha = 0.08f))
+
+            Row(
                 modifier = Modifier
-                    .size(112.dp),
-                extension = extension,
-                density = DisplayMetrics.DENSITY_XXXHIGH,
-            )
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = MaterialTheme.padding.extraLarge,
+                        vertical = MaterialTheme.padding.small,
+                    ),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                InfoText(
+                    modifier = Modifier.weight(1f),
+                    primaryText = extension.versionName,
+                    secondaryText = stringResource(MR.strings.ext_info_version),
+                )
 
-            Text(
-                text = extension.name,
-                style = MaterialTheme.typography.headlineSmall,
-                textAlign = TextAlign.Center,
-            )
-
-            val strippedPkgName = extension.pkgName.substringAfter(
-                "eu.kanade.tachiyomi.animeextension.",
-            )
-
-            Text(
-                text = strippedPkgName,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = MaterialTheme.padding.extraLarge,
-                    vertical = MaterialTheme.padding.small,
-                ),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            InfoText(
-                modifier = Modifier.weight(1f),
-                primaryText = extension.versionName,
-                secondaryText = stringResource(MR.strings.ext_info_version),
-            )
-
-            InfoDivider()
-
-            InfoText(
-                modifier = Modifier.weight(if (extension.isNsfw) 1.5f else 1f),
-                primaryText = LocaleHelper.getSourceDisplayName(extension.lang, context),
-                secondaryText = stringResource(MR.strings.ext_info_language),
-            )
-
-            if (extension.isNsfw) {
                 InfoDivider()
 
                 InfoText(
-                    modifier = Modifier.weight(1f),
-                    primaryText = stringResource(MR.strings.ext_nsfw_short),
-                    primaryTextStyle = MaterialTheme.typography.bodyLarge.copy(
-                        color = MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                    secondaryText = stringResource(MR.strings.ext_info_age_rating),
-                    onClick = onClickAgeRating,
+                    modifier = Modifier.weight(if (extension.isNsfw) 1.5f else 1f),
+                    primaryText = LocaleHelper.getSourceDisplayName(extension.lang, context),
+                    secondaryText = stringResource(MR.strings.ext_info_language),
                 )
+
+                if (extension.isNsfw) {
+                    InfoDivider()
+
+                    InfoText(
+                        modifier = Modifier.weight(1f),
+                        primaryText = stringResource(MR.strings.ext_nsfw_short),
+                        primaryTextStyle = MaterialTheme.typography.bodyLarge.copy(
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                        secondaryText = stringResource(MR.strings.ext_info_age_rating),
+                        onClick = onClickAgeRating,
+                    )
+                }
             }
         }
 
         Row(
-            modifier = Modifier
-                .padding(horizontal = MaterialTheme.padding.medium)
-                .padding(top = MaterialTheme.padding.small),
-            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.medium),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
         ) {
-            OutlinedButton(
-                modifier = Modifier.weight(1f),
+            ExtensionAuroraButton(
+                text = stringResource(MR.strings.ext_uninstall),
                 onClick = onClickUninstall,
-            ) {
-                Text(stringResource(MR.strings.ext_uninstall))
-            }
+                accent = MaterialTheme.colorScheme.error,
+                modifier = Modifier.weight(1f),
+            )
 
             if (onClickAppInfo != null) {
-                Button(
-                    modifier = Modifier.weight(1f),
+                ExtensionAuroraButton(
+                    text = stringResource(MR.strings.ext_app_info),
                     onClick = onClickAppInfo,
-                ) {
-                    Text(
-                        text = stringResource(MR.strings.ext_app_info),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                }
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
 
-        TextPreferenceWidget(
-            modifier = Modifier.padding(horizontal = MaterialTheme.padding.small),
-            title = stringResource(MR.strings.pref_incognito_mode),
-            subtitle = stringResource(MR.strings.pref_incognito_mode_extension_summary),
-            icon = ImageVector.vectorResource(R.drawable.ic_glasses_24dp),
-            widget = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Switch(
-                        checked = extIncognitoMode,
-                        onCheckedChange = onExtIncognitoChange,
-                        modifier = Modifier.padding(start = TrailingWidgetBuffer),
-                    )
-                }
-            },
-        )
-
-        HorizontalDivider()
+        ExtensionDetailsGlassCard(modifier = Modifier.fillMaxWidth()) {
+            TextPreferenceWidget(
+                title = stringResource(MR.strings.pref_incognito_mode),
+                subtitle = stringResource(MR.strings.pref_incognito_mode_extension_summary),
+                icon = ImageVector.vectorResource(R.drawable.ic_glasses_24dp),
+                widget = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Switch(
+                            checked = extIncognitoMode,
+                            onCheckedChange = onExtIncognitoChange,
+                            modifier = Modifier.padding(start = TrailingWidgetBuffer),
+                        )
+                    }
+                },
+            )
+        }
     }
 }
 
@@ -398,10 +467,14 @@ private fun InfoText(
         )
 
         Text(
-            text = secondaryText + if (onClick != null) " ⓘ" else "",
+            text = secondaryText,
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            color = if (onClick != null) {
+                AuroraTheme.colors.accent
+            } else {
+                AuroraTheme.colors.textSecondary
+            },
         )
     }
 }
@@ -410,6 +483,7 @@ private fun InfoText(
 private fun InfoDivider() {
     VerticalDivider(
         modifier = Modifier.height(20.dp),
+        color = AuroraTheme.colors.textPrimary.copy(alpha = 0.12f),
     )
 }
 
@@ -422,34 +496,39 @@ private fun SourceSwitchPreference(
 ) {
     val context = LocalContext.current
 
-    TextPreferenceWidget(
-        modifier = modifier,
-        title = if (source.labelAsName) {
-            source.source.toString()
-        } else {
-            LocaleHelper.getSourceDisplayName(source.source.lang, context)
-        },
-        widget = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (source.source is ConfigurableAnimeSource) {
-                    IconButton(onClick = { onClickSourcePreferences(source.source.id) }) {
-                        Icon(
-                            imageVector = Icons.Outlined.Settings,
-                            contentDescription = stringResource(MR.strings.label_settings),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                        )
+    ExtensionDetailsGlassCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = MaterialTheme.padding.medium, vertical = 4.dp),
+    ) {
+        TextPreferenceWidget(
+            title = if (source.labelAsName) {
+                source.source.toString()
+            } else {
+                LocaleHelper.getSourceDisplayName(source.source.lang, context)
+            },
+            widget = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (source.source is ConfigurableAnimeSource) {
+                        IconButton(onClick = { onClickSourcePreferences(source.source.id) }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Settings,
+                                contentDescription = stringResource(MR.strings.label_settings),
+                                tint = AuroraTheme.colors.textSecondary,
+                            )
+                        }
                     }
-                }
 
-                Switch(
-                    checked = source.enabled,
-                    onCheckedChange = null,
-                    modifier = Modifier.padding(start = TrailingWidgetBuffer),
-                )
-            }
-        },
-        onPreferenceClick = { onClickSource(source.source.id) },
-    )
+                    Switch(
+                        checked = source.enabled,
+                        onCheckedChange = null,
+                        modifier = Modifier.padding(start = TrailingWidgetBuffer),
+                    )
+                }
+            },
+            onPreferenceClick = { onClickSource(source.source.id) },
+        )
+    }
 }

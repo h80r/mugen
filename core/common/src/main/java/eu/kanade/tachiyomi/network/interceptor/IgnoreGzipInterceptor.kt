@@ -4,11 +4,15 @@ import okhttp3.Interceptor
 import okhttp3.Response
 
 /**
- * To use [okhttp3.brotli.BrotliInterceptor] as a network interceptor,
- * add [IgnoreGzipInterceptor] right before it.
+ * Legacy OkHttp 4 helper for pairing with network-level [okhttp3.brotli.BrotliInterceptor].
  *
- * This nullifies the transparent gzip of [okhttp3.internal.http.BridgeInterceptor]
- * so gzip and Brotli are explicitly handled by the [okhttp3.brotli.BrotliInterceptor].
+ * OkHttp 5 + KeiSource extensions expect compression via application-level
+ * [okhttp3.CompressionInterceptor] instead. Do **not** register this as a network
+ * interceptor on the host default client — KeiSource fails with
+ * "IgnoreGzipInterceptor must not be present in default client".
+ *
+ * Kept for reference / any out-of-tree callers; [eu.kanade.tachiyomi.network.NetworkHelper]
+ * no longer installs it.
  */
 class IgnoreGzipInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {

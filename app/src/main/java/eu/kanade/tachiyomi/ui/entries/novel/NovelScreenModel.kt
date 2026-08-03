@@ -13,6 +13,7 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.entries.metadata.FetchEntryMetadataFromTracker
 import eu.kanade.domain.entries.metadata.TrackerMetadataFetchOutcome
+import eu.kanade.domain.entries.novel.LocalNovelIntegrity
 import eu.kanade.domain.entries.novel.interactor.GetNovelExcludedScanlators
 import eu.kanade.domain.entries.novel.interactor.NovelRatingFetcher
 import eu.kanade.domain.entries.novel.interactor.SetNovelExcludedScanlators
@@ -73,6 +74,7 @@ import eu.kanade.tachiyomi.ui.entries.mergeNewItemIds
 import eu.kanade.tachiyomi.ui.entries.novel.NovelChapterActionStateResolver
 import eu.kanade.tachiyomi.ui.entries.novel.NovelChapterActionUiState
 import eu.kanade.tachiyomi.ui.novel.resolveNovelResumeChapter
+import eu.kanade.tachiyomi.ui.novel.sortedByNovelReadingOrder
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelReaderTranslationDiskCacheStore
@@ -89,11 +91,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -133,6 +137,7 @@ import tachiyomi.domain.source.novel.service.NovelSourceManager
 import tachiyomi.domain.track.novel.interactor.GetNovelTracks
 import tachiyomi.domain.track.novel.model.NovelTrack
 import tachiyomi.i18n.MR
+import tachiyomi.source.local.entries.novel.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
@@ -153,6 +158,7 @@ data class NovelEpubExportPreferencesState(
     val applyReaderTheme: Boolean,
     val includeCustomCss: Boolean,
     val includeCustomJs: Boolean,
+    val includeCover: Boolean,
 )
 
 internal fun buildNovelChapterActionUiStates(
@@ -175,6 +181,10 @@ internal fun buildNovelChapterActionUiStates(
         )
     }
 }
+
+/** How long the local-book compile waits for the chapter list of a freshly imported file. */
+private const val LOCAL_BOOK_CHAPTERS_TIMEOUT_MS = 30_000L
+private const val LOCAL_BOOK_CHAPTERS_POLL_MS = 300L
 
 class NovelScreenModel(
     private val lifecycle: Lifecycle,
@@ -228,6 +238,13 @@ class NovelScreenModel(
         NovelDownloadQueueManager.enqueueTranslated(novel, chapters, format)
     },
     private val novelEpubExporter: NovelEpubExporter = NovelEpubExporter(),
+    private val novelBookBuilder: eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder =
+        eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder(),
+    private val localNovelBookArtifactBuilder: eu.kanade.tachiyomi.data.book.novel.LocalNovelBookArtifactBuilder =
+        eu.kanade.tachiyomi.data.book.novel.LocalNovelBookArtifactBuilder(novelBookBuilder),
+    private val getNovelBookState: tachiyomi.domain.book.novel.interactor.GetNovelBookState = Injekt.get(),
+    private val setNovelBookEnabledInteractor: tachiyomi.domain.book.novel.interactor.SetNovelBookEnabled =
+        Injekt.get(),
     private val novelReaderPreferences: NovelReaderPreferences = Injekt.get(),
     private val translationQueueManager: TranslationQueueManager = Injekt.get(),
     private val eventBus: AchievementEventBus? = runCatching { Injekt.get<AchievementEventBus>() }.getOrNull(),
@@ -288,7 +305,7 @@ class NovelScreenModel(
 
     fun getResumeOrNextChapter(): NovelChapter? {
         val state = successState ?: return null
-        return resolveNovelResumeChapter(state.chapters, state.resumeChapterId)
+        return resolveNovelResumeChapter(state.chapters, state.resumeChapterId, state.bookState)
     }
 
     suspend fun getContinueChapter(): NovelChapter? = withIOContext {
@@ -296,12 +313,12 @@ class NovelScreenModel(
         val historyChapterId = novelHistoryRepository.getHistoryByNovelId(novelId)
             .maxByOrNull { it.readAt?.time ?: Long.MIN_VALUE }
             ?.chapterId
-        resolveNovelResumeChapter(state.chapters, historyChapterId)
+        resolveNovelResumeChapter(state.chapters, historyChapterId, state.bookState)
     }
 
     fun getNextUnreadChapter(): NovelChapter? {
         val state = successState ?: return null
-        return resolveNovelResumeChapter(state.processedChapters)
+        return resolveNovelResumeChapter(state.processedChapters, null, state.bookState)
     }
 
     init {
@@ -391,6 +408,19 @@ class NovelScreenModel(
         }
 
         screenModelScope.launchIO {
+            getNovelBookState.subscribe(novelId)
+                .flowWithLifecycle(lifecycle)
+                .distinctUntilChanged()
+                .collectLatest { bookState ->
+                    updateSuccessState { it.copy(bookState = bookState) }
+                    // Local .epub / .fb2 titles are compiled into the artifact on first open if auto-compile is enabled.
+                    if (sourcePreferences.autoCompileLocalEpubBook().get()) {
+                        ensureLocalBookArtifact()
+                    }
+                }
+        }
+
+        screenModelScope.launchIO {
             downloadQueueState.collectLatest { queueState ->
                 updateSuccessState { current ->
                     val allNovelTasks = queueState.tasks.filter { task -> task.novel.id == current.novel.id }
@@ -455,12 +485,36 @@ class NovelScreenModel(
             readerSettingsCache = readerSettings
             val translatedDownloadFormat = novelReaderPreferences.translatedDownloadFormat(novel.id)
             val isJaomixPagedSource = source.isJaomixPagedSource()
-            val shouldAutoRefreshNovel = !novel.initialized || chapters.isEmpty()
-            // Manga parity: an initialized entry with cached chapters opens instantly from the
-            // database and never hits the source on open (survives process restarts). New
-            // chapters come from library updates or the manual refresh action; paged (jaomix)
-            // sources are the only exception because they cannot cache a full list.
-            val shouldAutoRefreshChapters = chapters.isEmpty() || isJaomixPagedSource
+            val isLocalNovel = novel.isLocal()
+            val hasForeignMangaLocalCover = isLocalNovel &&
+                LocalNovelIntegrity.isMangaLocalStorageCoverUrl(novel.thumbnailUrl)
+            // Local novels are filesystem-backed: always re-sync chapters so deleted/unsupported
+            // files cannot leave ghost chapters that skip-source-refresh would otherwise keep.
+            // Remote sources keep manga parity (open from cache; refresh via library/manual).
+            val shouldAutoRefreshNovel = !novel.initialized ||
+                chapters.isEmpty() ||
+                hasForeignMangaLocalCover
+            val shouldAutoRefreshChapters = chapters.isEmpty() ||
+                isJaomixPagedSource ||
+                LocalNovelIntegrity.shouldForceLocalChapterResync(isLocalNovel)
+            val displayNovel = if (hasForeignMangaLocalCover) {
+                logcat(LogPriority.WARN) {
+                    "Local novel id=$novelId has manga-local cover URL; forcing refresh/sanitize"
+                }
+                val clearedAt = Instant.now().toEpochMilli()
+                runCatching {
+                    updateNovel.await(
+                        NovelUpdate(
+                            id = novelId,
+                            thumbnailUrl = "",
+                            coverLastModified = clearedAt,
+                        ),
+                    )
+                }
+                novel.copy(thumbnailUrl = null, coverLastModified = clearedAt)
+            } else {
+                novel
+            }
             val currentDownloadedIds = (state.value as? State.Success)
                 ?.downloadedChapterIds
                 ?.intersect(chapters.mapTo(mutableSetOf()) { it.id })
@@ -469,7 +523,7 @@ class NovelScreenModel(
             // the first frame; run the cheap manifest check now and discover asynchronously.
             val isSourceConfigurable = source.hasVisiblePluginSettings()
             val initialState = State.Success(
-                novel = novel,
+                novel = displayNovel,
                 source = source,
                 isSourceConfigurable = isSourceConfigurable,
                 rating = restoredState?.rating,
@@ -519,7 +573,11 @@ class NovelScreenModel(
             }
 
             // Fetch suggestions asynchronously
-            loadSuggestions(buildSuggestionSeed(novel), novel = novel, source = novel.toCatalogueSource())
+            loadSuggestions(
+                buildSuggestionSeed(displayNovel),
+                novel = displayNovel,
+                source = displayNovel.toCatalogueSource(),
+            )
             // Seed the UI with lightweight neutral Gemini actions immediately, then
             // resolve translated download and translation cache state in the background.
             queuedChapterIds = translationQueueManager.queue.value.mapTo(mutableSetOf()) { it.chapterId }
@@ -553,7 +611,7 @@ class NovelScreenModel(
 
             screenModelScope.launchIO {
                 translationQueueManager.queue
-                    .collectLatest { items ->
+                    .onEach { items ->
                         val previousQueuedChapterIds = queuedChapterIds
                         queuedChapterIds = items.mapTo(mutableSetOf()) { it.chapterId }
                         val addedChapterIds = queuedChapterIds - previousQueuedChapterIds
@@ -577,11 +635,12 @@ class NovelScreenModel(
                             )
                         }
                     }
+                    .collect()
             }
 
             screenModelScope.launchIO {
                 translationQueueManager.progressUpdates
-                    .collectLatest { update ->
+                    .onEach { update ->
                         if (update.novelId == novelId) {
                             when (update.status) {
                                 TranslationStatus.COMPLETED,
@@ -600,21 +659,22 @@ class NovelScreenModel(
                             }
                         }
                     }
+                    .collect()
             }
 
             logRefreshSnapshot(
                 stage = "initial-state",
                 source = source,
-                novel = novel,
+                novel = displayNovel,
                 chapterCount = chapters.size,
                 manualFetch = false,
             )
 
             // PERF instrumentation (TADAMI_PERF_NOVEL_TITLE) - removable after validation
             logcat(LogPriority.DEBUG) { "TADAMI_PERF_NOVEL_TITLE db-loaded id=$novelId chapters=${chapters.size}" }
-            if (isLikelyWebViewLoginRequired(source, novel, chapters.size)) {
+            if (isLikelyWebViewLoginRequired(source, displayNovel, chapters.size)) {
                 logcat(LogPriority.DEBUG) {
-                    "Novel ${novel.id} (${source.name}) may need WebView login (pre-refresh): " +
+                    "Novel ${displayNovel.id} (${source.name}) may need WebView login (pre-refresh): " +
                         "chapters=0, descriptionBlank=true"
                 }
             }
@@ -842,6 +902,10 @@ class NovelScreenModel(
                             }
                         } catch (e: CancellationException) {
                             throw e
+                        } catch (e: LinkageError) {
+                            logcat {
+                                "[NovelScreenModel] External suggestions failed (incompatible extension): ${e.message}"
+                            }
                         } catch (e: Exception) {
                             logcat { "[NovelScreenModel] External suggestions failed: ${e.message}" }
                         }
@@ -867,6 +931,10 @@ class NovelScreenModel(
                                 }
                             } catch (e: CancellationException) {
                                 throw e
+                            } catch (e: LinkageError) {
+                                logcat {
+                                    "[NovelScreenModel] Native related suggestions failed (incompatible extension): ${e.message}"
+                                }
                             } catch (e: Exception) {
                                 logcat { "[NovelScreenModel] Native related suggestions failed: ${e.message}" }
                             }
@@ -903,6 +971,10 @@ class NovelScreenModel(
                                 }
                             } catch (e: CancellationException) {
                                 throw e
+                            } catch (e: LinkageError) {
+                                logcat {
+                                    "[NovelScreenModel] Native search suggestions failed (incompatible extension): ${e.message}"
+                                }
                             } catch (e: Exception) {
                                 logcat { "[NovelScreenModel] Native search suggestions failed: ${e.message}" }
                             }
@@ -943,6 +1015,11 @@ class NovelScreenModel(
                 updateSuccessState { it.copy(suggestions = nextState) }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: LinkageError) {
+                logcat { "NovelScreenModel suggestions fetch failed (incompatible extension): ${e.message}" }
+                updateSuccessState {
+                    it.copy(suggestions = SuggestionState.Error(e.message ?: "Incompatible extension"))
+                }
             } catch (e: Exception) {
                 logcat { "NovelScreenModel suggestions fetch failed: ${e.message}" }
                 updateSuccessState { it.copy(suggestions = SuggestionState.Error(e.message ?: "Unknown error")) }
@@ -958,6 +1035,220 @@ class NovelScreenModel(
                 is State.Success -> func(it)
                     .also(::cacheState)
             }
+        }
+    }
+
+    private var bookBuildJob: Job? = null
+
+    /**
+     * Compiles a local book (.epub / .fb2) into the artifact the moment the title is opened.
+     *
+     * Local files are finished books, so there is nothing to download and no reason to ask the
+     * user: the artifact is built lazily on first open (this doubles as the migration for books
+     * that were imported before the artifact existed) and reused afterwards.
+     */
+    fun ensureLocalBookArtifact(showProgress: Boolean = false) {
+        val state = successState ?: return
+        if (!localNovelBookArtifactBuilder.isLocalBook(state.novel)) return
+        if (bookBuildJob?.isActive == true) return
+        if (showProgress) {
+            // The compile runs off the main thread and its first progress callback can be seconds
+            // away, so the dialog is opened right away instead of leaving the screen silent.
+            updateSuccessState {
+                it.copy(
+                    bookMissingChapterCount = null,
+                    bookBuildProgress = eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress(
+                        phase = eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.MERGING,
+                        done = 0,
+                        total = state.chapters.size.coerceAtLeast(1),
+                    ),
+                )
+            }
+        }
+        bookBuildJob = screenModelScope.launchIO {
+            try {
+                // The title screen is shown before the chapter list finished syncing. Bailing out on
+                // an empty list meant an imported .epub only became a book on the second visit, so
+                // the list is awaited here instead.
+                var chapters = successState?.chapters.orEmpty().sortedBy { it.sourceOrder }
+                var waitedMs = 0L
+                while (chapters.isEmpty() && waitedMs < LOCAL_BOOK_CHAPTERS_TIMEOUT_MS) {
+                    kotlinx.coroutines.delay(LOCAL_BOOK_CHAPTERS_POLL_MS)
+                    waitedMs += LOCAL_BOOK_CHAPTERS_POLL_MS
+                    chapters = successState?.chapters.orEmpty().sortedBy { it.sourceOrder }
+                }
+                if (chapters.isEmpty()) return@launchIO
+                val novel = successState?.novel ?: return@launchIO
+                localNovelBookArtifactBuilder.ensureArtifact(
+                    novel = novel,
+                    chapters = chapters,
+                    onProgress = { progress ->
+                        updateSuccessState { it.copy(bookBuildProgress = progress) }
+                    },
+                )
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Local book artifact build failed for novel=$novelId" }
+            } finally {
+                updateSuccessState { it.copy(bookBuildProgress = null) }
+            }
+        }
+    }
+
+    /**
+     * Compiles every chapter of this title into a single book artifact.
+     *
+     * @param downloadMissing downloads the chapters that are not on disk yet instead of refusing.
+     * @param deleteSourceChapters removes the per-chapter files once the book is ready.
+     * @param buildPartial compiles only the already downloaded chapters up to the first gap.
+     */
+    fun buildBook(
+        downloadMissing: Boolean = false,
+        deleteSourceChapters: Boolean = false,
+        buildPartial: Boolean = false,
+    ) {
+        val state = successState ?: return
+        if (bookBuildJob?.isActive == true) return
+        val sortedChapters = state.chapters.sortedBy { it.sourceOrder }
+        val chapters = if (buildPartial) {
+            sortedChapters.takeWhile { it.id in state.downloadedChapterIds }
+        } else {
+            sortedChapters
+        }
+        if (chapters.isEmpty()) return
+        // Reported before the job starts: enumerating and downloading chapters takes seconds, and
+        // the screen used to stay completely silent until the first progress callback arrived.
+        updateSuccessState {
+            it.copy(
+                bookMissingChapterCount = null,
+                bookBuildProgress = eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress(
+                    phase = eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.DOWNLOADING,
+                    done = 0,
+                    total = chapters.size,
+                ),
+            )
+        }
+        bookBuildJob = screenModelScope.launchIO {
+            try {
+                val outcome = novelBookBuilder.build(
+                    novel = state.novel,
+                    chapters = chapters,
+                    downloadMissing = downloadMissing,
+                    onProgress = { progress ->
+                        updateSuccessState { it.copy(bookBuildProgress = progress) }
+                    },
+                )
+                when (outcome) {
+                    is eu.kanade.tachiyomi.data.book.novel.NovelBookBuildOutcome.Built -> {
+                        if (deleteSourceChapters) {
+                            novelBookBuilder.deleteSourceChapters(state.novel, chapters.map { it.id })
+                            syncDownloadedState(deferFilesystemFallback = false)
+                        }
+                    }
+                    is eu.kanade.tachiyomi.data.book.novel.NovelBookBuildOutcome.MissingDownloads -> {
+                        updateSuccessState {
+                            it.copy(bookMissingChapterCount = outcome.missingChapters.size)
+                        }
+                    }
+                    eu.kanade.tachiyomi.data.book.novel.NovelBookBuildOutcome.NothingToBuild -> Unit
+                }
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Novel book build failed for novel=$novelId" }
+            } finally {
+                updateSuccessState { it.copy(bookBuildProgress = null) }
+            }
+        }
+    }
+
+    /**
+     * Extends the compiled book with the chapters that appeared after the last build.
+     *
+     * A rebuild would reset every byte offset and therefore the saved position, so new chapters are
+     * appended to the existing artifact and the reading position stays valid.
+     */
+    fun appendBookChapters(
+        downloadMissing: Boolean = false,
+        deleteSourceChapters: Boolean = false,
+    ) {
+        val state = successState ?: return
+        if (bookBuildJob?.isActive == true) return
+        val chapters = state.chapters.sortedBy { it.sourceOrder }
+        if (chapters.isEmpty()) return
+        updateSuccessState {
+            it.copy(
+                bookMissingChapterCount = null,
+                bookBuildProgress = eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress(
+                    phase = eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress.Phase.DOWNLOADING,
+                    done = 0,
+                    total = chapters.size,
+                ),
+            )
+        }
+        bookBuildJob = screenModelScope.launchIO {
+            try {
+                val outcome = novelBookBuilder.appendNewChapters(
+                    novel = state.novel,
+                    chapters = chapters,
+                    downloadMissing = downloadMissing,
+                    onProgress = { progress ->
+                        updateSuccessState { it.copy(bookBuildProgress = progress) }
+                    },
+                )
+                when (outcome) {
+                    is eu.kanade.tachiyomi.data.book.novel.NovelBookBuildOutcome.Built -> {
+                        if (deleteSourceChapters) {
+                            novelBookBuilder.deleteSourceChapters(state.novel, chapters.map { it.id })
+                            syncDownloadedState(deferFilesystemFallback = false)
+                        }
+                    }
+                    is eu.kanade.tachiyomi.data.book.novel.NovelBookBuildOutcome.MissingDownloads -> {
+                        updateSuccessState {
+                            it.copy(bookMissingChapterCount = outcome.missingChapters.size)
+                        }
+                    }
+                    eu.kanade.tachiyomi.data.book.novel.NovelBookBuildOutcome.NothingToBuild -> Unit
+                }
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Novel book append failed for novel=$novelId" }
+            } finally {
+                updateSuccessState { it.copy(bookBuildProgress = null) }
+            }
+        }
+    }
+
+    /** Deletes the per-chapter files the book was compiled from, keeping the artifact. */
+    fun deleteBookSourceChapters() {
+        val state = successState ?: return
+        val chapterIds = state.chapters.map { it.id }
+        if (chapterIds.isEmpty()) return
+        screenModelScope.launchIO {
+            novelBookBuilder.deleteSourceChapters(state.novel, chapterIds)
+            syncDownloadedState(deferFilesystemFallback = false)
+        }
+    }
+
+    fun cancelBookBuild() {
+        bookBuildJob?.cancel()
+        bookBuildJob = null
+        updateSuccessState { it.copy(bookBuildProgress = null) }
+    }
+
+    fun dismissBookMissingPrompt() {
+        updateSuccessState { it.copy(bookMissingChapterCount = null) }
+    }
+
+    /** Switches this title between reading the compiled book and reading single chapters. */
+    fun setBookEnabled(enabled: Boolean) {
+        val state = successState ?: return
+        screenModelScope.launchIO {
+            setNovelBookEnabledInteractor.await(state.novel.id, enabled)
+        }
+    }
+
+    /** Drops the compiled book and returns the title to per-chapter reading. */
+    fun deleteBook() {
+        val state = successState ?: return
+        screenModelScope.launchIO {
+            novelBookBuilder.delete(state.novel)
         }
     }
 
@@ -1526,7 +1817,14 @@ class NovelScreenModel(
         val resolvedTitle = if (remoteTitle.isEmpty() || state.novel.favorite) null else remoteTitle
         val shouldUpdateCover = manualFetch ||
             state.novel.thumbnailUrl.isNullOrEmpty() ||
-            !state.novel.initialized
+            !state.novel.initialized ||
+            (state.novel.isLocal() && LocalNovelIntegrity.isMangaLocalStorageCoverUrl(state.novel.thumbnailUrl))
+        val remoteThumbnail = if (state.novel.isLocal()) {
+            LocalNovelIntegrity.sanitizeLocalNovelThumbnailUrl(networkNovel.thumbnail_url)
+                ?.takeIf { it.isNotEmpty() }
+        } else {
+            networkNovel.thumbnail_url?.takeIf { it.isNotEmpty() }
+        }
         updateSuccessState { current ->
             if (current.novel.id != state.novel.id) return@updateSuccessState current
             current.copy(
@@ -1537,13 +1835,13 @@ class NovelScreenModel(
                     genre = networkNovel.getGenres(),
                     status = networkNovel.status.toLong(),
                     thumbnailUrl = if (shouldUpdateCover) {
-                        networkNovel.thumbnail_url?.takeIf { it.isNotEmpty() }
+                        remoteThumbnail
                     } else {
                         current.novel.thumbnailUrl
                     },
                     initialized = true,
                     updateStrategy = networkNovel.update_strategy,
-                    coverLastModified = if (shouldUpdateCover && !networkNovel.thumbnail_url.isNullOrEmpty()) {
+                    coverLastModified = if (shouldUpdateCover && !remoteThumbnail.isNullOrEmpty()) {
                         Instant.now().toEpochMilli()
                     } else {
                         current.novel.coverLastModified
@@ -1648,6 +1946,35 @@ class NovelScreenModel(
                     "WebView login after fetch: chapters=0, descriptionBlank=true"
             }
         }
+
+        // Local novel with 0 source chapters: purge cached ghosts (history cascades on chapter delete).
+        // SyncNovelChaptersWithSource throws NoChaptersException without deleting existing rows.
+        if (
+            LocalNovelIntegrity.shouldPurgeChaptersOnEmptyLocalSource(
+                isLocalSource = state.novel.isLocal(),
+                sourceChapterCount = sourceChapters.size,
+                cachedChapterCount = state.chapters.size,
+            )
+        ) {
+            purgeGhostLocalNovelChapters(state)
+            return
+        }
+        if (sourceChapters.isEmpty() && state.novel.isLocal()) {
+            // No cached chapters either — still clear previews and mark refresh complete.
+            updateSuccessState { current ->
+                if (current.novel.id != state.novel.id) {
+                    current
+                } else {
+                    current.copy(
+                        chapters = emptyList(),
+                        chapterSourcePreview = emptyList(),
+                        hasCompletedChapterRefresh = true,
+                    )
+                }
+            }
+            return
+        }
+
         val syncStart = System.currentTimeMillis()
         val newChapters = syncNovelChaptersWithSource.await(
             rawSourceChapters = sourceChapters,
@@ -1680,6 +2007,35 @@ class NovelScreenModel(
                 .map { it.id }
                 .toList(),
         )
+    }
+
+    /**
+     * Removes DB chapters for a local novel that no longer resolves to supported files.
+     * History rows cascade-delete via FK on chapter_id.
+     */
+    private suspend fun purgeGhostLocalNovelChapters(state: State.Success) {
+        val existing = novelChapterRepository.getChapterByNovelId(state.novel.id)
+        if (existing.isNotEmpty()) {
+            logcat(LogPriority.WARN) {
+                "Purging ${existing.size} ghost local-novel chapter(s) for id=${state.novel.id} url=${state.novel.url}"
+            }
+            novelChapterRepository.removeChaptersWithIds(existing.map { it.id })
+        }
+        recentChapterListCache.remove(state.novel.id)
+        updateSuccessState { current ->
+            if (current.novel.id != state.novel.id) {
+                current
+            } else {
+                current.copy(
+                    chapters = emptyList(),
+                    chapterSourcePreview = emptyList(),
+                    hasCompletedChapterRefresh = true,
+                    resumeChapterId = null,
+                    newChapterIds = emptySet(),
+                    selectedChapterIds = emptySet(),
+                )
+            }
+        }
     }
 
     fun selectChapterPage(page: Int) {
@@ -1756,13 +2112,29 @@ class NovelScreenModel(
         return (this as? NovelJsSource)?.isJaomixPagedPlugin() == true
     }
 
+    /**
+     * Resolves the chapter a list action was performed on.
+     *
+     * The rendered rows come from `chapterSourcePreview ?: chapters`, and with chapter paging they
+     * are a window over the full list, while the actions only ever looked at `chapters`. Whenever an
+     * id was missing there the action returned before touching the database, so the button did
+     * nothing at all and the card kept its old state - which is what the contents list of a compiled
+     * book shows. The rendered rows are consulted first and the database answers for everything else.
+     */
+    private suspend fun resolveActionableChapter(chapterId: Long): NovelChapter? {
+        val state = successState
+        return state?.chapters?.firstOrNull { it.id == chapterId }
+            ?: state?.chapterSourcePreview?.firstOrNull { it.id == chapterId }
+            ?: novelChapterRepository.getChapterById(chapterId)
+    }
+
     fun toggleChapterRead(chapterId: Long) {
-        val chapter = successState?.chapters?.firstOrNull { it.id == chapterId } ?: return
-        val newRead = !chapter.read
-        val shouldEmitReadEvent = !chapter.read && newRead
-        val shouldEmitCompletion = shouldEmitReadEvent &&
-            (successState?.chapters?.all { it.read || it.id == chapterId } == true)
         screenModelScope.launchIO {
+            val chapter = resolveActionableChapter(chapterId) ?: return@launchIO
+            val newRead = !chapter.read
+            val shouldEmitReadEvent = !chapter.read && newRead
+            val shouldEmitCompletion = shouldEmitReadEvent &&
+                (successState?.chapters?.all { it.read || it.id == chapterId } == true)
             novelChapterRepository.updateChapter(
                 NovelChapterUpdate(
                     id = chapterId,
@@ -1801,8 +2173,8 @@ class NovelScreenModel(
     }
 
     fun toggleChapterBookmark(chapterId: Long) {
-        val chapter = successState?.chapters?.firstOrNull { it.id == chapterId } ?: return
         screenModelScope.launchIO {
+            val chapter = resolveActionableChapter(chapterId) ?: return@launchIO
             novelChapterRepository.updateChapter(
                 NovelChapterUpdate(
                     id = chapterId,
@@ -2396,6 +2768,7 @@ class NovelScreenModel(
             applyReaderTheme = novelReaderPreferences.epubExportUseReaderTheme().get(),
             includeCustomCss = novelReaderPreferences.epubExportUseCustomCSS().get(),
             includeCustomJs = novelReaderPreferences.epubExportUseCustomJS().get(),
+            includeCover = novelReaderPreferences.epubExportIncludeCover().get(),
         )
     }
 
@@ -2404,11 +2777,13 @@ class NovelScreenModel(
         applyReaderTheme: Boolean,
         includeCustomCss: Boolean,
         includeCustomJs: Boolean,
+        includeCover: Boolean,
     ) {
         novelReaderPreferences.epubExportLocation().set(destinationTreeUri)
         novelReaderPreferences.epubExportUseReaderTheme().set(applyReaderTheme)
         novelReaderPreferences.epubExportUseCustomCSS().set(includeCustomCss)
         novelReaderPreferences.epubExportUseCustomJS().set(includeCustomJs)
+        novelReaderPreferences.epubExportIncludeCover().set(includeCover)
     }
 
     suspend fun exportAsEpub(
@@ -2419,6 +2794,7 @@ class NovelScreenModel(
         applyReaderTheme: Boolean,
         includeCustomCss: Boolean,
         includeCustomJs: Boolean,
+        includeCover: Boolean,
         onProgress: (NovelEpubExportProgress) -> Unit = {},
     ): NovelEpubExportResult {
         val state = successState ?: return NovelEpubExportResult.Failure(NovelEpubExportFailure.UNKNOWN)
@@ -2447,6 +2823,36 @@ class NovelScreenModel(
                     destinationTreeUri = destinationTreeUri.trim().ifBlank { null },
                     stylesheet = stylesheet,
                     javaScript = javaScript,
+                    includeCover = includeCover,
+                    failOnMissingChapters = downloadedOnly,
+                ),
+                onProgress = onProgress,
+            )
+        }
+    }
+
+    /**
+     * Exports the novel as a single FB2 file. Chapter text comes from the compiled book artifact
+     * when it exists, so the export also works after the per-chapter files were cleaned up.
+     */
+    suspend fun exportAsFb2(
+        downloadedOnly: Boolean,
+        startChapter: Int?,
+        endChapter: Int?,
+        destinationTreeUri: String,
+        onProgress: (NovelEpubExportProgress) -> Unit = {},
+    ): NovelEpubExportResult {
+        val state = successState ?: return NovelEpubExportResult.Failure(NovelEpubExportFailure.UNKNOWN)
+        return withContext(Dispatchers.IO) {
+            novelEpubExporter.exportAsFb2(
+                novel = state.novel,
+                chapters = state.chapters,
+                options = NovelEpubExportOptions(
+                    downloadedOnly = downloadedOnly,
+                    startChapter = startChapter,
+                    endChapter = endChapter,
+                    destinationTreeUri = destinationTreeUri.trim().ifBlank { null },
+                    includeCover = false,
                     failOnMissingChapters = downloadedOnly,
                 ),
                 onProgress = onProgress,
@@ -2622,7 +3028,36 @@ class NovelScreenModel(
             val suggestions: SuggestionState = SuggestionState.Idle,
             /** Display-only preview from source list (after getChapterList, before full sync). */
             val chapterSourcePreview: List<NovelChapter>? = null,
+            /** Compiled book state of this title, or null when the title has no book yet. */
+            val bookState: tachiyomi.domain.book.novel.model.NovelBookState? = null,
+            /** Non-null while a book build is running. */
+            val bookBuildProgress: eu.kanade.tachiyomi.data.book.novel.NovelBookBuildProgress? = null,
+            /** Set when a build was refused because some chapters are not downloaded yet. */
+            val bookMissingChapterCount: Int? = null,
         ) : State {
+            /**
+             * True when the compiled book was built from a different chapter set than the title
+             * currently has, so the UI can tell the user the book is outdated until it is rebuilt.
+             */
+            val bookIsStale: Boolean
+                get() = bookState
+                    ?.takeIf { it.enabled }
+                    ?.let { book ->
+                        val sourceChapters = chapters
+                            .sortedByNovelReadingOrder()
+                            .map { chapter ->
+                                eu.kanade.tachiyomi.data.book.novel.NovelBookSourceChapter(
+                                    id = chapter.id,
+                                    name = chapter.name,
+                                    url = chapter.url,
+                                )
+                            }
+                        val currentHash = eu.kanade.tachiyomi.data.book.novel.NovelBookArtifact
+                            .chapterSetHash(sourceChapters)
+                        book.isStale(currentHash)
+                    }
+                    ?: false
+
             val scanlatorFilterActive: Boolean
                 get() = excludedScanlators.intersect(availableScanlators).isNotEmpty()
 

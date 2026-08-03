@@ -31,8 +31,13 @@ class NovelSourceRepositoryImpl(
 
     override fun getOnlineNovelSources(): Flow<List<DomainSource>> {
         return sourceManager.catalogueSources.map { sources ->
+            // catalogueSources is already List<NovelCatalogueSource>, so the old filterIsInstance was
+            // a no-op that let the built-in sources into the Sources filter - disabling the local one
+            // there writes its id into disabledNovelSources and hides every imported EPUB from
+            // Browse. Filtering on the transport type is not an option: JS plugins are catalogue
+            // sources without being NovelHttpSource, so only the two built-in ids are excluded.
             sources
-                .filterIsInstance<NovelCatalogueSource>()
+                .filterNot { it.id == LOCAL_NOVEL_SOURCE_ID || it.id == OMNI_NOVEL_SOURCE_ID }
                 .map(::mapSourceToDomainSource)
         }
     }
@@ -94,4 +99,12 @@ class NovelSourceRepositoryImpl(
         isStub = false,
         isKotlinExtension = source.isKotlinExtension,
     )
+
+    private companion object {
+        /** [tachiyomi.source.local.entries.novel.LocalNovelSource.ID]; source-local is not on this module's path. */
+        const val LOCAL_NOVEL_SOURCE_ID = 0L
+
+        /** [eu.kanade.tachiyomi.source.novel.OmniSource.OMNI_SOURCE_ID]; lives in the app module. */
+        const val OMNI_NOVEL_SOURCE_ID = -42L
+    }
 }

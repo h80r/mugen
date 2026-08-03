@@ -289,6 +289,12 @@ class ReaderActivity : BaseActivity() {
                     ReaderViewModel.Event.ReloadViewerChapters -> {
                         viewModel.state.value.viewerChapters?.let(::setChapters)
                     }
+                    ReaderViewModel.Event.RecreateViewer -> {
+                        // Reading mode changed through the global default: rebuild the viewer for
+                        // the new mode, then refill it so the change lands without reopening.
+                        updateViewer()
+                        viewModel.state.value.viewerChapters?.let(::setChapters)
+                    }
                     ReaderViewModel.Event.PageChanged -> {
                         if (readerPreferences.flashOnPageChange().get() && isEInkMode()) {
                             displayRefreshHost.flash()
@@ -455,6 +461,9 @@ class ReaderActivity : BaseActivity() {
                         onChangeOrientation = viewModel::setOrientationPreference,
                         onSetSeriesViewerOverride = viewModel::setSeriesViewerOverrideEnabled,
                         isSeriesViewerOverrideEnabled = viewModel::isSeriesViewerOverrideEnabled,
+                        resolvedReadingMode = {
+                            ReadingMode.fromPreference(viewModel.getMangaReadingMode())
+                        },
                     )
                 }
 

@@ -9,8 +9,10 @@ import eu.kanade.domain.extension.manga.interactor.MangaExtensionSourceItem
 import eu.kanade.domain.source.manga.interactor.ToggleMangaIncognito
 import eu.kanade.domain.source.manga.interactor.ToggleMangaSource
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.extension.InstallStep
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
+import eu.kanade.tachiyomi.extension.manga.model.selectMangaReinstallCandidates
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.system.LocaleHelper
@@ -20,9 +22,12 @@ import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -105,7 +110,9 @@ class MangaExtensionDetailsScreenModel(
 
         val urls = extension.sources
             .filterIsInstance<HttpSource>()
-            .mapNotNull { it.baseUrl.takeUnless { url -> url.isEmpty() } }
+            .flatMap { listOf(it.baseUrl, it.getHomeUrl()) }
+            .filter { it.isNotEmpty() }
+            .distinct()
             .distinct()
 
         val cleared = urls.sumOf {
@@ -141,9 +148,39 @@ class MangaExtensionDetailsScreenModel(
         }
     }
 
+    fun updateExtension() {
+        val extension = state.value.extension ?: return
+        if (state.value.installStep != InstallStep.Idle) return
+        screenModelScope.launch {
+            extensionManager.updateExtension(extension)
+                .onEach { step -> mutableState.update { it.copy(installStep = step) } }
+                .onCompletion { mutableState.update { it.copy(installStep = InstallStep.Idle) } }
+                .collect()
+        }
+    }
+
+    fun getReinstallCandidates(): List<MangaExtension.Available> {
+        val extension = state.value.extension ?: return emptyList()
+        val variants = extensionManager.availableExtensionsFlow.value
+            .filter { it.pkgName == extension.pkgName }
+        return selectMangaReinstallCandidates(extension, variants)
+    }
+
+    fun reinstallFromRepo(replacement: MangaExtension.Available) {
+        val extension = state.value.extension ?: return
+        if (state.value.installStep != InstallStep.Idle) return
+        screenModelScope.launch {
+            extensionManager.replaceExtensionFromRepo(extension, replacement)
+                .onEach { step -> mutableState.update { it.copy(installStep = step) } }
+                .onCompletion { mutableState.update { it.copy(installStep = InstallStep.Idle) } }
+                .collect()
+        }
+    }
+
     @Immutable
     data class State(
         val extension: MangaExtension.Installed? = null,
+        val installStep: InstallStep = InstallStep.Idle,
         val isIncognito: Boolean = false,
         private val _sources: ImmutableList<MangaExtensionSourceItem>? = null,
     ) {

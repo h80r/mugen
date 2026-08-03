@@ -212,7 +212,9 @@ private fun ExtensionRepoListItem(
 
             IconButton(
                 onClick = {
-                    val url = "${repo.baseUrl}/index.min.json"
+                    // Novel plugin repos are indexed by plugins.min.json and store indexes by their
+                    // own url, so a fabricated index.min.json would 404 when pasted back.
+                    val url = repo.indexUrl ?: "${repo.baseUrl}/index.min.json"
                     context.copyToClipboard(url, url)
                 },
             ) {

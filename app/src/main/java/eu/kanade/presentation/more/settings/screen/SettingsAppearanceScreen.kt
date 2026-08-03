@@ -32,6 +32,7 @@ import eu.kanade.domain.ui.model.AnimeMetadataSource
 import eu.kanade.domain.ui.model.AuroraTitleHeroCtaMode
 import eu.kanade.domain.ui.model.BottomNavAppearance
 import eu.kanade.domain.ui.model.EInkProfile
+import eu.kanade.domain.ui.model.EpisodeListDensity
 import eu.kanade.domain.ui.model.HomeHeroCtaMode
 import eu.kanade.domain.ui.model.HomeHubRecentCardMode
 import eu.kanade.domain.ui.model.NavStyle
@@ -251,6 +252,14 @@ object SettingsAppearanceScreen : SearchableSettings {
                     preference = uiPreferences.showAchievementNotifications(),
                     title = stringResource(AYMR.strings.pref_show_achievement_notifications),
                     subtitle = stringResource(AYMR.strings.pref_show_achievement_notifications_summary),
+                ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = uiPreferences.episodeListDensity(),
+                    entries = EpisodeListDensity.entries
+                        .associateWith { stringResource(it.titleRes) }
+                        .toImmutableMap(),
+                    title = stringResource(AYMR.strings.pref_episode_list_density),
+                    subtitle = stringResource(AYMR.strings.pref_episode_list_density_summary),
                 ),
             ),
         )

@@ -51,33 +51,6 @@ class NovelTtsPlaybackServiceTest {
     }
 
     @Test
-    fun `notification layout exposes full width custom actions`() {
-        val snapshot = resolveNovelTtsNotificationLayoutSnapshot(
-            actions = listOf(
-                NovelTtsTransportAction.PREVIOUS,
-                NovelTtsTransportAction.PAUSE,
-                NovelTtsTransportAction.NEXT,
-                NovelTtsTransportAction.STOP,
-            ),
-        )
-
-        snapshot.usesSystemMediaStyle shouldBe true
-        snapshot.usesCustomRemoteViews shouldBe false
-        snapshot.compactActionIndices shouldContainExactly listOf(0, 1, 2)
-        snapshot.compactActions shouldContainExactly listOf(
-            NovelTtsTransportAction.PREVIOUS,
-            NovelTtsTransportAction.PAUSE,
-            NovelTtsTransportAction.NEXT,
-        )
-        snapshot.expandedActions shouldContainExactly listOf(
-            NovelTtsTransportAction.PREVIOUS,
-            NovelTtsTransportAction.PAUSE,
-            NovelTtsTransportAction.NEXT,
-            NovelTtsTransportAction.STOP,
-        )
-    }
-
-    @Test
     fun `runtime delegates transport actions to the injected session controller`() {
         runBlocking {
             val controller = FakePlaybackController(

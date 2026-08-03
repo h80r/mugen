@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.data.backup.models
 
 import eu.kanade.tachiyomi.data.backup.BackupDetector
+import eu.kanade.tachiyomi.data.backup.BackupOrigin
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.protobuf.ProtoBuf
@@ -37,7 +38,7 @@ class MihonBackupCompatibilityTest {
     }
 
     @Test
-    fun `Mihon shaped backup decoded as Tadami schema routes entries by source section`() {
+    fun `opt-in legacy sister routing only moves novel-only sources and never invents anime`() {
         val mihonBackup = MihonBackup(
             backupManga = listOf(
                 sampleManga().copy(source = 1, title = "Manga title").toMihonBackupManga(),
@@ -56,19 +57,46 @@ class MihonBackupCompatibilityTest {
             Backup.serializer(),
             ProtoBuf.encodeToByteArray(MihonBackup.serializer(), mihonBackup),
         )
-        val routed = decodedAsTadami.routeSharedMangaEntriesBySource(
+        val routed = MediaRoutingPolicy.LegacySisterExplicitFallback(
             mangaSourceClassifier = { it == 1L },
             novelSourceClassifier = { it == 2L },
             animeSourceClassifier = { it == 3L },
+        ).route(decodedAsTadami)
+
+        // Only the novel-only source moves. The anime-only source stays manga: a Mihon-shaped file
+        // never declares anime, so moving it there would be a guess.
+        assertEquals(
+            listOf("Manga title", "Anime title"),
+            routed.backup.backupManga.map { it.title },
+        )
+        assertEquals(listOf("Novel title"), routed.backup.backupNovel.map { it.title })
+        assertTrue(routed.backup.backupAnime.isEmpty())
+        assertEquals(0, routed.ambiguousEntries)
+        assertEquals(listOf("Default"), routed.backup.backupNovelCategories.map { it.name })
+        assertEquals(listOf("Novel source"), routed.backup.backupNovelSources.map { it.name })
+    }
+
+    @Test
+    fun `sister manifest routes flattened entries back without looking at installed sources`() {
+        val tadamiBackup = sampleTadamiBackup().copy(
+            isLegacy = false,
+            backupNovel = listOf(sampleNovel()),
         )
 
-        assertEquals(listOf("Manga title"), routed.backupManga.map { it.title })
-        assertEquals(listOf("Novel title"), routed.backupNovel.map { it.title })
-        assertEquals(listOf("Anime title"), routed.backupAnime.map { it.title })
-        assertEquals(listOf("Default"), routed.backupNovelCategories.map { it.name })
-        assertEquals(listOf("Default"), routed.backupAnimeCategories.map { it.name })
-        assertEquals(listOf("Novel source"), routed.backupNovelSources.map { it.name })
-        assertEquals(listOf("Anime source"), routed.backupAnimeSources.map { it.name })
+        val bytes = ProtoBuf.encodeToByteArray(
+            MihonBackup.serializer(),
+            tadamiBackup.toMihonBackup(),
+        )
+        val decodedMihon = ProtoBuf.decodeFromByteArray(MihonBackup.serializer(), bytes)
+        val hints = decodedMihon.validManifestHints()
+        assertTrue(hints != null && hints.isNotEmpty())
+
+        val routed = MediaRoutingPolicy.RestoreFromTadamiManifest(hints!!)
+            .route(decodedMihon.toTadamiBackup())
+
+        assertEquals(listOf("Manga title"), routed.backup.backupManga.map { it.title })
+        assertEquals(listOf("Novel title"), routed.backup.backupNovel.map { it.title })
+        assertEquals(0, routed.ambiguousEntries)
     }
 
     @Test
@@ -80,11 +108,7 @@ class MihonBackupCompatibilityTest {
 
         val bytes = ProtoBuf.encodeToByteArray(MihonBackup.serializer(), mihonBackup)
         val decoded = ProtoBuf.decodeFromByteArray(MihonBackup.serializer(), bytes)
-        val tadamiBackup = decoded.toTadamiBackup(
-            mangaSourceClassifier = { true },
-            novelSourceClassifier = { false },
-            animeSourceClassifier = { false },
-        )
+        val tadamiBackup = decoded.toTadamiBackup()
 
         assertEquals(1, tadamiBackup.backupMangaExtensionRepo.size)
         assertEquals("Repo", tadamiBackup.backupMangaExtensionRepo.first().name)
@@ -107,10 +131,53 @@ class MihonBackupCompatibilityTest {
         )
         val bytes = ProtoBuf.encodeToByteArray(ForeignBackup.serializer(), foreignBackup)
 
+        assertFalse(BackupDetector.isLegacyBackup(bytes))
+        assertTrue(BackupDetector.isMihonBackup(bytes))
+
         val decoded = ProtoBuf.decodeFromByteArray(MihonBackup.serializer(), bytes)
 
         assertEquals("Foreign title", decoded.backupManga.first().title)
         assertEquals("Chapter 1", decoded.backupManga.first().chapters.first().name)
+    }
+
+    @Test
+    fun `origin detector identifies TachiyomiSY from its saved-search field`() {
+        val bytes = ProtoBuf.encodeToByteArray(
+            ForeignBackup.serializer(),
+            ForeignBackup(
+                backupManga = listOf(sampleForeignManga()),
+                savedSearches = listOf("sy-search"),
+            ),
+        )
+
+        assertEquals(BackupOrigin.TACHIYOMI_SY, BackupDetector.detectOrigin(bytes))
+    }
+
+    @Test
+    fun `origin detector identifies Komikku from its feed field`() {
+        val bytes = ProtoBuf.encodeToByteArray(
+            ForeignBackup.serializer(),
+            ForeignBackup(
+                backupManga = listOf(sampleForeignManga()),
+                feeds = listOf("komikku-feed"),
+            ),
+        )
+
+        assertEquals(BackupOrigin.KOMIKKU, BackupDetector.detectOrigin(bytes))
+    }
+
+    @Test
+    fun `origin detector gives native Tadami marker precedence over fork fields`() {
+        val bytes = ProtoBuf.encodeToByteArray(
+            Backup.serializer(),
+            Backup(
+                backupManga = listOf(sampleManga()),
+                backupAchievements = listOf(sampleAchievement()),
+                isLegacy = false,
+            ),
+        )
+
+        assertEquals(BackupOrigin.TADAMI, BackupDetector.detectOrigin(bytes))
     }
 
     @Test
@@ -139,11 +206,7 @@ class MihonBackupCompatibilityTest {
         // The dedicated Mihon schema preserves the diverging fields and skips the
         // Mihon-only ones (initialized/memo) without crashing.
         val viaMihon = ProtoBuf.decodeFromByteArray(MihonBackup.serializer(), realMihonBytes)
-            .toTadamiBackup(
-                mangaSourceClassifier = { true },
-                novelSourceClassifier = { false },
-                animeSourceClassifier = { false },
-            )
+            .toTadamiBackup()
         val manga = viaMihon.backupManga.single()
         assertEquals("Manga title", manga.title)
         assertEquals(7L, manga.version)
@@ -255,6 +318,14 @@ class MihonBackupCompatibilityTest {
             description = "Create a backup",
             category = 0,
             type = 0,
+        )
+    }
+
+    private fun sampleForeignManga(): ForeignManga {
+        return ForeignManga(
+            source = 1,
+            url = "/foreign",
+            title = "Foreign title",
         )
     }
 

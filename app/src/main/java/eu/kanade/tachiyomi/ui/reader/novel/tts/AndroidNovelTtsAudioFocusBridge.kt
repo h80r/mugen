@@ -8,6 +8,7 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import androidx.core.content.ContextCompat
 
 class AndroidNovelTtsAudioFocusBridge(
     private val context: Context,
@@ -16,6 +17,7 @@ class AndroidNovelTtsAudioFocusBridge(
         context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     }.getOrNull()
     private var focusRequest: AudioFocusRequest? = null
+    private var legacyFocusListener: AudioManager.OnAudioFocusChangeListener? = null
     private var noisyReceiver: BroadcastReceiver? = null
 
     override fun requestAudioFocus(onFocusChange: (NovelTtsAudioFocusChange) -> Unit): Boolean {
@@ -23,11 +25,13 @@ class AndroidNovelTtsAudioFocusBridge(
         val listener = AudioManager.OnAudioFocusChangeListener { focusChange ->
             onFocusChange(focusChange.toNovelTtsAudioFocusChange())
         }
+        // Long-form spoken playback behaves like media playback: request full focus
+        // (not a transient duck) so music apps pause instead of playing underneath.
         val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build(),
                 )
@@ -37,11 +41,12 @@ class AndroidNovelTtsAudioFocusBridge(
             focusRequest = request
             audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         } else {
+            legacyFocusListener = listener
             @Suppress("DEPRECATION")
             audioManager.requestAudioFocus(
                 listener,
                 AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK,
+                AudioManager.AUDIOFOCUS_GAIN,
             ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         }
         return granted
@@ -53,8 +58,11 @@ class AndroidNovelTtsAudioFocusBridge(
             focusRequest?.let(audioManager::abandonAudioFocusRequest)
             focusRequest = null
         } else {
+            // Abandoning with the original listener is required on pre-O devices;
+            // passing null used to leave the focus request dangling.
             @Suppress("DEPRECATION")
-            audioManager.abandonAudioFocus(null)
+            legacyFocusListener?.let(audioManager::abandonAudioFocus)
+            legacyFocusListener = null
         }
     }
 
@@ -67,7 +75,12 @@ class AndroidNovelTtsAudioFocusBridge(
                 }
             }
         }
-        context.registerReceiver(receiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         noisyReceiver = receiver
     }
 

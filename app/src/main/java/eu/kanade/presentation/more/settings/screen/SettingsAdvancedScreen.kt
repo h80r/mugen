@@ -566,6 +566,9 @@ object SettingsAdvancedScreen : SearchableSettings {
         val extensionInstallerPref = basePreferences.extensionInstaller()
         var shizukuMissing by remember { mutableStateOf(false) }
         var dhizukuMissing by remember { mutableStateOf(false) }
+        val autoUpdatePref = basePreferences.autoUpdateExtensions()
+        val installer by extensionInstallerPref.collectAsState()
+        var autoUpdateSecurityNotice by remember { mutableStateOf(false) }
         val trustAnimeExtension = remember { Injekt.get<TrustAnimeExtension>() }
         val trustMangaExtension = remember { Injekt.get<TrustMangaExtension>() }
         val novelPluginKeyValueStore = remember { Injekt.get<NovelPluginKeyValueStore>() }
@@ -625,6 +628,33 @@ object SettingsAdvancedScreen : SearchableSettings {
                 },
             )
         }
+        if (autoUpdateSecurityNotice) {
+            val dismiss = { autoUpdateSecurityNotice = false }
+            AlertDialog(
+                onDismissRequest = dismiss,
+                title = { Text(text = stringResource(MR.strings.ext_auto_update_security_title)) },
+                text = {
+                    Text(
+                        text = stringResource(MR.strings.ext_auto_update_security_dialog),
+                    )
+                },
+                dismissButton = {
+                    TextButton(onClick = dismiss) {
+                        Text(text = stringResource(MR.strings.action_cancel))
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            dismiss()
+                            autoUpdatePref.set(true)
+                        },
+                    ) {
+                        Text(text = stringResource(MR.strings.action_ok))
+                    }
+                },
+            )
+        }
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.label_extensions),
             preferenceItems = persistentListOf(
@@ -644,6 +674,26 @@ object SettingsAdvancedScreen : SearchableSettings {
                             !context.isDhizukuInstalled
                         ) {
                             dhizukuMissing = true
+                            false
+                        } else {
+                            // Silent updates only exist for privately installed extensions; any
+                            // other installer needs a system dialog per install.
+                            if (it != BasePreferences.ExtensionInstaller.PRIVATE) {
+                                autoUpdatePref.set(false)
+                            }
+                            true
+                        }
+                    },
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = autoUpdatePref,
+                    title = stringResource(MR.strings.ext_auto_update_pref),
+                    subtitle = stringResource(MR.strings.ext_auto_update_pref_summary),
+                    enabled = installer == BasePreferences.ExtensionInstaller.PRIVATE,
+                    onValueChanged = { enabled ->
+                        if (enabled) {
+                            // Confirm through the security notice instead of flipping the switch.
+                            autoUpdateSecurityNotice = true
                             false
                         } else {
                             true

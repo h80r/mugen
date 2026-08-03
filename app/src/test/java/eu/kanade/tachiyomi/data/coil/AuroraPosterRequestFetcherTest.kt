@@ -176,4 +176,33 @@ class AuroraPosterRequestFetcherTest {
         assertEquals(2, primaryServer.requestCount)
         assertEquals(1, fallbackServer.requestCount)
     }
+
+    @Test
+    fun `loadAuroraPosterSource converts IDN referer to punycode`() = runTest {
+        fallbackServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "image/png")
+                .setBody("fallback-bytes"),
+        )
+
+        val client = OkHttpClient.Builder()
+            .addInterceptor(CoverRecoveryInterceptor())
+            .build()
+
+        val result = loadAuroraPosterSource(
+            callFactory = client,
+            fileSystem = FileSystem.SYSTEM,
+            request = AuroraPosterRequest(
+                primaryUrl = null,
+                fallbackUrl = fallbackServer.url("/fallback.png").toString(),
+                refererUrl = "https://ранобэ.рф",
+            ),
+        )
+
+        assertTrue(result is SourceFetchResult)
+        val referer = fallbackServer.takeRequest().getHeader("Referer")
+        assertFalse(referer!!.contains("ранобэ"))
+        assertTrue(referer.startsWith("https://xn--"))
+    }
 }

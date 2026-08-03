@@ -57,6 +57,7 @@ fun AuroraEntryDropdownMenuItem(
     text: String,
     onClick: () -> Unit,
     leadingIcon: ImageVector? = null,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val colors = AuroraTheme.colors
@@ -83,6 +84,7 @@ fun AuroraEntryDropdownMenuItem(
             appHaptics.tap()
             onClick()
         },
+        enabled = enabled,
         modifier = modifier,
         colors = MenuDefaults.itemColors(
             textColor = colors.textPrimary,

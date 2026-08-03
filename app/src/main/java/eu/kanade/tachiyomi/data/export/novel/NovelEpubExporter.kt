@@ -4,6 +4,9 @@ import android.app.Application
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import eu.kanade.domain.items.novelchapter.model.toSNovelChapter
+import eu.kanade.tachiyomi.data.book.novel.NovelBookArtifact
+import eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder
+import eu.kanade.tachiyomi.data.cache.NovelCoverCache
 import eu.kanade.tachiyomi.data.download.novel.NovelDownloadManager
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.util.storage.DiskUtil
@@ -31,6 +34,7 @@ data class NovelEpubExportOptions(
     val destinationTreeUri: String? = null,
     val stylesheet: String? = null,
     val javaScript: String? = null,
+    val includeCover: Boolean = true,
     val failOnMissingChapters: Boolean = false,
 )
 
@@ -84,6 +88,7 @@ class NovelEpubExporter(
     private val sourceManager: NovelSourceManager? = runCatching { Injekt.get<NovelSourceManager>() }.getOrNull(),
     private val downloadManager: NovelDownloadManager = NovelDownloadManager(),
     networkHelper: NetworkHelper? = runCatching { Injekt.get<NetworkHelper>() }.getOrNull(),
+    private val coverCache: NovelCoverCache? = runCatching { Injekt.get<NovelCoverCache>() }.getOrNull(),
 ) {
     private val assetResolver = EpubAssetResolver(networkHelper)
 
@@ -223,8 +228,12 @@ class NovelEpubExporter(
                     path
                 }
 
-            val resolvedCoverAsset = resolveCoverAsset(novel)
-            if (!novel.thumbnailUrl.isNullOrBlank() && resolvedCoverAsset.asset == null) {
+            val resolvedCoverAsset = if (options.includeCover) {
+                resolveCoverAsset(novel)
+            } else {
+                EpubAssetResolutionReport(asset = null)
+            }
+            if (options.includeCover && !novel.thumbnailUrl.isNullOrBlank() && resolvedCoverAsset.asset == null) {
                 skippedImages += 1
                 warnings += resolvedCoverAsset.warning ?: "Cover image could not be embedded."
             }
@@ -424,9 +433,34 @@ class NovelEpubExporter(
     ): String? {
         val downloaded = downloadManager.getDownloadedChapterText(novel, chapter.id)
         if (downloaded != null) return downloaded
+        loadArtifactChapterHtml(novel, chapter)?.let { return it }
         if (downloadedOnly) return null
         val source = sourceManager?.get(novel.source) ?: return null
         return runCatching { source.getChapterText(chapter.toSNovelChapter()) }.getOrNull()
+    }
+
+    /**
+     * Reads the chapter text from the compiled book artifact when the per-chapter
+     * download files are gone (for example after "delete source chapters").
+     */
+    private fun loadArtifactChapterHtml(
+        novel: Novel,
+        chapter: NovelChapter,
+    ): String? {
+        return runCatching {
+            val directory = NovelBookArtifact.directoryFor(
+                root = NovelBookBuilder.defaultRootDirectory(),
+                sourceId = novel.source,
+                novelId = novel.id,
+            )
+            if (!NovelBookArtifact.exists(directory)) return@runCatching null
+            val entry = NovelBookArtifact.readIndex(directory)
+                ?.chapters
+                ?.firstOrNull { it.chapterId == chapter.id }
+                ?: return@runCatching null
+            NovelBookArtifact.readRange(directory, entry.byteStart, entry.byteLength)
+                .takeIf { it.isNotBlank() }
+        }.getOrNull()
     }
 
     private fun applyRange(
@@ -570,6 +604,16 @@ class NovelEpubExporter(
     }
 
     private fun resolveCoverAsset(novel: Novel): EpubAssetResolutionReport {
+        // Prefer the user-set custom cover, then the locally cached cover file,
+        // and only fall back to fetching the thumbnail URL from the network.
+        val localCover = listOfNotNull(
+            coverCache?.getCustomCoverFile(novel.id),
+            coverCache?.getCoverFile(novel.thumbnailUrl),
+        ).firstOrNull { it.exists() && it.length() > 0L }
+        if (localCover != null) {
+            val resolved = assetResolver.resolveBinaryAssetWithReport(localCover.toURI().toString(), emptyList())
+            if (resolved.asset != null) return resolved
+        }
         val src = novel.thumbnailUrl?.trim().orEmpty()
         if (src.isBlank()) return EpubAssetResolutionReport(asset = null)
         return assetResolver.resolveBinaryAssetWithReport(src, emptyList())
@@ -802,14 +846,132 @@ class NovelEpubExporter(
             .replace("'", "&apos;")
     }
 
+    /**
+     * Exports the novel as a single FB2 (FictionBook 2) file.
+     *
+     * Chapter text is taken from the compiled book artifact when it exists, otherwise from the
+     * downloaded chapter files, so the export keeps working after the per-chapter files are cleaned up.
+     */
+    suspend fun exportAsFb2(
+        novel: Novel,
+        chapters: List<NovelChapter>,
+        options: NovelEpubExportOptions = NovelEpubExportOptions(),
+        onProgress: (NovelEpubExportProgress) -> Unit = {},
+    ): NovelEpubExportResult {
+        val sorted = chapters.sortedBy { it.sourceOrder }
+        val selected = applyRange(sorted, options.startChapter, options.endChapter)
+        if (selected.isEmpty()) {
+            return NovelEpubExportResult.Failure(
+                NovelEpubExportFailure.NO_CHAPTERS_SELECTED,
+                NovelEpubExportReport(totalSelected = 0, includedChapters = 0),
+            )
+        }
+        onProgress(NovelEpubExportProgress.Preparing(totalChapters = selected.size))
+
+        val fb2Chapters = mutableListOf<NovelFb2Chapter>()
+        val skippedChapters = mutableListOf<String>()
+        selected.forEachIndexed { index, chapter ->
+            currentCoroutineContext().ensureActive()
+            val html = loadChapterHtml(novel, chapter, options.downloadedOnly)
+            if (html.isNullOrBlank()) {
+                skippedChapters += chapter.name.ifBlank { chapter.url }
+            } else {
+                fb2Chapters += NovelFb2Chapter(
+                    id = "chapter_${index + 1}",
+                    title = chapter.name.ifBlank { "#${index + 1}" },
+                    html = html,
+                )
+            }
+            onProgress(
+                NovelEpubExportProgress.ChapterProcessed(current = index + 1, total = selected.size),
+            )
+        }
+
+        if (fb2Chapters.isEmpty()) {
+            return NovelEpubExportResult.Failure(
+                NovelEpubExportFailure.NO_READABLE_CHAPTERS,
+                NovelEpubExportReport(
+                    totalSelected = selected.size,
+                    includedChapters = 0,
+                    skippedChapters = skippedChapters,
+                ),
+            )
+        }
+        if (options.failOnMissingChapters && skippedChapters.isNotEmpty()) {
+            return NovelEpubExportResult.Failure(
+                NovelEpubExportFailure.MISSING_SELECTED_CHAPTERS,
+                NovelEpubExportReport(
+                    totalSelected = selected.size,
+                    includedChapters = fb2Chapters.size,
+                    skippedChapters = skippedChapters,
+                ),
+            )
+        }
+
+        onProgress(NovelEpubExportProgress.Finalizing)
+
+        val exportDir = File(
+            application?.cacheDir ?: return NovelEpubExportResult.Failure(NovelEpubExportFailure.UNKNOWN),
+            "exports/novel",
+        )
+        exportDir.mkdirs()
+        val filename = DiskUtil.buildValidFilename("${novel.title}_${System.currentTimeMillis()}.fb2")
+        val fb2File = File(exportDir, filename)
+
+        val writeReport = NovelFb2Writer.writeTo(
+            file = fb2File,
+            metadata = NovelFb2Metadata(
+                title = novel.title,
+                bookId = stableBookIdentifier(novel),
+                author = novel.author?.takeIf { it.isNotBlank() },
+                description = novel.description?.takeIf { it.isNotBlank() },
+                language = resolveLanguage(novel),
+                genres = novel.genre.orEmpty(),
+                exportedOn = Instant.now().toString().substringBefore('T'),
+            ),
+            chapters = fb2Chapters,
+        )
+
+        val warnings = buildList {
+            if (writeReport.skippedImages > 0) {
+                add("FB2 does not support remote images: ${writeReport.skippedImages} image(s) were dropped.")
+            }
+        }
+        val report = NovelEpubExportReport(
+            totalSelected = selected.size,
+            includedChapters = writeReport.chapters,
+            skippedChapters = skippedChapters,
+            skippedImages = writeReport.skippedImages,
+            warnings = warnings,
+            outputSizeBytes = fb2File.length(),
+        )
+
+        val requestedDestination = options.destinationTreeUri?.takeIf { it.isNotBlank() }
+        val destinationUri = requestedDestination?.let { copyToDestinationTree(fb2File, it, FB2_MIME_TYPE) }
+        if (requestedDestination != null && destinationUri == null) {
+            return NovelEpubExportResult.Failure(
+                NovelEpubExportFailure.DESTINATION_PERMISSION_DENIED,
+                report,
+            )
+        }
+
+        onProgress(NovelEpubExportProgress.Done(fb2File))
+        return NovelEpubExportResult.Success(
+            cacheFile = fb2File,
+            destinationUri = destinationUri,
+            report = report,
+        )
+    }
+
     private fun copyToDestinationTree(
         epubFile: File,
         destinationTreeUri: String,
+        mimeType: String = EPUB_MIME_TYPE,
     ): Uri? {
         val context = application ?: return null
         val treeUri = runCatching { Uri.parse(destinationTreeUri) }.getOrNull() ?: return null
         val root = DocumentFile.fromTreeUri(context, treeUri) ?: return null
-        val target = root.createFile("application/epub+zip", epubFile.name) ?: return null
+        val target = root.createFile(mimeType, epubFile.name) ?: return null
 
         val copied = runCatching {
             context.contentResolver.openOutputStream(target.uri, "w")?.use { output ->
@@ -853,6 +1015,9 @@ class NovelEpubExporter(
     )
 
     private companion object {
+        const val EPUB_MIME_TYPE = "application/epub+zip"
+        const val FB2_MIME_TYPE = "application/x-fictionbook+xml"
+
         val EPUB_MODIFIED_FORMATTER: DateTimeFormatter = DateTimeFormatter
             .ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
             .withZone(ZoneOffset.UTC)

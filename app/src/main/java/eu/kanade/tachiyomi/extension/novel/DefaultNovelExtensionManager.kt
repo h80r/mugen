@@ -309,8 +309,13 @@ class DefaultNovelExtensionManager(
         (normalizedJs + normalizedKotlin).forEach(::saveInstalledRepo)
         installedPlugins.value = normalizedJs + normalizedKotlin
         untrustedPlugins.value = normalizedUntrusted
+        // Parental control: an NSFW plugin must not register sources while the setting is off, the
+        // same way the manga/anime loaders refuse to load NSFW extensions.
+        val showNsfwSources = sourcePreferences?.showNsfwSource()?.get() ?: true
         installedSources.value =
-            normalizedJs.mapNotNull { plugin -> sourceFactory.create(plugin) } +
+            normalizedJs
+                .filter { showNsfwSources || !it.isNsfw }
+                .mapNotNull { plugin -> sourceFactory.create(plugin) } +
             installedKotlinExtensionsSnapshot
                 .filter { it.plugin is NovelPlugin.Installed }
                 .flatMap { it.sources }

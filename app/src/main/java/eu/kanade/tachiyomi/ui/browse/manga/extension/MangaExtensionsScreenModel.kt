@@ -13,6 +13,9 @@ import eu.kanade.tachiyomi.extension.InstallStep
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
 import eu.kanade.tachiyomi.extension.manga.model.newestByVersion
+import eu.kanade.tachiyomi.extension.manga.model.selectMangaInstalledRepoDisplayName
+import eu.kanade.tachiyomi.extension.manga.model.selectMangaRegularUpdate
+import eu.kanade.tachiyomi.extension.manga.model.selectMangaReinstallCandidates
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.coroutines.delay
@@ -87,7 +90,8 @@ class MangaExtensionsScreenModel(
                                         it.baseUrl.contains(
                                             input,
                                             ignoreCase = true,
-                                        )
+                                        ) ||
+                                            it.getHomeUrl().contains(input, ignoreCase = true)
                                     } else {
                                         false
                                     }
@@ -379,105 +383,6 @@ object MangaExtensionUiModel {
         val repoSourceCount: Int = 1,
         val repoDisplayName: String? = null,
     )
-}
-
-internal fun selectMangaInstalledRepoDisplayName(
-    extension: MangaExtension.Installed,
-    variants: List<MangaExtension.Available>,
-): String? {
-    extension.repoUrl?.let { repoUrl ->
-        return extension.repoName?.takeIf { it.isNotBlank() } ?: repoUrl
-    }
-
-    val exactVersionMatches = variants.filter {
-        it.versionCode == extension.versionCode && it.libVersion == extension.libVersion
-    }
-    val displayCandidate = exactVersionMatches.singleOrNull()
-        ?: variants.singleOrNull()
-
-    return displayCandidate?.repoName?.ifBlank { displayCandidate.repoUrl }
-}
-
-private fun inferMangaInstalledRepo(
-    extension: MangaExtension.Installed,
-    variants: List<MangaExtension.Available>,
-): MangaExtension.Available? {
-    extension.repoUrl?.let { repoUrl ->
-        return variants.firstOrNull { it.repoUrl == repoUrl }
-    }
-
-    val exactVersionMatches = variants.filter {
-        it.versionCode == extension.versionCode && it.libVersion == extension.libVersion
-    }
-
-    return exactVersionMatches.singleOrNull()
-        ?: variants.singleOrNull()
-        ?: variants
-            .map { it.repoUrl }
-            .distinct()
-            .singleOrNull()
-            ?.let { repoUrl -> variants.first { it.repoUrl == repoUrl } }
-}
-
-internal fun selectMangaSameRepoUpdate(
-    extension: MangaExtension.Installed,
-    variants: List<MangaExtension.Available>,
-): MangaExtension.Available? {
-    val repoUrl = inferMangaInstalledRepo(extension, variants)?.repoUrl ?: return null
-    return variants
-        .filter { it.repoUrl == repoUrl && isNewer(extension, it) }
-        .latestVersionGroup()
-        .firstOrNull()
-}
-
-internal fun selectMangaRegularUpdate(
-    extension: MangaExtension.Installed,
-    variants: List<MangaExtension.Available>,
-): MangaExtension.Available? {
-    selectMangaSameRepoUpdate(extension, variants)?.let { return it }
-
-    if (inferMangaInstalledRepo(extension, variants) != null) return null
-
-    val latestVersionGroup = variants
-        .filter { isNewer(extension, it) }
-        .latestVersionGroup()
-
-    if (variants.size == 1) return latestVersionGroup.singleOrNull()
-    return latestVersionGroup.takeIf { it.size > 1 }?.firstOrNull()
-}
-
-internal fun selectMangaReinstallCandidates(
-    extension: MangaExtension.Installed,
-    variants: List<MangaExtension.Available>,
-): List<MangaExtension.Available> {
-    if (selectMangaRegularUpdate(extension, variants) != null) return emptyList()
-
-    val installedRepoUrl = inferMangaInstalledRepo(extension, variants)?.repoUrl
-
-    return variants
-        .filter { installedRepoUrl == null || it.repoUrl != installedRepoUrl }
-        .filter { isNewer(extension, it) }
-        .latestVersionGroup()
-}
-
-private fun List<MangaExtension.Available>.latestVersionGroup(): List<MangaExtension.Available> {
-    val latest = maxWithOrNull(
-        compareBy<MangaExtension.Available> { it.versionCode }
-            .thenBy { it.libVersion },
-    ) ?: return emptyList()
-
-    return filter { it.versionCode == latest.versionCode && it.libVersion == latest.libVersion }
-        .sortedWith(
-            compareBy<MangaExtension.Available> { it.repoName.ifBlank { it.repoUrl } }
-                .thenBy { it.repoUrl },
-        )
-}
-
-private fun isNewer(
-    extension: MangaExtension.Installed,
-    candidate: MangaExtension.Available,
-): Boolean {
-    return candidate.versionCode > extension.versionCode || candidate.libVersion > extension.libVersion
 }
 
 private fun MangaExtension.Installed.fallbackRepoDisplayName(

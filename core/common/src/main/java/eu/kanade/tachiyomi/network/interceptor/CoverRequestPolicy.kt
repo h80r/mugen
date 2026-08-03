@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.network.interceptor
 
+import eu.kanade.tachiyomi.network.toAsciiUrl
 import okhttp3.Request
 import java.util.concurrent.ConcurrentHashMap
 
@@ -42,7 +43,7 @@ object CoverRequestPolicy {
         builder.header(HEADER_COVER_REQUEST, "1")
         builder.header(HEADER_COVER_ATTEMPT, attempt.toString())
         if (!fallbackUrl.isNullOrBlank()) {
-            builder.header(HEADER_COVER_FALLBACK_URL, fallbackUrl.trim())
+            builder.header(HEADER_COVER_FALLBACK_URL, fallbackUrl.toAsciiUrl())
         }
         return builder
     }

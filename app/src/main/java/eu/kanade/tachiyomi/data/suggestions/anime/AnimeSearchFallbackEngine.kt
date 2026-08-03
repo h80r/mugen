@@ -1,18 +1,33 @@
 package eu.kanade.tachiyomi.data.suggestions.anime
 
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
+import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.data.suggestions.SuggestionCache
 import eu.kanade.tachiyomi.data.suggestions.SuggestionItem
 import eu.kanade.tachiyomi.data.suggestions.SuggestionReason
 import eu.kanade.tachiyomi.data.suggestions.SuggestionSeed
 import eu.kanade.tachiyomi.data.suggestions.SuggestionTitleResolver
 import eu.kanade.tachiyomi.data.suggestions.sources.SuggestionMediaType
+import eu.kanade.tachiyomi.data.suggestions.util.ExtensionInterop
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.entries.anime.model.Anime
+import java.util.concurrent.atomic.AtomicInteger
 
 class AnimeSearchFallbackEngine {
+
+    private companion object {
+        const val TAG = "AnimeSearchFallbackEngine"
+
+        /** Max parallel search requests against a single source. */
+        const val MAX_CONCURRENT_QUERIES = 3
+
+        /** Max extra detail requests per fetch, used only to backfill missing thumbnails. */
+        const val MAX_THUMBNAIL_DETAIL_LOOKUPS = 6
+    }
 
     suspend fun fetchSearchFallback(
         anime: Anime,
@@ -114,17 +129,12 @@ class AnimeSearchFallbackEngine {
                     add(cleaned)
                 }
 
-                // 3. For long titles, truncate to first 4, 3, or 5 words to relax primitive search engines
+                // 3. For long titles, emit a single 4-word prefix. The previous
+                //    3/4/5-word variants tripled the request count while returning
+                //    nearly identical result sets.
                 val words = cleaned.split(Regex("\\s+")).filter { it.isNotBlank() }
                 if (words.size > 4) {
-                    val first4 = words.take(4).joinToString(" ")
-                    add(first4)
-
-                    val first3 = words.take(3).joinToString(" ")
-                    add(first3)
-
-                    val first5 = words.take(5).joinToString(" ")
-                    add(first5)
+                    add(words.take(4).joinToString(" "))
                 }
             }
         }.map { it.trim() }
@@ -151,7 +161,14 @@ class AnimeSearchFallbackEngine {
         val candidatesToScore = seed.candidateTitles.distinct()
 
         val uniqueResults = LinkedHashMap<String, SuggestionItem>() // key: providerUrl
-        val filterList = source.getFilterList()
+        // getFilterList() executes extension code: it is exactly where a source built
+        // against a different library ABI blows up with a LinkageError (e.g.
+        // NoSuchMethodError: BuildersKt.runBlockingK). Degrade to an empty filter
+        // list instead of crashing the app.
+        val filterList = ExtensionInterop.runInterop(TAG, "getFilterList") { source.getFilterList() }
+            ?: AnimeFilterList()
+        val searchSemaphore = Semaphore(MAX_CONCURRENT_QUERIES)
+        val thumbnailDetailBudget = AtomicInteger(MAX_THUMBNAIL_DETAIL_LOOKUPS)
         var authorAdded = 0
         var genreAdded = 0
         val maxAuthor = 8
@@ -177,7 +194,9 @@ class AnimeSearchFallbackEngine {
                         if (synchronized(uniqueResults) { uniqueResults.size >= boundedMaxResults }) return@launch
                         try {
                             logcat { "[AnimeSearchFallbackEngine] Searching for query: '$query'" }
-                            val page = source.getSearchAnime(1, query, filterList)
+                            val page = searchSemaphore.withPermit {
+                                source.getSearchAnime(1, query, filterList)
+                            }
                             if (page.animes.isEmpty()) {
                                 logcat {
                                     "[AnimeSearchFallbackEngine] Query '$query' returned 0 results from source '${source.name}'"
@@ -239,7 +258,7 @@ class AnimeSearchFallbackEngine {
                                     val item = SuggestionItem(
                                         title = sAnime.title,
                                         searchQueries = listOf(sAnime.title),
-                                        thumbnailUrl = resolveThumbnail(source, sAnime),
+                                        thumbnailUrl = resolveThumbnail(source, sAnime, thumbnailDetailBudget),
                                         providerName = source.name,
                                         reason = itemReason,
                                         providerUrl = sAnime.url,
@@ -285,6 +304,10 @@ class AnimeSearchFallbackEngine {
                             }
                         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                             throw e
+                        } catch (e: LinkageError) {
+                            logcat {
+                                "[AnimeSearchFallbackEngine] Incompatible extension ABI for query '$query': ${e.message}"
+                            }
                         } catch (e: Exception) {
                             logcat { "[AnimeSearchFallbackEngine] Search failed for query '$query': ${e.message}" }
                         }
@@ -314,12 +337,21 @@ class AnimeSearchFallbackEngine {
         }
     }
 
+    /**
+     * Resolves a thumbnail for a search result. A full details request is issued
+     * only while [detailBudget] allows it, so sources that omit thumbnails in
+     * search results can no longer trigger an unbounded "one details request per
+     * result" burst.
+     */
     private suspend fun resolveThumbnail(
         source: AnimeCatalogueSource,
         anime: eu.kanade.tachiyomi.animesource.model.SAnime,
+        detailBudget: AtomicInteger,
     ): String? {
-        return anime.thumbnail_url?.takeIf { it.isNotBlank() }
-            ?: runCatching { source.getAnimeDetails(anime.copy()).thumbnail_url?.takeIf { it.isNotBlank() } }
-                .getOrNull()
+        anime.thumbnail_url?.takeIf { it.isNotBlank() }?.let { return it }
+        if (detailBudget.getAndDecrement() <= 0) return null
+        return ExtensionInterop.runInterop(TAG, "getAnimeDetails(thumbnail)") {
+            source.getAnimeDetails(anime.copy()).thumbnail_url?.takeIf { it.isNotBlank() }
+        }
     }
 }

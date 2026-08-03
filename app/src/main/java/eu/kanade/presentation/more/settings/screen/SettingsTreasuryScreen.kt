@@ -133,6 +133,7 @@ object SettingsTreasuryScreen : SearchableSettings {
         val amoled by uiPreferences.themeDarkAmoled().collectAsStateWithLifecycle()
         val showTabGlow by uiPreferences.showTabGlow().collectAsStateWithLifecycle()
         val showCelestialNavbar by uiPreferences.showCelestialNavbar().collectAsStateWithLifecycle()
+        val showCircuitNavbar by uiPreferences.showCircuitNavbar().collectAsStateWithLifecycle()
 
         val rawUnlockedUnlockables by remember {
             unlockableManager.observeUnlockedUnlockables()
@@ -585,6 +586,15 @@ object SettingsTreasuryScreen : SearchableSettings {
                 isActive = { showCelestialNavbar },
                 onApply = { uiPreferences.showCelestialNavbar().set(true) },
                 onDeactivate = { uiPreferences.showCelestialNavbar().set(false) },
+            ),
+            TreasuryPreset(
+                unlockableId = "special_navbar_lattice_circuit",
+                title = stringResource(MR.strings.reward_special_navbar_lattice_circuit_title),
+                description = stringResource(MR.strings.reward_special_navbar_lattice_circuit_desc),
+                accentColor = Color(0xFF5FE9FF),
+                isActive = { showCircuitNavbar },
+                onApply = { uiPreferences.showCircuitNavbar().set(true) },
+                onDeactivate = { uiPreferences.showCircuitNavbar().set(false) },
             ),
         )
 
@@ -1785,6 +1795,13 @@ private fun TreasuryThemeSelector(
             accentColor = Color(0xFF3DDC97), // Prime greenish (matches actual Aurora Prime primary)
             isSecret = true,
         ),
+        TreasuryExclusiveThemeSpec(
+            theme = AppTheme.LATTICE_PROTOCOL,
+            rarity = AYMR.strings.treasury_exclusive_rarity_mythic,
+            tagline = AYMR.strings.treasury_tagline_lattice_protocol,
+            accentColor = Color(0xFF5FE9FF), // Lattice cyan signal
+            isSecret = true,
+        ),
     )
 
     var parentLayoutCoordinates by remember { mutableStateOf<androidx.compose.ui.layout.LayoutCoordinates?>(null) }
@@ -1794,6 +1811,11 @@ private fun TreasuryThemeSelector(
         subtitle = stringResource(AYMR.strings.treasury_themes_subtitle),
         accent = TreasuryGold,
     ) {
+        // Secret themes stay invisible until unlocked (no ??? placeholder slot).
+        val visibleThemes = treasuryThemes.filter { spec ->
+            !spec.isSecret || isThemePreviewUnlocked(spec.theme, unlockedUnlockables)
+        }
+
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1804,8 +1826,8 @@ private fun TreasuryThemeSelector(
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            items(treasuryThemes.size) { index ->
-                val spec = treasuryThemes[index]
+            items(visibleThemes.size) { index ->
+                val spec = visibleThemes[index]
                 val theme = spec.theme
                 val rewardId = "theme_${theme.name}"
                 val isUnlocked = isThemePreviewUnlocked(theme, unlockedUnlockables)
@@ -2471,7 +2493,17 @@ private fun TreasuryToggleSelector(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            presets.forEachIndexed { index, preset ->
+            // Ultra-secret navbar cosmetics: no slot until unlocked.
+            val ultraSecretNavbarIds = setOf(
+                "special_navbar_aurora_celestial",
+                "special_navbar_lattice_circuit",
+            )
+            val visiblePresets = presets.filter { preset ->
+                preset.unlockableId !in ultraSecretNavbarIds ||
+                    unlockedUnlockables.contains(preset.unlockableId)
+            }
+
+            visiblePresets.forEachIndexed { index, preset ->
                 val isUnlocked = unlockedUnlockables.contains(preset.unlockableId)
                 val isActive = isUnlocked && preset.isActive()
                 val achievementTitle = rewardToAchievementMap[preset.unlockableId]?.title
@@ -2480,16 +2512,8 @@ private fun TreasuryToggleSelector(
                     getRewardIconResourceId(preset.unlockableId, context)
                 }
 
-                val isCelestialSecretLocked = !isUnlocked && preset.unlockableId == "special_navbar_aurora_celestial"
-                val displayIconResId = if (isCelestialSecretLocked) {
-                    com.tadami.aurora.R.drawable.ic_badge_default
-                } else {
-                    rewardIconResId
-                }
                 val description = if (isUnlocked) {
                     preset.description
-                } else if (isCelestialSecretLocked) {
-                    "???"
                 } else {
                     preset.lockedRiddle
                         ?: stringResource(AYMR.strings.treasury_requires_achievement, achievementTitle)
@@ -2498,7 +2522,7 @@ private fun TreasuryToggleSelector(
                 TreasuryArtifactShard(
                     index = index,
                     preset = preset,
-                    iconResId = displayIconResId,
+                    iconResId = rewardIconResId,
                     isUnlocked = isUnlocked,
                     isActive = isActive,
                     description = description,
@@ -2527,7 +2551,8 @@ private fun TreasuryArtifactShard(
     amoled: Boolean,
     onToggle: () -> Unit,
 ) {
-    val isCelestialSecretLocked = !isUnlocked && preset.unlockableId == "special_navbar_aurora_celestial"
+    val isCelestialSecretLocked =
+        !isUnlocked && preset.unlockableId in setOf("special_navbar_aurora_celestial", "special_navbar_lattice_circuit")
     val effectiveTitle = if (isCelestialSecretLocked) "???" else preset.title
 
     val infiniteTransition = rememberInfiniteTransition(label = "artifact-${preset.unlockableId}")
@@ -2871,7 +2896,15 @@ internal fun calculateTreasuryRewardProgress(
     auraIds: List<String>,
     hiddenThemes: List<AppTheme>,
 ): TreasuryRewardProgress {
-    val distinctPresetIds = presetIds.distinct()
+    // Ultra-secret cosmetics render no slot in the vault until unlocked, so they
+    // must not inflate the denominator while invisible (the "6 of 12 = 50%" bug).
+    val ultraSecretIds = setOf(
+        "special_navbar_aurora_celestial",
+        "special_navbar_lattice_circuit",
+    )
+    val distinctPresetIds = presetIds.distinct().filter { id ->
+        id !in ultraSecretIds || id in unlockedUnlockables
+    }
     val distinctAuraIds = auraIds.distinct()
     val distinctHiddenThemes = hiddenThemes.distinct()
 
@@ -2925,6 +2958,7 @@ private fun getRewardIconResourceId(rewardId: String, context: android.content.C
         "special_background_void_weeping_red" -> "ic_reward_background_void_weeping_red"
         "special_tab_glow" -> "ic_reward_tab_glow"
         "special_navbar_aurora_celestial" -> "ic_reward_navbar_aurora_celestial"
+        "special_navbar_lattice_circuit" -> "ic_reward_navbar_lattice_circuit"
         else -> "ic_reward_$rewardId"
     }
 

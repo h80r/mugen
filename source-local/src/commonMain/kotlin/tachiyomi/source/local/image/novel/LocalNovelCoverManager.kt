@@ -9,4 +9,6 @@ expect class LocalNovelCoverManager {
     fun find(novelUrl: String): UniFile?
 
     fun update(novel: SNovel, inputStream: InputStream): UniFile?
+
+    fun generateCover(novel: SNovel, inputStream: InputStream): UniFile?
 }

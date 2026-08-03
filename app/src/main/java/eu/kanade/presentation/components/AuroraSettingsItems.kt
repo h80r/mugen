@@ -371,12 +371,14 @@ fun AuroraTriStateItem(
 fun AuroraCheckboxItem(
     label: String,
     pref: Preference<Boolean>,
+    description: String? = null,
 ) {
     val checked by pref.collectAsState()
     AuroraCheckboxItem(
         label = label,
         checked = checked,
         onClick = { pref.toggle() },
+        description = description,
     )
 }
 
@@ -385,6 +387,7 @@ fun AuroraCheckboxItem(
     label: String,
     checked: Boolean,
     onClick: () -> Unit,
+    description: String? = null,
 ) {
     val appHaptics = LocalAppHaptics.current
     val colors = AuroraTheme.colors
@@ -406,11 +409,20 @@ fun AuroraCheckboxItem(
             state = if (checked) TriState.ENABLED_IS else TriState.DISABLED,
             enabled = true,
         )
-        Text(
-            text = label,
-            color = colors.textPrimary,
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                color = colors.textPrimary,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (description != null) {
+                Text(
+                    text = description,
+                    color = colors.textSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
     }
 }
 

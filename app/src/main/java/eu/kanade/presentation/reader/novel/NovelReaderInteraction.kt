@@ -9,6 +9,8 @@ import eu.kanade.tachiyomi.ui.reader.novel.PageReaderProgress
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelBookFlipAnimationSpeed
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundTexture
+import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTapZoneAction
+import eu.kanade.tachiyomi.ui.reader.novel.setting.resolveConfiguredNovelReaderTapAction
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.hypot
@@ -331,7 +333,13 @@ internal fun shouldStartInWebView(
     pageReaderEnabled: Boolean,
     contentBlocksCount: Int,
     richContentUnsupportedFeaturesDetected: Boolean,
+    bookModeEnabled: Boolean = false,
 ): Boolean {
+    // Book mode renders through the book engine (NovelBookReader), which owns its own WebView for
+    // both the scrolled and the paged flow, so the legacy reader WebView must stay off. In book
+    // mode that WebView is fed an empty document, and the book renderer is composed only in the
+    // !showWebView branch: letting the paged flow switch it on is what produced a blank screen.
+    if (bookModeEnabled) return false
     if (contentBlocksCount <= 0) return true
     if (pageReaderEnabled) return false
     if (richNativeRendererExperimentalEnabled && richContentUnsupportedFeaturesDetected) return true
@@ -345,6 +353,7 @@ internal fun syncShowWebViewWithReaderSettings(
     pageReaderEnabled: Boolean,
     contentBlocksCount: Int,
     richContentUnsupportedFeaturesDetected: Boolean,
+    bookModeEnabled: Boolean = false,
 ): Boolean {
     val expectedShowWebView = shouldStartInWebView(
         preferWebViewRenderer = preferWebViewRenderer,
@@ -352,6 +361,7 @@ internal fun syncShowWebViewWithReaderSettings(
         pageReaderEnabled = pageReaderEnabled,
         contentBlocksCount = contentBlocksCount,
         richContentUnsupportedFeaturesDetected = richContentUnsupportedFeaturesDetected,
+        bookModeEnabled = bookModeEnabled,
     )
     return if (currentShowWebView == expectedShowWebView) {
         currentShowWebView
@@ -598,15 +608,16 @@ internal fun resolveReaderVerticalSeekbarValue(
     pageTurnHasPreviousChapter: Boolean = composePagerHasPreviousChapter,
     seekbarItemsCount: Int,
     readingProgressPercent: Int,
+    nativeFirstVisibleItemIndex: Int = 0,
+    nativeCanScrollForward: Boolean = true,
+    bookModeEnabled: Boolean = false,
 ): Float {
     return when {
-        showWebView -> webProgressPercent.coerceIn(0, 100) / 100f
-        !usePageReader -> {
-            // For long paragraphs/index-based lists, index ratio can lag behind.
-            // Use effective reading progress so thumb reaches the real chapter end.
+        bookModeEnabled -> {
             readingProgressPercent.coerceIn(0, 100) / 100f
         }
-        else -> {
+        showWebView -> webProgressPercent.coerceIn(0, 100) / 100f
+        usePageReader -> {
             val max = (seekbarItemsCount - 1).coerceAtLeast(1)
             val current = resolvePageReaderCurrentPage(
                 pageReaderRendererRoute = pageReaderRendererRoute,
@@ -618,6 +629,14 @@ internal fun resolveReaderVerticalSeekbarValue(
                 pageTurnHasPreviousChapter = pageTurnHasPreviousChapter,
             )
             current.toFloat() / max.toFloat()
+        }
+        else -> {
+            val max = (seekbarItemsCount - 1).coerceAtLeast(1)
+            if (!nativeCanScrollForward) {
+                1f
+            } else {
+                nativeFirstVisibleItemIndex.coerceIn(0, max).toFloat() / max.toFloat()
+            }
         }
     }
 }
@@ -659,6 +678,40 @@ internal fun dispatchReaderTapAction(
             ReaderTapAction.TOGGLE_UI -> onToggleUi()
             ReaderTapAction.BACKWARD -> onBackward()
             ReaderTapAction.FORWARD -> onForward()
+        }
+    }
+}
+
+internal fun dispatchConfiguredReaderTapAction(
+    tapX: Float,
+    tapY: Float,
+    width: Float,
+    height: Float,
+    customTapZonesEnabled: Boolean,
+    tapZoneActions: List<NovelReaderTapZoneAction>,
+    tapToScrollEnabled: Boolean,
+    onToggleUi: () -> Unit,
+    onBackward: () -> Unit,
+    onForward: () -> Unit,
+    onNextChapter: () -> Unit,
+    onPrevChapter: () -> Unit,
+): NovelReaderTapZoneAction {
+    return resolveConfiguredNovelReaderTapAction(
+        tapX = tapX,
+        tapY = tapY,
+        width = width,
+        height = height,
+        customTapZonesEnabled = customTapZonesEnabled,
+        tapZoneActions = tapZoneActions,
+        tapToScrollEnabled = tapToScrollEnabled,
+    ).also { action ->
+        when (action) {
+            NovelReaderTapZoneAction.NONE -> Unit
+            NovelReaderTapZoneAction.TOGGLE_UI -> onToggleUi()
+            NovelReaderTapZoneAction.BACKWARD -> onBackward()
+            NovelReaderTapZoneAction.FORWARD -> onForward()
+            NovelReaderTapZoneAction.NEXT_CHAPTER -> onNextChapter()
+            NovelReaderTapZoneAction.PREV_CHAPTER -> onPrevChapter()
         }
     }
 }

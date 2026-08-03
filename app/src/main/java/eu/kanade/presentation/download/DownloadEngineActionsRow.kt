@@ -71,7 +71,7 @@ internal fun DownloadEngineActionsRow(
             enabled = queuedCount > 0 || activeCount > 0 || isRunning,
             modifier = Modifier
                 .weight(1.6f)
-                .height(52.dp),
+                .height(42.dp),
             shape = RoundedCornerShape(24.dp), // Organic pill shape
             color = actionBg,
             border = actionBorder,
@@ -105,7 +105,7 @@ internal fun DownloadEngineActionsRow(
             onClick = onCancelAll,
             modifier = Modifier
                 .weight(1.1f)
-                .height(52.dp),
+                .height(42.dp),
             shape = RoundedCornerShape(24.dp), // Organic pill shape
             color = cancelBg,
             border = cancelBorder,

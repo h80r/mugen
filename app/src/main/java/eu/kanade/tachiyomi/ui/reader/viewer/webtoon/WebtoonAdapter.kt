@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.model.shouldShowChapterTransitionInfo
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.calculateVisibleChapterGap
 import eu.kanade.tachiyomi.util.system.createReaderThemeContext
@@ -62,7 +63,17 @@ class WebtoonAdapter(val viewer: WebtoonViewer) : RecyclerView.Adapter<RecyclerV
 
         // Skip transition page if the chapter is loaded & current page is not a transition page
         if (prevHasMissingChapters || forceTransition || chapters.prevChapter?.state !is ReaderChapter.State.Loaded) {
-            newItems.add(ChapterTransition.Prev(chapters.currChapter, chapters.prevChapter))
+            newItems.add(
+                ChapterTransition.Prev(
+                    from = chapters.currChapter,
+                    to = chapters.prevChapter,
+                    showInfo = shouldShowChapterTransitionInfo(
+                        alwaysShowChapterTransition = forceTransition,
+                        hasMissingChapters = prevHasMissingChapters,
+                        destinationChapter = chapters.prevChapter,
+                    ),
+                ),
+            )
         }
 
         // Add current chapter.
@@ -75,7 +86,17 @@ class WebtoonAdapter(val viewer: WebtoonViewer) : RecyclerView.Adapter<RecyclerV
 
         // Add next chapter transition and pages.
         if (nextHasMissingChapters || forceTransition || chapters.nextChapter?.state !is ReaderChapter.State.Loaded) {
-            newItems.add(ChapterTransition.Next(chapters.currChapter, chapters.nextChapter))
+            newItems.add(
+                ChapterTransition.Next(
+                    from = chapters.currChapter,
+                    to = chapters.nextChapter,
+                    showInfo = shouldShowChapterTransitionInfo(
+                        alwaysShowChapterTransition = forceTransition,
+                        hasMissingChapters = nextHasMissingChapters,
+                        destinationChapter = chapters.nextChapter,
+                    ),
+                ),
+            )
         }
 
         if (chapters.nextChapter != null) {
@@ -171,6 +192,10 @@ class WebtoonAdapter(val viewer: WebtoonViewer) : RecyclerView.Adapter<RecyclerV
             val oldItem = oldItems[oldItemPosition]
             val newItem = newItems[newItemPosition]
 
+            if (oldItem is ChapterTransition && newItem is ChapterTransition) {
+                return (oldItem.from == newItem.from && oldItem.to == newItem.to) ||
+                    (oldItem.from == newItem.to && oldItem.to == newItem.from)
+            }
             return oldItem == newItem
         }
 
@@ -178,7 +203,7 @@ class WebtoonAdapter(val viewer: WebtoonViewer) : RecyclerView.Adapter<RecyclerV
          * Returns true if the contents of the items are the same.
          */
         override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-            return true
+            return oldItems[oldItemPosition] == newItems[newItemPosition]
         }
 
         /**

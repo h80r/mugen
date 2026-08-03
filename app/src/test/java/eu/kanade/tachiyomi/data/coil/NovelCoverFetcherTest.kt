@@ -11,6 +11,7 @@ import coil3.size.Scale
 import coil3.size.Size
 import eu.kanade.tachiyomi.data.cache.NovelCoverCache
 import eu.kanade.tachiyomi.source.novel.NovelPluginImagePayload
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import okhttp3.Call
@@ -18,6 +19,7 @@ import okhttp3.Request
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -60,6 +62,8 @@ class NovelCoverFetcherTest {
         runTest {
             val context = mockk<android.content.Context>(relaxed = true)
             val imageLoader = mockk<ImageLoader>(relaxed = true)
+            // Covers are read from the Coil disk cache first now; force a miss so the resolver runs.
+            every { imageLoader.diskCache } returns null
             val data = NovelCover(
                 novelId = 5L,
                 sourceId = 101L,
@@ -333,5 +337,21 @@ class NovelCoverFetcherTest {
         result as SourceFetchResult
         assertEquals(DataSource.DISK, result.dataSource)
         assertEquals(tempFile.toOkioPath(), result.source.file())
+    }
+
+    @Test
+    fun `buildNovelCoverRequest converts IDN site url to punycode in referer and origin`() {
+        val request = buildNovelCoverRequest(
+            url = "https://ранобэ.рф/images/books/4260/vertical-73.jpeg",
+            siteUrl = "https://ранобэ.рф",
+            readFromNetwork = true,
+        )
+
+        val referer = request.header("Referer")!!
+        val origin = request.header("Origin")!!
+        assertFalse(referer.contains("ранобэ"))
+        assertFalse(origin.contains("ранобэ"))
+        assertTrue(referer.startsWith("https://xn--"))
+        assertTrue(origin.startsWith("https://xn--"))
     }
 }

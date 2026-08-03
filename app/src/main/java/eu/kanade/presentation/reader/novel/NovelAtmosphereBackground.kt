@@ -59,12 +59,14 @@ internal fun NovelAtmosphereBackground(
         }
 
         if (backgroundTexture == NovelReaderBackgroundTexture.PAPER_GRAIN ||
-            backgroundTexture == NovelReaderBackgroundTexture.LINEN
+            backgroundTexture == NovelReaderBackgroundTexture.LINEN ||
+            backgroundTexture == NovelReaderBackgroundTexture.PARCHMENT
         ) {
-            val imageRes = if (backgroundTexture == NovelReaderBackgroundTexture.PAPER_GRAIN) {
-                R.drawable.texture_paper
-            } else {
-                R.drawable.texture_linen
+            val imageRes = when (backgroundTexture) {
+                NovelReaderBackgroundTexture.PAPER_GRAIN,
+                NovelReaderBackgroundTexture.PARCHMENT,
+                -> R.drawable.texture_paper
+                else -> R.drawable.texture_linen
             }
 
             val imageBitmap = ImageBitmap.imageResource(id = imageRes)
@@ -88,6 +90,33 @@ internal fun NovelAtmosphereBackground(
                         brush = brush,
                         alpha = boostTextureAlpha,
                         blendMode = BlendMode.Multiply,
+                    )
+                }
+            }
+
+            if (backgroundTexture == NovelReaderBackgroundTexture.PARCHMENT) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val center1 = Offset(size.width * 0.2f, size.height * 0.2f)
+                    val center2 = Offset(size.width * 0.8f, size.height * 0.75f)
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colorStops = arrayOf(
+                                0.0f to Color.White.copy(alpha = 0.14f),
+                                0.45f to Color.Transparent,
+                            ),
+                            center = center1,
+                            radius = size.width * 0.9f,
+                        ),
+                    )
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colorStops = arrayOf(
+                                0.0f to Color.Black.copy(alpha = 0.12f),
+                                0.42f to Color.Transparent,
+                            ),
+                            center = center2,
+                            radius = size.width * 0.9f,
+                        ),
                     )
                 }
             }

@@ -10,8 +10,10 @@ import androidx.core.content.pm.PackageInfoCompat
 import dalvik.system.PathClassLoader
 import eu.kanade.domain.extension.manga.interactor.TrustMangaExtension
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.extension.canReplacePrivateExtension
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
 import eu.kanade.tachiyomi.extension.manga.model.MangaLoadResult
+import eu.kanade.tachiyomi.extension.matchesExtensionFeature
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.MangaSource
 import eu.kanade.tachiyomi.source.SourceFactory
@@ -57,9 +59,15 @@ internal object MangaExtensionLoader {
     private const val METADATA_CONTENT_WARNING = "tachiyomix.contentWarning"
     private const val METADATA_EXTENSION_LIB = "tachiyomix.extensionLib"
     const val LIB_VERSION_MIN = 1.4
-    const val LIB_VERSION_MAX = 1.5
+    const val LIB_VERSION_MAX = 1.6
 
-    val SUPPORTED_LIB_VERSIONS = listOf(LIB_VERSION_MIN, LIB_VERSION_MAX)
+    /**
+     * Accepted extensions-lib generations. Every published manga extension is still on 1.4 - the
+     * keiyoushi build plugin whitelists exactly that value - so 1.5/1.6 are headroom, not something
+     * in use. The 1.6-only combined update API (getMangaUpdate) is deliberately NOT routed here:
+     * no extension implements it, and the library update path would gain nothing but risk.
+     */
+    val SUPPORTED_LIB_VERSIONS = listOf(1.4, 1.5, 1.6)
 
     @Suppress("DEPRECATION")
     private val PACKAGE_FLAGS = PackageManager.GET_CONFIGURATIONS or
@@ -92,7 +100,11 @@ internal object MangaExtensionLoader {
             if (file.isFile && file.extension == PRIVATE_EXTENSION_EXTENSION) {
                 val pkgName = file.nameWithoutExtension
                 if (pkgName.matches(Regex("^[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)+$"))) {
-                    if (!pkgName.contains(".anime")) {
+                    // Classify by the manifest feature, not by the file name: manga extensions such
+                    // as ...extension.fr.animesama contain ".anime" and were moved into the anime
+                    // directory, where nothing ever loads them again.
+                    val archiveInfo = context.packageManager.getPackageArchiveInfo(file.absolutePath, PACKAGE_FLAGS)
+                    if (matchesExtensionFeature(archiveInfo, EXTENSION_FEATURE) == true) {
                         targetDir.mkdirs()
                         val targetFile = File(targetDir, file.name)
                         file.renameTo(targetFile)
@@ -137,7 +149,15 @@ internal object MangaExtensionLoader {
                 return false
             }
 
-            if (!extensionSignatures.containsAll(getSignatures(currentExtension)!!)) {
+            // Cross-store re-publication is handled by the reinstall path (uninstall first), so a
+            // signature change here means the replacement is not from the installed publisher.
+            if (!canReplacePrivateExtension(
+                    installedVersionCode = PackageInfoCompat.getLongVersionCode(currentExtension),
+                    newVersionCode = PackageInfoCompat.getLongVersionCode(extension),
+                    installedSignatures = getSignatures(currentExtension).orEmpty(),
+                    newSignatures = extensionSignatures,
+                )
+            ) {
                 logcat(LogPriority.ERROR) { "Installed extension signature is not matched." }
                 return false
             }
@@ -322,15 +342,20 @@ internal object MangaExtensionLoader {
             return MangaLoadResult.Error
         }
 
-        // Validate lib version
-        val rawLibVersion = appInfo.metaData?.getDouble(METADATA_EXTENSION_LIB)?.takeUnless { it == 0.0 }
-            ?: appInfo.metaData?.getFloat(METADATA_EXTENSION_LIB)?.toDouble()?.takeUnless { it == 0.0 }
-            ?: versionName.substringBeforeLast('.').toDoubleOrNull()
+        // Validate lib version. MetaData values can be stored as Float, Double or String
+        // depending on how the extension manifest declares them; typed Bundle getters throw
+        // (and log a warning) on a mismatch, so read the raw value and convert explicitly.
+        @Suppress("DEPRECATION") // Bundle.get(String) is deprecated in API 33; no raw-value replacement exists
+        val rawLibVersion = when (val value = appInfo.metaData?.get(METADATA_EXTENSION_LIB)) {
+            is Number -> value.toDouble().takeUnless { it == 0.0 }
+            is String -> value.toDoubleOrNull()?.takeUnless { it == 0.0 }
+            else -> null
+        } ?: versionName.substringBeforeLast('.').toDoubleOrNull()
         val libVersion = if (rawLibVersion != null) kotlin.math.round(rawLibVersion * 100.0) / 100.0 else null
         if (libVersion == null || libVersion !in SUPPORTED_LIB_VERSIONS) {
             logcat(LogPriority.WARN) {
                 "Lib version is $libVersion, while only versions " +
-                    "$LIB_VERSION_MIN to $LIB_VERSION_MAX are allowed"
+                    "$SUPPORTED_LIB_VERSIONS are allowed"
             }
             return MangaLoadResult.Error
         }

@@ -546,6 +546,12 @@
     <string name="nav_zone_right">Справа</string>
     <string name="nav_zone_next">Следующая</string>
     <string name="nav_zone_prev">Предыдущая</string>
+    <string name="nav_zone_none">Ничего</string>
+    <string name="grid_nav">Своя сетка 3×3</string>
+    <string name="pref_custom_tap_zones">Раскладка зон касания</string>
+    <string name="custom_tap_zones_hint">Нажмите на зону, чтобы сменить действие</string>
+    <string name="pref_zoom_dual_taps">Зум двумя пальцами</string>
+    <string name="pref_zoom_dual_taps_summary">Разрешить масштабирование страницы жестом сведения двух пальцев</string>
     <string name="pref_show_navigation_mode_summary">Ненадолго показать при начале чтения</string>
     <string name="pref_show_navigation_mode">Наложение зон касания</string>
     <string name="pref_dns_over_https">DNS по HTTPS (DoH)</string>
@@ -834,6 +840,17 @@
     <string name="relative_time_span_never">Никогда</string>
     <string name="pref_flash_page_summ">Уменьшает артефакты у экранов e-ink</string>
     <string name="last_auto_backup_info">Последнее автоматическое резервное копирование: %s</string>
+    <!-- Backup wizard (backup-refactor UI) -->
+    <string name="backup_step_content">Шаг 1 — Что попадёт в файл</string>
+    <string name="backup_step_compatibility">Шаг 2 — Совместимость</string>
+    <string name="backup_step_destination">Шаг 3 — Куда сохранится файл</string>
+    <string name="backup_destination_info">После нажатия «Создать» вы сами выберете папку и имя файла. Храните файл в надёжном месте — его можно восстановить на любом устройстве.</string>
+    <string name="backup_restore_options_title">Что восстанавливать</string>
+    <string name="backup_restore_origin_mihon">Резервная копия Mihon / Tachiyomi</string>
+    <string name="backup_restore_origin_mihon_info">Файл создан родственным приложением (Mihon, Komikku, TachiyomiSY или похожим). Совместимые данные будут импортированы; данные, специфичные для другого приложения, пропускаются.</string>
+    <string name="backup_restore_merge_info">Восстановление объединяет файл с текущей библиотекой. Ничего не удаляется: существующие записи сохраняются и обновляются более новыми данными.</string>
+    <string name="backup_restore_safety_info">Перед восстановлением автоматически создаётся страховочная резервная копия текущих данных.</string>
+    <string name="backup_restore_empty_preview">В этом файле нет данных, которые можно восстановить.</string>
     <string name="pref_category_eink">E-ink</string>
     <string name="pref_flash_page">Мигать при смене страницы</string>
     <string name="pref_storage_usage">Использование хранилища</string>
@@ -941,6 +958,11 @@
     <string name="manga_interval_expected_update_soon">Скоро</string>
     <string name="theme_nord">Север</string>
     <string name="ext_revoke_trust">Убрать доверие к ненадёжным расширениям</string>
+    <string name="ext_auto_update_pref">Автообновление расширений</string>
+    <string name="ext_auto_update_pref_summary">Обновления расширений будут устанавливаться в фоне без запросов. Требуется установщик «Private».</string>
+    <string name="ext_auto_update_security_title">Предупреждение о безопасности</string>
+    <string name="ext_auto_update_security_dialog">Обновления расширений будут скачиваться и устанавливаться автоматически, без подтверждения каждый раз. Обновление применяется только если новый файл подписан тем же издателем, что и установленное расширение; всё остальное пропускается и попадает только в уведомление. Расширения выполняют код внутри приложения, поэтому включайте эту опцию только если доверяете всем добавленным репозиториям.</string>
+    <string name="ext_auto_update_notif_title">Расширения обновлены</string>
     <string name="action_open_repo">Открыть репозиторий источника</string>
     <string name="pref_webtoon_disable_zoom_out">Отключить уменьшение масштаба</string>
     <string name="pref_save_long_page_position">Сохранять позицию внутри длинных страниц</string>
@@ -1277,9 +1299,9 @@
     <string name="suggestions_empty_search_novel">На этом источнике не найдено совпадений при поиске</string>
     <string name="suggestions_fallback_exhausted_novel">Для этой новеллы нет доступных рекомендаций</string>
     <string name="action_show_more">Показать больше</string>
-    <string name="pref_category_epub_import">Импорт EPUB</string>
-    <string name="pref_epub_import_add_to_library">Добавлять импортированные EPUB в библиотеку</string>
-    <string name="pref_epub_import_add_to_library_summary">Импортированные EPUB-новеллы сразу появятся в библиотеке. Если отключено, их можно добавить вручную из локального источника.</string>
+    <string name="pref_category_epub_import">Импорт локальных книг</string>
+    <string name="pref_epub_import_add_to_library">Добавлять импортированные книги в библиотеку</string>
+    <string name="pref_epub_import_add_to_library_summary">Импортированные EPUB/FB2 сразу появятся в библиотеке. Если отключено, их можно добавить вручную из локального источника.</string>
 
     <!-- Library Grouping -->
     <string name="action_group">Группа</string>
@@ -1515,7 +1537,9 @@
     <string name="unlockable_profile_nickname_effect_glitch_rune_red">Эффект ника "Багровый глитч"</string>
     <string name="unlockable_avatar_frame_glitch_red">Багровая рамка аватара</string>
     <string name="unlockable_theme_AURORA_PRIME">Тема «Aurora Prime»</string>
+    <string name="unlockable_theme_LATTICE_PROTOCOL">Тема «Протокол Каркаса»</string>
     <string name="unlockable_special_navbar_aurora_celestial">Свечение «Celestial Navigation»</string>
+    <string name="unlockable_special_navbar_lattice_circuit">Кромка контура</string>
 
     <!-- Onboarding: legal disclaimer step -->
     <string name="onboarding_disclaimer_title">Прежде чем начать</string>
@@ -1567,4 +1591,7 @@
     <string name="reward_special_tab_glow_desc">Акцентная подсветка под панелью переключения вкладок</string>
     <string name="reward_special_navbar_aurora_celestial_title">Celestial Navigation</string>
     <string name="reward_special_navbar_aurora_celestial_desc">Ночное небо, бегущие волны света и полярное гало для навигационной панели</string>
+    <!-- Lattice Resonance reward (hidden) -->
+    <string name="reward_special_navbar_lattice_circuit_title">Кромка контура</string>
+    <string name="reward_special_navbar_lattice_circuit_desc">Нижний rim-light вдоль донца панели навигации</string>
 </resources>

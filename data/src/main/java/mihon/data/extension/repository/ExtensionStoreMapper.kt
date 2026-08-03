@@ -11,6 +11,7 @@ internal fun extensionStoreMapper(
     contactDiscord: String?,
     isLegacy: Boolean,
     extensionListUrl: String?,
+    customName: String?,
 ): ExtensionStore = ExtensionStore(
     indexUrl = indexUrl,
     name = name,
@@ -22,4 +23,5 @@ internal fun extensionStoreMapper(
     ),
     isLegacy = isLegacy,
     extensionListUrl = extensionListUrl,
+    customName = customName,
 )

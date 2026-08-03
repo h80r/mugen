@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -20,8 +21,10 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,16 +32,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.kanade.presentation.theme.AuroraTheme
+import kotlinx.collections.immutable.persistentMapOf
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.util.LocalAppHaptics
 
 @Composable
 fun AuroraHeroScaffold(
@@ -248,8 +256,9 @@ fun AuroraHeroGenreChips(
 
             Box(
                 modifier = baseModifier
-                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
                     .then(interactiveModifier),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = genre,
@@ -267,7 +276,8 @@ fun AuroraHeroGenreChips(
                     .clip(CircleShape)
                     .background(colors.accent.copy(alpha = 0.8f))
                     .clickable { onSearchSelected?.invoke() }
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = "🔎 ${stringResource(MR.strings.action_search)} (${selectedGenres.size})",
@@ -290,7 +300,8 @@ fun AuroraHeroGenreChips(
                         },
                     )
                     .clickable { onClearSelected?.invoke() }
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = "✕",
@@ -315,4 +326,74 @@ internal fun normalizeAuroraHeroGenres(genres: List<String>?): List<String> {
         }
         .filter { it.isNotBlank() }
         .filter { seen.add(it.lowercase()) }
+}
+
+/**
+ * The copy-to-clipboard icon shown next to a title. Only rendered when [onCopyTitle] is set.
+ */
+@Composable
+internal fun CopyTitleIcon(
+    onCopyTitle: (() -> Unit)?,
+    tint: Color,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 36.dp,
+    padding: androidx.compose.ui.unit.Dp = 8.dp,
+) {
+    if (onCopyTitle == null) return
+
+    val appHaptics = LocalAppHaptics.current
+    Icon(
+        imageVector = Icons.Outlined.ContentCopy,
+        contentDescription = contentDescription,
+        tint = tint,
+        modifier = modifier
+            .size(size)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                appHaptics.tap()
+                onCopyTitle()
+            }
+            .padding(padding),
+    )
+}
+
+/**
+ * Builds the inline content for a copy-to-clipboard icon appended right after the last
+ * character of a title. The icon is only rendered when [onCopyTitle] is set.
+ *
+ * @return pair of the inline content id and the [InlineTextContent] map for [Text.inlineContent]
+ */
+@Composable
+internal fun copyTitleInlineContent(
+    onCopyTitle: (() -> Unit)?,
+    tint: Color,
+    contentDescription: String,
+): Pair<String, Map<String, InlineTextContent>> {
+    val iconId = "copy_title_icon"
+    val content = if (onCopyTitle != null) {
+        persistentMapOf(
+            iconId to InlineTextContent(
+                Placeholder(
+                    width = 24.sp,
+                    height = 20.sp,
+                    placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                ),
+            ) {
+                CopyTitleIcon(
+                    onCopyTitle = onCopyTitle,
+                    tint = tint,
+                    contentDescription = contentDescription,
+                    size = 20.dp,
+                    padding = 2.dp,
+                )
+            },
+        )
+    } else {
+        persistentMapOf()
+    }
+    return iconId to content
 }

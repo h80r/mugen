@@ -1,0 +1,227 @@
+package eu.kanade.presentation.reader.novel
+
+import android.view.View
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
+
+/**
+ * The scrollable surface the book renderer actually shows.
+ *
+ * The reader chrome (auto-scroll, volume keys, tap zones, TTS follow-along) was written against the
+ * three chapter surfaces: the chapter WebView, the chapter pager and the chapter lazy list. Book mode
+ * renders none of them - [NovelBookReader] owns a private WebView - so every one of those features
+ * addressed a view that is not on screen and silently did nothing. The book renderer publishes this
+ * small surface instead, and the chrome drives whatever is mounted.
+ */
+internal interface NovelBookScrollSurface {
+
+    /** True while the book advances by discrete pages instead of a continuous scroll. */
+    fun isPaginated(): Boolean
+
+    /** True while the surface can still scroll down inside the mounted document. */
+    fun canScrollForward(): Boolean
+
+    /** Scrolls by [distancePx] and returns how much of it the surface consumed. */
+    fun scrollBy(distancePx: Int): Int
+
+    /** Steps one page (paginated) or one viewport (scrolled). */
+    fun step(forward: Boolean)
+
+    /**
+     * Runs [script] inside the mounted book document and reports what it returned.
+     *
+     * TTS follow-along used to address the chapter WebView, which book mode never mounts, so it
+     * scrolled a view that is not on screen. The book renderer owns its own document and this is the
+     * only channel the reader chrome has into it.
+     *
+     * [onResult] receives the raw `evaluateJavascript` answer, or `null` when the script could not
+     * run at all. Follow-along needs it to tell "the block was found and scrolled to" from
+     * "the section is not in the document yet", which is the difference between a finished
+     * navigation and one that has to be replayed after the section mounts.
+     */
+    fun evaluate(script: String, onResult: (String?) -> Unit = {}) = onResult(null)
+}
+
+/** What the book engine answered to one scroll request. */
+internal data class NovelBookScrollReport(
+    val consumedPx: Int,
+    val canScrollForward: Boolean,
+)
+
+/**
+ * Scrolls the book viewport and asks the engine what actually happened.
+ *
+ * `window.__anBookEngine.scrollBy(px)` already returns the clamped, really scrolled pixel amount and
+ * `canScrollForward()` knows whether the document can still move down. The previous script threw
+ * both away, which is why auto-scroll could never tell "scrolled" from "stuck at the end".
+ */
+internal fun buildBookScrollByJavascript(distancePx: Int): String {
+    return listOf(
+        "(function() {",
+        "  var engine = window.__anBookEngine;",
+        "  if (engine && typeof engine.scrollBy === 'function') {",
+        "    var consumed = engine.scrollBy($distancePx);",
+        "    var forward = typeof engine.canScrollForward === 'function' ? engine.canScrollForward() : true;",
+        "    return JSON.stringify({ consumed: consumed, forward: forward });",
+        "  }",
+        "  var viewport = document.getElementById('an-book-viewport');",
+        "  if (!viewport) { return JSON.stringify({ consumed: 0, forward: false }); }",
+        "  var before = viewport.scrollTop;",
+        "  var maximum = Math.max(0, viewport.scrollHeight - viewport.clientHeight);",
+        "  viewport.scrollTop = Math.max(0, Math.min(maximum, before + ($distancePx)));",
+        "  return JSON.stringify({",
+        "    consumed: Math.round(viewport.scrollTop - before),",
+        "    forward: viewport.scrollTop < (maximum - 1)",
+        "  });",
+        "})()",
+    ).joinToString("\n")
+}
+
+/**
+ * Parses the engine answer.
+ *
+ * `evaluateJavascript` hands the returned JSON back as a quoted and escaped JSON string, so the
+ * payload is unwrapped once and then read as real JSON, exactly like the section mutations already
+ * do. The previous version stripped every character that was not a letter, digit, `:`, `,` or `-`
+ * and split on commas, which silently mangled any value containing one of those characters.
+ */
+internal fun parseBookScrollReport(rawResult: String?): NovelBookScrollReport? {
+    if (rawResult.isNullOrBlank() || rawResult == "null") return null
+    val payload = decodeBookScrollPayload(rawResult) ?: return null
+    val consumed = payload["consumed"]?.jsonPrimitive?.intOrNull ?: return null
+    val forward = payload["forward"]?.jsonPrimitive?.booleanOrNull ?: true
+    return NovelBookScrollReport(consumedPx = consumed, canScrollForward = forward)
+}
+
+/**
+ * Unwraps what `evaluateJavascript` returned into a JSON object.
+ *
+ * The bridge returns the script's value as JSON, so a script returning a JSON *string* arrives
+ * double encoded (`"{\"consumed\":1}"`). That string is decoded once more before being read.
+ */
+private fun decodeBookScrollPayload(rawResult: String): JsonObject? = runCatching {
+    when (val element = BOOK_SCROLL_JSON.parseToJsonElement(rawResult.trim())) {
+        is JsonObject -> element
+        is JsonPrimitive -> if (element.isString) {
+            BOOK_SCROLL_JSON.parseToJsonElement(element.content) as? JsonObject
+        } else {
+            null
+        }
+        else -> null
+    }
+}.getOrNull()
+
+private val BOOK_SCROLL_JSON = Json { ignoreUnknownKeys = true }
+
+/**
+ * [NovelBookScrollSurface] backed by the renderer's own view.
+ *
+ * Paginated flow deliberately consumes nothing from [scrollBy]: the document lays itself out in
+ * columns, so pixel scrolling would tear the page instead of turning it. Callers step pages with
+ * [step] in that flow.
+ */
+internal class ViewNovelBookScrollSurface(
+    private val view: View,
+    private val paginated: () -> Boolean,
+    private val onStep: (Boolean) -> Unit,
+) : NovelBookScrollSurface {
+
+    @Volatile
+    private var isScrollPending = false
+
+    /** Pixels the engine reported for the last finished scroll, reused while one is in flight. */
+    @Volatile
+    private var lastConsumedPx = 0
+
+    /** Whether the engine still has room below the viewport. Optimistic until it answers once. */
+    @Volatile
+    private var engineCanScrollForward = true
+
+    override fun isPaginated(): Boolean = paginated()
+
+    // Paginated flow turns pages instead of scrolling, so forward scrollability is never the reason
+    // to stop there. In scrolled flow the engine's own answer decides, instead of the previous
+    // hardcoded `true` that made the end of the book unreachable for auto-scroll.
+    override fun canScrollForward(): Boolean = paginated() || engineCanScrollForward
+
+    override fun scrollBy(distancePx: Int): Int {
+        if (paginated() || distancePx == 0) return 0
+        val webView = view as? android.webkit.WebView ?: return 0
+        if (isScrollPending) return lastConsumedPx
+        isScrollPending = true
+        webView.evaluateJavascript(buildBookScrollByJavascript(distancePx)) { result ->
+            isScrollPending = false
+            parseBookScrollReport(result)?.let { report ->
+                lastConsumedPx = report.consumedPx
+                engineCanScrollForward = report.canScrollForward
+            }
+        }
+        // The round trip is asynchronous, so the frame that starts it cannot know how much the
+        // engine really moved. Returning the full requested distance here would make auto-scroll
+        // believe it progressed even at the very end of the book (where the engine moves nothing),
+        // so the end was never detected. Returning 0 keeps the first frame conservative: auto-scroll
+        // just asks again next frame, and every later frame reports what the engine actually moved.
+        return lastConsumedPx
+    }
+
+    override fun step(forward: Boolean) = onStep(forward)
+
+    override fun evaluate(script: String, onResult: (String?) -> Unit) {
+        val webView = view as? android.webkit.WebView
+        if (webView == null) {
+            onResult(null)
+            return
+        }
+        webView.post { webView.evaluateJavascript(script) { result -> onResult(result) } }
+    }
+}
+
+/**
+ * [NovelBookScrollSurface] backed by the native book list ([LazyListState]).
+ *
+ * The native renderer hosts the resident book sections in the reader's LazyColumn, so the chrome
+ * (auto-scroll, volume keys, TTS follow-along) used to find no surface there and silently did
+ * nothing. This surface translates the same calls onto the list state the native renderer already
+ * owns.
+ */
+internal class LazyListNovelBookScrollSurface(
+    private val listState: androidx.compose.foundation.lazy.LazyListState,
+) : NovelBookScrollSurface {
+
+    override fun isPaginated(): Boolean = false
+
+    override fun canScrollForward(): Boolean = listState.canScrollForward
+
+    override fun scrollBy(distancePx: Int): Int {
+        if (distancePx == 0) return 0
+        // dispatchRawDelta moves the list synchronously without a coroutine, which keeps this
+        // surface usable from the auto-scroll frame loop. The list exposes its real scrollability
+        // through canScrollForward, so "moved" is reported only while there was actually room: at
+        // the end of the book the list stops moving, canScrollForward turns false and auto-scroll
+        // reads the end instead of looping forever.
+        val couldMove = listState.canScrollForward
+        if (couldMove) {
+            runCatching { listState.dispatchRawDelta(distancePx.toFloat()) }
+        }
+        return if (couldMove) distancePx else 0
+    }
+
+    override fun step(forward: Boolean) {
+        // One "page" in the native list is roughly one viewport, mirroring the WebView flow where a
+        // step scrolls ~90% of the viewport. dispatchRawDelta keeps this synchronous.
+        val viewportSize = listState.layoutInfo.viewportEndOffset
+        val distance = if (forward) viewportSize.coerceAtLeast(1) else -viewportSize.coerceAtLeast(1)
+        runCatching { listState.dispatchRawDelta(distance.toFloat()) }
+    }
+
+    override fun evaluate(script: String, onResult: (String?) -> Unit) {
+        // The native list has no JS document to run the anchor script in; the anchor is applied
+        // directly by the reader chrome instead. Reporting null keeps the anchor pending until the
+        // native block is actually laid out.
+        onResult(null)
+    }
+}

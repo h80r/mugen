@@ -138,6 +138,7 @@ class MangaRepositoryImpl(
                         dateAdded = toInsert.dateAdded,
                         updateStrategy = toInsert.updateStrategy,
                         version = toInsert.version,
+                        memo = toInsert.memo,
                     )
                     val insertedId = db.mangasQueries.selectLastInsertedRowId().executeAsOne()
                     toInsert.copy(id = insertedId)
@@ -178,6 +179,8 @@ class MangaRepositoryImpl(
                         version = updated.version,
                         isSyncing = 0,
                     )
+                    // Separate statement: coalesce() drops the column adapter type.
+                    db.mangasQueries.updateMemo(memo = updated.memo, mangaId = updated.id)
                     updated
                 } else if (autoFavorite && !local.favorite) {
                     val updated = local.copy(favorite = true, dateAdded = System.currentTimeMillis())
@@ -208,6 +211,8 @@ class MangaRepositoryImpl(
                         version = updated.version,
                         isSyncing = 0,
                     )
+                    // Separate statement: coalesce() drops the column adapter type.
+                    db.mangasQueries.updateMemo(memo = updated.memo, mangaId = updated.id)
                     updated
                 } else {
                     val newThumbnailUrl = if (local.thumbnailUrl.isNullOrBlank()) {
@@ -244,6 +249,7 @@ class MangaRepositoryImpl(
                             version = updated.version,
                             isSyncing = 0,
                         )
+                        db.mangasQueries.updateMemo(memo = updated.memo, mangaId = updated.id)
                         updated
                     } else {
                         local
@@ -279,6 +285,7 @@ class MangaRepositoryImpl(
                 dateAdded = manga.dateAdded,
                 updateStrategy = manga.updateStrategy,
                 version = manga.version,
+                memo = manga.memo,
             )
             db.mangasQueries.selectLastInsertedRowId()
         }
@@ -334,6 +341,9 @@ class MangaRepositoryImpl(
                     version = value.version,
                     isSyncing = 0,
                 )
+                value.memo?.let { memo ->
+                    db.mangasQueries.updateMemo(memo = memo, mangaId = value.id)
+                }
 
                 // Emit achievement event if favorite status changed
                 value.favorite?.let { isFavorite ->

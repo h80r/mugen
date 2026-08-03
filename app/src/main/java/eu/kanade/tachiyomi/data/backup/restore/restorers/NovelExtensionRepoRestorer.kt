@@ -16,11 +16,23 @@ class NovelExtensionRepoRestorer(
         backupRepo: BackupExtensionRepos,
     ) {
         val dbRepos = getExtensionRepos.getAll()
-        val existingReposBySHA = dbRepos.associateBy { it.signingKeyFingerprint }
+        // Placeholder fingerprints are shared by every repo added without one, so they are not an
+        // identity: only real fingerprints may block a restore.
+        val existingReposBySHA = dbRepos
+            .filterNot { isPlaceholderSigningKey(it.signingKeyFingerprint) }
+            .associateBy { it.signingKeyFingerprint }
         val existingReposByUrl = dbRepos.associateBy { it.baseUrl }
         val urlExists = existingReposByUrl[backupRepo.baseUrl]
-        val shaExists = existingReposBySHA[backupRepo.signingKeyFingerprint]
-        if (urlExists != null && urlExists.signingKeyFingerprint != backupRepo.signingKeyFingerprint) {
+        val shaExists = if (isPlaceholderSigningKey(backupRepo.signingKeyFingerprint)) {
+            null
+        } else {
+            existingReposBySHA[backupRepo.signingKeyFingerprint]
+        }
+        if (urlExists != null && urlExists.signingKeyFingerprint == backupRepo.signingKeyFingerprint) {
+            // Already present, e.g. the same backup restored twice: nothing to do.
+            return
+        }
+        if (urlExists != null) {
             error("Already Exists with different signing key fingerprint")
         } else if (shaExists != null) {
             error("${shaExists.name} has the same signing key fingerprint")

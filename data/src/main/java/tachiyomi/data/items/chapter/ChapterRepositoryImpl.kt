@@ -31,6 +31,7 @@ class ChapterRepositoryImpl(
                         chapter.dateFetch,
                         chapter.dateUpload,
                         chapter.version,
+                        chapter.memo,
                     )
                     val lastInsertId = db.chaptersQueries.selectLastInsertedRowId().executeAsOne()
                     chapter.copy(id = lastInsertId)
@@ -69,6 +70,10 @@ class ChapterRepositoryImpl(
                     version = chapterUpdate.version,
                     isSyncing = 0,
                 )
+                // Separate statement: coalesce() drops the column adapter type.
+                chapterUpdate.memo?.let { memo ->
+                    db.chaptersQueries.updateMemo(memo = memo, chapterId = chapterUpdate.id)
+                }
             }
         }
     }

@@ -53,7 +53,9 @@ import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
+import eu.kanade.tachiyomi.data.download.anime.VideoSizeEstimator
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.player.PlaybackPlayerPreference
 import eu.kanade.tachiyomi.ui.player.PlaybackSelection
@@ -68,6 +70,8 @@ import eu.kanade.tachiyomi.ui.player.loader.EpisodeLoader
 import eu.kanade.tachiyomi.ui.player.loader.HosterLoader
 import eu.kanade.tachiyomi.ui.player.sanitizeVisiblePlaybackPreferences
 import eu.kanade.tachiyomi.util.system.toast
+import eu.kanade.tachiyomi.util.toSize
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -120,6 +124,7 @@ class EpisodeOptionsDialogScreen(
         val selectedHosterVideoIndex by sm.selectedHosterVideoIndex.collectAsStateWithLifecycle()
         val currentVideo by sm.currentVideo.collectAsStateWithLifecycle()
         val showAllQualities by sm.showAllQualities.collectAsStateWithLifecycle()
+        val currentVideoSize by sm.currentVideoSize.collectAsStateWithLifecycle()
 
         EpisodeOptionsDialog(
             useExternalDownloader = useExternalDownloader,
@@ -130,6 +135,7 @@ class EpisodeOptionsDialogScreen(
             resultList = hosterState,
             expandedList = hosterExpandedList,
             currentVideo = currentVideo,
+            currentVideoSize = currentVideoSize,
             selectedHosterVideoIndex = selectedHosterVideoIndex,
             onShowAllQualities = sm::onShowAllQualities,
             onClickHoster = sm::onClickHoster,
@@ -159,6 +165,11 @@ class EpisodeOptionsDialogScreenModel(
     val selectedHosterVideoIndex = _selectedHosterVideoIndex.asStateFlow()
     private val _currentVideo = MutableStateFlow<Video?>(null)
     val currentVideo = _currentVideo.asStateFlow()
+
+    /** Size of the currently selected quality, or null while unknown/unresolvable. */
+    private val _currentVideoSize = MutableStateFlow<VideoSizeEstimator.Estimate?>(null)
+    val currentVideoSize = _currentVideoSize.asStateFlow()
+    private var sizeProbeJob: Job? = null
 
     private val _episode = MutableStateFlow<Episode?>(null)
     val episode = _episode.asStateFlow()
@@ -421,8 +432,24 @@ class EpisodeOptionsDialogScreenModel(
             selectedHosterState.getChangedAt(videoIndex, resolvedVideo, Video.State.READY),
         )
         _currentVideo.update { _ -> resolvedVideo }
+        probeVideoSize(resolvedVideo)
 
         return true
+    }
+
+    /**
+     * Looks up the size of the selected quality. Runs off the main thread and never blocks the
+     * dialog: the size simply appears once resolved. Superseded probes are cancelled so switching
+     * qualities quickly cannot leave a stale value behind.
+     */
+    private fun probeVideoSize(video: Video) {
+        sizeProbeJob?.cancel()
+        _currentVideoSize.update { _ -> null }
+
+        sizeProbeJob = screenModelScope.launchIO {
+            val estimate = VideoSizeEstimator.estimate(video, _source.value as? AnimeHttpSource)
+            _currentVideoSize.update { _ -> estimate }
+        }
     }
 
     private fun <T> MutableStateFlow<Result<List<T>>?>.updateAt(index: Int, newValue: T) {
@@ -584,6 +611,7 @@ fun EpisodeOptionsDialog(
     resultList: Result<List<HosterState>>? = null,
     expandedList: List<Boolean>,
     currentVideo: Video?,
+    currentVideoSize: VideoSizeEstimator.Estimate? = null,
     selectedHosterVideoIndex: Pair<Int, Int>,
     onShowAllQualities: (Boolean) -> Unit,
     onClickHoster: (Int) -> Unit,
@@ -639,6 +667,7 @@ fun EpisodeOptionsDialog(
                     hosterStateList = hosterStateList,
                     expandedList = expandedList,
                     currentVideo = currentVideo,
+                    currentVideoSize = currentVideoSize,
                     selectedHosterVideoIndex = selectedHosterVideoIndex,
                     onShowAllQualities = onShowAllQualities,
                     onClickHoster = onClickHoster,
@@ -661,6 +690,7 @@ private fun VideoList(
     hosterStateList: List<HosterState>,
     expandedList: List<Boolean>,
     currentVideo: Video,
+    currentVideoSize: VideoSizeEstimator.Estimate?,
     selectedHosterVideoIndex: Pair<Int, Int>,
     onShowAllQualities: (Boolean) -> Unit,
     onClickHoster: (Int) -> Unit,
@@ -680,8 +710,15 @@ private fun VideoList(
     ) {
         Column {
             if (currentVideo.videoUrl.isNotEmpty() && !showAllQualities) {
+                // Sizes for segmented streams are derived from duration and bitrate, so they are
+                // prefixed with "~" to avoid presenting an approximation as an exact number.
+                val sizeLabel = currentVideoSize?.let { estimate ->
+                    val prefix = if (estimate.exact) "" else "~"
+                    " · $prefix${estimate.bytes.toSize()}"
+                }.orEmpty()
+
                 ClickableRow(
-                    text = currentVideo.videoTitle,
+                    text = currentVideo.videoTitle + sizeLabel,
                     icon = null,
                     onClick = { onShowAllQualities(true) },
                     showDropdownArrow = true,

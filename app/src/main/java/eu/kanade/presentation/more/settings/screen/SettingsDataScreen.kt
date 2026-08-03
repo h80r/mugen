@@ -750,19 +750,15 @@ object SettingsDataScreen : SearchableSettings {
 
     @Composable
     private fun getImportGroup(): Preference.PreferenceGroup {
-        val context = LocalContext.current
         val navigator = LocalNavigator.currentOrThrow
 
         val anixartImportLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.GetContent(),
         ) { uri ->
             if (uri != null) {
-                navigator.push(
-                    AnixartImportScreen {
-                        context.contentResolver.openInputStream(uri)
-                            ?: throw IllegalStateException("Cannot open selected file")
-                    },
-                )
+                // Pass URI string only — Screen must stay Serializable for Voyager state
+                // restore (lambda previously caused BadParcelableException on Android 16).
+                navigator.push(AnixartImportScreen(uri.toString()))
             }
         }
 

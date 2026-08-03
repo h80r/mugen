@@ -36,6 +36,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTurnSpeed
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderAppearanceMode
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundSource
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundTexture
+import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTapZoneAction
 import eu.wewox.pagecurl.ExperimentalPageCurlApi
 import eu.wewox.pagecurl.config.PageCurlConfig
 import org.junit.jupiter.api.AfterEach
@@ -2597,6 +2598,17 @@ class NovelReaderUiVisibilityTest {
         assertFalse(webViewState.richNativeEnabled)
         assertTrue(webViewState.richNativeReason == RendererSettingDisableReason.WEBVIEW_ACTIVE)
 
+        val bookModeState = resolveRendererSettingsAvailability(
+            pageReaderEnabled = false,
+            showWebView = false,
+            bionicReadingEnabled = false,
+            bookModeEnabled = true,
+        )
+        assertTrue(bookModeState.preferWebViewEnabled)
+        assertTrue(bookModeState.preferWebViewReason == null)
+        assertFalse(bookModeState.richNativeEnabled)
+        assertTrue(bookModeState.richNativeReason == RendererSettingDisableReason.WEBVIEW_ACTIVE)
+
         val bionicState = resolveRendererSettingsAvailability(
             pageReaderEnabled = false,
             showWebView = false,
@@ -3081,6 +3093,113 @@ class NovelReaderUiVisibilityTest {
         )
 
         assertEquals(0.6f, seekbarValue, 0.0001f)
+    }
+
+    @Test
+    fun `vertical seekbar drag deltas accumulate from the latest scrub position`() {
+        val first = resolveVerticalSeekbarDragProgress(
+            currentProgress = 0.2f,
+            deltaPx = 10f,
+            trackHeightPx = 100f,
+        )
+        val second = resolveVerticalSeekbarDragProgress(
+            currentProgress = first,
+            deltaPx = 25f,
+            trackHeightPx = 100f,
+        )
+
+        assertEquals(0.3f, first, 0.0001f)
+        assertEquals(0.55f, second, 0.0001f)
+    }
+
+    @Test
+    fun `vertical seekbar drag supports reverse movement and clamps to track bounds`() {
+        assertEquals(
+            0.25f,
+            resolveVerticalSeekbarDragProgress(0.75f, -50f, 100f),
+            0.0001f,
+        )
+        assertEquals(
+            0f,
+            resolveVerticalSeekbarDragProgress(0.1f, -50f, 100f),
+            0.0001f,
+        )
+        assertEquals(
+            1f,
+            resolveVerticalSeekbarDragProgress(0.9f, 50f, 100f),
+            0.0001f,
+        )
+    }
+
+    @Test
+    fun `vertical seekbar value prioritizes book then web then active reader position`() {
+        val bookValue = resolveReaderVerticalSeekbarValue(
+            showWebView = true,
+            webProgressPercent = 80,
+            usePageReader = false,
+            pageReaderRendererRoute = NovelPageReaderRendererRoute.NONE,
+            pagerCurrentPage = 0,
+            pageTurnCurrentPage = 0,
+            composePagerContentPageCount = 1,
+            composePagerHasPreviousChapter = false,
+            seekbarItemsCount = 101,
+            readingProgressPercent = 42,
+            nativeFirstVisibleItemIndex = 70,
+            nativeCanScrollForward = true,
+            bookModeEnabled = true,
+        )
+        val webValue = resolveReaderVerticalSeekbarValue(
+            showWebView = true,
+            webProgressPercent = 73,
+            usePageReader = false,
+            pageReaderRendererRoute = NovelPageReaderRendererRoute.NONE,
+            pagerCurrentPage = 0,
+            pageTurnCurrentPage = 0,
+            composePagerContentPageCount = 1,
+            composePagerHasPreviousChapter = false,
+            seekbarItemsCount = 101,
+            readingProgressPercent = 10,
+            nativeFirstVisibleItemIndex = 5,
+            nativeCanScrollForward = true,
+        )
+        val nativeValue = resolveReaderVerticalSeekbarValue(
+            showWebView = false,
+            webProgressPercent = 0,
+            usePageReader = false,
+            pageReaderRendererRoute = NovelPageReaderRendererRoute.NONE,
+            pagerCurrentPage = 0,
+            pageTurnCurrentPage = 0,
+            composePagerContentPageCount = 1,
+            composePagerHasPreviousChapter = false,
+            seekbarItemsCount = 11,
+            readingProgressPercent = 90,
+            nativeFirstVisibleItemIndex = 3,
+            nativeCanScrollForward = true,
+        )
+
+        assertEquals(0.42f, bookValue, 0.0001f)
+        assertEquals(0.73f, webValue, 0.0001f)
+        assertEquals(0.3f, nativeValue, 0.0001f)
+    }
+
+    @Test
+    fun `native seekbar reports track end when list cannot scroll forward`() {
+        val seekbarValue = resolveReaderVerticalSeekbarValue(
+            showWebView = false,
+            webProgressPercent = 0,
+            usePageReader = false,
+            pageReaderRendererRoute = NovelPageReaderRendererRoute.NONE,
+            pagerCurrentPage = 0,
+            pageTurnCurrentPage = 0,
+            composePagerContentPageCount = 1,
+            composePagerHasPreviousChapter = false,
+            seekbarItemsCount = 11,
+            readingProgressPercent = 0,
+            nativeFirstVisibleItemIndex = 8,
+            nativeCanScrollForward = false,
+        )
+
+        assertEquals(1f, seekbarValue, 0.0001f)
     }
 
     @Test
@@ -3716,6 +3835,171 @@ class NovelReaderUiVisibilityTest {
                 hasNextChapter = true,
                 tapToScrollEnabled = true,
                 animateBoundaryTransition = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action keeps toggle ui zone action`() {
+        assertEquals(
+            PageTurnCustomTapAction.TOGGLE_UI,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.TOGGLE_UI,
+                currentPage = 1,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action ignores none zone action`() {
+        assertEquals(
+            PageTurnCustomTapAction.NONE,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.NONE,
+                currentPage = 1,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action moves backward from zone action on inner page`() {
+        assertEquals(
+            PageTurnCustomTapAction.MOVE_PREVIOUS_PAGE,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.BACKWARD,
+                currentPage = 1,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action moves forward from zone action on inner page`() {
+        assertEquals(
+            PageTurnCustomTapAction.MOVE_NEXT_PAGE,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.FORWARD,
+                currentPage = 1,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action opens previous chapter from zone action on first page`() {
+        assertEquals(
+            PageTurnCustomTapAction.OPEN_PREVIOUS_CHAPTER,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.BACKWARD,
+                currentPage = 0,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action opens next chapter from zone action on last page`() {
+        assertEquals(
+            PageTurnCustomTapAction.OPEN_NEXT_CHAPTER,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.FORWARD,
+                currentPage = 2,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action opens previous chapter directly from chapter zone action`() {
+        assertEquals(
+            PageTurnCustomTapAction.OPEN_PREVIOUS_CHAPTER,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.PREV_CHAPTER,
+                currentPage = 1,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action opens next chapter directly from chapter zone action`() {
+        assertEquals(
+            PageTurnCustomTapAction.OPEN_NEXT_CHAPTER,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.NEXT_CHAPTER,
+                currentPage = 1,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action animates boundary transition on previous chapter edge when enabled`() {
+        assertEquals(
+            PageTurnCustomTapAction.MOVE_PREVIOUS_PAGE,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.BACKWARD,
+                currentPage = 0,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action animates boundary transition on next chapter edge when enabled`() {
+        assertEquals(
+            PageTurnCustomTapAction.MOVE_NEXT_PAGE,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.FORWARD,
+                currentPage = 2,
+                pageCount = 3,
+                hasPreviousChapter = true,
+                hasNextChapter = true,
+                animateBoundaryTransition = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `page turn configured tap action stays none without previous chapter at first page`() {
+        assertEquals(
+            PageTurnCustomTapAction.NONE,
+            resolvePageTurnConfiguredTapAction(
+                zoneAction = NovelReaderTapZoneAction.BACKWARD,
+                currentPage = 0,
+                pageCount = 3,
+                hasPreviousChapter = false,
+                hasNextChapter = true,
+                animateBoundaryTransition = false,
             ),
         )
     }
@@ -4472,6 +4756,7 @@ class NovelReaderUiVisibilityTest {
             textShadowCss = null,
             forceBoldText = false,
             forceItalicText = false,
+            bionicReadingEnabled = false,
         )
         val second = buildWebReaderCssFingerprint(
             chapterId = 1L,
@@ -4494,9 +4779,39 @@ class NovelReaderUiVisibilityTest {
             textShadowCss = null,
             forceBoldText = false,
             forceItalicText = false,
+            bionicReadingEnabled = false,
         )
 
         assertNotEquals(first, second)
+    }
+
+    @Test
+    fun `webview css fingerprint changes when bionic reading toggles`() {
+        fun fingerprint(bionicReadingEnabled: Boolean): String = buildWebReaderCssFingerprint(
+            chapterId = 1L,
+            paddingTop = 0,
+            paddingBottom = 0,
+            paddingHorizontal = 16,
+            fontSizePx = 16,
+            lineHeightMultiplier = 1.6f,
+            paragraphSpacingPx = 12,
+            textAlignCss = null,
+            firstLineIndentCss = null,
+            textColorHex = "#111111",
+            backgroundHex = "#FFFFFF",
+            appearanceMode = NovelReaderAppearanceMode.BACKGROUND,
+            backgroundTexture = NovelReaderBackgroundTexture.NONE,
+            oledEdgeGradient = false,
+            backgroundImageIdentity = "preset:linen_paper",
+            fontFamilyName = null,
+            customCss = "",
+            textShadowCss = null,
+            forceBoldText = false,
+            forceItalicText = false,
+            bionicReadingEnabled = bionicReadingEnabled,
+        )
+
+        assertNotEquals(fingerprint(false), fingerprint(true))
     }
 
     @Test

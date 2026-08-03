@@ -287,6 +287,7 @@ fun AppBarActions(
                         it.onClick()
                         showMenu = false
                     },
+                    enabled = it.enabled,
                     text = { Text(it.title, fontWeight = FontWeight.Normal) },
                 )
             }
@@ -478,5 +479,6 @@ sealed interface AppBar {
         val title: String,
         val onClick: () -> Unit,
         val icon: ImageVector? = null,
+        val enabled: Boolean = true,
     ) : AppBarAction
 }

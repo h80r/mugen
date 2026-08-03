@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.data.backup.restore
 import android.content.Context
 import android.net.Uri
 import eu.kanade.tachiyomi.data.backup.BackupDecoder
+import eu.kanade.tachiyomi.data.backup.BackupDiagnosticLog
 import eu.kanade.tachiyomi.data.backup.BackupNotifier
 import eu.kanade.tachiyomi.data.backup.models.BackupAnime
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
@@ -44,8 +45,16 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.aniyomi.AYMR
 import java.io.File
 import java.text.SimpleDateFormat
+import java.util.Collections
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+
+/** Media types tracked while restoring, used for the completeness report. */
+private const val TYPE_MANGA = "manga"
+private const val TYPE_ANIME = "anime"
+private const val TYPE_NOVEL = "novel"
 
 class BackupRestorer(
     private val context: Context,
@@ -74,8 +83,32 @@ class BackupRestorer(
 ) {
 
     private var restoreAmount = 0
-    private var restoreProgress = 0
-    private val errors = mutableListOf<Pair<Date, String>>()
+
+    // Library entries are restored from several coroutines at once, so progress, errors and the
+    // per-type counters must all be safe to touch concurrently.
+    private val restoreProgress = AtomicInteger(0)
+    private val errors = Collections.synchronizedList(mutableListOf<Pair<Date, String>>())
+
+    private val expectedByType = ConcurrentHashMap<String, AtomicInteger>()
+    private val restoredByType = ConcurrentHashMap<String, AtomicInteger>()
+    private val failedByType = ConcurrentHashMap<String, AtomicInteger>()
+
+    private fun advanceProgress(): Int = restoreProgress.incrementAndGet()
+
+    private fun expect(type: String, amount: Int) {
+        if (amount <= 0) return
+        expectedByType.getOrPut(type) { AtomicInteger(0) }.addAndGet(amount)
+    }
+
+    private fun markRestored(type: String) {
+        restoredByType.getOrPut(type) { AtomicInteger(0) }.incrementAndGet()
+    }
+
+    private fun markFailed(type: String) {
+        failedByType.getOrPut(type) { AtomicInteger(0) }.incrementAndGet()
+    }
+
+    private fun countOf(map: Map<String, AtomicInteger>, type: String): Int = map[type]?.get() ?: 0
 
     /**
      * Mapping of source ID to source name from backup data
@@ -88,6 +121,7 @@ class BackupRestorer(
         val startTime = System.currentTimeMillis()
 
         restoreFromFile(uri, options)
+        verifyCompleteness()
 
         val time = System.currentTimeMillis() - startTime
 
@@ -102,8 +136,41 @@ class BackupRestorer(
         )
     }
 
+    /**
+     * Every entry the backup declared must end up either restored or reported as failed.
+     *
+     * Silently dropping entries is the one failure mode a user cannot detect on their own, so a
+     * mismatch is surfaced in the restore report instead of being swallowed.
+     */
+    private fun verifyCompleteness() {
+        val summary = expectedByType.keys.sorted().joinToString(" ") { type ->
+            val expected = countOf(expectedByType, type)
+            val restored = countOf(restoredByType, type)
+            val failed = countOf(failedByType, type)
+
+            if (restored + failed != expected) {
+                errors.add(
+                    Date() to "Partial restore of $type: " +
+                        "$restored restored, $failed failed, $expected expected",
+                )
+            }
+            "$type=$restored/$expected(failed=$failed)"
+        }
+        // Counts only. Titles, urls and quest data never reach the diagnostic log.
+        BackupDiagnosticLog.log(context, "restore_summary", summary)
+    }
+
     private suspend fun restoreFromFile(uri: Uri, options: RestoreOptions) {
-        val backup = BackupDecoder(context).decode(uri)
+        val decoded = BackupDecoder(context).decodeDetailed(uri, options.importPolicy())
+        val backup = decoded.backup
+
+        BackupDiagnosticLog.log(
+            context,
+            "restore_source",
+            "origin=${decoded.origin} legacySisterFallback=${options.legacySisterFallback} " +
+                "ambiguous=${decoded.ambiguousSourceIds} manga=${backup.backupManga.size} " +
+                "anime=${backup.backupAnime.size} novel=${backup.backupNovel.size}",
+        )
 
         // Store source mapping for error messages
         val backupAnimeMaps = backup.backupAnimeSources
@@ -121,10 +188,40 @@ class BackupRestorer(
         val shouldRestoreAnimeCategories = options.categories && (includeAllCategories || options.restoreAnime)
         val shouldRestoreNovelCategories = options.categories && (includeAllCategories || options.restoreNovel)
 
+        // Stores are written to both the store fields and the legacy repo fields so an older build
+        // can still read them; replaying both would insert every store twice.
+        val animeExtensionStoreBackups = if (options.restoreAnime) backup.backupAnimeExtensionStore else emptyList()
+        val mangaExtensionStoreBackups = if (options.restoreManga) backup.backupMangaExtensionStore else emptyList()
+        val novelExtensionStoreBackups = if (options.restoreNovel) backup.backupNovelExtensionStore else emptyList()
+        val animeExtensionRepoBackups = if (options.restoreAnime) {
+            legacyExtensionRepoBackupsToRestore(backup.backupAnimeExtensionRepo, animeExtensionStoreBackups)
+        } else {
+            emptyList()
+        }
+        val mangaExtensionRepoBackups = if (options.restoreManga) {
+            legacyExtensionRepoBackupsToRestore(backup.backupMangaExtensionRepo, mangaExtensionStoreBackups)
+        } else {
+            emptyList()
+        }
+        val novelExtensionRepoBackups = if (options.restoreNovel) {
+            legacyExtensionRepoBackupsToRestore(backup.backupNovelExtensionRepo, novelExtensionStoreBackups)
+        } else {
+            emptyList()
+        }
+
         if (options.libraryEntries) {
-            if (options.restoreManga) restoreAmount += backup.backupManga.size
-            if (options.restoreAnime) restoreAmount += backup.backupAnime.size
-            if (options.restoreNovel) restoreAmount += backup.backupNovel.size
+            if (options.restoreManga) {
+                restoreAmount += backup.backupManga.size
+                expect(TYPE_MANGA, backup.backupManga.size)
+            }
+            if (options.restoreAnime) {
+                restoreAmount += backup.backupAnime.size
+                expect(TYPE_ANIME, backup.backupAnime.size)
+            }
+            if (options.restoreNovel) {
+                restoreAmount += backup.backupNovel.size
+                expect(TYPE_NOVEL, backup.backupNovel.size)
+            }
             if (options.restoreManga) restoreAmount += backup.backupMangaSeries.size
             if (options.restoreNovel) restoreAmount += backup.backupNovelSeries.size
         }
@@ -137,18 +234,9 @@ class BackupRestorer(
             restoreAmount += 1
         }
         if (options.extensionRepoSettings) {
-            if (options.restoreAnime) {
-                restoreAmount +=
-                    backup.backupAnimeExtensionRepo.size + backup.backupAnimeExtensionStore.size
-            }
-            if (options.restoreManga) {
-                restoreAmount +=
-                    backup.backupMangaExtensionRepo.size + backup.backupMangaExtensionStore.size
-            }
-            if (options.restoreNovel) {
-                restoreAmount +=
-                    backup.backupNovelExtensionRepo.size + backup.backupNovelExtensionStore.size
-            }
+            restoreAmount += animeExtensionRepoBackups.size + animeExtensionStoreBackups.size
+            restoreAmount += mangaExtensionRepoBackups.size + mangaExtensionStoreBackups.size
+            restoreAmount += novelExtensionRepoBackups.size + novelExtensionStoreBackups.size
         }
         if (options.customButtons) {
             restoreAmount += 1
@@ -214,15 +302,15 @@ class BackupRestorer(
                 }
             }
             if (options.extensionRepoSettings) {
-                restoreExtensionRepos(
-                    if (options.restoreAnime) backup.backupAnimeExtensionRepo else emptyList(),
-                    if (options.restoreManga) backup.backupMangaExtensionRepo else emptyList(),
-                    if (options.restoreNovel) backup.backupNovelExtensionRepo else emptyList(),
-                )
                 restoreExtensionStores(
-                    if (options.restoreAnime) backup.backupAnimeExtensionStore else emptyList(),
-                    if (options.restoreManga) backup.backupMangaExtensionStore else emptyList(),
-                    if (options.restoreNovel) backup.backupNovelExtensionStore else emptyList(),
+                    animeExtensionStoreBackups,
+                    mangaExtensionStoreBackups,
+                    novelExtensionStoreBackups,
+                )
+                restoreExtensionRepos(
+                    animeExtensionRepoBackups,
+                    mangaExtensionRepoBackups,
+                    novelExtensionRepoBackups,
                 )
             }
             if (options.customButtons) {
@@ -264,10 +352,9 @@ class BackupRestorer(
             if (backupAnimeCategories.isNotEmpty()) {
                 animeCategoriesRestorer(backupAnimeCategories)
             }
-            restoreProgress += 1
             notifier.showRestoreProgress(
                 context.stringResource(MR.strings.categories),
-                restoreProgress,
+                advanceProgress(),
                 restoreAmount,
                 isSync,
             )
@@ -276,10 +363,9 @@ class BackupRestorer(
             if (backupMangaCategories.isNotEmpty()) {
                 mangaCategoriesRestorer(backupMangaCategories)
             }
-            restoreProgress += 1
             notifier.showRestoreProgress(
                 context.stringResource(MR.strings.categories),
-                restoreProgress,
+                advanceProgress(),
                 restoreAmount,
                 isSync,
             )
@@ -288,10 +374,9 @@ class BackupRestorer(
             if (backupNovelCategories.isNotEmpty()) {
                 novelCategoriesRestorer(backupNovelCategories)
             }
-            restoreProgress += 1
             notifier.showRestoreProgress(
                 context.stringResource(MR.strings.categories),
-                restoreProgress,
+                advanceProgress(),
                 restoreAmount,
                 isSync,
             )
@@ -309,13 +394,14 @@ class BackupRestorer(
                 val seasons = backupAnimes.filter { s -> s.parentId == it.id }
                 try {
                     animeRestorer.restore(it, backupAnimeCategories, seasons)
+                    markRestored(TYPE_ANIME)
                 } catch (e: Exception) {
+                    markFailed(TYPE_ANIME)
                     val sourceName = animeSourceMapping[it.source] ?: it.source.toString()
                     errors.add(Date() to "${it.title} [$sourceName]: ${e.message}")
                 }
 
-                restoreProgress += 1
-                notifier.showRestoreProgress(it.title, restoreProgress, restoreAmount, isSync)
+                notifier.showRestoreProgress(it.title, advanceProgress(), restoreAmount, isSync)
             }
     }
 
@@ -329,13 +415,14 @@ class BackupRestorer(
 
                 try {
                     mangaRestorer.restore(it, backupMangaCategories)
+                    markRestored(TYPE_MANGA)
                 } catch (e: Exception) {
+                    markFailed(TYPE_MANGA)
                     val sourceName = mangaSourceMapping[it.source] ?: it.source.toString()
                     errors.add(Date() to "${it.title} [$sourceName]: ${e.message}")
                 }
 
-                restoreProgress += 1
-                notifier.showRestoreProgress(it.title, restoreProgress, restoreAmount, isSync)
+                notifier.showRestoreProgress(it.title, advanceProgress(), restoreAmount, isSync)
             }
     }
 
@@ -349,13 +436,14 @@ class BackupRestorer(
 
                 try {
                     novelRestorer.restore(it, backupNovelCategories)
+                    markRestored(TYPE_NOVEL)
                 } catch (e: Exception) {
+                    markFailed(TYPE_NOVEL)
                     val sourceName = novelSourceMapping[it.source] ?: it.source.toString()
                     errors.add(Date() to "${it.title} [$sourceName]: ${e.message}")
                 }
 
-                restoreProgress += 1
-                notifier.showRestoreProgress(it.title, restoreProgress, restoreAmount, isSync)
+                notifier.showRestoreProgress(it.title, advanceProgress(), restoreAmount, isSync)
             }
     }
 
@@ -370,8 +458,7 @@ class BackupRestorer(
                     Date() to "Manga series '${it.title}': ${e.message}",
                 )
             }
-            restoreProgress += 1
-            notifier.showRestoreProgress(it.title, restoreProgress, restoreAmount, isSync)
+            notifier.showRestoreProgress(it.title, advanceProgress(), restoreAmount, isSync)
         }
     }
 
@@ -386,8 +473,7 @@ class BackupRestorer(
                     Date() to "Novel series '${it.title}': ${e.message}",
                 )
             }
-            restoreProgress += 1
-            notifier.showRestoreProgress(it.title, restoreProgress, restoreAmount, isSync)
+            notifier.showRestoreProgress(it.title, advanceProgress(), restoreAmount, isSync)
         }
     }
 
@@ -401,10 +487,9 @@ class BackupRestorer(
             categories,
         )
 
-        restoreProgress += 1
         notifier.showRestoreProgress(
             context.stringResource(MR.strings.app_settings),
-            restoreProgress,
+            advanceProgress(),
             restoreAmount,
             isSync,
         )
@@ -414,10 +499,9 @@ class BackupRestorer(
         ensureActive()
         preferenceRestorer.restoreSource(preferences)
 
-        restoreProgress += 1
         notifier.showRestoreProgress(
             context.stringResource(MR.strings.source_settings),
-            restoreProgress,
+            advanceProgress(),
             restoreAmount,
             isSync,
         )
@@ -440,10 +524,9 @@ class BackupRestorer(
                     )
                 }
 
-                restoreProgress += 1
                 notifier.showRestoreProgress(
                     context.stringResource(MR.strings.extensionRepo_settings),
-                    restoreProgress,
+                    advanceProgress(),
                     restoreAmount,
                     isSync,
                 )
@@ -461,10 +544,9 @@ class BackupRestorer(
                     )
                 }
 
-                restoreProgress += 1
                 notifier.showRestoreProgress(
                     context.stringResource(MR.strings.extensionRepo_settings),
-                    restoreProgress,
+                    advanceProgress(),
                     restoreAmount,
                     isSync,
                 )
@@ -482,10 +564,9 @@ class BackupRestorer(
                     )
                 }
 
-                restoreProgress += 1
                 notifier.showRestoreProgress(
                     context.stringResource(MR.strings.extensionRepo_settings),
-                    restoreProgress,
+                    advanceProgress(),
                     restoreAmount,
                     isSync,
                 )
@@ -509,10 +590,9 @@ class BackupRestorer(
                     )
                 }
 
-                restoreProgress += 1
                 notifier.showRestoreProgress(
                     context.stringResource(MR.strings.extensionRepo_settings),
-                    restoreProgress,
+                    advanceProgress(),
                     restoreAmount,
                     isSync,
                 )
@@ -530,10 +610,9 @@ class BackupRestorer(
                     )
                 }
 
-                restoreProgress += 1
                 notifier.showRestoreProgress(
                     context.stringResource(MR.strings.extensionRepo_settings),
-                    restoreProgress,
+                    advanceProgress(),
                     restoreAmount,
                     isSync,
                 )
@@ -551,10 +630,9 @@ class BackupRestorer(
                     )
                 }
 
-                restoreProgress += 1
                 notifier.showRestoreProgress(
                     context.stringResource(MR.strings.extensionRepo_settings),
-                    restoreProgress,
+                    advanceProgress(),
                     restoreAmount,
                     isSync,
                 )
@@ -565,10 +643,9 @@ class BackupRestorer(
         ensureActive()
         customButtonRestorer(customButtons)
 
-        restoreProgress += 1
         notifier.showRestoreProgress(
             context.stringResource(AYMR.strings.custom_button_settings),
-            restoreProgress,
+            advanceProgress(),
             restoreAmount,
             isSync,
         )
@@ -578,10 +655,9 @@ class BackupRestorer(
         ensureActive()
         extensionsRestorer.restoreExtensions(extensions)
 
-        restoreProgress += 1
         notifier.showRestoreProgress(
             context.stringResource(MR.strings.source_settings),
-            restoreProgress,
+            advanceProgress(),
             restoreAmount,
             isSync,
         )
@@ -615,4 +691,18 @@ class BackupRestorer(
         }
         return File("")
     }
+}
+
+/**
+ * Which legacy repo entries of a backup still have to be replayed.
+ *
+ * A backup carries the same stores twice: under the store fields, and under the legacy repo fields
+ * so an older build can still read them. Replaying both inserts every store a second time under a
+ * fabricated `<base>/repo.json` index url, and makes both restorers report a signing-key clash.
+ */
+internal fun legacyExtensionRepoBackupsToRestore(
+    repoBackups: List<BackupExtensionRepos>,
+    storeBackups: List<BackupExtensionStore>,
+): List<BackupExtensionRepos> {
+    return if (storeBackups.isEmpty()) repoBackups else emptyList()
 }

@@ -87,8 +87,13 @@ class AnimeExtensionApiTest {
     }
 
     @Test
-    fun `supported library versions list contains all intermediate versions`() {
-        AnimeExtensionLoader.SUPPORTED_LIB_VERSIONS shouldBe listOf(12.0, 13.0, 14.0, 15.0, 16.0)
+    fun `supported library versions accept the full 12-16 range including minor versions`() {
+        (12.0 in AnimeExtensionLoader.SUPPORTED_LIB_VERSIONS) shouldBe true
+        (14.0 in AnimeExtensionLoader.SUPPORTED_LIB_VERSIONS) shouldBe true
+        (14.4 in AnimeExtensionLoader.SUPPORTED_LIB_VERSIONS) shouldBe true
+        (16.0 in AnimeExtensionLoader.SUPPORTED_LIB_VERSIONS) shouldBe true
+        (11.0 in AnimeExtensionLoader.SUPPORTED_LIB_VERSIONS) shouldBe false
+        (16.1 in AnimeExtensionLoader.SUPPORTED_LIB_VERSIONS) shouldBe false
     }
 
     @Test
@@ -166,5 +171,23 @@ class AnimeExtensionApiTest {
             ),
             store = store,
         )
+    }
+
+    @Test
+    fun `last check timestamp is stored under an anime specific app state key`() {
+        // Sharing one key with the manga check meant whichever ran first starved the other.
+        runTest {
+            nowMs = 1_000_000L
+            every { lastCheckPreference.get() } returns nowMs
+
+            api.checkForUpdatesIfDue(context)
+
+            verify {
+                preferenceStore.getLong(
+                    match<String> { it.contains("anime") && it.contains("last") },
+                    any(),
+                )
+            }
+        }
     }
 }

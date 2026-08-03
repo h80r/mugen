@@ -66,3 +66,22 @@ internal fun resolveReaderUiAfterChapterChange(
 ): Boolean {
     return if (usePageReader) false else currentShowReaderUi
 }
+
+internal fun resolveReaderProgressToPersist(
+    shouldPersistRead: Boolean,
+    currentIndex: Int,
+    resolvedPersistedProgress: Long,
+    previousProgress: Long?,
+    isInitialPositionRestored: Boolean,
+    chapterHandoffTarget: NovelReaderPageReaderHandoffTarget =
+        NovelReaderPageReaderHandoffTarget.SAVED,
+): Long? {
+    if (!shouldPersistRead) return resolvedPersistedProgress
+    if (previousProgress == null) return resolvedPersistedProgress
+    if (chapterHandoffTarget == NovelReaderPageReaderHandoffTarget.START) {
+        return resolvedPersistedProgress
+    }
+    if (resolvedPersistedProgress >= previousProgress) return resolvedPersistedProgress
+    if (!isInitialPositionRestored && currentIndex <= 0) return null
+    return resolvedPersistedProgress
+}

@@ -124,7 +124,7 @@ internal fun NovelRichNativeScrollItem(
     ttsHighlightColor: Color = Color.Transparent,
     selectionSessionIdProvider: () -> Long,
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit,
-    onPlainTap: ((Float, Float) -> Unit)? = null,
+    onPlainTap: ((Float, Float, Float, Float) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val onLinkClick: (String) -> Unit = { rawUrl ->
@@ -153,6 +153,7 @@ internal fun NovelRichNativeScrollItem(
                 sourceBlockIndex = index,
                 highlightState = ttsHighlightState,
                 highlightColor = ttsHighlightColor,
+                blockAnchor = block.anchor,
             )
             val isChapterTitle = index == 0 && isNativeChapterTitleText(text.text, chapterTitle)
             val resolvedTextAlign = resolveNativeReaderTextAlign(
@@ -246,6 +247,7 @@ internal fun NovelRichNativeScrollItem(
                     sourceBlockIndex = index,
                     highlightState = ttsHighlightState,
                     highlightColor = ttsHighlightColor,
+                    blockAnchor = block.anchor,
                 ),
                 isChapterTitle = false,
                 firstLineIndentEm = null,
@@ -288,6 +290,7 @@ internal fun NovelRichNativeScrollItem(
                     sourceBlockIndex = index,
                     highlightState = ttsHighlightState,
                     highlightColor = ttsHighlightColor,
+                    blockAnchor = block.anchor,
                 ),
                 isChapterTitle = false,
                 firstLineIndentEm = null,
@@ -321,7 +324,7 @@ internal fun NovelRichNativeScrollItem(
                     .padding(start = 12.dp),
             )
         }
-        NovelRichContentBlock.HorizontalRule -> {
+        is NovelRichContentBlock.HorizontalRule -> {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

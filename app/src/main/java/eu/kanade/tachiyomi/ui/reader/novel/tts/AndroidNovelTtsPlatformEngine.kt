@@ -3,10 +3,13 @@
 package eu.kanade.tachiyomi.ui.reader.novel.tts
 
 import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import kotlinx.coroutines.suspendCancellableCoroutine
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.resume
@@ -30,12 +33,7 @@ private object NoOpNovelTtsPlatformEngine : NovelTtsPlatformEngine {
 
     override fun availableLocales(): List<Locale> = emptyList()
 
-    override fun capabilities(): NovelTtsEngineCapabilities = NovelTtsEngineCapabilities(
-        supportsExactWordOffsets = false,
-        supportsReliablePauseResume = false,
-        supportsVoiceEnumeration = false,
-        supportsLocaleEnumeration = false,
-    )
+    override fun capabilities(): NovelTtsEngineCapabilities = NovelTtsEngineCapabilities.NONE
 
     override suspend fun setVoice(voiceId: String?) = Unit
 
@@ -116,6 +114,10 @@ private class AndroidNovelTtsPlatformEngine(
                 override fun onError(utteranceId: String, errorCode: Int) {
                     progressListener?.onUtteranceError(utteranceId)
                 }
+
+                override fun onRangeStart(utteranceId: String, start: Int, end: Int, frame: Int) {
+                    progressListener?.onUtteranceRangeStart(utteranceId, start, end)
+                }
             },
         )
     }
@@ -146,6 +148,7 @@ private class AndroidNovelTtsPlatformEngine(
             tts?.voices
                 ?.mapNotNull { it.locale }
                 ?.distinct()
+                ?.sortedBy { it.toLanguageTag() }
                 .orEmpty()
         }.getOrDefault(emptyList())
     }
@@ -153,7 +156,10 @@ private class AndroidNovelTtsPlatformEngine(
     override fun capabilities(): NovelTtsEngineCapabilities {
         val voices = runCatching { tts?.voices.orEmpty() }.getOrDefault(emptySet())
         return NovelTtsEngineCapabilities(
-            supportsExactWordOffsets = false,
+            // Modern engines report per-word ranges through onRangeStart (API 26+).
+            // Estimated highlighting stays active as a fallback until the first
+            // range event actually arrives for an utterance.
+            supportsExactWordOffsets = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O,
             supportsReliablePauseResume = false,
             supportsVoiceEnumeration = voices.isNotEmpty(),
             supportsLocaleEnumeration = voices.isNotEmpty(),
@@ -161,17 +167,41 @@ private class AndroidNovelTtsPlatformEngine(
     }
 
     override suspend fun setVoice(voiceId: String?) {
-        runCatching {
-            val targetVoice = tts?.voices?.firstOrNull { it.name == voiceId } ?: return
-            tts?.voice = targetVoice
+        val engine = tts ?: return
+        val normalizedVoiceId = voiceId?.takeIf { it.isNotBlank() } ?: return
+        val applied = runCatching {
+            val targetVoice = engine.voices?.firstOrNull { it.name == normalizedVoiceId }
+            if (targetVoice != null) {
+                engine.voice = targetVoice
+                true
+            } else {
+                // Locale-fallback descriptors use the locale tag as the voice id.
+                applyLanguage(engine, Locale.forLanguageTag(normalizedVoiceId))
+            }
+        }.getOrDefault(false)
+        if (!applied) {
+            logcat(LogPriority.WARN) { "Novel TTS: unable to apply voice '$normalizedVoiceId'" }
         }
     }
 
     override suspend fun setLocale(localeTag: String?) {
-        runCatching {
-            val locale = localeTag?.let(Locale::forLanguageTag) ?: return
-            tts?.language = locale
+        val engine = tts ?: return
+        val locale = localeTag?.takeIf { it.isNotBlank() }?.let(Locale::forLanguageTag) ?: return
+        val applied = runCatching { applyLanguage(engine, locale) }.getOrDefault(false)
+        if (!applied) {
+            logcat(LogPriority.WARN) { "Novel TTS: language '$localeTag' is not available on this engine" }
         }
+    }
+
+    private fun applyLanguage(engine: TextToSpeech, locale: Locale): Boolean {
+        if (engine.setLanguage(locale) >= TextToSpeech.LANG_AVAILABLE) return true
+        // Retry with the bare language when the exact region variant is missing.
+        if (locale.country.isNotBlank()) {
+            // Locale(String) is deprecated; bare-language tag is the modern equivalent.
+            return engine.setLanguage(Locale.forLanguageTag(locale.language)) >=
+                TextToSpeech.LANG_AVAILABLE
+        }
+        return false
     }
 
     override suspend fun setSpeechRate(rate: Float) {
@@ -183,14 +213,17 @@ private class AndroidNovelTtsPlatformEngine(
     }
 
     override suspend fun speak(utteranceId: String, text: String, flushQueue: Boolean) {
-        runCatching {
-            val queueMode = if (flushQueue) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-            tts?.speak(
-                text,
-                queueMode,
-                Bundle.EMPTY,
-                utteranceId,
-            )
+        val engine = tts ?: run {
+            progressListener?.onUtteranceError(utteranceId)
+            return
+        }
+        val queueMode = if (flushQueue) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+        val result = runCatching { engine.speak(text, queueMode, Bundle.EMPTY, utteranceId) }
+            .getOrDefault(TextToSpeech.ERROR)
+        if (result != TextToSpeech.SUCCESS) {
+            // Propagate enqueue failures instead of silently dropping them; the
+            // session controller surfaces the error and stops the word ticker.
+            progressListener?.onUtteranceError(utteranceId)
         }
     }
 

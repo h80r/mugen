@@ -35,7 +35,11 @@ class AddNovelTracks(
 
             if (latestLocalReadChapterNumber > track.lastChapterRead) {
                 track = track.copy(lastChapterRead = latestLocalReadChapterNumber)
-                tracker.setRemoteLastChapterRead(track.toDbTrack(), latestLocalReadChapterNumber.toInt())
+                tracker.setRemoteLastChapterRead(
+                    track.toDbTrack(),
+                    latestLocalReadChapterNumber.toInt(),
+                    isNovelEntry = true,
+                )
             }
 
             syncNovelChapterProgressWithTrack.await(novelId, track, tracker)

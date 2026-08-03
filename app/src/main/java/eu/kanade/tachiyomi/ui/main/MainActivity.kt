@@ -99,8 +99,10 @@ import eu.kanade.tachiyomi.data.updater.AppUpdateJob
 import eu.kanade.tachiyomi.data.updater.GITHUB_REPO
 import eu.kanade.tachiyomi.data.updater.RELEASE_URL
 import eu.kanade.tachiyomi.data.updater.resolveUpdatedChangelogPrompt
+import eu.kanade.tachiyomi.extension.ExtensionAutoUpdateRunner
 import eu.kanade.tachiyomi.extension.anime.api.AnimeExtensionApi
 import eu.kanade.tachiyomi.extension.manga.api.MangaExtensionApi
+import eu.kanade.tachiyomi.extension.novel.api.NovelExtensionUpdateRunner
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.ui.browse.anime.source.browse.BrowseAnimeSourceScreen
 import eu.kanade.tachiyomi.ui.browse.anime.source.globalsearch.GlobalAnimeSearchScreen
@@ -129,6 +131,7 @@ import eu.kanade.tachiyomi.util.system.updaterEnabled
 import eu.kanade.tachiyomi.util.view.setComposeContent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
@@ -445,6 +448,7 @@ class MainActivity : BaseActivity() {
                             }
                             // Aurora easter egg overlay
                             eu.kanade.presentation.easteregg.aurora.AuroraEchoOverlay()
+                            eu.kanade.presentation.easteregg.lattice.LatticeOverlayHost()
                         }
                     }
 
@@ -693,6 +697,24 @@ class MainActivity : BaseActivity() {
                 runCatching { MangaExtensionApi().checkForUpdatesIfDue(context) }
                     .onFailure { error ->
                         logcat(LogPriority.WARN, error) { "Manga extension update check failed" }
+                    }
+                runCatching { NovelExtensionUpdateRunner().run() }
+                    .onFailure { error ->
+                        logcat(LogPriority.WARN, error) { "Novel extension update check failed" }
+                    }
+            }
+        }
+
+        // Extension auto-update. Deliberately not startup work: it waits until the app has been in
+        // use for a while, so downloads and silent installs never compete with launch, and it runs
+        // after the checks above have refreshed the pending update lists.
+        LaunchedEffect(Unit) {
+            // Two minutes of actual usage before touching the network or the installer.
+            delay(2 * 60 * 1000L)
+            withContext(Dispatchers.IO) {
+                runCatching { ExtensionAutoUpdateRunner().run(context) }
+                    .onFailure { error ->
+                        logcat(LogPriority.WARN, error) { "Extension auto-update failed" }
                     }
             }
         }

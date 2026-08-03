@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.util.insertSeparators
+import eu.kanade.domain.entries.novel.LocalNovelVisibility
 import eu.kanade.presentation.history.novel.NovelHistoryUiModel
 import eu.kanade.tachiyomi.util.lang.toLocalDate
 import kotlinx.coroutines.Dispatchers
@@ -19,13 +20,18 @@ import kotlinx.coroutines.launch
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.system.logcat
+import tachiyomi.domain.entries.novel.interactor.GetNovel
 import tachiyomi.domain.history.novel.model.NovelHistoryWithRelations
 import tachiyomi.domain.history.novel.repository.NovelHistoryRepository
+import tachiyomi.source.local.io.novel.LocalNovelSourceFileSystem
+import tachiyomi.source.local.io.novel.hasSupportedLocalNovelContent
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 class NovelHistoryScreenModel(
     private val historyRepository: NovelHistoryRepository = Injekt.get(),
+    private val getNovel: GetNovel = Injekt.get(),
+    private val localNovelSourceFileSystem: LocalNovelSourceFileSystem = Injekt.get(),
 ) : StateScreenModel<NovelHistoryScreenModel.State>(State()) {
 
     private val _events: Channel<Event> = Channel(Channel.UNLIMITED)
@@ -39,11 +45,37 @@ class NovelHistoryScreenModel(
                     _events.send(Event.InternalError)
                 }
                 .distinctUntilChanged()
-                .map { it.toHistoryUiModels() }
+                .map { items -> items.filterVisibleLocalNovels().toHistoryUiModels() }
                 .flowOn(Dispatchers.IO)
                 .collect { newList ->
                     mutableState.update { it.copy(list = newList) }
                 }
+        }
+    }
+
+    private suspend fun List<NovelHistoryWithRelations>.filterVisibleLocalNovels(): List<NovelHistoryWithRelations> {
+        if (isEmpty()) return this
+        val localItems = filter { LocalNovelVisibility.isLocalSource(it.coverData.sourceId) }
+        if (localItems.isEmpty()) return this
+
+        val urlByNovelId = HashMap<Long, String?>(localItems.size)
+        for (item in localItems) {
+            if (item.novelId in urlByNovelId) continue
+            if (LocalNovelVisibility.shouldHideLocalHistoryByCover(item.coverData.sourceId, item.coverData.url)) {
+                urlByNovelId[item.novelId] = null
+                continue
+            }
+            urlByNovelId[item.novelId] = getNovel.await(item.novelId)?.url
+        }
+
+        return filter { item ->
+            if (!LocalNovelVisibility.isLocalSource(item.coverData.sourceId)) return@filter true
+            LocalNovelVisibility.shouldShowLocalNovelEntry(
+                sourceId = item.coverData.sourceId,
+                url = urlByNovelId[item.novelId],
+                coverUrl = item.coverData.url,
+                hasSupportedContent = localNovelSourceFileSystem::hasSupportedLocalNovelContent,
+            )
         }
     }
 

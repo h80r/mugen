@@ -45,6 +45,20 @@ fun Manga.toSManga(): SManga = SManga.create().also {
     it.rating = rating.normalizeRating()
     it.thumbnail_url = thumbnailUrl
     it.initialized = initialized
+    // Source-owned context: 1.6 extensions read e.g. a rotating slug back out of this.
+    it.memo = memo
+}
+
+/**
+ * Request object for the combined update API (extensions-lib 1.6).
+ *
+ * A 1.6 source fills in the object it is handed and may hand it straight back when it only parses
+ * chapters. Seeding the stored cover here would make that echo indistinguishable from a freshly
+ * parsed cover, so it is left empty: a null cover means "no new cover info" and the stored one is
+ * kept, while a cover the source actually parsed is applied as before.
+ */
+fun Manga.toSMangaUpdateRequest(): SManga = toSManga().also {
+    it.thumbnail_url = null
 }
 
 fun Manga.copyFrom(other: SManga): Manga {
@@ -68,6 +82,8 @@ fun Manga.copyFrom(other: SManga): Manga {
         status = other.status.toLong(),
         updateStrategy = other.update_strategy,
         initialized = other.initialized && initialized,
+        // Keep what we stored when the source sends nothing back.
+        memo = other.memo.takeIf { it.isNotEmpty() } ?: memo,
     )
 }
 
@@ -85,6 +101,7 @@ fun SManga.toDomainManga(sourceId: Long): Manga {
         updateStrategy = update_strategy,
         initialized = initialized,
         source = sourceId,
+        memo = memo,
     )
 }
 

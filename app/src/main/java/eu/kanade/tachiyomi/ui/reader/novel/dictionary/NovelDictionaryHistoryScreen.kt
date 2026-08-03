@@ -35,13 +35,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Star
-import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -984,21 +984,18 @@ private fun HistoryRow(
 ) {
     val colors = AuroraTheme.colors
     val mastery = remember(entry) { NovelDictionaryHistory.masteryOf(entry).coerceIn(0f, 1f) }
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            when (value) {
-                SwipeToDismissBoxValue.StartToEnd -> {
-                    onToggleFavorite()
-                    false
-                }
-                SwipeToDismissBoxValue.EndToStart -> {
-                    onDelete()
-                    true
-                }
-                else -> false
+    // confirmValueChange is deprecated; handle swipe outcomes via currentValue + snapTo.
+    val dismissState = rememberSwipeToDismissBoxState()
+    LaunchedEffect(dismissState.currentValue, entry.term, entry.firstLookupAt) {
+        when (dismissState.currentValue) {
+            SwipeToDismissBoxValue.StartToEnd -> {
+                onToggleFavorite()
+                dismissState.snapTo(SwipeToDismissBoxValue.Settled)
             }
-        },
-    )
+            SwipeToDismissBoxValue.EndToStart -> onDelete()
+            SwipeToDismissBoxValue.Settled -> Unit
+        }
+    }
     // Keep haze translucent so ambient aurora shows through; swipe bg must stay hidden at rest
     // or the favorite star bleeds through the glass (double-star bug).
     val cardTint = colors.surface.copy(alpha = if (colors.isDark) 0.28f else 0.38f)
@@ -1411,7 +1408,7 @@ private fun HistoryDetailSheet(
                     modifier = Modifier.weight(1f),
                     leadingIcon = {
                         Icon(
-                            imageVector = Icons.Outlined.VolumeUp,
+                            imageVector = Icons.AutoMirrored.Outlined.VolumeUp,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
                             tint = colors.accent,

@@ -24,6 +24,7 @@ import okhttp3.OkHttpClient
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.data.AnimeUpdateStrategyColumnAdapter
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.FetchTypeColumnAdapter
@@ -147,15 +148,15 @@ class ExtensionRepoToStoreMigrationIntegrationTest {
         Injekt.addSingleton(fullType<NovelDatabaseHandler>(), novelHandler)
         Injekt.addSingleton(
             fullType<MangaExtensionStoreRepository>(),
-            MangaExtensionStoreRepositoryImpl(mangaHandler, storeService),
+            MangaExtensionStoreRepositoryImpl(mangaHandler, storeService, InMemoryPreferenceStore()),
         )
         Injekt.addSingleton(
             fullType<AnimeExtensionStoreRepository>(),
-            AnimeExtensionStoreRepositoryImpl(animeHandler, storeService),
+            AnimeExtensionStoreRepositoryImpl(animeHandler, storeService, InMemoryPreferenceStore()),
         )
         Injekt.addSingleton(
             fullType<NovelExtensionStoreRepository>(),
-            NovelExtensionStoreRepositoryImpl(novelHandler, storeService),
+            NovelExtensionStoreRepositoryImpl(novelHandler, storeService, InMemoryPreferenceStore()),
         )
     }
 

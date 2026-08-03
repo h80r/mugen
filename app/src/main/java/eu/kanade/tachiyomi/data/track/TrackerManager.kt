@@ -46,7 +46,15 @@ class TrackerManager(context: Context) {
     val jellyfin = Jellyfin(JELLYFIN)
     val tmdb = Tmdb(TMDB)
     val trakt = Trakt(TRAKT)
-    val novelTrackers: List<Tracker> = listOf(novelUpdates, novelList)
+    val novelTrackers: List<Tracker> = listOf(
+        myAnimeList,
+        aniList,
+        kitsu,
+        shikimori,
+        mangaUpdates,
+        novelUpdates,
+        novelList,
+    )
 
     val trackers = listOf(
         myAnimeList, aniList, kitsu, shikimori, bangumi,
@@ -61,7 +69,8 @@ class TrackerManager(context: Context) {
     fun loggedInMangaTrackers() = filterLoggedInTrackersForEntry(
         isNovelEntry = false,
         trackers = trackers,
-        novelTrackerIds = novelTrackerIds,
+        novelCapableTrackerIds = novelCapableTrackerIds,
+        novelOnlyTrackerIds = novelOnlyTrackerIds,
     )
 
     fun loggedInTrackersFlow() = combine(trackers.map { it.isLoggedInFlow }) {
@@ -80,21 +89,25 @@ class TrackerManager(context: Context) {
 
     fun getAll(ids: Set<Long>) = trackers.filter { it.id in ids }
 
-    private val novelTrackerIds = setOf(novelUpdates.id, novelList.id)
+    private val novelOnlyTrackerIds = setOf(novelUpdates.id, novelList.id)
+    private val novelCapableTrackerIds = novelTrackers.map { it.id }.toSet()
+
+    fun isNovelOnlyTracker(trackerId: Long) = trackerId in novelOnlyTrackerIds
 }
 
 internal fun filterLoggedInTrackersForEntry(
     isNovelEntry: Boolean,
     trackers: List<Tracker>,
-    novelTrackerIds: Set<Long>,
+    novelCapableTrackerIds: Set<Long>,
+    novelOnlyTrackerIds: Set<Long>,
 ): List<Tracker> {
     return trackers.filter { tracker ->
         tracker is MangaTracker &&
             tracker.isLoggedIn &&
             if (isNovelEntry) {
-                tracker.id in novelTrackerIds
+                tracker.id in novelCapableTrackerIds
             } else {
-                tracker.id !in novelTrackerIds
+                tracker.id !in novelOnlyTrackerIds
             }
     }
 }

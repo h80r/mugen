@@ -191,4 +191,45 @@ class AnixartCsvParserTest {
             "Blade of Demon Destruction",
         )
     }
+
+    @Test
+    fun `ignores blank lines before the header`() {
+        val csv = "\n\n" + header + "\n" + "1,Наруто,Naruto,,,Смотрю,"
+
+        val rows = AnixartCsvParser.parse(csv)
+
+        rows.size shouldBe 1
+        rows.first().originalTitle shouldBe "Naruto"
+        rows.first().status shouldBe AnixartStatus.WATCHING
+    }
+
+    @Test
+    fun `parses a chunk whose header line was lost when the export was split`() {
+        val csv = "1,Наруто,Naruto,,,Смотрю,4 из 5\n" +
+            "2,Блич,Bleach,,Добавлено,В планах,"
+
+        val rows = AnixartCsvParser.parse(csv)
+
+        rows.size shouldBe 2
+        rows[0].originalTitle shouldBe "Naruto"
+        rows[0].status shouldBe AnixartStatus.WATCHING
+        rows[0].ratingOutOfTen shouldBe 8
+        rows[1].russianTitle shouldBe "Блич"
+        rows[1].status shouldBe AnixartStatus.PLAN_TO_WATCH
+        rows[1].isFavorite shouldBe true
+    }
+
+    @Test
+    fun `strips non-breaking and zero-width junk from headers and cells`() {
+        val dirtyHeader = "#,Русское название\u00A0,Оригинальное название,Альтернативные названия," +
+            "Добавлено в избранное,Статус просмотра\u200B,Моя оценка"
+        val csv = dirtyHeader + "\n" + "1,\u00A0Наруто ,Naruto\u200B,,,Смотрю\u00A0,4 из 5"
+
+        val rows = AnixartCsvParser.parse(csv)
+
+        rows.size shouldBe 1
+        rows.first().russianTitle shouldBe "Наруто"
+        rows.first().originalTitle shouldBe "Naruto"
+        rows.first().status shouldBe AnixartStatus.WATCHING
+    }
 }

@@ -26,6 +26,7 @@ import eu.kanade.tachiyomi.data.library.novel.NovelLibraryUpdateJob
 import eu.kanade.tachiyomi.ui.category.CategoriesTab
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableMap
 import kotlinx.coroutines.launch
 import tachiyomi.domain.category.anime.interactor.GetAnimeCategories
@@ -88,7 +89,7 @@ object SettingsLibraryScreen : SearchableSettings {
             getSeasonBehaviorGroup(libraryPreferences),
             getAnimeBehaviorGroup(libraryPreferences),
             getBehaviorGroup(libraryPreferences),
-            getAuroraGroup(uiPreferences),
+            getAuroraGroup(uiPreferences, libraryPreferences),
         )
     }
 
@@ -587,15 +588,19 @@ object SettingsLibraryScreen : SearchableSettings {
     @Composable
     private fun getAuroraGroup(
         uiPreferences: UiPreferences,
+        libraryPreferences: LibraryPreferences,
     ): Preference.PreferenceGroup {
-        return Preference.PreferenceGroup(
-            title = stringResource(AYMR.strings.theme_aurora),
-            preferenceItems = persistentListOf(
+        val fullNumberOfItemsPref = libraryPreferences.categoryFullNumberOfItems()
+        val showFullNumberOfItems by fullNumberOfItemsPref.collectAsStateWithLifecycle()
+        val preferenceItems = buildList {
+            add(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = uiPreferences.auroraLibraryImmersiveMode(),
                     title = stringResource(AYMR.strings.pref_aurora_library_immersive_mode),
                     subtitle = stringResource(AYMR.strings.pref_aurora_library_immersive_mode_summary),
                 ),
+            )
+            add(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = uiPreferences.auroraLibrarySwipeSwitchesCategories(),
                     title = stringResource(AYMR.strings.pref_aurora_library_swipe_switches_categories),
@@ -603,7 +608,29 @@ object SettingsLibraryScreen : SearchableSettings {
                         AYMR.strings.pref_aurora_library_swipe_switches_categories_summary,
                     ),
                 ),
-            ),
+            )
+            add(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = fullNumberOfItemsPref,
+                    title = stringResource(AYMR.strings.action_display_full_number_of_items),
+                    subtitle = stringResource(AYMR.strings.action_display_full_number_of_items_summary),
+                ),
+            )
+            if (showFullNumberOfItems) {
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = libraryPreferences.categoryGroupedNumberOfItems(),
+                        title = stringResource(AYMR.strings.action_display_grouped_number_of_items),
+                        subtitle = stringResource(
+                            AYMR.strings.action_display_grouped_number_of_items_summary,
+                        ),
+                    ),
+                )
+            }
+        }
+        return Preference.PreferenceGroup(
+            title = stringResource(AYMR.strings.theme_aurora),
+            preferenceItems = preferenceItems.toImmutableList(),
         )
     }
 

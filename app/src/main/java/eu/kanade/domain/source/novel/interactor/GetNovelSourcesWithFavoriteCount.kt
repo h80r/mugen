@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.combine
 import tachiyomi.core.common.util.lang.compareToWithCollator
 import tachiyomi.domain.source.novel.model.Source
 import tachiyomi.domain.source.novel.repository.NovelSourceRepository
+import tachiyomi.source.local.entries.novel.LocalNovelSource
 import java.util.Collections
 
 class GetNovelSourcesWithFavoriteCount(
@@ -20,7 +21,11 @@ class GetNovelSourcesWithFavoriteCount(
             preferences.migrationSortingMode().changes(),
             repository.getNovelSourcesWithFavoriteCount(),
         ) { direction, mode, list ->
-            list.sortedWith(sortFn(direction, mode))
+            // Imported EPUBs are stored under the local source, so it shows up here with a count;
+            // migrating from it is meaningless and every row resolves to "not found".
+            list
+                .filterNot { it.first.id == LocalNovelSource.ID }
+                .sortedWith(sortFn(direction, mode))
         }
     }
 

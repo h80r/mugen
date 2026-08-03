@@ -261,4 +261,12 @@ class AnimeLibraryAuroraHeaderStateTest {
             AuroraLibraryPinnedHeaderMenuItem.OpenRandomEntry,
         )
     }
+
+    @Test
+    fun `book import is only available on novel library section`() {
+        shouldShowLibraryBookImport(AnimeLibraryTab.Section.Novel) shouldBe true
+        shouldShowLibraryBookImport(AnimeLibraryTab.Section.Anime) shouldBe false
+        shouldShowLibraryBookImport(AnimeLibraryTab.Section.Manga) shouldBe false
+        shouldShowLibraryBookImport(null) shouldBe false
+    }
 }

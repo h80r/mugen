@@ -31,9 +31,7 @@ class CreateMangaExtensionRepoTest {
 
         result shouldBe CreateMangaExtensionRepo.Result.Success
         coVerify {
-            repository.upsertStore(
-                insertedStore.copy(name = "Custom store", badgeLabel = "Custom store"),
-            )
+            repository.setCustomName(insertedStore.indexUrl, "Custom store")
         }
     }
 
@@ -58,5 +56,43 @@ class CreateMangaExtensionRepoTest {
                 "Offline Repo",
             )
         }
+    }
+
+    @Test
+    fun `display name survives the url being canonicalized on insert`() = runTest {
+        val repository = mockk<MangaExtensionStoreRepository>(relaxed = true)
+        // insert() persists the canonical repo.json url, not the index.min.json the user pasted.
+        val insertedStore = ExtensionStore(
+            indexUrl = "https://example.org/repo/repo.json",
+            name = "Remote store",
+            badgeLabel = "remote",
+            signingKey = "fingerprint",
+            contact = ExtensionStore.Contact(website = "https://example.org", discord = null),
+            isLegacy = true,
+            extensionListUrl = null,
+        )
+        coEvery { repository.insert("https://example.org/repo/index.min.json") } returns Result.success(Unit)
+        coEvery { repository.getAll() } returns listOf(insertedStore)
+        val interactor = CreateMangaExtensionRepo(repository)
+
+        interactor.await("https://example.org/repo/index.min.json", "Custom store")
+
+        coVerify {
+            repository.setCustomName(insertedStore.indexUrl, "Custom store")
+        }
+    }
+
+    @Test
+    fun `a network failure is reported as an error, not as an invalid url`() = runTest {
+        val repository = mockk<MangaExtensionStoreRepository>(relaxed = true)
+        coEvery { repository.insert("https://example.org/repo/index.min.json") } returns Result.failure(
+            java.io.IOException("offline"),
+        )
+        coEvery { repository.getAll() } returns emptyList()
+        val interactor = CreateMangaExtensionRepo(repository)
+
+        val result = interactor.await("https://example.org/repo/index.min.json")
+
+        result shouldBe CreateMangaExtensionRepo.Result.Error
     }
 }

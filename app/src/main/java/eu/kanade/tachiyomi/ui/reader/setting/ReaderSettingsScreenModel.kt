@@ -18,6 +18,11 @@ class ReaderSettingsScreenModel(
     val onChangeOrientation: (ReaderOrientation) -> Unit,
     val onSetSeriesViewerOverride: (Boolean) -> Unit = {},
     val isSeriesViewerOverrideEnabled: () -> Boolean = { false },
+    /**
+     * Reading mode the viewer actually runs on: series flags, auto-detected webtoon, or the global
+     * default. Needed so the pickers highlight the live mode instead of the global default.
+     */
+    val resolvedReadingMode: () -> ReadingMode = { ReadingMode.DEFAULT },
     val preferences: ReaderPreferences = Injekt.get(),
 ) : ScreenModel {
 

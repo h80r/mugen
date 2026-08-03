@@ -334,6 +334,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         data: Any,
         config: Config,
     ) = (pageView as? SubsamplingScaleImageView)?.apply {
+        setZoomEnabled(config.enablePinchToZoom)
         setDoubleTapZoomDuration(config.zoomDuration.getSystemScaledDuration())
         setMinimumScaleType(config.minimumScaleType)
         setMinimumDpi(1) // Just so that very small image will be fit for initial load
@@ -477,6 +478,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     ) = (pageView as? AppCompatImageView)?.apply {
         if (this is PhotoView) {
             setZoomTransitionDuration(config.zoomDuration.getSystemScaledDuration())
+            isZoomable = config.enablePinchToZoom
         }
 
         val request = ImageRequest.Builder(context)
@@ -514,6 +516,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val webtoonSmartFit: Boolean = false,
         val zoomStartPosition: ZoomStartPosition = ZoomStartPosition.CENTER,
         val landscapeZoom: Boolean = false,
+        val enablePinchToZoom: Boolean = true,
         /**
          * Image traits precomputed off the UI thread by callers that already inspect the image
          * on IO. When null, they are computed on demand (which touches image headers on the

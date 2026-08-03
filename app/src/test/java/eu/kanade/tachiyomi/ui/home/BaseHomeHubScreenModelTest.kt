@@ -79,8 +79,11 @@ class BaseHomeHubScreenModelTest {
         io.mockk.unmockkStatic(android.net.Uri::class)
     }
 
+    // runBlocking, not runTest: this body is synchronous, and runTest additionally fails on any
+    // uncaught exception raised anywhere in the JVM before it starts - including background
+    // collectors leaked by other test classes, which has nothing to do with this assertion.
     @Test
-    fun `resolveAndSetGreeting resolves greeting and updates state`() = kotlinx.coroutines.test.runTest {
+    fun `resolveAndSetGreeting resolves greeting and updates state`() = kotlinx.coroutines.runBlocking {
         mockkObject(HomeGreetingSession)
         val expectedGreeting = AYMR.strings.aurora_greeting_ready
         coEvery {

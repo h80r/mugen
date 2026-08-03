@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.player
 
+import com.hippo.unifile.UniFile
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
@@ -46,7 +47,7 @@ class PlayerBridgeBehaviorTest {
         }
         val targetDir = tempDir.resolve("mpv-fonts")
         PlayerFontBridge.copyFontFiles(
-            sourceFonts = listOf(sourceFont),
+            sourceFonts = listOfNotNull(UniFile.fromFile(sourceFont)),
             targetFontsDirectory = targetDir.resolve("fonts"),
         )
 
@@ -65,7 +66,10 @@ class PlayerBridgeBehaviorTest {
         val targetDir = tempDir.resolve("mpv-fonts")
 
         PlayerFontBridge.copyFontFiles(
-            sourceFonts = listOf(missingFont, readableFont),
+            sourceFonts = listOfNotNull(
+                UniFile.fromFile(missingFont),
+                UniFile.fromFile(readableFont),
+            ),
             targetFontsDirectory = targetDir.resolve("fonts"),
         )
 

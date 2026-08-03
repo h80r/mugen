@@ -111,7 +111,10 @@ class SyncChaptersWithSource(
                 }
                 newChapters.add(toAddChapter)
             } else {
-                if (shouldUpdateDbChapter.await(dbChapter, chapter)) {
+                // Sources rotate the context they keep in memo (e.g. a slug); a stale one must be
+                // replaced even when nothing user-visible changed about the chapter.
+                val memoChanged = chapter.memo.isNotEmpty() && chapter.memo != dbChapter.memo
+                if (shouldUpdateDbChapter.await(dbChapter, chapter) || memoChanged) {
                     val shouldRenameChapter = downloadProvider.isChapterDirNameChanged(
                         dbChapter,
                         chapter,
@@ -131,6 +134,7 @@ class SyncChaptersWithSource(
                         chapterNumber = chapter.chapterNumber,
                         scanlator = chapter.scanlator,
                         sourceOrder = chapter.sourceOrder,
+                        memo = if (memoChanged) chapter.memo else dbChapter.memo,
                     )
                     if (chapter.dateUpload != 0L) {
                         toChangeChapter = toChangeChapter.copy(dateUpload = chapter.dateUpload)

@@ -5,6 +5,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.ViewerConfig
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.DisabledNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.EdgeNavigation
+import eu.kanade.tachiyomi.ui.reader.viewer.navigation.GridNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.KindlishNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.LNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.RightAndLeftNavigation
@@ -41,6 +42,9 @@ class WebtoonConfig(
         private set
 
     var doubleTapZoom = true
+        private set
+
+    var enablePinchToZoom = true
         private set
 
     var doubleTapZoomChangedListener: ((Boolean) -> Unit)? = null
@@ -91,6 +95,12 @@ class WebtoonConfig(
                 { zoomPropertyChangedListener?.invoke(it) },
             )
 
+        readerPreferences.enablePinchToZoom()
+            .register(
+                { enablePinchToZoom = it },
+                { zoomPropertyChangedListener?.invoke(zoomOutDisabled) },
+            )
+
         readerPreferences.webtoonDoubleTapZoomEnabled()
             .register(
                 { doubleTapZoom = it },
@@ -121,6 +131,7 @@ class WebtoonConfig(
             3 -> EdgeNavigation()
             4 -> RightAndLeftNavigation()
             5 -> DisabledNavigation()
+            6 -> GridNavigation(customTapZoneActions)
             else -> defaultNavigation()
         }
         navigationModeChangedListener?.invoke()

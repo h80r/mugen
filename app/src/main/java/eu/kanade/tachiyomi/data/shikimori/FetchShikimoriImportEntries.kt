@@ -56,14 +56,24 @@ class FetchShikimoriImportEntries(
 
     private suspend fun fetchAnime(api: ShikimoriApi, userId: Int): List<ShikimoriImportEntry> {
         val rates = api.getAllUserAnimeRates(userId)
-        val animeById = rates
-            .map { it.targetId }
-            .distinct()
+        val targetIds = rates.map { it.targetId }.distinct()
+
+        // Bulk first (one request per 50 ids). /animes?ids= silently omits some entries
+        // (restricted kinds, deleted titles), and the old code dropped every rate that
+        // was missing from the bulk answer without a word — an anime list could come
+        // back mostly or entirely empty and look like "import is broken". Anything the
+        // bulk call skipped is now fetched individually, exactly like the manga path.
+        val animeById = targetIds
             .chunked(BULK_CHUNK_SIZE)
             .flatMap { chunk -> rateLimiter.withRateLimit { api.getAnimesByIds(chunk) } }
             .associateBy { it.id }
+            .toMutableMap()
+        val stillMissing = targetIds.filter { it !in animeById }
+        if (stillMissing.isNotEmpty()) {
+            animeById.putAll(fetchByIdsParallel(stillMissing) { api.getAnimeById(it) })
+        }
 
-        return rates.mapNotNull { rate ->
+        val entries = rates.mapNotNull { rate ->
             val anime = animeById[rate.targetId] ?: return@mapNotNull null
             ShikimoriImportEntry(
                 mediaType = ShikimoriImportMediaType.ANIME,
@@ -78,6 +88,8 @@ class FetchShikimoriImportEntries(
                 thumbnailUrl = ShikimoriApi.BASE_URL + anime.image.original,
             )
         }
+        logUnresolved("anime", rates.size, entries.size)
+        return entries
     }
 
     private suspend fun fetchManga(
@@ -99,11 +111,11 @@ class FetchShikimoriImportEntries(
             .toMutableMap()
         val stillMissing = targetIds.filter { it !in bulk }
         if (stillMissing.isNotEmpty()) {
-            bulk.putAll(fetchMangaByIdsParallel(api, stillMissing))
+            bulk.putAll(fetchByIdsParallel(stillMissing) { api.getMangaById(it) })
         }
         val mangaById: Map<Long, SMEntry> = bulk
 
-        return rates.mapNotNull { rate ->
+        val entries = rates.mapNotNull { rate ->
             val manga = mangaById[rate.targetId] ?: return@mapNotNull null
             val isRanobe = ShikimoriImportEntry.isRanobeKind(manga.kind)
             if (ranobeOnly != isRanobe) return@mapNotNull null
@@ -121,11 +133,17 @@ class FetchShikimoriImportEntries(
                 kind = manga.kind,
             )
         }
+        return entries
     }
 
-    private suspend fun fetchMangaByIdsParallel(
-        api: ShikimoriApi,
+    /**
+     * Per-id fallback for entries the bulk endpoint did not return. A single failing id
+     * must not abort the whole import, so everything except rate limiting is logged and
+     * skipped instead of propagating out of the [coroutineScope] and cancelling the rest.
+     */
+    private suspend fun fetchByIdsParallel(
         ids: List<Long>,
+        fetch: suspend (Long) -> SMEntry,
     ): Map<Long, SMEntry> = coroutineScope {
         if (ids.isEmpty()) return@coroutineScope emptyMap()
         val result = ConcurrentHashMap<Long, SMEntry>()
@@ -135,18 +153,27 @@ class FetchShikimoriImportEntries(
                 semaphore.withPermit {
                     try {
                         rateLimiter.withRateLimit {
-                            val manga = api.getMangaById(id)
-                            result[manga.id] = manga
+                            val entry = fetch(id)
+                            result[entry.id] = entry
                         }
                     } catch (e: HttpException) {
                         if (e.code == 429) throw RateLimitedException()
-                        // Don't silently drop the entry on other HTTP errors.
+                        logcat(LogPriority.WARN, e) { "Shikimori entry fetch failed for id=$id" }
+                    } catch (e: IOException) {
                         logcat(LogPriority.WARN, e) { "Shikimori entry fetch failed for id=$id" }
                     }
                 }
             }
         }.awaitAll()
         result
+    }
+
+    private fun logUnresolved(kind: String, rateCount: Int, entryCount: Int) {
+        if (entryCount >= rateCount) return
+        logcat(LogPriority.WARN) {
+            "Shikimori $kind import: ${rateCount - entryCount} of $rateCount list entries " +
+                "could not be resolved and were skipped"
+        }
     }
 
     companion object {

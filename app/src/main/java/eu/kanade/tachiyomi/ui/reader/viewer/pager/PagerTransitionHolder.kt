@@ -12,6 +12,7 @@ import androidx.appcompat.widget.AppCompatTextView
 import com.google.android.material.progressindicator.CircularProgressIndicator
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
+import eu.kanade.tachiyomi.ui.reader.model.shouldShowChapterTransitionLoading
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderButton
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderTransitionView
 import eu.kanade.tachiyomi.util.system.dpToPx
@@ -62,11 +63,7 @@ class PagerTransitionHolder(
         addView(transitionView)
         addView(pagesContainer)
 
-        if (!viewer.config.alwaysShowChapterTransition && transition.to != null) {
-            // Setting disabled: suppress display of the info screen (chapter names, "previous/next", etc.)
-            // but keep the item in the pager for navigation/swipe to trigger chapter switch and preload.
-            transitionView.visibility = View.GONE
-        }
+        transitionView.visibility = if (transition.showInfo) View.VISIBLE else View.GONE
 
         transitionView.bind(transition, viewer.downloadManager, viewer.activity.viewModel.manga)
 
@@ -92,11 +89,8 @@ class PagerTransitionHolder(
                 .collectLatest { state ->
                     pagesContainer.removeAllViews()
                     when (state) {
-                        is ReaderChapter.State.Loading -> setLoading()
                         is ReaderChapter.State.Error -> setError(state.error)
-                        is ReaderChapter.State.Wait, is ReaderChapter.State.Loaded -> {
-                            // No additional view is added
-                        }
+                        else -> if (shouldShowChapterTransitionLoading(transition.showInfo, state)) setLoading()
                     }
                 }
         }

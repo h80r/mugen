@@ -11,6 +11,28 @@
 -keep,allowoptimization class android.test.base.** { *; }
 -keep,allowoptimization class kotlin.** { public protected *; }
 -keep,allowoptimization class kotlinx.coroutines.** { public protected *; }
+
+# Extension ABI, coroutines part.
+# Extensions are loaded from separate APKs and call into the coroutines classes bundled here.
+# R8 only sees the app's own call sites, so entry points that exist solely for extensions must
+# be declared as kept API. This includes the synthetic `$default` bridges that Kotlin generates
+# for functions with default arguments (for example BuildersKt.runBlockingK$default, which
+# extensions built against modern coroutines link to through the Rx <-> coroutines bridge).
+-keep class kotlinx.coroutines.BuildersKt { *; }
+-keep class kotlinx.coroutines.BuildersKt__* { *; }
+-keep class kotlinx.coroutines.CoroutineScopeKt { *; }
+-keep class kotlinx.coroutines.DelayKt { *; }
+-keep class kotlinx.coroutines.Dispatchers { *; }
+-keep class kotlinx.coroutines.YieldKt { *; }
+-keep class kotlinx.coroutines.flow.FlowKt { *; }
+-keep class kotlinx.coroutines.flow.FlowKt__* { *; }
+-keep class kotlinx.coroutines.sync.MutexKt { *; }
+-keep class kotlinx.coroutines.sync.SemaphoreKt { *; }
+-keep class kotlin.coroutines.jvm.internal.** { *; }
+
+# Extension ABI, Rx <-> coroutines bridge. Extensions still expose RxJava entry points that the
+# app awaits through this bridge, and the bridge is only reachable from extension code.
+-keep class tachiyomi.core.common.util.lang.RxCoroutineBridgeKt { *; }
 -keep,allowoptimization class kotlinx.serialization.** { public protected *; }
 -keep,allowoptimization class okhttp3.** { public protected *; }
 -keep,allowoptimization class okio.** { public protected *; }
@@ -223,3 +245,13 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 -dontwarn xyz.secozzi.torrserver.**
+
+# Zstd content-encoding (okhttp-zstd -> com.squareup.zstd:zstd-*).
+# Extensions build their own OkHttp client with the zstd decompressor and resolve
+# com.squareup.zstd.okio.OkioZstd through the host app classloader
+# (ChildFirstPathClassLoader -> app parent). The app itself never references these
+# classes, so R8 shrank them out of the shipped APK and extension calls crashed with
+# NoClassDefFoundError: com/squareup/zstd/okio/OkioZstd (e.g. AsuraScans).
+-keep class com.squareup.zstd.** { *; }
+-keep class okhttp3.zstd.** { *; }
+-dontwarn com.squareup.zstd.**

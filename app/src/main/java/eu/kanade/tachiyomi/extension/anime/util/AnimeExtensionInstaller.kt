@@ -29,6 +29,7 @@ import eu.kanade.tachiyomi.extension.installer.ExtensionApkFileStore
 import eu.kanade.tachiyomi.extension.installer.PendingApkFileMaterializer
 import eu.kanade.tachiyomi.extension.installer.PendingApkInstallStore
 import eu.kanade.tachiyomi.extension.installer.toApkInstallBackend
+import eu.kanade.tachiyomi.extension.resolveExtensionInstaller
 import eu.kanade.tachiyomi.extension.util.OkHttpExtensionApkDownloader
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.util.storage.getUriCompat
@@ -89,6 +90,9 @@ internal class AnimeExtensionInstaller(private val context: Context) {
      */
     private val downloadIdToPkgName = hashMapOf<Long, String>()
 
+    /** Packages whose current download is an update of a privately installed extension. */
+    private val privatelyInstalledPkgNames = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
     private val handledDownloadIds = hashSetOf<Long>()
 
     private val downloadsStateFlows = hashMapOf<Long, MutableStateFlow<InstallStep>>()
@@ -115,8 +119,17 @@ internal class AnimeExtensionInstaller(private val context: Context) {
      * @param url The url of the apk.
      * @param extension The extension to install.
      */
-    fun downloadAndInstall(url: String, extension: AnimeExtension): Flow<InstallStep> {
+    fun downloadAndInstall(
+        url: String,
+        extension: AnimeExtension,
+        isUpdateForPrivatelyInstalled: Boolean = false,
+    ): Flow<InstallStep> {
         val pkgName = extension.pkgName
+        if (isUpdateForPrivatelyInstalled) {
+            privatelyInstalledPkgNames += pkgName
+        } else {
+            privatelyInstalledPkgNames -= pkgName
+        }
 
         val oldDownload = activeDownloads[pkgName]
         if (oldDownload != null) {
@@ -344,7 +357,10 @@ internal class AnimeExtensionInstaller(private val context: Context) {
      * @param uri The uri of the extension to install.
      */
     fun installApk(downloadId: Long, uri: Uri) {
-        val installer = extensionInstaller.get()
+        val installer = resolveExtensionInstaller(
+            preferred = extensionInstaller.get(),
+            isUpdateForPrivatelyInstalled = downloadIdToPkgName[downloadId] in privatelyInstalledPkgNames,
+        )
         if (requiresUnknownAppsPermission(installer)) {
             requestUnknownAppsPermission(downloadId, uri, installer)
             return
@@ -484,6 +500,7 @@ internal class AnimeExtensionInstaller(private val context: Context) {
             downloadsStateFlows.remove(downloadId)
             downloadIdToPkgName.remove(downloadId)
             handledDownloadIds.remove(downloadId)
+            privatelyInstalledPkgNames -= pkgName
         }
         if (activeDownloads.isEmpty()) {
             downloadReceiver.unregister()

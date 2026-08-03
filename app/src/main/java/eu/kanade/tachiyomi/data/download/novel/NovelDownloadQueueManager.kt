@@ -620,16 +620,22 @@ object NovelDownloadQueueManager {
     private fun ensureNetworkMonitor() {
         if (networkMonitorJob?.isActive == true) return
         networkMonitorJob = queueScope.launch {
-            combine(
-                application.networkStateFlow()
-                    .onStart { emit(application.activeNetworkState()) },
-                downloadPreferences.downloadOnlyOverWifi().changes()
-                    .onStart { emit(downloadPreferences.downloadOnlyOverWifi().get()) },
-            ) { networkState, requireWifi ->
-                networkState.toDownloadNetworkStatus(requireWifi)
+            try {
+                combine(
+                    application.networkStateFlow()
+                        .onStart { emit(application.activeNetworkState()) },
+                    downloadPreferences.downloadOnlyOverWifi().changes()
+                        .onStart { emit(downloadPreferences.downloadOnlyOverWifi().get()) },
+                ) { networkState, requireWifi ->
+                    networkState.toDownloadNetworkStatus(requireWifi)
+                }
+                    .distinctUntilChanged()
+                    .collect { status -> handleNetworkStatusChange(status) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Novel queue network monitor failed" }
             }
-                .distinctUntilChanged()
-                .collect { status -> handleNetworkStatusChange(status) }
         }
     }
 

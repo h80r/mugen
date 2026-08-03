@@ -37,6 +37,8 @@ class AnimeExtensionStoreScreenModelTest {
     @BeforeEach
     fun setup() {
         Dispatchers.setMain(Dispatchers.Unconfined)
+        // The screen model calls getAll() first to trigger the legacy store port.
+        coEvery { getExtensionRepo.getAll() } returns emptyList()
     }
 
     @AfterEach
