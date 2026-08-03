@@ -50,6 +50,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -64,6 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -114,10 +116,12 @@ import eu.kanade.tachiyomi.ui.entries.novel.resolveNovelVolumeChapterDisplayData
 import eu.kanade.tachiyomi.ui.entries.novel.shouldGroupNovelChaptersByVolume
 import eu.kanade.tachiyomi.util.debugTitleCoverFlow
 import eu.kanade.tachiyomi.util.previewTitleCoverUrl
+import eu.kanade.tachiyomi.util.system.copyToClipboardSilently
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.runningFold
+import kotlinx.coroutines.launch
 import tachiyomi.domain.items.novelchapter.model.NovelChapter
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.i18n.MR
@@ -324,6 +328,20 @@ fun NovelScreenAuroraImpl(
         allowedSourceFamilies = auroraEntryTranslationSourceLanguages,
     )
 
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val copiedToClipboardMessage = stringResource(MR.strings.copied_to_clipboard_plain)
+    val clipboardCopyErrorMessage = stringResource(MR.strings.clipboard_copy_error)
+    val onTitleCopy: () -> Unit = {
+        val ok = context.copyToClipboardSilently(
+            "Entry title",
+            auroraEntryTranslation.title ?: novel.displayTitle,
+        )
+        scope.launch {
+            snackbarHostState.showSnackbar(if (ok) copiedToClipboardMessage else clipboardCopyErrorMessage)
+        }
+    }
+
     val lazyListState = rememberLazyListState()
     val scrollOffset by remember { derivedStateOf { lazyListState.firstVisibleItemScrollOffset } }
     val firstVisibleItemIndex by remember { derivedStateOf { lazyListState.firstVisibleItemIndex } }
@@ -492,6 +510,7 @@ fun NovelScreenAuroraImpl(
                                         selectedGenres = emptySet()
                                     },
                                     onClearSelected = { selectedGenres = emptySet() },
+                                    onCopyTitle = onTitleCopy,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 Spacer(modifier = Modifier.height(if (colors.isDark) 8.dp else 16.dp))
@@ -1734,6 +1753,7 @@ fun NovelScreenAuroraImpl(
                             selectedGenres = emptySet()
                         },
                         onClearSelected = { selectedGenres = emptySet() },
+                        onCopyTitle = onTitleCopy,
                     )
                 }
             }

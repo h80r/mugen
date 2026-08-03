@@ -57,6 +57,28 @@ fun Context.copyToClipboard(label: String, content: String) {
 }
 
 /**
+ * Copies a string to clipboard without showing any toast.
+ *
+ * The caller owns all user-facing confirmation (e.g. a snackbar), so feedback is
+ * consistent across Android versions.
+ *
+ * @param label label describing the content
+ * @param content the text to copy
+ * @return true on success, false if the content is blank or copying failed
+ */
+fun Context.copyToClipboardSilently(label: String, content: String): Boolean {
+    if (content.isBlank()) return false
+
+    return try {
+        getSystemService<ClipboardManager>()!!.setPrimaryClip(ClipData.newPlainText(label, content))
+        true
+    } catch (e: Throwable) {
+        logcat(LogPriority.ERROR, e)
+        false
+    }
+}
+
+/**
  * Checks if the give permission is granted.
  *
  * @param permission the permission to check.

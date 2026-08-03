@@ -1996,6 +1996,7 @@
     <string name="aurora_continue">CONTINUE</string>
     <string name="aurora_episodes_header">Episodes</string>
     <string name="aurora_episode_count">%d eps</string>
+    <string name="copy_title">Copy title</string>
     <string name="aurora_episode_badge_filler">Filler</string>
     <string name="aurora_episode_badge_seen">Seen</string>
     <string name="aurora_chapters_header">Chapters</string>

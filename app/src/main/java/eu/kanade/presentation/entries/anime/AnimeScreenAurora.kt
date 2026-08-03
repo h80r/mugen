@@ -53,6 +53,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -123,10 +124,12 @@ import eu.kanade.tachiyomi.ui.entries.anime.AnimeSeasonItem
 import eu.kanade.tachiyomi.ui.entries.anime.EpisodeList
 import eu.kanade.tachiyomi.util.debugTitleCoverFlow
 import eu.kanade.tachiyomi.util.previewTitleCoverUrl
+import eu.kanade.tachiyomi.util.system.copyToClipboardSilently
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.runningFold
+import kotlinx.coroutines.launch
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.entries.anime.model.AnimeCover
 import tachiyomi.domain.items.episode.model.Episode
@@ -603,6 +606,19 @@ fun AnimeScreenAuroraImpl(
         allowedSourceFamilies = auroraEntryTranslationSourceLanguages,
     )
 
+    val scope = rememberCoroutineScope()
+    val copiedToClipboardMessage = stringResource(MR.strings.copied_to_clipboard_plain)
+    val clipboardCopyErrorMessage = stringResource(MR.strings.clipboard_copy_error)
+    val onTitleCopy: () -> Unit = {
+        val ok = context.copyToClipboardSilently(
+            "Entry title",
+            auroraEntryTranslation.title ?: anime.displayTitle,
+        )
+        scope.launch {
+            snackbarHostState.showSnackbar(if (ok) copiedToClipboardMessage else clipboardCopyErrorMessage)
+        }
+    }
+
     AuroraEntryHoldToRefresh(
         refreshing = state.isRefreshingData,
         onRefresh = onRefresh,
@@ -694,6 +710,7 @@ fun AnimeScreenAuroraImpl(
                                         selectedGenres = emptySet()
                                     },
                                     onClearSelected = { selectedGenres = emptySet() },
+                                    onCopyTitle = onTitleCopy,
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 AnimeStatsCard(
@@ -1424,6 +1441,7 @@ fun AnimeScreenAuroraImpl(
                                 selectedGenres = emptySet()
                             },
                             onClearSelected = { selectedGenres = emptySet() },
+                            onCopyTitle = onTitleCopy,
                         )
                     }
                 }
