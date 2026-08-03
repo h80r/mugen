@@ -95,6 +95,7 @@ data class NovelReaderSettings(
     val autoScrollEndPauseMs: Long = 5000L,
     val showAutoScrollFloatingButton: Boolean,
     val prefetchNextChapter: Boolean,
+    val seamlessChapterTransition: Boolean = false,
 
     // Accessibility
     val fullScreenMode: Boolean,
@@ -368,6 +369,7 @@ data class NovelReaderOverride(
     val autoScrollEndPauseMs: Long? = null,
     val showAutoScrollFloatingButton: Boolean? = null,
     val prefetchNextChapter: Boolean? = null,
+    val seamlessChapterTransition: Boolean? = null,
 
     // Accessibility
     val fullScreenMode: Boolean? = null,
@@ -1108,6 +1110,7 @@ class NovelReaderPreferences(
                 autoScrollEndPauseMs = autoScrollEndPauseMs().get(),
                 showAutoScrollFloatingButton = showAutoScrollFloatingButton().get(),
                 prefetchNextChapter = prefetchNextChapter().get(),
+                seamlessChapterTransition = seamlessChapterTransition().get(),
                 fullScreenMode = fullScreenMode().get(),
                 keepScreenOn = keepScreenOn().get(),
                 showScrollPercentage = showScrollPercentage().get(),
@@ -1272,6 +1275,7 @@ class NovelReaderPreferences(
             showAutoScrollFloatingButton =
             override?.showAutoScrollFloatingButton ?: showAutoScrollFloatingButton().get(),
             prefetchNextChapter = override?.prefetchNextChapter ?: prefetchNextChapter().get(),
+            seamlessChapterTransition = override?.seamlessChapterTransition ?: seamlessChapterTransition().get(),
             fullScreenMode = override?.fullScreenMode ?: fullScreenMode().get(),
             keepScreenOn = override?.keepScreenOn ?: keepScreenOn().get(),
             showScrollPercentage = override?.showScrollPercentage ?: showScrollPercentage().get(),
@@ -1458,6 +1462,7 @@ class NovelReaderPreferences(
             prefetchNextChapter().changes(),
             customTapZones().changes(),
             tapZoneActions().changes(),
+            seamlessChapterTransition().changes(),
         ) { values: Array<Any?> ->
             NavigationSettings(
                 values[0] as Boolean,
@@ -1486,6 +1491,7 @@ class NovelReaderPreferences(
                 values[23] as Boolean,
                 values[24] as Boolean,
                 values[25] as String,
+                values[26] as Boolean,
             )
         }.distinctUntilChanged()
 
@@ -1762,6 +1768,7 @@ class NovelReaderPreferences(
                 showAutoScrollFloatingButton =
                 override?.showAutoScrollFloatingButton ?: navigation.showAutoScrollFloatingButton,
                 prefetchNextChapter = override?.prefetchNextChapter ?: navigation.prefetchNextChapter,
+                seamlessChapterTransition = override?.seamlessChapterTransition ?: navigation.seamlessChapterTransition,
                 fullScreenMode = override?.fullScreenMode ?: accessibility.fullScreenMode,
                 keepScreenOn = override?.keepScreenOn ?: accessibility.keepScreenOn,
                 showScrollPercentage = override?.showScrollPercentage ?: accessibility.showScrollPercentage,
@@ -1910,6 +1917,7 @@ class NovelReaderPreferences(
         val prefetchNextChapter: Boolean,
         val customTapZones: Boolean,
         val tapZoneActions: String,
+        val seamlessChapterTransition: Boolean,
     )
 
     private data class AccessibilitySettings(

@@ -297,6 +297,18 @@ fun BehaviorTab(
                 },
             )
             AuroraToggleRow(
+                label = stringResource(AYMR.strings.novel_reader_seamless_chapter_transition),
+                subtitle = stringResource(AYMR.strings.novel_reader_seamless_chapter_transition_summary),
+                checked = settings.seamlessChapterTransition,
+                onClick = {
+                    update(
+                        !settings.seamlessChapterTransition,
+                        { o, v -> o.copy(seamlessChapterTransition = v) },
+                        { preferences.seamlessChapterTransition().set(it) },
+                    )
+                },
+            )
+            AuroraToggleRow(
                 label = stringResource(AYMR.strings.novel_reader_fullscreen),
                 subtitle = stringResource(AYMR.strings.novel_reader_fullscreen_summary),
                 checked = settings.fullScreenMode,
