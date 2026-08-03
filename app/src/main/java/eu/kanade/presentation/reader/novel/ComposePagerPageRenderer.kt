@@ -339,14 +339,7 @@ internal fun ComposePagerPageRenderer(
         },
         modifier = Modifier
             .fillMaxSize()
-            .then(boundarySwipeModifier)
-            .pointerInput(readerSettings.tapToScroll) {
-                detectTapGestures(
-                    onTap = { offset ->
-                        onTextTap(offset.x, offset.y, size.width.toFloat(), size.height.toFloat())
-                    },
-                )
-            },
+            .then(boundarySwipeModifier),
     ) { page ->
         val boundaryTarget = if (useBoundaryPreview) {
             resolveComposePagerBoundaryChapterTarget(
@@ -457,13 +450,7 @@ internal fun ComposePagerPageRenderer(
                     ttsHighlightColor = ttsHighlightColor,
                     selectionSessionIdProvider = selectionSessionIdProvider,
                     onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
-                    // The pager-level detectTapGestures below is the single source of page-advance
-                    // taps. If the inner text view also routed plain taps to onTextTap, a single tap
-                    // on text would fire twice (inner onPlainTap + outer detector) and advance two
-                    // pages — the "next page opens" bug. Selection/long-press and link taps are still
-                    // handled by the inner TextView (touchHandlingEnabled stays true); only the
-                    // redundant page-advance path is dropped here.
-                    onPlainTap = null,
+                    onPlainTap = onTextTap,
                 )
             }
 
