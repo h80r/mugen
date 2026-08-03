@@ -472,6 +472,7 @@ internal fun NovelReaderContentHost(
     var autoScrollEndDwellRemainingSeconds by remember(state.chapter.id) { mutableIntStateOf(0) }
     var showGeminiDialog by remember(state.chapter.id) { mutableStateOf(false) }
     var showGoogleDialog by remember(state.chapter.id) { mutableStateOf(false) }
+    var activeImageActionsUrl by remember(state.chapter.id) { mutableStateOf<String?>(null) }
     var translationSwitchRequest by remember(state.chapter.id) {
         mutableStateOf<TranslationSwitchRequest?>(null)
     }
@@ -2138,7 +2139,19 @@ internal fun NovelReaderContentHost(
             androidx.compose.foundation.layout.Box(
                 modifier = Modifier.fillMaxSize(),
             ) {
-                if (!showWebView && scrollContentBlocks.isNotEmpty()) {
+                if (!showWebView && (scrollContentBlocks.isNotEmpty() || richScrollBlocks.isNotEmpty())) {
+                    val chapterImageModels = remember(scrollContentBlocks, richScrollBlocks, refererUrl) {
+                        extractChapterImageModels(scrollContentBlocks.ifEmpty { richScrollBlocks }, refererUrl)
+                    }
+                    LaunchedEffect(state.chapter.id, chapterImageModels, pageReaderProgressPageIndex) {
+                        if (chapterImageModels.isNotEmpty()) {
+                            NovelChapterImagePrefetcher.prefetch(
+                                context = context,
+                                imageModels = chapterImageModels,
+                                activeImageIndex = pageReaderProgressPageIndex,
+                            )
+                        }
+                    }
                     // Track progress according to the active reader mode.
                     if (usePageReader) {
                         LaunchedEffect(pageReaderProgressPageIndex, pageReaderItemsCount, isInitialPositionRestored) {
@@ -2383,6 +2396,9 @@ internal fun NovelReaderContentHost(
                             onOpenNextChapter = { openNextChapterFromReader() },
                             onTextTap = { tapX, tapY, width, height ->
                                 latestReaderShortTapHandler(tapX, tapY, width, height)
+                            },
+                            onImageLongClick = { url ->
+                                activeImageActionsUrl = url
                             },
                             selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                             onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
@@ -3940,6 +3956,45 @@ internal fun NovelReaderContentHost(
                     onStartGoogleTranslation = onStartGoogleTranslation,
                 ),
             )
+
+            activeImageActionsUrl?.let { imageUrl ->
+                val localContext = androidx.compose.ui.platform.LocalContext.current
+                NovelImageActionsDialog(
+                    imageUrl = imageUrl,
+                    onDismissRequest = { activeImageActionsUrl = null },
+                    onSaveImage = {
+                        coroutineScope.launch {
+                            val file = NovelImageActionHelper.resolveImageFile(localContext, imageUrl)
+                            if (file != null) {
+                                val imageSaver = eu.kanade.tachiyomi.data.saver.ImageSaver(localContext)
+                                val uri = runCatching {
+                                    imageSaver.save(
+                                        eu.kanade.tachiyomi.data.saver.Image.Page(
+                                            inputStream = { file.inputStream() },
+                                            name = "novel_${state.chapter.name}_${file.nameWithoutExtension}",
+                                            location = eu.kanade.tachiyomi.data.saver.Location.Pictures("Novel"),
+                                        ),
+                                    )
+                                }.getOrDefault(android.net.Uri.fromFile(file))
+                                val notifier = eu.kanade.tachiyomi.ui.reader.SaveImageNotifier(localContext)
+                                notifier.onComplete(uri)
+                            } else {
+                                val notifier = eu.kanade.tachiyomi.ui.reader.SaveImageNotifier(localContext)
+                                notifier.onError("Failed to resolve image")
+                            }
+                        }
+                    },
+                    onShareImage = {
+                        coroutineScope.launch {
+                            val file = NovelImageActionHelper.resolveImageFile(localContext, imageUrl)
+                            NovelImageActionHelper.shareImage(localContext, imageUrl, file)
+                        }
+                    },
+                    onCopyLink = {
+                        NovelImageActionHelper.copyToClipboard(localContext, "Image Link", imageUrl)
+                    },
+                )
+            }
         }
     }
 }

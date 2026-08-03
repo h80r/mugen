@@ -27,6 +27,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -43,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -807,6 +809,7 @@ internal fun NovelPageReaderPageContent(
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
     onPlainTap: ((Float, Float, Float, Float) -> Unit)? = null,
+    onImageLongClick: ((String) -> Unit)? = null,
     touchHandlingEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -842,6 +845,9 @@ internal fun NovelPageReaderPageContent(
                 contentLayout = contentLayout,
                 bookBottomInset = bookBottomInset,
                 fullPage = true,
+                onPlainTap = onPlainTap,
+                onImageLongClick = onImageLongClick,
+                touchHandlingEnabled = touchHandlingEnabled,
             )
             return@Box
         }
@@ -970,6 +976,9 @@ internal fun NovelPageReaderPageContent(
                                     contentLayout = contentLayout,
                                     bookBottomInset = bookBottomInset,
                                     fullPage = false,
+                                    onPlainTap = onPlainTap,
+                                    onImageLongClick = onImageLongClick,
+                                    touchHandlingEnabled = touchHandlingEnabled,
                                 )
                             }
                         }
@@ -987,6 +996,9 @@ private fun NovelPageReaderImageBlock(
     contentLayout: NovelPageReaderContentLayout,
     bookBottomInset: Dp,
     fullPage: Boolean,
+    onPlainTap: ((Float, Float, Float, Float) -> Unit)? = null,
+    onImageLongClick: ((String) -> Unit)? = null,
+    touchHandlingEnabled: Boolean = true,
 ) {
     val referer = LocalNovelReaderReferer.current
     val imageModel = if (NovelPluginImage.isSupported(imageUrl)) {
@@ -999,12 +1011,29 @@ private fun NovelPageReaderImageBlock(
     } else {
         imageUrl
     }
+
+    val gestureModifier = if (touchHandlingEnabled) {
+        Modifier.pointerInput(imageUrl, onPlainTap, onImageLongClick) {
+            detectTapGestures(
+                onTap = { offset ->
+                    onPlainTap?.invoke(offset.x, offset.y, size.width.toFloat(), size.height.toFloat())
+                },
+                onLongPress = {
+                    onImageLongClick?.invoke(imageUrl)
+                },
+            )
+        }
+    } else {
+        Modifier
+    }
+
     if (fullPage) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(contentLayout.textPadding)
-                .padding(bottom = bookBottomInset),
+                .padding(bottom = bookBottomInset)
+                .then(gestureModifier),
             contentAlignment = Alignment.Center,
         ) {
             AsyncImage(
@@ -1016,7 +1045,9 @@ private fun NovelPageReaderImageBlock(
         }
     } else {
         Box(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(gestureModifier),
             contentAlignment = Alignment.Center,
         ) {
             AsyncImage(

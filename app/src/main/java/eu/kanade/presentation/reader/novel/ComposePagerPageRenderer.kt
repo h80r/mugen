@@ -216,6 +216,7 @@ internal fun ComposePagerPageRenderer(
     onOpenPreviousChapter: () -> Unit,
     onOpenNextChapter: () -> Unit,
     onTextTap: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> onToggleUi() },
+    onImageLongClick: ((String) -> Unit)? = null,
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
 ) {
@@ -451,6 +452,7 @@ internal fun ComposePagerPageRenderer(
                     selectionSessionIdProvider = selectionSessionIdProvider,
                     onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
                     onPlainTap = onTextTap,
+                    onImageLongClick = onImageLongClick,
                 )
             }
 
