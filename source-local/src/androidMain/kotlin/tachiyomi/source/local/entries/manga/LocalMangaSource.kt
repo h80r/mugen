@@ -384,7 +384,7 @@ actual class LocalMangaSource(
                             !it.isDirectory && ImageUtil.isImage(it.name) { it.openInputStream() }
                         }
 
-                    entry?.let { coverManager.update(manga, it.openInputStream()) }
+                    entry?.let { coverManager.generateCover(manga, it.openInputStream()) }
                 }
                 is Format.Archive -> {
                     format.file.archiveReader(context).use { reader ->
@@ -394,20 +394,20 @@ actual class LocalMangaSource(
                                 .find { it.isFile && ImageUtil.isImage(it.name) { reader.getInputStream(it.name)!! } }
                         }
 
-                        entry?.let { coverManager.update(manga, reader.getInputStream(it.name)!!) }
+                        entry?.let { coverManager.generateCover(manga, reader.getInputStream(it.name)!!) }
                     }
                 }
                 is Format.Epub -> {
                     format.file.epubReader(context).use { epub ->
                         val entry = epub.getImagesFromPages().firstOrNull()
 
-                        entry?.let { coverManager.update(manga, epub.getInputStream(it)!!) }
+                        entry?.let { coverManager.generateCover(manga, epub.getInputStream(it)!!) }
                     }
                 }
                 is Format.Pdf -> {
                     format.file.pdfReader(context).use { pdf ->
                         if (pdf.pageCount > 0) {
-                            coverManager.update(manga, pdf.getPageStream(0))
+                            coverManager.generateCover(manga, pdf.getPageStream(0))
                         } else {
                             null
                         }

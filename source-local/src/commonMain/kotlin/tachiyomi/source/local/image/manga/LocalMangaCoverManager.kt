@@ -9,4 +9,6 @@ expect class LocalMangaCoverManager {
     fun find(mangaUrl: String): UniFile?
 
     fun update(manga: SManga, inputStream: InputStream): UniFile?
+
+    fun generateCover(manga: SManga, inputStream: InputStream): UniFile?
 }

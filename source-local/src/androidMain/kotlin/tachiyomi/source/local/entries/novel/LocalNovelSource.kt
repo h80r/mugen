@@ -255,7 +255,7 @@ actual class LocalNovelSource(
 
         runCatching {
             val cover = book.coverImageBytes() ?: return
-            cover.inputStream().use { coverManager.update(novel, it) }
+            cover.inputStream().use { coverManager.generateCover(novel, it) }
         }.onFailure { e ->
             logcat(LogPriority.WARN, e) { "Unable to extract embedded cover from $fileName" }
         }
@@ -268,7 +268,7 @@ actual class LocalNovelSource(
             epubFile.epubReader(context).use { epub ->
                 val cover = epub.getCoverImage() ?: return
                 epub.getInputStream(cover)?.use { stream ->
-                    coverManager.update(novel, stream)
+                    coverManager.generateCover(novel, stream)
                 }
             }
         }.onFailure { e ->
