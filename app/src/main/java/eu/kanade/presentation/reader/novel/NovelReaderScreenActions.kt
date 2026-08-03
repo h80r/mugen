@@ -23,7 +23,12 @@ import eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsPlaybackStartRequest
 @Immutable
 data class NovelReaderScreenActions(
     val onBack: () -> Unit,
-    val onReadingProgress: (currentIndex: Int, totalItems: Int, persistedProgress: Long?) -> Unit,
+    val onReadingProgress: (
+        currentIndex: Int,
+        totalItems: Int,
+        persistedProgress: Long?,
+        isInitialPositionRestored: Boolean,
+    ) -> Unit,
     val onSeekBookModeProgress: (Float) -> Unit = {},
     val onToggleBookmark: () -> Unit = {},
     val onOpenDictionaryHistory: (() -> Unit)? = null,

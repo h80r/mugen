@@ -82,6 +82,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -520,6 +521,7 @@ internal fun NovelReaderContentHost(
         totalItems: Int,
         persistedProgress: Long?,
         flashDisplay: Boolean = false,
+        isInitialPositionRestored: Boolean = true,
     ) {
         // Book mode keeps progress in its own domain (spine section + fraction, persisted as an
         // encoded book location). The classic per-chapter reporters (web scroll listener, paginated
@@ -530,7 +532,7 @@ internal fun NovelReaderContentHost(
             displayRefreshHost.flash()
         }
         hasReportedReadingProgress = true
-        onReadingProgress(currentIndex, totalItems, persistedProgress)
+        onReadingProgress(currentIndex, totalItems, persistedProgress, isInitialPositionRestored)
     }
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -807,15 +809,17 @@ internal fun NovelReaderContentHost(
             itemCount = state.contentBlocks.size,
         )
     }
-    val textListState = rememberLazyListState(
-        initialFirstVisibleItemIndex = initialNativeReaderIndex
-            .coerceIn(0, (state.contentBlocks.lastIndex).coerceAtLeast(0)),
-        initialFirstVisibleItemScrollOffset = if (state.lastSavedPageReaderProgress != null) {
-            0
-        } else {
-            state.lastSavedScrollOffsetPx.coerceAtLeast(0)
-        },
-    )
+    val textListState = key(state.chapter.id) {
+        rememberLazyListState(
+            initialFirstVisibleItemIndex = initialNativeReaderIndex
+                .coerceIn(0, (state.contentBlocks.lastIndex).coerceAtLeast(0)),
+            initialFirstVisibleItemScrollOffset = if (state.lastSavedPageReaderProgress != null) {
+                0
+            } else {
+                state.lastSavedScrollOffsetPx.coerceAtLeast(0)
+            },
+        )
+    }
 
     // РџРѕР»СѓС‡Р°РµРј СЂР°Р·РјРµСЂС‹ system bars
     val view = LocalView.current
@@ -1153,16 +1157,18 @@ internal fun NovelReaderContentHost(
     } else {
         initialContentPage
     }
-    val pagerState = rememberPagerState(
-        initialPage = initialPagerPage,
-        pageCount = {
-            if (pageReaderRendererRoute == NovelPageReaderRendererRoute.COMPOSE_PAGER) {
-                composePagerVirtualPageCount.coerceAtLeast(1)
-            } else {
-                pageReaderItemsCount.coerceAtLeast(1)
-            }
-        },
-    )
+    val pagerState = key(state.chapter.id) {
+        rememberPagerState(
+            initialPage = initialPagerPage,
+            pageCount = {
+                if (pageReaderRendererRoute == NovelPageReaderRendererRoute.COMPOSE_PAGER) {
+                    composePagerVirtualPageCount.coerceAtLeast(1)
+                } else {
+                    pageReaderItemsCount.coerceAtLeast(1)
+                }
+            },
+        )
+    }
     val pageReaderTtsNavigationAdapter = remember(
         pagerState,
         pageReaderRendererRoute,
@@ -1317,6 +1323,14 @@ internal fun NovelReaderContentHost(
                 pageTurnContentPageCount = pageReaderItemsCount,
                 pageTurnHasPreviousChapter = composePagerHasPreviousChapter,
             )
+        }
+    }
+    var isInitialPositionRestored by remember(state.chapter.id) {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(state.chapter.id, initialContentPage, pageReaderProgressPageIndex) {
+        if (pageReaderProgressPageIndex == initialContentPage) {
+            isInitialPositionRestored = true
         }
     }
     val latestPageReaderProgressPageIndex by rememberUpdatedState(pageReaderProgressPageIndex)
@@ -2127,7 +2141,7 @@ internal fun NovelReaderContentHost(
                 if (!showWebView && scrollContentBlocks.isNotEmpty()) {
                     // Track progress according to the active reader mode.
                     if (usePageReader) {
-                        LaunchedEffect(pageReaderProgressPageIndex, pageReaderItemsCount) {
+                        LaunchedEffect(pageReaderProgressPageIndex, pageReaderItemsCount, isInitialPositionRestored) {
                             reportReadingProgress(
                                 pageReaderProgressPageIndex,
                                 pageReaderItemsCount,
@@ -2136,6 +2150,7 @@ internal fun NovelReaderContentHost(
                                     totalItems = pageReaderItemsCount,
                                 ),
                                 flashDisplay = true,
+                                isInitialPositionRestored = isInitialPositionRestored,
                             )
                         }
                         DisposableEffect(pagerState, state.chapter.id) {
@@ -2149,6 +2164,7 @@ internal fun NovelReaderContentHost(
                                         index = latestIndex,
                                         totalItems = latestTotal,
                                     ),
+                                    isInitialPositionRestored = isInitialPositionRestored,
                                 )
                             }
                         }

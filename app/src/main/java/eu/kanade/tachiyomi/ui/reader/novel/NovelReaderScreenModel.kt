@@ -10,8 +10,10 @@ import eu.kanade.domain.source.interactor.NovelReaderIncognitoState
 import eu.kanade.domain.source.novel.interactor.GetNovelIncognitoState
 import eu.kanade.presentation.reader.novel.NovelAutoScrollHandoffState
 import eu.kanade.presentation.reader.novel.NovelReaderAutoScrollHandoffPolicy
+import eu.kanade.presentation.reader.novel.NovelReaderPageReaderHandoffTarget
 import eu.kanade.presentation.reader.novel.NovelReaderTtsChapterHandoffPolicy
 import eu.kanade.presentation.reader.novel.SeriesInterstitialState
+import eu.kanade.presentation.reader.novel.resolveReaderProgressToPersist
 import eu.kanade.tachiyomi.data.download.novel.NovelDownloadManager
 import eu.kanade.tachiyomi.data.prefetch.AllowAllContentPrefetchEnvironment
 import eu.kanade.tachiyomi.data.prefetch.AndroidContentPrefetchEnvironment
@@ -1407,6 +1409,7 @@ class NovelReaderScreenModel(
         currentIndex: Int,
         totalItems: Int,
         persistedProgress: Long? = null,
+        isInitialPositionRestored: Boolean = false,
     ) {
         val chapter = currentChapter ?: return
         if (totalItems <= 0 || currentIndex < 0) return
@@ -1424,10 +1427,12 @@ class NovelReaderScreenModel(
         val reachedReadThreshold = totalItems == 1 ||
             ((currentIndex + 1).toFloat() / totalItems.toFloat()) >= readThreshold
         val shouldPersistRead = (lastSavedRead == true) || chapter.read || reachedReadThreshold
-        val newProgress = resolveProgressToPersist(
+        val newProgress = resolveReaderProgressToPersist(
             shouldPersistRead = shouldPersistRead,
             currentIndex = currentIndex,
             resolvedPersistedProgress = resolvedPersistedProgress,
+            previousProgress = lastSavedProgress,
+            isInitialPositionRestored = isInitialPositionRestored,
         ) ?: return
         maybePrefetchNextChapterOnProgress(
             currentIndex = currentIndex,
@@ -1465,18 +1470,6 @@ class NovelReaderScreenModel(
                 sessionReadDurationMs = progressPersistenceController.sessionReadDurationMs(),
             ),
         )
-    }
-
-    private fun resolveProgressToPersist(
-        shouldPersistRead: Boolean,
-        currentIndex: Int,
-        resolvedPersistedProgress: Long,
-    ): Long? {
-        val previousProgress = lastSavedProgress ?: return resolvedPersistedProgress
-        if (!shouldPersistRead) return resolvedPersistedProgress
-        if (resolvedPersistedProgress >= previousProgress) return resolvedPersistedProgress
-        if (currentIndex <= 0) return null
-        return resolvedPersistedProgress
     }
     // ---------------------------------------------------------------------------------------------
     // TTS delegates. All TTS logic lives in [ttsController]; the screen model forwards the
