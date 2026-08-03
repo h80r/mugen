@@ -1,6 +1,12 @@
 package eu.kanade.presentation.reader.novel
 
+import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.icu.text.BreakIterator
@@ -20,8 +26,11 @@ import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.UnderlineSpan
 import android.util.TypedValue
+import android.view.ActionMode
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -64,6 +73,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection
 import eu.kanade.tachiyomi.ui.reader.novel.SelectedTextAction
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundTexture
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
+import tachiyomi.i18n.MR
 import tachiyomi.i18n.aniyomi.AYMR
 import java.util.Locale
 import kotlin.math.hypot
@@ -72,6 +82,9 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.TextAlign as ReaderTextAlign
 
 internal const val MENU_ID_DICTIONARY = 0x9001
 internal const val MENU_ID_TRANSLATION = 0x9002
+internal const val MENU_ID_COPY = 0x9003
+internal const val MENU_ID_SELECT_ALL = 0x9004
+internal const val MENU_ID_SHARE = 0x9005
 
 internal data class NovelPageReaderContentLayout(
     val textPadding: PaddingValues,
@@ -418,6 +431,8 @@ private class NovelPageReaderTextView constructor(
     }
 
     private var localSelection: NovelSelectedTextSelection? = null
+    private var selectionActionMode: ActionMode? = null
+    private val selectionBoundsInView = RectF()
     private var isExecutingAction = false
     var isDictionaryEnabled = false
     var isTranslationEnabled = false
@@ -425,6 +440,7 @@ private class NovelPageReaderTextView constructor(
 
     override fun onDetachedFromWindow() {
         isDetaching = true
+        finishSelectionActionMode()
         super.onDetachedFromWindow()
         isDetaching = false
     }
@@ -456,13 +472,17 @@ private class NovelPageReaderTextView constructor(
     }
 
     private fun setupCustomSelectionActionModeCallback() {
-        customSelectionActionModeCallback = object : android.view.ActionMode.Callback {
-            override fun onCreateActionMode(mode: android.view.ActionMode?, menu: android.view.Menu?): Boolean {
+        customSelectionActionModeCallback = object : ActionMode.Callback2() {
+            override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
                 if (menu == null) return true
+                // Standard system-style actions first, then the reader-specific ones.
+                menu.add(Menu.NONE, MENU_ID_COPY, 10, context.getString(MR.strings.copy.resourceId))
+                menu.add(Menu.NONE, MENU_ID_SELECT_ALL, 20, context.getString(MR.strings.action_select_all.resourceId))
+                menu.add(Menu.NONE, MENU_ID_SHARE, 30, context.getString(MR.strings.action_share.resourceId))
                 val menuOrder = 100
                 if (isDictionaryEnabled) {
                     menu.add(
-                        android.view.Menu.NONE,
+                        Menu.NONE,
                         MENU_ID_DICTIONARY,
                         menuOrder,
                         context.getString(AYMR.strings.novel_reader_text_selection_action_dictionary.resourceId),
@@ -470,7 +490,7 @@ private class NovelPageReaderTextView constructor(
                 }
                 if (isTranslationEnabled) {
                     menu.add(
-                        android.view.Menu.NONE,
+                        Menu.NONE,
                         MENU_ID_TRANSLATION,
                         menuOrder + 1,
                         context.getString(AYMR.strings.novel_reader_text_selection_action_translate.resourceId),
@@ -479,15 +499,32 @@ private class NovelPageReaderTextView constructor(
                 return true
             }
 
-            override fun onPrepareActionMode(mode: android.view.ActionMode?, menu: android.view.Menu?): Boolean {
+            override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
                 return false
             }
 
-            override fun onActionItemClicked(mode: android.view.ActionMode?, item: android.view.MenuItem?): Boolean {
+            override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean {
                 if (item == null) return false
-                val selection = localSelection ?: return false
+                val selection = localSelection
                 when (item.itemId) {
+                    MENU_ID_COPY -> {
+                        val selectedText = selection?.text ?: return false
+                        copyToClipboard(selectedText)
+                        mode?.finish()
+                        return true
+                    }
+                    MENU_ID_SELECT_ALL -> {
+                        selectAllText()
+                        return true
+                    }
+                    MENU_ID_SHARE -> {
+                        val selectedText = selection?.text ?: return false
+                        shareSelectedText(selectedText)
+                        mode?.finish()
+                        return true
+                    }
                     MENU_ID_DICTIONARY -> {
+                        if (selection == null) return false
                         isExecutingAction = true
                         val selectionWithAction = selection.copy(triggerAction = SelectedTextAction.DICTIONARY)
                         onSelectedTextSelectionChanged(selectionWithAction)
@@ -495,6 +532,7 @@ private class NovelPageReaderTextView constructor(
                         return true
                     }
                     MENU_ID_TRANSLATION -> {
+                        if (selection == null) return false
                         isExecutingAction = true
                         val selectionWithAction = selection.copy(triggerAction = SelectedTextAction.TRANSLATION)
                         onSelectedTextSelectionChanged(selectionWithAction)
@@ -505,7 +543,29 @@ private class NovelPageReaderTextView constructor(
                 return false
             }
 
-            override fun onDestroyActionMode(mode: android.view.ActionMode?) {
+            override fun onDestroyActionMode(mode: ActionMode?) {
+                // Mirror the framework behavior: collapse the selection when the toolbar
+                // closes (back / tap outside / after an action). publishSelection() skips the
+                // null event while isExecutingAction is set, so dictionary/translation flows
+                // are not cancelled.
+                val spannable = text as? Spannable ?: return
+                val selectionEnd = Selection.getSelectionEnd(spannable)
+                if (selectionEnd >= 0) {
+                    Selection.setSelection(spannable, selectionEnd)
+                }
+            }
+
+            override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
+                if (view !== this@NovelPageReaderTextView || layout == null || selectionBoundsInView.isEmpty) {
+                    super.onGetContentRect(mode, view, outRect)
+                    return
+                }
+                outRect.set(
+                    selectionBoundsInView.left.roundToInt(),
+                    selectionBoundsInView.top.roundToInt(),
+                    selectionBoundsInView.right.roundToInt(),
+                    selectionBoundsInView.bottom.roundToInt(),
+                )
             }
         }
     }
@@ -526,6 +586,7 @@ private class NovelPageReaderTextView constructor(
             clearSelectionPromotion()
             selectionPromotedByLongPress = false
             clearSelection()
+            finishSelectionActionMode()
         }
     }
 
@@ -550,6 +611,7 @@ private class NovelPageReaderTextView constructor(
                 selectionPromotedByLongPress = false
                 if (selectionInteractionEnabled) {
                     clearSelection()
+                    finishSelectionActionMode()
                     scheduleSelectionPromotion()
                 }
             }
@@ -615,6 +677,51 @@ private class NovelPageReaderTextView constructor(
         return true
     }
 
+    /**
+     * Programmatic Selection.setSelection() does not make the framework start the
+     * floating selection action mode on its own, and this view is intentionally
+     * non-focusable, so the ActionMode has to be started explicitly to surface the
+     * system copy/share/select-all menu plus the custom dictionary/translation items.
+     */
+    private fun startSelectionActionMode() {
+        if (!isAttachedToWindow) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            selectionActionMode = startActionMode(customSelectionActionModeCallback, ActionMode.TYPE_FLOATING)
+        } else {
+            selectionActionMode = startActionMode(customSelectionActionModeCallback)
+        }
+    }
+
+    private fun finishSelectionActionMode() {
+        selectionActionMode?.finish()
+        selectionActionMode = null
+    }
+
+    private fun copyToClipboard(text: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        clipboard.setPrimaryClip(ClipData.newPlainText(null, text))
+    }
+
+    private fun shareSelectedText(text: String) {
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        val chooser = Intent.createChooser(shareIntent, null)
+        if (context !is Activity) {
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(chooser)
+    }
+
+    private fun selectAllText() {
+        val spannable = text as? Spannable ?: return
+        if (spannable.length == 0) return
+        Selection.setSelection(spannable, 0, spannable.length)
+        // Re-anchor the floating toolbar to the full selection.
+        selectionActionMode?.invalidateContentRect()
+    }
+
     private fun scheduleSelectionPromotion() {
         clearSelectionPromotion()
         selectionPromotionScheduled = true
@@ -628,6 +735,7 @@ private class NovelPageReaderTextView constructor(
     }
 
     private fun publishSelection(selStart: Int, selEnd: Int) {
+        selectionBoundsInView.setEmpty()
         val currentText = text?.toString().orEmpty()
         if (selStart < 0 || selEnd < 0 || selStart == selEnd || currentText.isBlank()) {
             localSelection = null
@@ -669,6 +777,7 @@ private class NovelPageReaderTextView constructor(
             isExecutingAction = false
             return
         }
+        selectionBoundsInView.set(bounds)
 
         val selectedText = currentText.substring(start, end)
         if (selectedText.isBlank()) {
@@ -705,6 +814,7 @@ private class NovelPageReaderTextView constructor(
     }
 
     private fun clearSelection() {
+        selectionBoundsInView.setEmpty()
         val spannable = text as? Spannable ?: return
         Selection.removeSelection(spannable)
         onSelectedTextSelectionChanged(null)
@@ -723,6 +833,7 @@ private class NovelPageReaderTextView constructor(
         Selection.setSelection(spannable, selectionStart, selectionEnd)
         publishSelection(selectionStart, selectionEnd)
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        startSelectionActionMode()
         return true
     }
 
@@ -826,8 +937,23 @@ internal fun NovelPageReaderPageContent(
     )
     val preserveSourceAlign = readerSettings.preserveSourceTextAlignInNative
 
+    // Handle short taps on the empty page area (below the text, in margins, around images)
+    // so they reach the same onPlainTap dispatch as taps on text/image blocks. Child
+    // handlers (TextView, image block) consume their own events, so this never double-fires.
+    val pageTapModifier = if (touchHandlingEnabled) {
+        Modifier.pointerInput(onPlainTap) {
+            detectTapGestures(
+                onTap = { offset ->
+                    onPlainTap?.invoke(offset.x, offset.y, size.width.toFloat(), size.height.toFloat())
+                },
+            )
+        }
+    } else {
+        Modifier
+    }
+
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().then(pageTapModifier),
         contentAlignment = Alignment.TopStart,
     ) {
         if (pageSurfaceColor != Color.Transparent) {
