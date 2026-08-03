@@ -60,7 +60,8 @@ object LNReaderBackup {
      * @throws IllegalArgumentException when the payload is not a readable LNReader backup.
      */
     fun decode(bytes: ByteArray): Backup {
-        val documents = if (isZip(bytes)) readZipDocuments(bytes) else listOf(parse(bytes))
+        val isArchive = isZip(bytes)
+        val documents = if (isArchive) readZipDocuments(bytes) else listOf(null to parse(bytes))
         require(documents.isNotEmpty()) { "No JSON documents found in LNReader backup" }
 
         val novelObjects = mutableListOf<JsonObject>()
@@ -68,10 +69,19 @@ object LNReaderBackup {
         val categoryObjects = mutableListOf<JsonObject>()
         val novelCategoryLinks = mutableListOf<JsonObject>()
 
-        documents.forEach { document ->
+        documents.forEach { (fileName, document) ->
             when (document) {
                 // 1.x: the whole file is the novel list.
-                is JsonArray -> novelObjects += document.filterIsInstance<JsonObject>()
+                is JsonArray -> when {
+                    // 2.x: the archive stores each collection as its own JSON array file.
+                    fileName?.startsWith("chapter") == true -> chapterObjects += document.filterIsInstance<JsonObject>()
+                    fileName?.startsWith("categor") == true ->
+                        categoryObjects +=
+                            document.filterIsInstance<JsonObject>()
+                    fileName?.contains("categor", ignoreCase = true) == true ->
+                        novelCategoryLinks += document.filterIsInstance<JsonObject>()
+                    else -> novelObjects += document.filterIsInstance<JsonObject>()
+                }
                 is JsonObject -> {
                     novelObjects += document.collection("novels", "novel", "library")
                     chapterObjects += document.collection("chapters", "chapter")
@@ -137,16 +147,21 @@ object LNReaderBackup {
             .reduce(Long::or) and Long.MAX_VALUE
     }
 
-    private fun readZipDocuments(bytes: ByteArray): List<JsonElement> {
-        val documents = mutableListOf<JsonElement>()
+    /**
+     * Reads every JSON document of a 2.x archive, remembering the file name so a bare array can be
+     * routed to the right collection (novels.json, chapters.json, categories.json, ...).
+     */
+    private fun readZipDocuments(bytes: ByteArray): List<Pair<String?, JsonElement>> {
+        val documents = mutableListOf<Pair<String?, JsonElement>>()
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
                 if (entry.isDirectory) continue
-                if (!entry.name.endsWith(".json", ignoreCase = true)) continue
+                val name = entry.name.substringAfterLast('/')
+                if (!name.endsWith(".json", ignoreCase = true)) continue
                 val content = zip.readBytes()
                 if (content.isEmpty()) continue
-                runCatching { parse(content) }.getOrNull()?.let { documents += it }
+                runCatching { parse(content) }.getOrNull()?.let { documents += name to it }
             }
         }
         return documents
