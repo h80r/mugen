@@ -91,11 +91,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -609,7 +611,7 @@ class NovelScreenModel(
 
             screenModelScope.launchIO {
                 translationQueueManager.queue
-                    .collectLatest { items ->
+                    .onEach { items ->
                         val previousQueuedChapterIds = queuedChapterIds
                         queuedChapterIds = items.mapTo(mutableSetOf()) { it.chapterId }
                         val addedChapterIds = queuedChapterIds - previousQueuedChapterIds
@@ -633,11 +635,12 @@ class NovelScreenModel(
                             )
                         }
                     }
+                    .collect()
             }
 
             screenModelScope.launchIO {
                 translationQueueManager.progressUpdates
-                    .collectLatest { update ->
+                    .onEach { update ->
                         if (update.novelId == novelId) {
                             when (update.status) {
                                 TranslationStatus.COMPLETED,
@@ -656,6 +659,7 @@ class NovelScreenModel(
                             }
                         }
                     }
+                    .collect()
             }
 
             logRefreshSnapshot(

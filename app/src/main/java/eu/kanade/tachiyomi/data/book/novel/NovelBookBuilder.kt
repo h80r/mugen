@@ -399,7 +399,13 @@ class NovelBookBuilder(
         /** App-private location of the artifacts: they need real file offsets, so no SAF here. */
         fun defaultRootDirectory(): File {
             val filesDir = runCatching { Injekt.get<Application>().filesDir }.getOrNull()
-            return File(filesDir, ROOT_DIRECTORY_NAME)
+            // Unit tests never register an Application (or register a relaxed mock without a files
+            // dir), so fall back to the JVM temp dir instead of failing on a null parent.
+            return if (filesDir != null) {
+                File(filesDir, ROOT_DIRECTORY_NAME)
+            } else {
+                File(System.getProperty("java.io.tmpdir"), ROOT_DIRECTORY_NAME)
+            }
         }
     }
 }

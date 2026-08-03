@@ -2,6 +2,8 @@ package eu.kanade.tachiyomi.ui.entries.novel
 
 import android.app.Application
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.wifi.WifiManager
 import androidx.compose.material3.SnackbarHostState
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -19,6 +21,8 @@ import eu.kanade.domain.track.model.AutoTrackState
 import eu.kanade.domain.track.novel.interactor.RefreshNovelTracks
 import eu.kanade.domain.track.novel.interactor.TrackNovelChapter
 import eu.kanade.domain.track.service.TrackPreferences
+import eu.kanade.tachiyomi.data.book.novel.LocalNovelBookArtifactBuilder
+import eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder
 import eu.kanade.tachiyomi.data.download.novel.NovelDownloadCacheEvent
 import eu.kanade.tachiyomi.data.download.novel.NovelDownloadQueueState
 import eu.kanade.tachiyomi.data.download.novel.NovelTranslatedDownloadManager
@@ -56,8 +60,13 @@ import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.data.handlers.novel.NovelDatabaseHandler
+import tachiyomi.domain.book.novel.interactor.GetNovelBookState
+import tachiyomi.domain.book.novel.interactor.SetNovelBookEnabled
+import tachiyomi.domain.book.novel.model.NovelBookState
+import tachiyomi.domain.book.novel.repository.NovelBookStateRepository
 import tachiyomi.domain.category.novel.interactor.GetNovelCategories
 import tachiyomi.domain.category.novel.interactor.SetNovelCategories
+import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.entries.novel.interactor.GetNovelFavorites
 import tachiyomi.domain.entries.novel.interactor.GetNovelWithChapters
 import tachiyomi.domain.entries.novel.interactor.SetNovelChapterFlags
@@ -100,6 +109,13 @@ class NovelScreenModelTest {
                     val application = mockk<Application>(relaxed = true)
                     every { application.filesDir } returns filesDir
                     every { application.cacheDir } returns cacheDir
+                    // The NovelDownloadQueueManager singleton kicks off a network monitor on first
+                    // access; give the mock app real service stubs so that monitor does not crash
+                    // in the background of unrelated tests.
+                    every { application.getSystemService(ConnectivityManager::class.java) } returns
+                        mockk<ConnectivityManager>(relaxed = true)
+                    every { application.getSystemService(WifiManager::class.java) } returns
+                        mockk<WifiManager>(relaxed = true)
                     Injekt.addSingleton(fullType<Application>(), application)
                 }
             runCatching { Injekt.get<Json>() }
@@ -124,6 +140,20 @@ class NovelScreenModelTest {
             runCatching { Injekt.get<TrackNovelChapter>() }
                 .getOrElse {
                     Injekt.addSingleton(fullType<TrackNovelChapter>(), mockk<TrackNovelChapter>(relaxed = true))
+                }
+            runCatching { Injekt.get<DownloadPreferences>() }
+                .getOrElse {
+                    // The NovelDownloadQueueManager singleton reads this preference from its network
+                    // monitor coroutine; a bare relaxed mock would return a null changes() flow and
+                    // crash in the background of unrelated tests.
+                    val wifiOnly = mockk<Preference<Boolean>>(relaxed = true).also { pref ->
+                        every { pref.get() } returns false
+                        every { pref.changes() } returns MutableStateFlow(false)
+                    }
+                    val downloadPreferences = mockk<DownloadPreferences>(relaxed = true).also { prefs ->
+                        every { prefs.downloadOnlyOverWifi() } returns wifiOnly
+                    }
+                    Injekt.addSingleton(fullType<DownloadPreferences>(), downloadPreferences)
                 }
             runCatching { Injekt.get<FetchEntryMetadataFromTracker>() }
                 .getOrElse {
@@ -1587,6 +1617,16 @@ class NovelScreenModelTest {
         val sourcePreferences = SourcePreferences(preferenceStore).also { preferences ->
             preferences.entrySuggestionsEnabled().set(false)
         }
+        // Book mode dependencies are passed explicitly so the screen model never touches Injekt
+        // (which other test classes register into on their own schedule).
+        val bookStateRepository = mockk<NovelBookStateRepository>(relaxed = true)
+        val bookBuilder = NovelBookBuilder(
+            rootDirectory = File(System.getProperty("java.io.tmpdir"), "novel-screen-model-test-books"),
+            repository = bookStateRepository,
+        )
+        val getNovelBookState = mockk<GetNovelBookState>().also { getter ->
+            every { getter.subscribe(any()) } returns MutableStateFlow<NovelBookState?>(null)
+        }
 
         return NovelScreenModel(
             lifecycle = FakeLifecycleOwner().lifecycle,
@@ -1630,6 +1670,14 @@ class NovelScreenModelTest {
             suggestionCoordinator = mockk<SuggestionCoordinator>(relaxed = true),
             sourcePreferences = sourcePreferences,
             activityDataRepository = activityDataRepository,
+            novelBookBuilder = bookBuilder,
+            localNovelBookArtifactBuilder = LocalNovelBookArtifactBuilder(
+                bookBuilder = bookBuilder,
+                sourceManager = mockk<NovelSourceManager>(relaxed = true),
+                repository = bookStateRepository,
+            ),
+            getNovelBookState = getNovelBookState,
+            setNovelBookEnabledInteractor = mockk<SetNovelBookEnabled>(relaxed = true),
         ).also(::trackScreenModel)
     }
 
