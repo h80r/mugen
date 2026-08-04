@@ -8,7 +8,9 @@ import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
 import coil3.key.Keyer
 import coil3.request.Options
+import eu.kanade.tachiyomi.extension.novel.runtime.resolveUrl
 import okhttp3.Call
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import java.io.IOException
 
@@ -30,8 +32,14 @@ class NovelReaderRefererImageFetcher(
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult {
+        // Sources frequently reference images by relative paths. The referer is the page the image
+        // was read from, so resolving against it is exactly what a browser does; without this the
+        // relative URL used to hit HttpUrl.get and fail the whole load.
+        val resolvedUrl = resolveUrl(data.url, data.referer)
+        val httpUrl = resolvedUrl.toHttpUrlOrNull()
+            ?: throw IOException("Unsupported image URL: ${data.url}")
         val request = Request.Builder()
-            .url(data.url)
+            .url(httpUrl)
             .header("Referer", data.referer.trimEnd('/') + "/")
             .build()
 
