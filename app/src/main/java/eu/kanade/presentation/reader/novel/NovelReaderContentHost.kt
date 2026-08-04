@@ -2459,6 +2459,13 @@ internal fun NovelReaderContentHost(
                         )
                     } else {
                         // Scroll mode.
+                        // Shared across the two chapter-swipe detectors below: a diagonal swipe can
+                        // satisfy both the horizontal and the vertical one. The horizontal detector
+                        // fires first, mid-drag; once it has handled the gesture the vertical one has
+                        // to stay silent, otherwise one gesture opens two chapters and — because the
+                        // seamless in-place switch has already advanced the chapter — skips one.
+                        // Mirrors the `horizontalSwipeHandled` guard the WebView touch listener uses.
+                        var horizontalChapterSwipeHandled by remember { mutableStateOf(false) }
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -2496,6 +2503,7 @@ internal fun NovelReaderContentHost(
                                                 onDragStart = {
                                                     totalDrag = 0f
                                                     handled = false
+                                                    horizontalChapterSwipeHandled = false
                                                 },
                                                 onHorizontalDrag = { change, dragAmount ->
                                                     change.consume()
@@ -2506,12 +2514,14 @@ internal fun NovelReaderContentHost(
                                                         state.previousChapterId != null
                                                     ) {
                                                         handled = true
+                                                        horizontalChapterSwipeHandled = true
                                                         openPreviousChapterFromReader()
                                                     } else if (
                                                         totalDrag < -160f &&
                                                         state.nextChapterId != null
                                                     ) {
                                                         handled = true
+                                                        horizontalChapterSwipeHandled = true
                                                         openNextChapterFromReader()
                                                     }
                                                 },
@@ -2537,6 +2547,9 @@ internal fun NovelReaderContentHost(
                                         ) {
                                             awaitEachGesture {
                                                 val down = awaitFirstDown(requireUnconsumed = false)
+                                                // A new gesture starts: clear the marker the horizontal
+                                                // detector may have set on the previous one.
+                                                horizontalChapterSwipeHandled = false
                                                 var currentPosition = down.position
                                                 var gestureEndUptime = down.uptimeMillis
                                                 val wasNearChapterEndAtDown =
@@ -2555,6 +2568,15 @@ internal fun NovelReaderContentHost(
                                                 }
 
                                                 if (showReaderUi || showWebView || usePageReader) {
+                                                    return@awaitEachGesture
+                                                }
+
+                                                // The horizontal detector already handled this gesture
+                                                // (a diagonal swipe at the chapter edge): firing the
+                                                // chapter switch again here would skip one, because the
+                                                // seamless in-place switch has already advanced
+                                                // `nextChapterId` past the target.
+                                                if (horizontalChapterSwipeHandled) {
                                                     return@awaitEachGesture
                                                 }
 
