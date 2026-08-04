@@ -435,6 +435,14 @@ class NovelReaderScreenModel(
         if (chapterIndex >= 0 && !chapterOrderList[chapterIndex].read) {
             chapterOrderList[chapterIndex] = chapterOrderList[chapterIndex].copy(read = true)
         }
+        // The book completion check runs against the full chapter list, so the in-memory read mark
+        // has to reach it too (the DB write arrives asynchronously through the progress pipeline).
+        val fullChapterIndex = fullChapterOrderList.indexOfFirst { it.id == chapterId }
+        if (fullChapterIndex >= 0 && !fullChapterOrderList[fullChapterIndex].read) {
+            fullChapterOrderList = fullChapterOrderList.toMutableList().also { list ->
+                list[fullChapterIndex] = list[fullChapterIndex].copy(read = true)
+            }
+        }
     }
 
     override fun bookUpdateSuccessState(

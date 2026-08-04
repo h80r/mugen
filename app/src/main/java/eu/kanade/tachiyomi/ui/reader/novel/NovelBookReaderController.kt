@@ -228,6 +228,11 @@ internal class NovelBookReaderController(
     private fun requestBookSeek(location: NovelBookLocation, reason: BookSeekReason) {
         val artifact = artifactSource
         val locator = artifact?.locatorOf(artifact.charOffsetOf(location)) ?: BookLocator.UNKNOWN
+        // An explicit move (resume, seekbar, chapter picker, TTS, search) never marks the chapters
+        // it jumps over as read: read marking restarts from the chapter the seek lands in, and is
+        // paused until the renderer applies the move.
+        readMarkAnchorCharOffset = artifact?.let { it.chapterStartAt(it.charOffsetOf(location)) }
+        bookSeekInFlight = true
         lastBookSeekRequestId += 1
         bookSeekRequestState.value = BookSeekRequest(
             id = lastBookSeekRequestId,
@@ -250,6 +255,7 @@ internal class NovelBookReaderController(
     fun onBookSeekApplied(seekRequestId: Long) {
         val request = bookSeekRequestState.value ?: return
         if (request.id != seekRequestId) return
+        bookSeekInFlight = false
         if (request.reason == BookSeekReason.Resume && bookModeRestoringPosition) {
             bookModeRestoringPosition = false
             refreshBookModeState()
@@ -299,6 +305,16 @@ internal class NovelBookReaderController(
 
     /** Chapters this book-mode session already reported as read, to avoid duplicate write-through. */
     private val bookModeMarkedReadChapterIds = mutableSetOf<Long>()
+
+    /**
+     * Chapter-boundary anchor for [markBookModeCrossedChaptersRead]: the furthest chapter start
+     * organic reading has reached. Explicit seeks reset it to their target, so chapters a jump
+     * skipped over are never marked read just because the position passed them.
+     */
+    private var readMarkAnchorCharOffset: Int? = null
+
+    /** True while a seek is requested but not yet applied by the renderer; read marking pauses. */
+    private var bookSeekInFlight = false
 
     private var lastBookModeFailureLogAtMs = 0L
 
@@ -709,43 +725,47 @@ internal class NovelBookReaderController(
 
     private fun markBookModeCrossedChaptersRead() {
         if (!bookModeRuntime.isActive) return
+        // While an explicit seek is in flight the renderer may still report pre-seek positions;
+        // marking chapters from those would count chapters the reader jumped over (or back) as read.
+        if (bookSeekInFlight) return
         val alreadyRead = buildSet {
             addAll(bookModeMarkedReadChapterIds)
             host.bookChapterOrderList().forEach { if (it.read) add(it.id) }
+            host.bookFullChapterOrderList().forEach { if (it.read) add(it.id) }
         }
         // A section is a fixed-size block, not a chapter, so "the section was read" cannot mark a
         // chapter read. Crossed chapters are derived from the whole-book character offset instead,
         // which is the exact same signal the position is persisted from.
-        val artifact = artifactSource
-        val crossedChapterIds = if (artifact != null) {
-            val charOffset = artifact.charOffsetOf(bookModeRuntime.location)
-            val crossed = artifact
-                .chaptersFullyReadBetween(
-                    fromCharOffset = bookModeSessionStartCharOffset,
-                    toCharOffset = charOffset,
-                )
-                .filterNot { it in alreadyRead }
-                .toMutableList()
-            // The chapter under the caret is still being read, but it counts as read once the
-            // reader is past the same threshold the per-chapter reader uses (90%). Without this,
-            // a chapter the reader stopped in the middle of stayed unread until 99% of the WHOLE
-            // book, and "novel completed" / the series interstitial never fired.
-            artifact.chapterAt(charOffset)?.let { current ->
-                val progressInside = if (current.charLength > 0) {
-                    ((charOffset - current.charStart).toFloat() / current.charLength.toFloat())
-                } else {
-                    0f
-                }
-                if (progressInside >= BOOK_MODE_READ_THRESHOLD &&
-                    current.chapterId !in alreadyRead
-                ) {
-                    crossed += current.chapterId
-                }
+        val artifact = artifactSource ?: return
+        val charOffset = artifact.charOffsetOf(bookModeRuntime.location)
+        // Read marking is anchored to the chapter start organic reading last reached: after a seek
+        // the anchor is the landing chapter, so skipped chapters are not marked read.
+        val baseline = readMarkAnchorCharOffset ?: bookModeSessionStartCharOffset
+        if (charOffset < baseline) return
+        val crossedChapterIds = artifact
+            .chaptersFullyReadBetween(
+                fromCharOffset = baseline,
+                toCharOffset = charOffset,
+            )
+            .filterNot { it in alreadyRead }
+            .toMutableList()
+        // The chapter under the caret is still being read, but it counts as read once the reader is
+        // past the same threshold the per-chapter reader uses (90%). Without this, a chapter the
+        // reader stopped in the middle of stayed unread until 99% of the WHOLE book, and "novel
+        // completed" / the series interstitial never fired.
+        artifact.chapterAt(charOffset)?.let { current ->
+            val progressInside = if (current.charLength > 0) {
+                ((charOffset - current.charStart).toFloat() / current.charLength.toFloat())
+            } else {
+                0f
             }
-            crossed
-        } else {
-            emptyList()
+            if (progressInside >= BOOK_MODE_READ_THRESHOLD && current.chapterId !in alreadyRead) {
+                crossedChapterIds += current.chapterId
+            }
         }
+        // Move the anchor to the chapter the reader is in now, so the next crossing resumes from a
+        // clean chapter boundary instead of a mid-chapter offset.
+        readMarkAnchorCharOffset = artifact.chapterStartAt(charOffset)
         if (crossedChapterIds.isEmpty()) return
         crossedChapterIds.forEach { chapterId ->
             val chapter = host.bookChapterOrderList().firstOrNull { it.id == chapterId }
@@ -764,8 +784,13 @@ internal class NovelBookReaderController(
                     // the chapter-by-chapter reader, and book mode resumes from its own locator.
                     lastPageRead = chapter.lastPageRead,
                     emitReadEvent = becameRead,
+                    // "Novel completed" has to check the whole novel: the resident window is anchored
+                    // to the entry chapter and does not slide like the chapter reader's window, so a
+                    // window-only check would fire long before a long book is actually finished.
                     emitNovelCompleted = becameRead &&
-                        host.bookChapterOrderList().all { it.read },
+                        host.bookFullChapterOrderList()
+                            .ifEmpty { host.bookChapterOrderList() }
+                            .all { it.read },
                     sessionReadDurationMs = 0L,
                 ),
             )
@@ -960,6 +985,8 @@ internal class NovelBookReaderController(
         bookSeekRequestState.value = null
         bookModeRestoringPosition = false
         bookModeSessionStartCharOffset = 0
+        readMarkAnchorCharOffset = null
+        bookSeekInFlight = false
         lastBookModeChapterId = null
         bookModeMarkedReadChapterIds.clear()
         bookModeRuntime.stop()
