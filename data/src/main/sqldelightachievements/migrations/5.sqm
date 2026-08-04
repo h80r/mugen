@@ -22,15 +22,15 @@ CREATE TABLE IF NOT EXISTS activity_log (
 -- Migrate existing data from old achievement_activity_log table
 INSERT OR IGNORE INTO activity_log (date, level, type, chapters_read, episodes_watched, last_updated)
 SELECT
-    date(date/1000, 'unixepoch') as date,
+    date(date/1000, 'unixepoch'),
     CASE
         WHEN chapter_count >= 20 OR episode_count >= 10 THEN 4
         WHEN chapter_count >= 10 OR episode_count >= 5 THEN 3
         WHEN chapter_count >= 5 OR episode_count >= 2 THEN 2
         WHEN chapter_count > 0 OR episode_count > 0 THEN 1
         ELSE 0
-    END as level,
-    CASE WHEN episode_count > chapter_count THEN 2 ELSE 1 END as type,
+    END,
+    CASE WHEN episode_count > chapter_count THEN 2 ELSE 1 END,
     chapter_count,
     episode_count,
     last_updated
