@@ -56,7 +56,7 @@ internal fun AnimeLibraryList(
             val anime = libraryItem.libraryAnime.anime
             EntryListItem(
                 isSelected = selectedIds.contains(libraryItem.libraryAnime.id),
-                title = anime.title,
+                title = anime.displayTitle,
                 coverData = AnimeCover(
                     animeId = anime.id,
                     sourceId = anime.source,

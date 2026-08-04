@@ -51,7 +51,7 @@ internal fun MangaLibraryCompactGrid(
             val manga = libraryItem.coverManga ?: libraryItem.libraryManga.manga
             val isSeries = libraryItem is MangaLibraryItem.Series
             val notSelectionMode = selection.isEmpty()
-            val title = if (isSeries) libraryItem.title else manga.title
+            val title = if (isSeries) libraryItem.title else manga.displayTitle
             val isSelected = selectedIds.contains(libraryItem.id)
             val targetManga = if (isSeries) {
                 libraryItem.librarySeries.entries.firstOrNull {

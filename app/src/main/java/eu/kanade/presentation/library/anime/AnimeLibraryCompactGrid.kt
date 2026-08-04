@@ -58,7 +58,7 @@ fun AnimeLibraryCompactGrid(
             }
             EntryCompactGridItem(
                 isSelected = selectedIds.contains(libraryItem.libraryAnime.id),
-                title = anime.title.takeIf { showTitle },
+                title = anime.displayTitle.takeIf { showTitle },
                 coverData = coverData,
                 coverBadgeStart = {
                     DownloadsBadge(count = libraryItem.downloadCount)

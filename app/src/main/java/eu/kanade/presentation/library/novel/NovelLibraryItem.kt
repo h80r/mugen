@@ -45,7 +45,7 @@ sealed interface NovelLibraryItem {
         override val hasStarted = libraryNovel.hasStarted
         override val hasBookmarks = libraryNovel.hasBookmarks
         override val dateAdded = libraryNovel.novel.dateAdded
-        override val title = libraryNovel.novel.title
+        override val title = libraryNovel.novel.displayTitle
         override val coverNovel = libraryNovel.novel
 
         override fun matches(query: LibrarySearchQuery): Boolean {
@@ -88,6 +88,7 @@ sealed interface NovelLibraryItem {
         ): Boolean {
             val sourceName by lazy { sourceManager.getOrStub(source).name }
             return title.contains(query.raw, ignoreCase = true) ||
+                displayTitle.contains(query.raw, ignoreCase = true) ||
                 (author?.contains(query.raw, ignoreCase = true) ?: false) ||
                 (description?.contains(query.raw, ignoreCase = true) ?: false) ||
                 query.terms.all { subconstraint ->

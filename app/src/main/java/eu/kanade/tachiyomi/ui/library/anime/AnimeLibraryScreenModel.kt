@@ -370,7 +370,7 @@ class AnimeLibraryScreenModel(
         val alphabeticSortKeys = HashMap<Long, String>()
         fun AnimeLibraryItem.alphabeticSortKey(): String {
             return alphabeticSortKeys.getOrPut(libraryAnime.id) {
-                libraryAnime.anime.title.lowercase()
+                libraryAnime.anime.displayTitle.lowercase()
             }
         }
         val sortAlphabetically: (AnimeLibraryItem, AnimeLibraryItem) -> Int = { i1, i2 ->

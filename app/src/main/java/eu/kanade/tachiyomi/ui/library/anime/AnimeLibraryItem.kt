@@ -32,6 +32,7 @@ data class AnimeLibraryItem(
         val sourceName by lazy { sourceManager.getOrStub(libraryAnime.anime.source).getNameForAnimeInfo() }
         query.id?.let { id -> return libraryAnime.id == id }
         return libraryAnime.anime.title.contains(query.raw, true) ||
+            libraryAnime.anime.displayTitle.contains(query.raw, true) ||
             (libraryAnime.anime.author?.contains(query.raw, true) ?: false) ||
             (libraryAnime.anime.artist?.contains(query.raw, true) ?: false) ||
             (libraryAnime.anime.description?.contains(query.raw, true) ?: false) ||
