@@ -462,6 +462,10 @@ class NovelReaderScreenModel(
         val previousChapterId = currentChapter?.id
         if (previousChapterId == chapter.id) return
         currentChapter = chapter
+        // Keep the prev/next chapter targets in sync with the reading position: the chapter reader
+        // recomputes them in updateContent, but book mode never re-enters that path, so the anchor
+        // following the text has to publish the refreshed neighbours itself.
+        publishBookModeChapterNavigation(chapter)
         // The overlay indicator follows the text, not the session: the queue may be working on a
         // chapter the reader has already left behind.
         translationController.onActiveChapterChanged(chapter.id)
@@ -476,6 +480,36 @@ class NovelReaderScreenModel(
                     progressPersistenceController.flushPendingHistorySnapshot(previousChapterId)
                 }
             }
+        }
+    }
+
+    /**
+     * Refreshes [State.Success.previousChapterId]/[nextChapterId] after the book reading position
+     * crossed into another chapter. Mirrors the navigation computation inside [updateContent].
+     */
+    private fun publishBookModeChapterNavigation(chapter: NovelChapter) {
+        val allChapters = if (fullChapterOrderList.isNotEmpty()) fullChapterOrderList else chapterOrderList
+        val previousResult = NovelReaderChapterWindow.navigate(
+            currentChapterId = chapter.id,
+            allChapters = allChapters,
+            direction = -1,
+            windowRadius = NovelReaderChapterWindow.DEFAULT_WINDOW_RADIUS,
+        )
+        val previousChapter = previousResult.newCurrentChapter.takeIf { it.id != chapter.id }
+        val nextResult = NovelReaderChapterWindow.navigate(
+            currentChapterId = chapter.id,
+            allChapters = allChapters,
+            direction = 1,
+            windowRadius = NovelReaderChapterWindow.DEFAULT_WINDOW_RADIUS,
+        )
+        val nextChapter = nextResult.newCurrentChapter.takeIf { it.id != chapter.id }
+        bookUpdateSuccessState { success ->
+            success.copy(
+                previousChapterId = previousChapter?.id,
+                previousChapterName = previousChapter?.name,
+                nextChapterId = nextChapter?.id,
+                nextChapterName = nextChapter?.name,
+            )
         }
     }
 

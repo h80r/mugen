@@ -1763,7 +1763,18 @@ internal fun NovelReaderContentHost(
                 pageReaderRendererRoute == NovelPageReaderRendererRoute.PAGE_TURN_RENDERER &&
                 activePageTransitionStyle == NovelPageTransitionStyle.CURL
             ) {
-                requestPageTurnChapterNavigation(PageTurnChapterNavigationDirection.PREVIOUS)
+                // With the seamless transition there is no boundary "previous chapter" page, so on
+                // the first page the curl has nowhere to go: open the adjacent chapter directly.
+                if (
+                    seamlessChapterTransitionEnabled &&
+                    pageReaderItemsCount > 0 &&
+                    pageReaderProgressPageIndex <= 0 &&
+                    state.previousChapterId != null
+                ) {
+                    openPreviousChapterFromReader()
+                } else {
+                    requestPageTurnChapterNavigation(PageTurnChapterNavigationDirection.PREVIOUS)
+                }
             } else {
                 val currentPage = pageReaderProgressPageIndex
                 val currentVirtualPage = resolveComposePagerVirtualPageIndex(
@@ -1818,7 +1829,18 @@ internal fun NovelReaderContentHost(
                 pageReaderRendererRoute == NovelPageReaderRendererRoute.PAGE_TURN_RENDERER &&
                 activePageTransitionStyle == NovelPageTransitionStyle.CURL
             ) {
-                requestPageTurnChapterNavigation(PageTurnChapterNavigationDirection.NEXT)
+                // With the seamless transition there is no boundary "next chapter" page, so on the
+                // last page the curl has nowhere to go: open the adjacent chapter directly.
+                if (
+                    seamlessChapterTransitionEnabled &&
+                    pageReaderItemsCount > 0 &&
+                    pageReaderProgressPageIndex >= pageReaderItemsCount - 1 &&
+                    state.nextChapterId != null
+                ) {
+                    openNextChapterFromReader()
+                } else {
+                    requestPageTurnChapterNavigation(PageTurnChapterNavigationDirection.NEXT)
+                }
             } else {
                 val currentPage = pageReaderProgressPageIndex
                 val currentVirtualPage = resolveComposePagerVirtualPageIndex(
