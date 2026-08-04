@@ -810,7 +810,10 @@ internal fun NovelReaderContentHost(
             itemCount = state.contentBlocks.size,
         )
     }
-    val textListState = key(state.chapter.id) {
+    // Keyed by the novel while book mode is active: over a book the chapter anchor follows the
+    // text, so keying the list state on it would recreate the list — and reset the scroll to the
+    // book start — every time the reader crosses into another chapter and updateContent re-runs.
+    val textListState = key(if (isBookMode) state.novel.id else state.chapter.id) {
         rememberLazyListState(
             initialFirstVisibleItemIndex = initialNativeReaderIndex
                 .coerceIn(0, (state.contentBlocks.lastIndex).coerceAtLeast(0)),

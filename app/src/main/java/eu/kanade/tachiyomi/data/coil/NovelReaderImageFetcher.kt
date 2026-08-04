@@ -40,7 +40,7 @@ class NovelReaderRefererImageFetcher(
             ?: throw IOException("Unsupported image URL: ${data.url}")
         val request = Request.Builder()
             .url(httpUrl)
-            .header("Referer", data.referer.trimEnd('/') + "/")
+            .header("Referer", refererHeaderValue(data.referer))
             .build()
 
         val response = callFactory.value.newCall(request).execute()
@@ -55,6 +55,18 @@ class NovelReaderRefererImageFetcher(
             mimeType = body.contentType()?.toString() ?: "image/*",
             dataSource = DataSource.NETWORK,
         )
+    }
+
+    /**
+     * HTTP header values must be ASCII: a referer with a non-ASCII (IDN) host — e.g. a cyrillic
+     * domain — has to be sent in punycode, otherwise okhttp rejects the header outright and the
+     * whole image load fails. Parsing through [HttpUrl] canonicalizes the host exactly like the
+     * URL above.
+     */
+    private fun refererHeaderValue(referer: String): String {
+        val trimmed = referer.trim().trimEnd('/')
+        val ascii = trimmed.toHttpUrlOrNull()?.toString()?.trimEnd('/') ?: trimmed
+        return "$ascii/"
     }
 
     class Factory(
