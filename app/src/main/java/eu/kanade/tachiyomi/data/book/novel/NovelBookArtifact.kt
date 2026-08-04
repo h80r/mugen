@@ -291,6 +291,7 @@ class NovelBookArtifactWriter(private val directory: File) {
                             chapterId = chapter.id,
                             chapterName = chapter.name,
                             startOffset = charOffset,
+                            chapterWebUrl = chapter.url,
                         )
                         val bytes = (section.html + "\n").toByteArray(Charsets.UTF_8)
                         output.write(bytes)

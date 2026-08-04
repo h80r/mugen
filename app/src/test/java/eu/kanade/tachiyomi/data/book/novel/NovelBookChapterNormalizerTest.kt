@@ -39,6 +39,43 @@ class NovelBookChapterNormalizerTest {
     }
 
     @Test
+    fun `resolves relative image urls against the chapter url`() {
+        val section = NovelBookChapterNormalizer.normalize(
+            rawHtml = """
+                <p>Before</p>
+                <img src="/images/books/1/cover.jpeg" alt="cover">
+                <img src="https://cdn.example.org/a.png">
+                <img src="//static.example.org/b.png">
+                <img src="data:image/png;base64,AAAA" alt="inline">
+                <img src="/images/fallback.jpeg" data-src="/images/lazy.jpeg" srcset="/images/x-1x.jpeg 1x, /images/x-2x.jpeg 2x" alt="pic">
+                <p>After</p>
+            """.trimIndent(),
+            chapterId = 7L,
+            chapterName = "Chapter 1",
+            startOffset = 0,
+            chapterWebUrl = "https://ranobe.example/books/4282/chapters/2106814",
+        )
+
+        val document = Jsoup.parseBodyFragment(section.html)
+        document.selectFirst("img[alt=cover]")!!.attr("src")
+            .shouldBe("https://ranobe.example/images/books/1/cover.jpeg")
+        document.selectFirst("img[src*=\"cdn.example.org\"]")!!.attr("src")
+            .shouldBe("https://cdn.example.org/a.png")
+        document.selectFirst("img[src*=\"static.example.org\"]")!!.attr("src")
+            .shouldBe("https://static.example.org/b.png")
+        document.selectFirst("img[alt=inline]")!!.attr("src")
+            .shouldBe("data:image/png;base64,AAAA")
+        document.selectFirst("img[alt=pic]")!!.attr("srcset")
+            .shouldBe(
+                "https://ranobe.example/images/x-1x.jpeg 1x, https://ranobe.example/images/x-2x.jpeg 2x",
+            )
+        document.selectFirst("img[alt=pic]")!!.attr("src")
+            .shouldBe("https://ranobe.example/images/fallback.jpeg")
+        document.selectFirst("img[alt=pic]")!!.attr("data-src")
+            .shouldBe("https://ranobe.example/images/lazy.jpeg")
+    }
+
+    @Test
     fun `offsets are contiguous across chapters`() {
         val first = NovelBookChapterNormalizer.normalize(
             rawHtml = "<p>abc</p>",
