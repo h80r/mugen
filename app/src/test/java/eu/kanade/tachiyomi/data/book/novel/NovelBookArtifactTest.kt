@@ -50,6 +50,30 @@ class NovelBookArtifactTest {
     }
 
     @Test
+    fun `empty rebuild keeps the previous artifact`(@TempDir root: File) {
+        val chapters = listOf(chapter(1), chapter(2))
+        val writer = NovelBookArtifactWriter(root)
+        val first = writer.build(
+            request = request(chapters),
+            chapters = chapters,
+            loadHtml = { chapter -> body("Body of ${chapter.id}") },
+        )
+        val bodyBefore = NovelBookArtifact.readRange(root, 0L, first.meta.totalBytes.toInt())
+
+        val failed = writer.build(
+            request = request(chapters),
+            chapters = chapters,
+            loadHtml = { null },
+        )
+
+        failed.index.chapters shouldBe emptyList()
+        NovelBookArtifact.exists(root) shouldBe true
+        NovelBookArtifact.readIndex(root) shouldBe first.index
+        NovelBookArtifact.readMeta(root) shouldBe first.meta
+        NovelBookArtifact.readRange(root, 0L, first.meta.totalBytes.toInt()) shouldBe bodyBefore
+    }
+
+    @Test
     fun `append keeps existing offsets and extends the book`(@TempDir root: File) {
         val initial = listOf(chapter(1), chapter(2))
         val writer = NovelBookArtifactWriter(root)

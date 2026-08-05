@@ -218,9 +218,16 @@ class NovelBookArtifactWriter(private val directory: File) {
         onProgress: (Int, Int) -> Unit = { _, _ -> },
         imageReferer: String? = null,
     ): NovelBookBuildResult {
-        NovelBookArtifact.bodyFile(directory).delete()
-        NovelBookArtifact.nativeFile(directory).delete()
-        return writeSections(
+        // A full rebuild writes into temporary files and only swaps them in once every chapter is
+        // compiled. An interrupted build (cancel, crash, IO error) must never destroy the artifact
+        // that was already on disk, or the book would silently disappear until it is rebuilt.
+        val body = NovelBookArtifact.bodyFile(directory)
+        val native = NovelBookArtifact.nativeFile(directory)
+        val tmpBody = File(body.parentFile, "${body.name}.tmp")
+        val tmpNative = File(native.parentFile, "${native.name}.tmp")
+        tmpBody.delete()
+        tmpNative.delete()
+        val result = writeSections(
             request = request,
             chapters = chapters,
             loadHtml = loadHtml,
@@ -228,7 +235,29 @@ class NovelBookArtifactWriter(private val directory: File) {
             existingChapters = emptyList(),
             bookVersion = 1,
             imageReferer = imageReferer,
+            bodyTarget = tmpBody,
+            nativeTarget = tmpNative,
         )
+        if (result.index.chapters.isEmpty()) {
+            // Nothing was compiled (every chapter failed to load): leave the previous artifact
+            // untouched and report the failure.
+            tmpBody.delete()
+            tmpNative.delete()
+            return result
+        }
+        // Swap the finished files in; both renames stay on the same filesystem, so they are atomic.
+        if (!tmpBody.renameTo(body)) {
+            tmpBody.copyTo(body, overwrite = true)
+            tmpBody.delete()
+        }
+        if (!tmpNative.renameTo(native)) {
+            tmpNative.copyTo(native, overwrite = true)
+            tmpNative.delete()
+        }
+        // The index and meta describe the body that is now in place, so they are written last.
+        NovelBookArtifact.writeIndex(directory, result.index)
+        NovelBookArtifact.writeMeta(directory, result.meta)
+        return result
     }
 
     fun append(
@@ -241,7 +270,7 @@ class NovelBookArtifactWriter(private val directory: File) {
         imageReferer: String? = null,
     ): NovelBookBuildResult {
         val known = existing.chapters.map { chapter -> chapter.chapterId }.toSet()
-        return writeSections(
+        val result = writeSections(
             request = request,
             chapters = newChapters.filterNot { chapter -> chapter.id in known },
             loadHtml = loadHtml,
@@ -249,7 +278,15 @@ class NovelBookArtifactWriter(private val directory: File) {
             existingChapters = existing.chapters,
             bookVersion = bookVersion,
             imageReferer = imageReferer,
+            // Appending extends the live files directly: it never rewrites already-written content,
+            // so an interrupted append simply leaves the book at its previous state.
+            bodyTarget = NovelBookArtifact.bodyFile(directory),
+            nativeTarget = NovelBookArtifact.nativeFile(directory),
         )
+        // The index and meta are refreshed only after the body has been extended.
+        NovelBookArtifact.writeIndex(directory, result.index)
+        NovelBookArtifact.writeMeta(directory, result.meta)
+        return result
     }
 
     private fun writeSections(
@@ -260,10 +297,12 @@ class NovelBookArtifactWriter(private val directory: File) {
         existingChapters: List<NovelBookChapterEntry>,
         bookVersion: Int,
         imageReferer: String? = null,
+        bodyTarget: File,
+        nativeTarget: File,
     ): NovelBookBuildResult {
         directory.mkdirs()
-        val bodyFile = NovelBookArtifact.bodyFile(directory)
-        val nativeFile = NovelBookArtifact.nativeFile(directory)
+        val bodyFile = bodyTarget
+        val nativeFile = nativeTarget
         val appending = existingChapters.isNotEmpty()
         val entries = existingChapters.toMutableList()
         val missing = mutableListOf<Long>()
@@ -352,8 +391,8 @@ class NovelBookArtifactWriter(private val directory: File) {
             nativeFormatVersion = if (nativeUsable) NovelBookNativeCodec.FORMAT_VERSION else 0,
             nativeComplete = nativeUsable && missing.isEmpty(),
         )
-        NovelBookArtifact.writeIndex(directory, index)
-        NovelBookArtifact.writeMeta(directory, meta)
+        // The caller decides when the index and meta are written: [build] swaps the body in before
+        // refreshing them, [append] refreshes them only after the body has been extended.
         return NovelBookBuildResult(index = index, meta = meta, missingChapterIds = missing.toList())
     }
 }

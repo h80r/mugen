@@ -148,7 +148,9 @@ class NovelBookBuilder(
         )
 
         if (result.index.chapters.isEmpty()) {
-            NovelBookArtifact.delete(directory)
+            // A build that compiled nothing (e.g. every chapter failed to load) must not destroy a
+            // book that was already on disk: the previous artifact keeps working, and the caller is
+            // left to report the failure. The writer has already left the old files untouched.
             return NovelBookBuildOutcome.NothingToBuild
         }
 
