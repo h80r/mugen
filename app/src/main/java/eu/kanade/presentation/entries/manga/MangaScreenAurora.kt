@@ -233,6 +233,9 @@ fun MangaScreenAuroraImpl(
     val refererUrl = remember(state.source) {
         (state.source as? HttpSource)?.baseUrl
     }
+    val sourceHeaders = remember(state.source) {
+        (state.source as? HttpSource)?.headers?.toMap()
+    }
     LaunchedEffect(
         manga.id,
         state.isMetadataLoading,
@@ -300,7 +303,7 @@ fun MangaScreenAuroraImpl(
     val onTitleCopy: () -> Unit = {
         val ok = context.copyToClipboardSilently(
             "Entry title",
-            auroraEntryTranslation.title ?: manga.displayTitle,
+            auroraEntryTranslation.title,
         )
         scope.launch {
             snackbarHostState.showSnackbar(if (ok) copiedToClipboardMessage else clipboardCopyErrorMessage)
@@ -449,6 +452,7 @@ fun MangaScreenAuroraImpl(
                 resolvedCoverUrl = resolvedCover.coverUrl,
                 resolvedCoverUrlFallback = resolvedCover.coverUrlFallback,
                 refererUrl = refererUrl,
+                sourceHeaders = sourceHeaders,
             )
 
             if (useTwoPaneLayout) {

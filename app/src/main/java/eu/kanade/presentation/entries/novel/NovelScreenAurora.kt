@@ -107,6 +107,7 @@ import eu.kanade.presentation.theme.aurora.adaptive.AuroraDeviceClass
 import eu.kanade.presentation.theme.aurora.adaptive.auroraCenteredMaxWidth
 import eu.kanade.presentation.theme.aurora.adaptive.rememberAuroraAdaptiveSpec
 import eu.kanade.presentation.util.formatChapterNumber
+import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.entries.novel.NovelChapterDisplayRow
 import eu.kanade.tachiyomi.ui.entries.novel.NovelScreenModel
 import eu.kanade.tachiyomi.ui.entries.novel.resolveNovelChapterDisplayData
@@ -335,7 +336,7 @@ fun NovelScreenAuroraImpl(
     val onTitleCopy: () -> Unit = {
         val ok = context.copyToClipboardSilently(
             "Entry title",
-            auroraEntryTranslation.title ?: novel.displayTitle,
+            auroraEntryTranslation.title,
         )
         scope.launch {
             snackbarHostState.showSnackbar(if (ok) copiedToClipboardMessage else clipboardCopyErrorMessage)
@@ -469,6 +470,7 @@ fun NovelScreenAuroraImpl(
                     novel = novel,
                     scrollOffset = 0,
                     firstVisibleItemIndex = 0,
+                    sourceHeaders = (state.source as? HttpSource)?.headers?.toMap(),
                 )
 
                 TwoPanelBox(
@@ -1263,6 +1265,7 @@ fun NovelScreenAuroraImpl(
                 novel = novel,
                 scrollOffset = scrollOffset,
                 firstVisibleItemIndex = firstVisibleItemIndex,
+                sourceHeaders = (state.source as? HttpSource)?.headers?.toMap(),
             )
 
             val density = LocalDensity.current

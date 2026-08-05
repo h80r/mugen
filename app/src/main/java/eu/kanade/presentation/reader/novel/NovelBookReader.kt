@@ -366,7 +366,7 @@ internal fun NovelBookReader(
                             abs(deltaY) <= touchSlop -> {
                             // Let the WebView open links itself: a tap on an anchor must not
                             // also run the configured tap zone action.
-                            val hitResultType = webView.hitTestResult?.type
+                            val hitResultType = webView.hitTestResult.type
                             val isAnchorTap =
                                 hitResultType == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
                                     hitResultType == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE

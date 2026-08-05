@@ -25,6 +25,13 @@ data class AuroraPosterRequest(
     val fallbackUrl: String? = null,
     val refererUrl: String? = null,
     /**
+     * Extra request headers (e.g. the source's User-Agent) forwarded verbatim.
+     * Some cover proxies (anilist via wp.youtube-anime.com) answer 403 when the
+     * request does not carry the source's headers, while the same URL succeeds
+     * through the source's own client in [eu.kanade.tachiyomi.data.coil.AnimeImageFetcher].
+     */
+    val headers: Map<String, String>? = null,
+    /**
      * User-set custom cover file for the entry, if any. When the file exists
      * it always wins over [primaryUrl]/[fallbackUrl] (issue #154).
      */
@@ -192,8 +199,11 @@ internal suspend fun loadAuroraPosterSource(
             attempt = attemptIndex,
         )
 
+        request.headers?.forEach { (name, value) ->
+            requestBuilder.header(name, value)
+        }
         request.refererUrl?.trim()?.takeIf { it.isNotBlank() }?.let { referer ->
-            requestBuilder.addHeader("Referer", referer.toAsciiUrl().trimEnd('/') + "/")
+            requestBuilder.header("Referer", referer.toAsciiUrl().trimEnd('/') + "/")
         }
 
         val response = try {
