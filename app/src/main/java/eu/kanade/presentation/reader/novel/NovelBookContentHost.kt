@@ -346,34 +346,33 @@ internal fun NovelBookContentHost(
                 resolveResource = resolveResource,
                 modifier = Modifier.fillMaxSize(),
             )
-            var localRestoringPosition by remember(state.bookMode.isRestoringPosition) {
-                mutableStateOf(state.bookMode.isRestoringPosition)
-            }
-            LaunchedEffect(state.bookMode.isRestoringPosition) {
-                if (state.bookMode.isRestoringPosition) {
-                    delay(1000L)
-                    localRestoringPosition = false
-                }
-            }
-            if (localRestoringPosition) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    NovelAtmosphereBackground(
-                        backgroundColor = textBackground,
-                        backgroundTexture = activeBackgroundTexture,
-                        nativeTextureStrengthPercent = if (isBackgroundMode) 0 else nativeTextureStrengthPercent,
-                        oledEdgeGradient = activeOledEdgeGradient,
-                        isDarkTheme = isDarkTheme,
-                        pageEdgeShadow = pageEdgeShadow,
-                        pageEdgeShadowAlpha = pageEdgeShadowAlpha,
-                        backgroundImageModel = if (isBackgroundMode) backgroundImageModel else null,
-                    )
-                    CircularProgressIndicator(color = textColor.copy(alpha = 0.4f))
-                }
-            }
         }
+    }
+    var localRestoringPosition by remember(state.bookMode.isRestoringPosition) {
+        mutableStateOf(state.bookMode.isRestoringPosition)
+    }
+    LaunchedEffect(state.bookMode.isRestoringPosition) {
+        if (state.bookMode.isRestoringPosition) {
+            // The cover is dropped by the controller when the resume seek is acknowledged
+            // (onBookSeekApplied clears isRestoringPosition). This timeout is only a safety net so
+            // a stuck renderer cannot leave the book covered forever; it must never decide when the
+            // resume is "probably" done, which is what made the first page flash before the jump.
+            delay(BOOK_RESTORING_COVER_SAFETY_TIMEOUT_MS)
+            localRestoringPosition = false
+        }
+    }
+    if (localRestoringPosition) {
+        NovelBookRestoringPositionCover(
+            textColor = textColor,
+            textBackground = textBackground,
+            activeBackgroundTexture = activeBackgroundTexture,
+            nativeTextureStrengthPercent = if (isBackgroundMode) 0 else nativeTextureStrengthPercent,
+            oledEdgeGradient = activeOledEdgeGradient,
+            isDarkTheme = isDarkTheme,
+            pageEdgeShadow = pageEdgeShadow,
+            pageEdgeShadowAlpha = pageEdgeShadowAlpha,
+            backgroundImageModel = if (isBackgroundMode) backgroundImageModel else null,
+        )
     }
 }
 
@@ -469,5 +468,50 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.novelBookNativeConte
                 }
             }
         }
+    }
+}
+
+/**
+ * Safety net for the "restoring position" cover: the cover is normally dropped by the controller
+ * when the resume seek is acknowledged (onBookSeekApplied), this only bounds the worst case of a
+ * renderer that never acknowledges so the book cannot stay covered forever.
+ */
+private const val BOOK_RESTORING_COVER_SAFETY_TIMEOUT_MS = 15_000L
+
+/**
+ * Covers the book while the resume position has not landed yet.
+ *
+ * A freshly mounted document paints its own start before the queued resume scroll lands, so without
+ * the cover the reader flashed the first page of the book and then jumped. The cover shows the
+ * theme background (or the chosen background image) instead, exactly like the WebView chapter reader
+ * hides its document until the first reveal.
+ */
+@Composable
+private fun NovelBookRestoringPositionCover(
+    textColor: Color,
+    textBackground: Color,
+    activeBackgroundTexture: NovelReaderBackgroundTexture,
+    nativeTextureStrengthPercent: Int,
+    oledEdgeGradient: Boolean,
+    isDarkTheme: Boolean,
+    pageEdgeShadow: Boolean,
+    pageEdgeShadowAlpha: Float,
+    backgroundImageModel: Any?,
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        NovelAtmosphereBackground(
+            backgroundColor = textBackground,
+            backgroundTexture = activeBackgroundTexture,
+            nativeTextureStrengthPercent = nativeTextureStrengthPercent,
+            oledEdgeGradient = oledEdgeGradient,
+            isDarkTheme = isDarkTheme,
+            pageEdgeShadow = pageEdgeShadow,
+            pageEdgeShadowAlpha = pageEdgeShadowAlpha,
+            backgroundImageModel = backgroundImageModel,
+        )
+        CircularProgressIndicator(color = textColor.copy(alpha = 0.4f))
     }
 }

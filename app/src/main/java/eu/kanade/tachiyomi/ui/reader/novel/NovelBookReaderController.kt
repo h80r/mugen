@@ -264,7 +264,7 @@ internal class NovelBookReaderController(
 
     /** Snapshot of the book-mode UI state, merged into the reader state by the screen model. */
     fun bookModeUiState(): NovelReaderScreenModel.State.ReaderBookModeState =
-        bookModeRuntime.uiState()
+        bookModeRuntime.uiState().copy(isRestoringPosition = bookModeRestoringPosition)
 
     internal suspend fun loadBookEngineDocument(section: NovelBookSection): NovelBookDocument {
         val document = bookModeRuntime.loadEngineDocument(section)
@@ -544,6 +544,11 @@ internal class NovelBookReaderController(
         val resumeState = bookModeRuntime.uiState()
         val resumedLocation = bookModeRuntime.location
         bookModeRestoringPosition = resumedLocation.sectionIndex > 0 || resumedLocation.charOffset > 0
+        // Emitted before the resume seek so the UI can cover the book until the position lands;
+        // onBookSeekApplied clears the flag (and re-emits this state) the moment the renderer
+        // acknowledges the move. Without this emission the cover was dead code: the UI never saw
+        // isRestoringPosition=true and the reader flashed the document start before the jump.
+        refreshBookModeState()
         // The renderer is told to move exactly once, and the cover above it stays until that move
         // is acknowledged. No timer decides when the resume is "probably" done anymore.
         requestBookSeek(resumedLocation, BookSeekReason.Resume)
@@ -904,6 +909,10 @@ internal class NovelBookReaderController(
     fun onBookModeChapterSelected(chapterId: Long): Boolean {
         if (!bookModeRuntime.moveToChapter(chapterId)) return false
         requestBookSeek(bookModeRuntime.location, BookSeekReason.TableOfContents)
+        // The native renderer only seeks into sections its resident window already holds, so the
+        // window has to move first: a far chapter would otherwise never mount and the seek would
+        // silently drop (resolveNovelBookNativeSeekTarget returns null for unmounted sections).
+        refreshBookWindow()
         refreshBookModeState()
         return true
     }
