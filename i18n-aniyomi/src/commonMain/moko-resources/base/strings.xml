@@ -1326,6 +1326,7 @@
     <string name="pref_hide_in_manga_library_items">Hide manga entries already in library</string>
     <string name="pref_hide_in_anime_library_items">Hide anime entries already in library</string>
     <string name="pref_hide_in_novel_library_items">Hide novel entries already in library</string>
+    <string name="pref_title_carousel_enabled">Swipe between titles in source browser</string>
     <string name="action_order_by_episode_number">By episode number</string>
     <string name="action_start_download_externally">Use external downloader</string>
     <string name="action_start_download_internally">Use internal downloader</string>

@@ -88,6 +88,7 @@ import uy.kohesive.injekt.api.get
 class AnimeScreen(
     private val animeId: Long,
     val fromSource: Boolean = false,
+    private val externalScreenModel: AnimeScreenModel? = null,
 ) : Screen(), AssistContentScreen {
 
     private var assistUrl: String? = null
@@ -108,7 +109,8 @@ class AnimeScreen(
         val lifecycleOwner = LocalLifecycleOwner.current
         val updateAnime = remember { Injekt.get<UpdateAnime>() }
         val screenModel =
-            rememberScreenModel { AnimeScreenModel(context, lifecycleOwner.lifecycle, animeId, fromSource) }
+            externalScreenModel
+                ?: rememberScreenModel { AnimeScreenModel(context, lifecycleOwner.lifecycle, animeId, fromSource) }
 
         val state by screenModel.state.collectAsStateWithLifecycle()
 

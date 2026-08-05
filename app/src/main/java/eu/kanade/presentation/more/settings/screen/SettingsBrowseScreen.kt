@@ -75,6 +75,10 @@ object SettingsBrowseScreen : SearchableSettings {
                         title = stringResource(AYMR.strings.pref_hide_in_novel_library_items),
                     ),
                     Preference.PreferenceItem.SwitchPreference(
+                        preference = sourcePreferences.titleCarouselEnabled(),
+                        title = stringResource(AYMR.strings.pref_title_carousel_enabled),
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
                         preference = sourcePreferences.verticalPinnedLayout(),
                         title = stringResource(AYMR.strings.pref_vertical_pinned_layout),
                     ),

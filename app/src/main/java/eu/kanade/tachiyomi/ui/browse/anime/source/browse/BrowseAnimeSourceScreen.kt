@@ -42,6 +42,7 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifAnimeSourcesLoaded
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.browse.RemoveEntryDialog
 import eu.kanade.presentation.browse.anime.BrowseAnimeSourceContent
 import eu.kanade.presentation.browse.anime.MissingSourceScreen
@@ -53,11 +54,14 @@ import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.core.common.Constants
+import eu.kanade.tachiyomi.ui.browse.TitleCarouselScreen
+import eu.kanade.tachiyomi.ui.browse.TitleCarouselType
 import eu.kanade.tachiyomi.ui.browse.anime.extension.details.AnimeSourcePreferencesScreen
 import eu.kanade.tachiyomi.ui.browse.anime.migration.anime.season.MigrateSeasonSelectScreen
 import eu.kanade.tachiyomi.ui.browse.anime.migration.search.MigrateAnimeDialog
 import eu.kanade.tachiyomi.ui.browse.anime.migration.search.MigrateAnimeDialogScreenModel
 import eu.kanade.tachiyomi.ui.browse.anime.source.browse.BrowseAnimeSourceScreenModel.Listing
+import eu.kanade.tachiyomi.ui.browse.search.SavedSearchFilterSerializer
 import eu.kanade.tachiyomi.ui.category.CategoriesTab
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
@@ -75,6 +79,8 @@ import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.source.local.entries.anime.LocalAnimeSource
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 data class BrowseAnimeSourceScreen(
     val sourceId: Long,
@@ -242,9 +248,10 @@ data class BrowseAnimeSourceScreen(
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         ) { paddingValues ->
+            val pagingAnime = screenModel.animePagerFlowFlow.collectAsLazyPagingItems()
             BrowseAnimeSourceContent(
                 source = screenModel.source,
-                animeList = screenModel.animePagerFlowFlow.collectAsLazyPagingItems(),
+                animeList = pagingAnime,
                 favoriteAnimeUrls = favoriteAnimeUrls,
                 columns = screenModel.getColumnsPreference(LocalConfiguration.current.orientation),
                 entries = screenModel.getColumnsPreferenceForCurrentOrientation(LocalConfiguration.current.orientation),
@@ -255,7 +262,26 @@ data class BrowseAnimeSourceScreen(
                 onWebViewClick = onWebViewClick,
                 onHelpClick = { uriHandler.openUri(Constants.URL_HELP) },
                 onLocalAnimeSourceHelpClick = onHelpClick,
-                onAnimeClick = { navigator.push((AnimeScreen(it.id, true))) },
+                onAnimeClick = { anime ->
+                    if (Injekt.get<SourcePreferences>().titleCarouselEnabled().get()) {
+                        val snapshot = (0 until pagingAnime.itemCount).mapNotNull { index -> pagingAnime[index]?.id }
+                        val index = snapshot.indexOf(anime.id).coerceAtLeast(0)
+                        navigator.push(
+                            TitleCarouselScreen(
+                                type = TitleCarouselType.Anime,
+                                sourceId = screenModel.source.id,
+                                initialTitleIds = snapshot,
+                                initialIndex = index,
+                                listingQuery = state.listing.query,
+                                filtersJson = state.filters
+                                    .takeIf { it.isNotEmpty() }
+                                    ?.let { SavedSearchFilterSerializer.serialize(it) },
+                            ),
+                        )
+                    } else {
+                        navigator.push(AnimeScreen(anime.id, true))
+                    }
+                },
                 onAnimeLongClick = { anime ->
                     scope.launchIO {
                         val duplicateAnime = screenModel.getDuplicateAnimelibAnime(anime)

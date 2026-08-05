@@ -185,6 +185,12 @@ class SourcePreferences(
         false,
     )
 
+    /** Swipe-left/right title carousel when opening a title from a source browser. */
+    fun titleCarouselEnabled() = preferenceStore.getBoolean(
+        "browse_title_carousel_enabled",
+        true,
+    )
+
     // SY -->
 
     // fun enableSourceBlacklist() = preferenceStore.getBoolean("eh_enable_source_blacklist", true)
