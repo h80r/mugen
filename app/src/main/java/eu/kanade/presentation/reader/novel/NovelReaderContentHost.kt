@@ -1263,6 +1263,12 @@ internal fun NovelReaderContentHost(
         webViewTtsNavigationAdapter.hashCode()
         bookTtsNavigationAdapter?.hashCode()
     }
+    // The initial page of a paged chapter is applied exactly once. Re-running this effect whenever
+    // one of its keys changes (content re-measure after a settings change, boundary-page flags
+    // flipping, or the book navigation updating while crossing a chapter boundary) would yank the
+    // reader back to the saved position mid-reading: sometimes a few pages, sometimes to the
+    // chapter start, and in book mode into the previous chapter's boundary pages.
+    val appliedPagerRestoreChapterId = remember { longArrayOf(state.chapter.id) }
     LaunchedEffect(
         state.chapter.id,
         pageReaderRendererRoute,
@@ -1271,6 +1277,17 @@ internal fun NovelReaderContentHost(
         composePagerHasNextChapter,
         initialPagerPage,
     ) {
+        if (appliedPagerRestoreChapterId[0] == state.chapter.id) return@LaunchedEffect
+        // Book mode is one continuous document: the current chapter changes while reading and the
+        // pager position must never be reset under the reader.
+        if (isBookMode) {
+            appliedPagerRestoreChapterId[0] = state.chapter.id
+            return@LaunchedEffect
+        }
+        // Retry while the content has not been measured yet instead of marking the restore done:
+        // the pager may have mounted before the page list arrived.
+        if (pageReaderItemsCount <= 0) return@LaunchedEffect
+        appliedPagerRestoreChapterId[0] = state.chapter.id
         if (pagerState.currentPage != initialPagerPage) {
             pagerState.scrollToPage(initialPagerPage)
         }

@@ -112,6 +112,13 @@ class NovelReaderScreen(
             val observer = LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_STOP) {
                     screenModel.flushBookModeProgress()
+                    // Per-chapter progress has the same debounce tail: a reader recreated after the
+                    // process is killed restores from the last flushed row, so an unflushed tail
+                    // shows up as a jump back, a jump to the chapter start, or a resume on the
+                    // previous chapter (its history snapshot was flushed, the current one was not).
+                    coroutineScope.launch {
+                        screenModel.persistCurrentChapterExitState()
+                    }
                 }
             }
             lifecycleOwner.lifecycle.addObserver(observer)
