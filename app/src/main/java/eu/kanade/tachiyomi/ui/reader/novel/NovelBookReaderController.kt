@@ -472,7 +472,7 @@ internal class NovelBookReaderController(
         val bookState = novel?.let { getNovelBookState.await(it.id) }
         bookStateVersion = bookState?.bookVersion
         artifactSource = if (bookState?.enabled == true) {
-            novel?.let {
+            novel.let {
                 NovelBookArtifactSource.open(
                     directory = eu.kanade.tachiyomi.data.book.novel.NovelBookArtifact.directoryFor(
                         root = eu.kanade.tachiyomi.data.book.novel.NovelBookBuilder

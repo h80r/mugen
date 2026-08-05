@@ -168,29 +168,29 @@ class NovelBookBuilder(
             // is preserved; otherwise the book starts at its beginning instead of resuming mid-way
             // through a chapter that no longer matches the stored position.
             charOffset = if (result.meta.chapterSetHash == previous?.chapterSetHash) {
-                previous?.charOffset ?: 0L
+                previous.charOffset
             } else {
                 0L
             },
             blockIndex = if (result.meta.chapterSetHash == previous?.chapterSetHash) {
-                previous?.blockIndex ?: 0
+                previous.blockIndex
             } else {
                 0
             },
             chapterCharOffset = if (result.meta.chapterSetHash == previous?.chapterSetHash) {
-                previous?.chapterCharOffset ?: 0
+                previous.chapterCharOffset
             } else {
                 0
             },
             lastChapterId = if (result.meta.chapterSetHash == previous?.chapterSetHash) {
-                previous?.lastChapterId ?: result.index.chapters.first().chapterId
+                previous.lastChapterId
             } else {
                 result.index.chapters.first().chapterId
             },
             // A position kept from an older row still has to be converted once; a position that was
             // just reset to the start of the book has nothing left to migrate.
             progressMigrated = if (result.meta.chapterSetHash == previous?.chapterSetHash) {
-                previous?.progressMigrated ?: true
+                previous.progressMigrated
             } else {
                 true
             },
