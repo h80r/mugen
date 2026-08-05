@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.novel.cache
 
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import kotlin.math.max
 
 /**
@@ -20,9 +21,19 @@ class NovelReaderCacheCoordinator(
 
     private val caches = ConcurrentHashMap<String, RegisteredCache>()
 
+    /**
+     * Size accounting touches the disk (every reporter walks its cache directory), so it must
+     * never run on the caller's thread: the first cache store initializes on the main thread while
+     * a chapter is loading, and a synchronous walk there blocked the reader for tens of seconds
+     * (ANR watchdog: NovelBookSectionDiskCacheStore$1.currentBytes on the main thread).
+     */
+    private val budgetExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "NovelCacheBudget").apply { isDaemon = true }
+    }
+
     fun register(reporter: NovelReaderCacheReporter) {
         caches[reporter.cacheId()] = RegisteredCache(reporter)
-        enforceBudget()
+        budgetExecutor.execute { enforceBudget() }
     }
 
     fun unregister(cacheId: String) {
@@ -32,23 +43,35 @@ class NovelReaderCacheCoordinator(
     fun totalBytes(): Long = caches.values.sumOf { it.reporter.currentBytes() }
 
     fun enforceBudget() {
-        var excess = totalBytes() - maxTotalBytes
+        // Snapshot every cache size once: the reporters walk their directories, so re-summing the
+        // whole set after each trim would multiply the disk work for nothing.
+        val sizes = caches.values.associateTo(mutableMapOf()) { cache ->
+            cache.reporter.cacheId() to cache.reporter.currentBytes()
+        }
+        var total = sizes.values.sum()
+        var excess = total - maxTotalBytes
         if (excess <= 0) return
 
         // Trim oldest-first (by registration time)
         val sorted = caches.values.sortedBy { it.registeredAtMs }
         for (entry in sorted) {
             if (excess <= 0) break
-            val current = entry.reporter.currentBytes()
-            val target = max(0L, current - excess)
+            val before = sizes[entry.reporter.cacheId()] ?: continue
+            val target = max(0L, before - excess)
+            if (target >= before) continue
             entry.reporter.trimToTargetBytes(target)
-            excess = totalBytes() - maxTotalBytes
+            // Only the trimmed cache is re-measured; the running total follows its delta.
+            val after = entry.reporter.currentBytes()
+            total -= (before - after).coerceAtLeast(0L)
+            sizes[entry.reporter.cacheId()] = after
+            excess = total - maxTotalBytes
         }
     }
 
     fun dispose() {
         caches.values.forEach { it.reporter.dispose() }
         caches.clear()
+        budgetExecutor.shutdown()
     }
 }
 
