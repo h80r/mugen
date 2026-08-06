@@ -23,7 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -31,6 +31,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withLink
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,6 +39,7 @@ import eu.kanade.domain.description.DescriptionBlock
 import eu.kanade.presentation.theme.AuroraColors
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.i18n.stringResource
+import kotlin.math.roundToInt
 
 /**
  * Visual style for [DescriptionBlocks]. Aurora cards pass their own palette/typography,
@@ -182,6 +184,39 @@ fun DescriptionBlocks(
 }
 
 /**
+ * Renders [DescriptionBlocks] clipped to [collapsedHeight] (or fully when [expanded]) while
+ * measuring the full content height — `heightIn` would constrain the child's measurement,
+ * making overflow detection impossible.
+ */
+@Composable
+private fun DescriptionContentBox(
+    blocks: List<DescriptionBlock>,
+    style: DescriptionBlockStyle,
+    expanded: Boolean,
+    collapsedHeight: Dp,
+    onContentHeightChanged: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    val collapsedHeightPx = with(density) { collapsedHeight.toPx() }.roundToInt()
+    Layout(
+        modifier = modifier
+            .fillMaxWidth()
+            .clipToBounds(),
+        content = { DescriptionBlocks(blocks = blocks, style = style) },
+    ) { measurables, constraints ->
+        val placeable = measurables.first().measure(
+            constraints.copy(maxHeight = Constraints.Infinity),
+        )
+        val height = if (expanded) placeable.height else minOf(placeable.height, collapsedHeightPx)
+        onContentHeightChanged(placeable.height)
+        layout(constraints.maxWidth, height) {
+            placeable.place(0, 0)
+        }
+    }
+}
+
+/**
  * [DescriptionBlocks] clamped to [collapsedLines] when collapsed. When the content overflows the
  * collapsed height a "Show more" / "Collapse" link is shown below the block; tapping the link or
  * the text itself toggles [onToggle]. Used by the Aurora info cards.
@@ -208,18 +243,13 @@ fun ExpandableDescriptionBlocks(
     LaunchedEffect(hasOverflow) { onOverflowChanged(hasOverflow) }
 
     Column(modifier = modifier) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clipToBounds()
-                .heightIn(max = if (expanded) Dp.Infinity else collapsedHeight),
-        ) {
-            DescriptionBlocks(
-                blocks = blocks,
-                style = style,
-                modifier = Modifier.onSizeChanged { contentHeight = it.height },
-            )
-        }
+        DescriptionContentBox(
+            blocks = blocks,
+            style = style,
+            expanded = expanded,
+            collapsedHeight = collapsedHeight,
+            onContentHeightChanged = { contentHeight = it },
+        )
         if (hasOverflow) {
             Text(
                 text = if (expanded) collapseText else showMoreText,

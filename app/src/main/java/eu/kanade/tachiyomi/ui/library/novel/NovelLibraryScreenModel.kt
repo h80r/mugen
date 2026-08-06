@@ -363,7 +363,7 @@ class NovelLibraryScreenModel(
             } else {
                 mutable.add(novel)
             }
-            current.copy(selection = persistentListOf<NovelLibraryItem>().addAll(mutable))
+            current.copy(selection = persistentListOf<NovelLibraryItem>().addingAll(mutable))
         }
     }
 
@@ -377,7 +377,7 @@ class NovelLibraryScreenModel(
                 itemId = { it.id },
             )
             mutable.addAll(toAdd)
-            current.copy(selection = persistentListOf<NovelLibraryItem>().addAll(mutable))
+            current.copy(selection = persistentListOf<NovelLibraryItem>().addingAll(mutable))
         }
     }
 
@@ -392,7 +392,7 @@ class NovelLibraryScreenModel(
             val selectedIds = current.selectedIds
             val mutable = current.selection.toMutableList()
             mutable.addAll(scopeItems.filterNot { it.id in selectedIds })
-            current.copy(selection = persistentListOf<NovelLibraryItem>().addAll(mutable))
+            current.copy(selection = persistentListOf<NovelLibraryItem>().addingAll(mutable))
         }
     }
 
@@ -408,7 +408,7 @@ class NovelLibraryScreenModel(
             val toRemoveIds = scopeItems.mapNotNullTo(HashSet()) { item -> item.id.takeIf { it in selectedIds } }
             val mutable = current.selection.filterNot { it.id in toRemoveIds }.toMutableList()
             mutable.addAll(scopeItems.filterNot { it.id in selectedIds })
-            current.copy(selection = persistentListOf<NovelLibraryItem>().addAll(mutable))
+            current.copy(selection = persistentListOf<NovelLibraryItem>().addingAll(mutable))
         }
     }
 

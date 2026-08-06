@@ -358,7 +358,7 @@ object DescriptionEngine {
         var result = plain
         for (link in links.sortedByDescending { it.url.length }) {
             result = result.replace(link.url, "")
-            link.text?.takeIf { it.isNotEmpty() && it != link.url }?.let { text ->
+            link.text.takeIf { it.isNotEmpty() && it != link.url }?.let { text ->
                 result = result.replace(text, "")
             }
         }
