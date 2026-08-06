@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Bookmark
@@ -80,6 +81,7 @@ import eu.kanade.presentation.components.rememberThemeAwareCoverErrorPainter
 import eu.kanade.presentation.entries.components.EntryBottomActionMenu
 import eu.kanade.presentation.entries.components.EntryToolbar
 import eu.kanade.presentation.entries.components.ItemCover
+import eu.kanade.presentation.entries.components.MarkdownRender
 import eu.kanade.presentation.entries.components.aurora.rememberAuroraPosterColorFilter
 import eu.kanade.presentation.entries.manga.components.ScanlatorBranchSelector
 import eu.kanade.presentation.entries.novel.components.NovelChapterActionButton
@@ -750,20 +752,18 @@ fun NovelScreen(
                             }
 
                             state.novel.displayDescription?.takeIf { it.isNotBlank() }?.let {
-                                Text(
-                                    text = it,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 6,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(
-                                            start = MaterialTheme.padding.medium,
-                                            end = MaterialTheme.padding.medium,
-                                            bottom = MaterialTheme.padding.medium,
-                                        ),
-                                )
+                                SelectionContainer {
+                                    MarkdownRender(
+                                        content = it,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(
+                                                start = MaterialTheme.padding.medium,
+                                                end = MaterialTheme.padding.medium,
+                                                bottom = MaterialTheme.padding.medium,
+                                            ),
+                                    )
+                                }
                             }
                         }
                     }

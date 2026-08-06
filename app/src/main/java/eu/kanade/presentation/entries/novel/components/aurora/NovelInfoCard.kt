@@ -29,6 +29,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -36,6 +38,8 @@ import androidx.compose.ui.unit.sp
 import eu.kanade.domain.entries.novel.model.normalizeNovelDescription
 import eu.kanade.presentation.entries.components.aurora.GlassmorphismCard
 import eu.kanade.presentation.entries.components.aurora.auroraSpringClick
+import eu.kanade.presentation.entries.components.getMarkdownLinkStyle
+import eu.kanade.presentation.entries.components.markdownDescriptionAnnotated
 import eu.kanade.presentation.entries.translation.AuroraEntryTranslationState
 import eu.kanade.presentation.theme.AuroraTheme
 import tachiyomi.domain.entries.novel.model.Novel
@@ -112,6 +116,16 @@ fun NovelInfoCard(
                         hasDescriptionOverflow = hasDescriptionOverflow,
                         descriptionExpanded = descriptionExpanded,
                     )
+                    val descriptionStyle = TextStyle(
+                        color = colors.textPrimary.copy(alpha = 0.9f),
+                        fontSize = 14.sp,
+                        lineHeight = 22.sp,
+                    )
+                    val annotatedDescription = markdownDescriptionAnnotated(
+                        content = normalizedDescription,
+                        style = descriptionStyle,
+                        linkStyle = getMarkdownLinkStyle().toSpanStyle(),
+                    )
                     SelectionContainer(
                         modifier = Modifier
                             .weight(1f)
@@ -124,10 +138,10 @@ fun NovelInfoCard(
                             ),
                     ) {
                         Text(
-                            text = normalizedDescription ?: stringResource(AYMR.strings.aurora_no_description),
-                            color = colors.textPrimary.copy(alpha = 0.9f),
-                            fontSize = 14.sp,
-                            lineHeight = 22.sp,
+                            text =
+                            annotatedDescription
+                                ?: AnnotatedString(stringResource(AYMR.strings.aurora_no_description)),
+                            style = descriptionStyle,
                             maxLines = if (descriptionExpanded) Int.MAX_VALUE else 5,
                             overflow = TextOverflow.Ellipsis,
                             onTextLayout = { textLayoutResult ->

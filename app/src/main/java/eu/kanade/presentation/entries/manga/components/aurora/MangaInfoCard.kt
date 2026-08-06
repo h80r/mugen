@@ -23,12 +23,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.kanade.presentation.entries.components.aurora.GlassmorphismCard
 import eu.kanade.presentation.entries.components.aurora.auroraSpringClick
+import eu.kanade.presentation.entries.components.getMarkdownLinkStyle
+import eu.kanade.presentation.entries.components.markdownDescriptionAnnotated
 import eu.kanade.presentation.entries.translation.AuroraEntryTranslationState
 import eu.kanade.presentation.theme.AuroraTheme
 import tachiyomi.domain.entries.manga.model.Manga
@@ -83,11 +87,20 @@ fun MangaInfoCard(
                 ) {
                     val displayDescription = translation?.description ?: manga.displayDescription
                     val descriptionToggleEnabled = (displayDescription?.length ?: 0) > 200
-                    Text(
-                        text = displayDescription ?: stringResource(AYMR.strings.aurora_no_description),
+                    val descriptionStyle = TextStyle(
                         color = colors.textPrimary.copy(alpha = 0.9f),
                         fontSize = 14.sp,
                         lineHeight = 22.sp,
+                    )
+                    val annotatedDescription = markdownDescriptionAnnotated(
+                        content = displayDescription,
+                        style = descriptionStyle,
+                        linkStyle = getMarkdownLinkStyle().toSpanStyle(),
+                    )
+                    Text(
+                        text =
+                        annotatedDescription ?: AnnotatedString(stringResource(AYMR.strings.aurora_no_description)),
+                        style = descriptionStyle,
                         maxLines = if (descriptionExpanded) Int.MAX_VALUE else 5,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
