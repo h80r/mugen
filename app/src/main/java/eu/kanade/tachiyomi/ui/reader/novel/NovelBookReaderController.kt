@@ -168,7 +168,12 @@ internal class NovelBookReaderController(
 
     /** Publishes the window for the current reading position. */
     private fun refreshBookWindow() {
-        bookWindowState.value = bookModeRuntime.windowState(bookSectionRevisions.toMap())
+        val next = bookModeRuntime.windowState(bookSectionRevisions.toMap())
+        // A scroll report re-creates the window instance even when nothing about the resident
+        // window changed; assigning it anyway restarted the renderer's window effect on every
+        // scroll. Equal windows are dropped here so the effect only restarts on real changes.
+        if (bookWindowState.value == next) return
+        bookWindowState.value = next
     }
 
     /**

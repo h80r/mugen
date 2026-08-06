@@ -1,5 +1,6 @@
 package eu.kanade.presentation.reader.novel
 
+import android.os.SystemClock
 import android.view.View
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -44,57 +45,61 @@ internal interface NovelBookScrollSurface {
      * navigation and one that has to be replayed after the section mounts.
      */
     fun evaluate(script: String, onResult: (String?) -> Unit = {}) = onResult(null)
+
+    /**
+     * Stops any continuous in-document scrolling the surface started.
+     *
+     * The scrolled WebView book runs auto-scroll as a requestAnimationFrame loop inside its
+     * document; this is how the chrome tells it to stop when auto-scroll pauses (reader UI visible)
+     * or is disabled. Surfaces without such a loop have nothing to stop.
+     */
+    fun stopAutoScroll() = Unit
 }
 
-/** What the book engine answered to one scroll request. */
-internal data class NovelBookScrollReport(
-    val consumedPx: Int,
+/** What the book engine answered to one auto-scroll sync. */
+internal data class NovelBookAutoScrollSyncReport(
+    /** Whether the document's own rAF loop is still advancing the viewport. */
+    val loopRunning: Boolean,
+    /** Whether the document can still move down. */
     val canScrollForward: Boolean,
 )
 
 /**
- * Scrolls the book viewport and asks the engine what actually happened.
+ * Re-syncs the document's continuous auto-scroll loop with the chrome.
  *
- * `window.__anBookEngine.scrollBy(px)` already returns the clamped, really scrolled pixel amount and
- * `canScrollForward()` knows whether the document can still move down. The previous script threw
- * both away, which is why auto-scroll could never tell "scrolled" from "stuck at the end".
+ * Auto-scroll runs as a requestAnimationFrame loop inside the document, so the chrome only has to
+ * tell it the per-frame pixel speed and read back whether the loop is still moving and whether the
+ * document has room. The previous script scrolled once per frame from Kotlin, which was an
+ * `evaluateJavascript` round trip on every animation frame.
  */
-internal fun buildBookScrollByJavascript(distancePx: Int): String {
+internal fun buildBookAutoScrollSyncJavascript(pxPerFrame: Int): String {
     return listOf(
         "(function() {",
         "  var engine = window.__anBookEngine;",
-        "  if (engine && typeof engine.scrollBy === 'function') {",
-        "    var consumed = engine.scrollBy($distancePx);",
+        "  if (engine && typeof engine.setAutoScroll === 'function') {",
+        "    engine.setAutoScroll($pxPerFrame);",
+        "    var running = typeof engine.autoScrollActive === 'function' ? engine.autoScrollActive() : false;",
         "    var forward = typeof engine.canScrollForward === 'function' ? engine.canScrollForward() : true;",
-        "    return JSON.stringify({ consumed: consumed, forward: forward });",
+        "    return JSON.stringify({ running: running, forward: forward });",
         "  }",
-        "  var viewport = document.getElementById('an-book-viewport');",
-        "  if (!viewport) { return JSON.stringify({ consumed: 0, forward: false }); }",
-        "  var before = viewport.scrollTop;",
-        "  var maximum = Math.max(0, viewport.scrollHeight - viewport.clientHeight);",
-        "  viewport.scrollTop = Math.max(0, Math.min(maximum, before + ($distancePx)));",
-        "  return JSON.stringify({",
-        "    consumed: Math.round(viewport.scrollTop - before),",
-        "    forward: viewport.scrollTop < (maximum - 1)",
-        "  });",
+        "  return JSON.stringify({ running: false, forward: false });",
         "})()",
     ).joinToString("\n")
 }
 
 /**
- * Parses the engine answer.
+ * Parses the sync answer.
  *
  * `evaluateJavascript` hands the returned JSON back as a quoted and escaped JSON string, so the
  * payload is unwrapped once and then read as real JSON, exactly like the section mutations already
- * do. The previous version stripped every character that was not a letter, digit, `:`, `,` or `-`
- * and split on commas, which silently mangled any value containing one of those characters.
+ * do.
  */
-internal fun parseBookScrollReport(rawResult: String?): NovelBookScrollReport? {
+internal fun parseBookAutoScrollSyncReport(rawResult: String?): NovelBookAutoScrollSyncReport? {
     if (rawResult.isNullOrBlank() || rawResult == "null") return null
     val payload = decodeBookScrollPayload(rawResult) ?: return null
-    val consumed = payload["consumed"]?.jsonPrimitive?.intOrNull ?: return null
+    val running = payload["running"]?.jsonPrimitive?.booleanOrNull ?: false
     val forward = payload["forward"]?.jsonPrimitive?.booleanOrNull ?: true
-    return NovelBookScrollReport(consumedPx = consumed, canScrollForward = forward)
+    return NovelBookAutoScrollSyncReport(loopRunning = running, canScrollForward = forward)
 }
 
 /**
@@ -118,6 +123,14 @@ private fun decodeBookScrollPayload(rawResult: String): JsonObject? = runCatchin
 private val BOOK_SCROLL_JSON = Json { ignoreUnknownKeys = true }
 
 /**
+ * How often the auto-scroll chrome re-syncs the document's rAF loop while it is running.
+ *
+ * The loop keeps the speed it was last given between syncs, so the chrome only has to reach into
+ * the renderer when the requested speed changed or this interval elapsed.
+ */
+private const val AUTO_SCROLL_SYNC_INTERVAL_MILLIS = 250L
+
+/**
  * [NovelBookScrollSurface] backed by the renderer's own view.
  *
  * Paginated flow deliberately consumes nothing from [scrollBy]: the document lays itself out in
@@ -133,13 +146,25 @@ internal class ViewNovelBookScrollSurface(
     @Volatile
     private var isScrollPending = false
 
-    /** Pixels the engine reported for the last finished scroll, reused while one is in flight. */
+    /** Pixels the engine reported for the last finished sync, reused while one is in flight. */
     @Volatile
     private var lastConsumedPx = 0
 
     /** Whether the engine still has room below the viewport. Optimistic until it answers once. */
     @Volatile
     private var engineCanScrollForward = true
+
+    /** Whether the document's own rAF loop is currently advancing the viewport. */
+    @Volatile
+    private var jsLoopRunning = false
+
+    /** Pixels per frame the JS loop was last asked for; a changed speed forces a re-sync. */
+    @Volatile
+    private var requestedPxPerFrame = 0
+
+    /** Last time the JS loop was re-synced, bounding how stale [jsLoopRunning] can get. */
+    @Volatile
+    private var lastSyncMillis = 0L
 
     override fun isPaginated(): Boolean = paginated()
 
@@ -151,21 +176,36 @@ internal class ViewNovelBookScrollSurface(
     override fun scrollBy(distancePx: Int): Int {
         if (paginated() || distancePx == 0) return 0
         val webView = view as? android.webkit.WebView ?: return 0
+        val now = SystemClock.uptimeMillis()
+        val speedChanged = distancePx != requestedPxPerFrame
+        // While the document's own rAF loop already advances the viewport at this speed, the
+        // per-frame evaluateJavascript round trip is skipped: the loop runs inside the renderer,
+        // so the chrome only re-syncs when the requested speed changes or on the sync cadence.
+        if (jsLoopRunning && !speedChanged && now - lastSyncMillis < AUTO_SCROLL_SYNC_INTERVAL_MILLIS) {
+            return distancePx
+        }
         if (isScrollPending) return lastConsumedPx
         isScrollPending = true
-        webView.evaluateJavascript(buildBookScrollByJavascript(distancePx)) { result ->
+        requestedPxPerFrame = distancePx
+        lastSyncMillis = now
+        webView.evaluateJavascript(buildBookAutoScrollSyncJavascript(distancePx)) { result ->
             isScrollPending = false
-            parseBookScrollReport(result)?.let { report ->
-                lastConsumedPx = report.consumedPx
+            parseBookAutoScrollSyncReport(result)?.let { report ->
+                jsLoopRunning = report.loopRunning
                 engineCanScrollForward = report.canScrollForward
+                // A stopped loop at the document end reports no room; that read is what ends
+                // auto-scroll instead of looping forever at the bottom of the book.
+                lastConsumedPx = if (report.canScrollForward) distancePx else 0
             }
         }
-        // The round trip is asynchronous, so the frame that starts it cannot know how much the
-        // engine really moved. Returning the full requested distance here would make auto-scroll
-        // believe it progressed even at the very end of the book (where the engine moves nothing),
-        // so the end was never detected. Returning 0 keeps the first frame conservative: auto-scroll
-        // just asks again next frame, and every later frame reports what the engine actually moved.
         return lastConsumedPx
+    }
+
+    override fun stopAutoScroll() {
+        val webView = view as? android.webkit.WebView ?: return
+        jsLoopRunning = false
+        requestedPxPerFrame = 0
+        webView.evaluateJavascript(buildBookAutoScrollSyncJavascript(0), null)
     }
 
     override fun step(forward: Boolean) = onStep(forward)

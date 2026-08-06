@@ -1996,6 +1996,9 @@ internal fun NovelReaderContentHost(
     ) {
         if (!autoScrollEnabled) {
             autoScrollController.stop()
+            // The WebView book runs auto-scroll as a rAF loop inside its document; the loop has no
+            // other way to learn that the chrome stopped asking for frames.
+            bookContentHandle.surface?.stopAutoScroll()
             return@LaunchedEffect
         }
         autoScrollController.start()
@@ -2046,6 +2049,9 @@ internal fun NovelReaderContentHost(
         while (isActive && autoScrollEnabled) {
             if (showReaderUi) {
                 autoScrollController.pause()
+                // Pausing must stop the in-document loop too: it would otherwise keep advancing the
+                // viewport while the reader UI is visible and the chrome is not asking for frames.
+                bookContentHandle.surface?.stopAutoScroll()
                 delay(120)
                 continue
             }

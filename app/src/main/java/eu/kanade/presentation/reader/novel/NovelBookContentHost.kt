@@ -1,6 +1,7 @@
 package eu.kanade.presentation.reader.novel
 
 import android.graphics.Typeface
+import android.os.SystemClock
 import android.webkit.WebResourceResponse
 import android.widget.Toast
 import androidx.compose.foundation.gestures.animateScrollBy
@@ -26,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,7 +50,10 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundTexture
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
 import eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsNavigationAdapter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.withContext
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.i18n.stringResource
 
@@ -194,7 +199,9 @@ internal fun NovelBookContentHost(
         var sections = pruned
         missingNovelBookNativeSections(sections, window).forEach { sectionIndex ->
             val blocks = nativeBookBlocksForSection(sectionIndex)
-                ?: loadSectionHtml(sectionIndex)?.let(::parseNovelBookNativeSection)
+                ?: withContext(Dispatchers.Default) {
+                    loadSectionHtml(sectionIndex)?.let(::parseNovelBookNativeSection)
+                }
                 ?: return@forEach
             sections = withNovelBookNativeSection(
                 sections = sections,
@@ -225,24 +232,44 @@ internal fun NovelBookContentHost(
         if (offsetPx > 0) textListState.scrollToItem(seekTarget.itemIndex, offsetPx)
         onSeekApplied(seekTarget.seekRequestId)
     }
-    LaunchedEffect(
-        useNativeBookScroll,
-        textListState.firstVisibleItemIndex,
-        textListState.firstVisibleItemScrollOffset,
-        nativeEntries,
-    ) {
+    LaunchedEffect(useNativeBookScroll, nativeEntries) {
         if (!useNativeBookScroll) return@LaunchedEffect
-        val viewportItems = textListState.layoutInfo.visibleItemsInfo.mapNotNull { item ->
-            val sectionIndex = nativeEntries.getOrNull(item.index)?.sectionIndex
-                ?: return@mapNotNull null
-            NovelBookNativeViewportItem(
-                sectionIndex = sectionIndex,
-                offsetPx = item.offset,
-                heightPx = item.size,
-            )
+        // The list used to report its position on every scroll frame, which re-created the book
+        // window and the whole Success state per frame. Reporting on section changes and at the
+        // cadence below keeps the position fresh enough for progress persistence without that
+        // churn; the section change still reports immediately because the window depends on it.
+        var lastReportMillis = 0L
+        var lastSectionIndex = -1
+        var lastSectionFraction = -1f
+        snapshotFlow {
+            textListState.firstVisibleItemIndex to textListState.firstVisibleItemScrollOffset
         }
-        val location = resolveNovelBookNativeRelocate(viewportItems) ?: return@LaunchedEffect
-        onScroll(location.sectionIndex, location.sectionFraction)
+            .distinctUntilChanged()
+            .collect {
+                val viewportItems = textListState.layoutInfo.visibleItemsInfo.mapNotNull { item ->
+                    val entry = nativeEntries.getOrNull(item.index) as? NovelBookNativeEntry.Block
+                        ?: return@mapNotNull null
+                    NovelBookNativeViewportItem(
+                        sectionIndex = entry.sectionIndex,
+                        charOffsetBefore = entry.charOffsetBefore,
+                        blockCharCount = entry.blockCharCount,
+                        sectionCharCount = entry.sectionCharCount,
+                        offsetPx = item.offset,
+                        heightPx = item.size,
+                    )
+                }
+                val location = resolveNovelBookNativeRelocate(viewportItems) ?: return@collect
+                val now = SystemClock.uptimeMillis()
+                val sectionChanged = location.sectionIndex != lastSectionIndex
+                if (!sectionChanged && location.sectionFraction == lastSectionFraction) return@collect
+                if (!sectionChanged && now - lastReportMillis < NATIVE_SCROLL_REPORT_INTERVAL_MILLIS) {
+                    return@collect
+                }
+                lastReportMillis = now
+                lastSectionIndex = location.sectionIndex
+                lastSectionFraction = location.sectionFraction
+                onScroll(location.sectionIndex, location.sectionFraction)
+            }
     }
     LaunchedEffect(
         handle.surface,
@@ -396,50 +423,61 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.novelBookNativeConte
 ) {
     itemsIndexed(
         entries,
-        key = { _, entry -> "book-${entry.sectionIndex}" },
+        key = { _, entry ->
+            when (entry) {
+                is NovelBookNativeEntry.Block -> "book-${entry.sectionIndex}-${entry.blockIndex}"
+                is NovelBookNativeEntry.Failed -> "book-${entry.sectionIndex}-failed"
+            }
+        },
     ) { _, entry ->
         when (entry) {
-            is NovelBookNativeEntry.Section -> {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    entry.section.blocks.forEachIndexed { blockIndex, block ->
-                        val blockAnchor = block.anchor
-                        DisposableEffect(blockAnchor) {
-                            onDispose { handle.ttsBlockPositions.forgetBlock(blockAnchor) }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .onGloballyPositioned { coordinates ->
+            is NovelBookNativeEntry.Block -> {
+                val blockAnchor = entry.block.anchor
+                DisposableEffect(blockAnchor) {
+                    onDispose { handle.ttsBlockPositions.forgetBlock(blockAnchor) }
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // Block positions are only read by TTS follow-along, so recording
+                        // them unconditionally wrote to a snapshot state map for every
+                        // visible block on every scroll frame. With follow-along off the
+                        // modifier is not attached at all.
+                        .then(
+                            if (state.readerSettings.ttsFollowAlong) {
+                                Modifier.onGloballyPositioned { coordinates ->
                                     handle.ttsBlockPositions.recordBlock(
                                         anchor = blockAnchor,
                                         topInWindow = coordinates.positionInWindow().y,
                                     )
-                                },
-                        ) {
-                            NovelRichNativeScrollItem(
-                                block = block,
-                                index = blockIndex,
-                                lastIndex = entry.section.blocks.lastIndex,
-                                chapterTitle = state.chapter.name,
-                                novelTitle = state.novel.title,
-                                sourceId = state.novel.source,
-                                chapterWebUrl = state.chapterWebUrl,
-                                novelUrl = state.novel.url,
-                                statusBarTopPadding = statusBarTopPadding,
-                                textColor = textColor,
-                                backgroundColor = textBackground,
-                                readerSettings = readerSettings,
-                                textTypeface = textTypeface,
-                                chapterTitleTypeface = chapterTitleTypeface,
-                                paragraphSpacing = paragraphSpacing,
-                                ttsHighlightState = ttsHighlightState,
-                                ttsHighlightColor = ttsHighlightColor,
-                                selectionSessionIdProvider = selectionSessionIdProvider,
-                                onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
-                                onPlainTap = onPlainTap,
-                            )
-                        }
-                    }
+                                }
+                            } else {
+                                Modifier
+                            },
+                        ),
+                ) {
+                    NovelRichNativeScrollItem(
+                        block = entry.block,
+                        index = entry.blockIndex,
+                        lastIndex = entry.sectionBlockCount - 1,
+                        chapterTitle = state.chapter.name,
+                        novelTitle = state.novel.title,
+                        sourceId = state.novel.source,
+                        chapterWebUrl = state.chapterWebUrl,
+                        novelUrl = state.novel.url,
+                        statusBarTopPadding = statusBarTopPadding,
+                        textColor = textColor,
+                        backgroundColor = textBackground,
+                        readerSettings = readerSettings,
+                        textTypeface = textTypeface,
+                        chapterTitleTypeface = chapterTitleTypeface,
+                        paragraphSpacing = paragraphSpacing,
+                        ttsHighlightState = ttsHighlightState,
+                        ttsHighlightColor = ttsHighlightColor,
+                        selectionSessionIdProvider = selectionSessionIdProvider,
+                        onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                        onPlainTap = onPlainTap,
+                    )
                 }
             }
             is NovelBookNativeEntry.Failed -> {
@@ -470,6 +508,15 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.novelBookNativeConte
         }
     }
 }
+
+/**
+ * How often the native book list reports its reading position while scrolling.
+ *
+ * The list used to report on every scroll frame, which re-created the book window and the whole
+ * Success state per frame. Section changes still report immediately; everything else is throttled
+ * to this cadence, which is far below the 1.5s progress persistence debounce.
+ */
+private const val NATIVE_SCROLL_REPORT_INTERVAL_MILLIS = 150L
 
 /**
  * Safety net for the "restoring position" cover: the cover is normally dropped by the controller
