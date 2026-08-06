@@ -47,6 +47,11 @@ object MangaMemoRepairHelper {
                     candidate.url == manga.url ||
                         (candidate.url.startsWith("/") && manga.url.endsWith(candidate.url)) ||
                         (manga.url.startsWith("/") && candidate.url.endsWith(manga.url))
+                } ?: searchResult.mangas.firstOrNull { candidate ->
+                    // Some sources return a slightly different URL than what is stored (e.g. a
+                    // rotating id). A title match is still a strong signal: 1.6 sources derive
+                    // their memo (e.g. the slug) from the title anyway.
+                    candidate.title.equals(manga.title, ignoreCase = true)
                 }
 
                 if (matched != null && matched.memo.isNotEmpty()) {
