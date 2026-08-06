@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.extension.novel.kotlin.KotlinNovelExtensionLoader
 import eu.kanade.tachiyomi.extension.novel.runtime.NovelPluginCapabilities
 import eu.kanade.tachiyomi.extension.novel.runtime.NovelPluginCapabilitySource
 import eu.kanade.tachiyomi.extension.novel.runtime.NovelPluginIdentitySource
+import eu.kanade.tachiyomi.extension.novel.runtime.NovelPluginWebViewCoordinator
 import eu.kanade.tachiyomi.novelsource.NovelSource
 import eu.kanade.tachiyomi.util.system.isPackageInstalled
 import kotlinx.coroutines.CoroutineScope
@@ -21,13 +22,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.data.extension.novel.NovelPluginInstallerFacade
+import tachiyomi.data.extension.novel.NovelPluginKeyValueStore
 import tachiyomi.domain.extension.novel.model.NovelPlugin
 import tachiyomi.domain.extension.novel.repository.NovelPluginRepository
 import tachiyomi.domain.source.novel.model.StubNovelSource
@@ -88,6 +95,23 @@ class DefaultNovelExtensionManager(
     override val availablePluginsFlow: Flow<List<NovelPlugin.Available>> = availablePlugins.asStateFlow()
     override val untrustedPluginsFlow: Flow<List<NovelPlugin.Untrusted>> = untrustedPlugins.asStateFlow()
     override val updatesFlow: Flow<List<NovelPlugin.Installed>> = updates.asStateFlow()
+    override val repoFetchErrors: Flow<Map<String, String>> = api.repoFetchErrors
+
+    private val _signatureMismatchEvents =
+        MutableSharedFlow<NovelExtensionManager.SignatureMismatchEvent>(extraBufferCapacity = 8)
+    override val signatureMismatchEvents: SharedFlow<NovelExtensionManager.SignatureMismatchEvent> =
+        _signatureMismatchEvents.asSharedFlow()
+
+    override fun reportSignatureMismatch(pluginId: String) {
+        val displayName = installedPlugins.value.firstOrNull { it.id == pluginId }?.name ?: pluginId
+        _signatureMismatchEvents.tryEmit(
+            NovelExtensionManager.SignatureMismatchEvent(
+                pluginId = pluginId,
+                displayName = displayName,
+                candidate = availablePlugins.value.firstOrNull { it.id == pluginId },
+            ),
+        )
+    }
 
     init {
         if (context != null) {
@@ -100,6 +124,11 @@ class DefaultNovelExtensionManager(
                 applyInstalledSnapshots()
             }
         }
+        // The NSFW toggle gates which sources are exposed; re-apply immediately on change instead
+        // of waiting for the next refresh.
+        sourcePreferences?.showNsfwSource()?.changes()?.onEach {
+            applyInstalledSnapshots()
+        }?.launchIn(scope)
     }
 
     private fun registerKotlinPackageReceiver(context: Context) {
@@ -161,6 +190,17 @@ class DefaultNovelExtensionManager(
             return installed
         }
 
+        // Downgrading a JS plugin would silently revert user-facing behavior; the Kotlin path
+        // refuses downgrades, so keep the semantics identical across plugin types.
+        val currentInstalled = installedPlugins.value.firstOrNull { it.id == plugin.id }
+        if (currentInstalled != null && plugin.versionCode < currentInstalled.versionCode) {
+            throw IllegalArgumentException("Refusing to downgrade JS novel plugin ${plugin.id}")
+        }
+        if (currentInstalled != null) {
+            // The plugin is being replaced: drop stale runtimes/script cache before reloading.
+            sourceFactory.clearRuntimeCaches()
+        }
+
         val installed = installer.install(plugin).withNormalizedLang()
         saveInstalledRepo(installed)
         enableLanguageOf(installed)
@@ -182,6 +222,10 @@ class DefaultNovelExtensionManager(
         installer.uninstall(plugin.id)
         installedJsPluginsSnapshot = installedJsPluginsSnapshot.filterNot { it.id == plugin.id }
         applyInstalledSnapshots()
+        // Free plugin-owned state so a reinstall cannot pick up stale settings or web storage.
+        runCatching { Injekt.get<NovelPluginKeyValueStore>().clear(plugin.id) }
+        runCatching { Injekt.get<NovelPluginWebViewCoordinator>().cleanup(plugin.id) }
+        sourceFactory.clearRuntimeCaches()
     }
 
     override suspend fun uninstallPlugin(plugin: NovelPlugin.Untrusted) {
@@ -317,7 +361,7 @@ class DefaultNovelExtensionManager(
                 .filter { showNsfwSources || !it.isNsfw }
                 .mapNotNull { plugin -> sourceFactory.create(plugin) } +
             installedKotlinExtensionsSnapshot
-                .filter { it.plugin is NovelPlugin.Installed }
+                .filter { it.plugin is NovelPlugin.Installed && (showNsfwSources || !it.plugin.isNsfw) }
                 .flatMap { it.sources }
 
         installedPluginIconUrls.clear()

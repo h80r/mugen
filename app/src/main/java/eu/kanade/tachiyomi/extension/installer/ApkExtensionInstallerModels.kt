@@ -62,6 +62,8 @@ data class ApkInstallRequest(
 data class ApkUninstallRequest(
     val packageName: String,
     val kind: ApkExtensionKind,
+    /** The backend the extension was installed with; routes the uninstall to the same adapter. */
+    val backend: ApkInstallBackend? = null,
 )
 
 sealed class ApkInstallResult {

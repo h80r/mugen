@@ -36,6 +36,24 @@ class TrustNovelExtension(
         }
     }
 
+    /**
+     * Carries the user's trust to a new version when the signing key is unchanged: an update that
+     * keeps the previously trusted signature must not silently flip the plugin to Untrusted.
+     * No-op when the package was never user-trusted (curated-store fingerprints still apply).
+     */
+    fun trustIfSameSigner(pkgName: String, versionCode: Long, signatureHash: String) {
+        preferences.trustedExtensions().getAndSet { exts ->
+            val previouslyTrusted = exts.firstOrNull { it.startsWith("$pkgName:") }
+            if (previouslyTrusted != null && previouslyTrusted.endsWith(":$signatureHash")) {
+                exts.filterNot { it.startsWith("$pkgName:") }.toMutableSet().also {
+                    it += "$pkgName:$versionCode:$signatureHash"
+                }
+            } else {
+                exts
+            }
+        }
+    }
+
     fun revokeAll() {
         preferences.trustedExtensions().delete()
     }

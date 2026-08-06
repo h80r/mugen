@@ -5,10 +5,13 @@ import eu.kanade.tachiyomi.extension.novel.runtime.NovelPluginCapabilities
 import eu.kanade.tachiyomi.extension.novel.runtime.NovelPluginCapabilitySource
 import eu.kanade.tachiyomi.novelsource.NovelSource
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import org.junit.jupiter.api.Test
 import tachiyomi.data.extension.novel.NovelPluginInstallerFacade
 import tachiyomi.data.extension.novel.toInstalled
@@ -298,6 +301,65 @@ class DefaultNovelExtensionManagerTest {
         private val plugins: List<NovelPlugin.Available>,
     ) : NovelPluginApiFacade {
         override suspend fun fetchAvailablePlugins(): List<NovelPlugin.Available> = plugins
+        override val repoFetchErrors: Flow<Map<String, String>> = flowOf(emptyMap())
+    }
+
+    @Test
+    fun `reportSignatureMismatch emits event with candidate`() = runTest {
+        val repo = FakePluginRepository()
+        val api = FakePluginApi(
+            listOf(
+                NovelPlugin.Available(
+                    id = "one",
+                    name = "One",
+                    site = "https://one.example",
+                    lang = "ru",
+                    versionCode = 3,
+                    versionName = "3.0.0",
+                    url = "https://one.example/plugin.js",
+                    iconUrl = null,
+                    customJs = null,
+                    customCss = null,
+                    hasSettings = false,
+                    sha256 = "aaa",
+                    repoUrl = "https://repo.one",
+                ),
+            ),
+        )
+        val installer = FakePluginInstaller(repo)
+        val sourceFactory = FakeSourceFactory()
+        val manager = DefaultNovelExtensionManager(repo, api, installer, sourceFactory)
+        repo.upsert(
+            NovelPlugin.Installed(
+                id = "one",
+                name = "One",
+                site = "https://one.example",
+                lang = "ru",
+                versionCode = 2,
+                versionName = "2.0.0",
+                url = "https://one.example/plugin.js",
+                iconUrl = null,
+                customJs = null,
+                customCss = null,
+                hasSettings = false,
+                sha256 = "aaa",
+                repoUrl = "https://repo.one",
+                isNsfw = false,
+                isKotlinExtension = false,
+                pkgName = null,
+            ),
+        )
+        manager.refreshAvailablePlugins()
+        manager.availablePluginsFlow.first { it.isNotEmpty() }
+
+        val eventDeferred = async { manager.signatureMismatchEvents.first() }
+        yield() // let the collector subscribe before the emission
+        manager.reportSignatureMismatch("one")
+
+        val event = eventDeferred.await()
+        event.pluginId shouldBe "one"
+        event.displayName shouldBe "One"
+        event.candidate?.versionCode shouldBe 3
     }
 
     private class FakePluginInstaller(

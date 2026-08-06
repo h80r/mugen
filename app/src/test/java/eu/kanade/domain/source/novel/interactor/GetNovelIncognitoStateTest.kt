@@ -10,7 +10,10 @@ import eu.kanade.tachiyomi.novelsource.NovelSource
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.flowOf
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
@@ -117,6 +120,10 @@ class GetNovelIncognitoStateTest {
         override val availablePluginsFlow: Flow<List<NovelPlugin.Available>> = MutableStateFlow(emptyList())
         override val untrustedPluginsFlow: Flow<List<NovelPlugin.Untrusted>> = MutableStateFlow(emptyList())
         override val updatesFlow: Flow<List<NovelPlugin.Installed>> = MutableStateFlow(emptyList())
+        override val signatureMismatchEvents: SharedFlow<NovelExtensionManager.SignatureMismatchEvent> =
+            MutableSharedFlow()
+        override fun reportSignatureMismatch(pluginId: String) = Unit
+        override val repoFetchErrors: Flow<Map<String, String>> = flowOf(emptyMap())
 
         override suspend fun refreshAvailablePlugins() = Unit
         override suspend fun installPlugin(plugin: NovelPlugin.Available): NovelPlugin.Installed {

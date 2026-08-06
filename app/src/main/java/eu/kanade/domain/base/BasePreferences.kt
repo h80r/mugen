@@ -28,6 +28,15 @@ class BasePreferences(
      */
     fun autoUpdateExtensions() = preferenceStore.getBoolean("pref_auto_update_extensions", false)
 
+    /**
+     * Queue of pending APK installs waiting for the "Install unknown apps" permission; replaces
+     * the single-slot legacy prefs below, which are kept for migration reads only.
+     */
+    fun pendingApkInstallQueue() = preferenceStore.getStringSet(
+        Preference.appStateKey("pending_apk_install_queue"),
+        emptySet(),
+    )
+
     fun pendingApkInstallPackage() = preferenceStore.getString(
         Preference.appStateKey("pending_apk_install_package"),
         "",
@@ -48,6 +57,15 @@ class BasePreferences(
     )
 
     fun lastExtensionApkPackage() = preferenceStore.getString(Preference.appStateKey("last_extension_apk_package"), "")
+
+    /**
+     * Persisted "downloadId|packageName" pairs for DownloadManager downloads that have not
+     * reached a terminal state, so a process restart can resume installing finished ones.
+     */
+    fun extensionActiveDownloads() = preferenceStore.getStringSet(
+        Preference.appStateKey("extension_active_downloads"),
+        emptySet(),
+    )
 
     fun lastExtensionApkDisplayName() = preferenceStore.getString(
         Preference.appStateKey("last_extension_apk_display_name"),

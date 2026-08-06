@@ -2,10 +2,12 @@ package eu.kanade.tachiyomi.extension.manga
 
 import android.content.Context
 import android.graphics.drawable.Drawable
+import androidx.core.content.pm.PackageInfoCompat
 import eu.kanade.domain.extension.manga.interactor.TrustMangaExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionUpdateNotifier
 import eu.kanade.tachiyomi.extension.InstallStep
+import eu.kanade.tachiyomi.extension.installer.ExtensionSignatureComparison
 import eu.kanade.tachiyomi.extension.manga.api.MangaExtensionApi
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
 import eu.kanade.tachiyomi.extension.manga.model.MangaLoadResult
@@ -22,9 +24,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -94,6 +99,50 @@ class MangaExtensionManager(
 
     private val untrustedExtensionsMapFlow = MutableStateFlow(emptyMap<String, MangaExtension.Untrusted>())
     val untrustedExtensionsFlow = untrustedExtensionsMapFlow.mapExtensions(scope)
+
+    /**
+     * Install attempts that failed because the APK is signed with a different key than the
+     * installed copy. The UI subscribes to offer reinstall-with-uninstall.
+     */
+    data class SignatureMismatchEvent(
+        val packageName: String,
+        val displayName: String,
+        /** Recommended replacement variant (newest from the preferred repo), when known. */
+        val candidate: MangaExtension.Available? = null,
+    )
+
+    private val _signatureMismatchEvents = MutableSharedFlow<SignatureMismatchEvent>(extraBufferCapacity = 8)
+    val signatureMismatchEvents: SharedFlow<SignatureMismatchEvent> = _signatureMismatchEvents.asSharedFlow()
+
+    /** Reports a signature mismatch detected during an install attempt. */
+    fun reportSignatureMismatch(pkgName: String) {
+        val displayName = installedExtensionsMapFlow.value[pkgName]?.name ?: pkgName
+        _signatureMismatchEvents.tryEmit(
+            SignatureMismatchEvent(
+                packageName = pkgName,
+                displayName = displayName,
+                candidate = availableExtensionsMapFlow.value[pkgName],
+            ),
+        )
+    }
+
+    /**
+     * Carries the user's trust to the newly installed (shared) version when the signing key is
+     * unchanged, so an update does not silently flip the extension back to Untrusted.
+     */
+    private fun carryTrustToNewVersion(pkgName: String) {
+        val info = runCatching {
+            context.packageManager.getPackageInfo(pkgName, 0)
+        }.getOrNull() ?: return
+        val signatures = ExtensionSignatureComparison.installedSignatures(context, pkgName) ?: return
+        signatures.lastOrNull()?.let { signatureHash ->
+            trustExtension.trustIfSameSigner(
+                pkgName,
+                PackageInfoCompat.getLongVersionCode(info),
+                signatureHash,
+            )
+        }
+    }
 
     init {
         initExtensions()
@@ -378,6 +427,11 @@ class MangaExtensionManager(
         emit(InstallStep.Error)
     }
 
+    /** Reconnects downloads orphaned by a process death and installs the finished ones. */
+    fun resumeOrphanedDownloads() {
+        installer.resumeOrphanedDownloads(context)
+    }
+
     fun cancelInstallUpdateExtension(extension: MangaExtension) {
         installer.cancelInstall(extension.pkgName.toInstalledMangaExtensionPkgName())
     }
@@ -527,6 +581,8 @@ class MangaExtensionManager(
         override fun onExtensionUpdated(extension: MangaExtension.Installed) {
             registerUpdatedExtension(extension)
             updatePendingUpdatesCount()
+            // A system install finished — keep the user's trust when the signing key is unchanged.
+            carryTrustToNewVersion(extension.pkgName)
         }
 
         override fun onExtensionUntrusted(extension: MangaExtension.Untrusted) {

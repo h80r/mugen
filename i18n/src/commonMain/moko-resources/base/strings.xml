@@ -414,6 +414,9 @@
     <string name="multi_lang">Multi</string>
     <string name="ext_updates_pending">Updates pending</string>
     <string name="ext_update">Update</string>
+    <string name="extension_signature_mismatch_title">Update requires reinstall</string>
+    <string name="extension_signature_mismatch_message">The new version of %1$s is signed with a different key. Install it by removing the previous version first?</string>
+    <string name="extension_reinstall">Reinstall</string>
     <string name="ext_update_all">Update all</string>
     <string name="ext_reinstall_required">Reinstall required</string>
     <string name="ext_reinstall_required_hint">A newer plugin was found in another repository. Reinstall is required.</string>
@@ -465,6 +468,10 @@
     <string name="ext_auto_update_security_title">Security notice</string>
     <string name="ext_auto_update_security_dialog">Extension updates will be downloaded and installed automatically, without asking you each time. Updates are only applied when the new file is signed by the same publisher as the installed extension; anything else is skipped and only reported. Extensions run code inside the app, so only enable this if you trust every store you added.</string>
     <string name="ext_auto_update_notif_title">Extensions updated</string>
+    <string name="ext_auto_update_shared_skipped_title">Some updates need reinstall</string>
+    <string name="ext_manual_apk_share_message">Manual APK installation may require the Install unknown apps permission.</string>
+    <string name="ext_install_failed_notification_body">PackageInstaller failed: %1$s. Open extensions and retry with %2$s.</string>
+    <string name="ext_install_failed_notification_title">Extension install failed</string>
 
     <!-- Extension repos (legacy keys preserved for compat/migration; primary now uses store terminology) -->
     <string name="label_extension_repos">Extension stores</string>

@@ -14,8 +14,11 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -148,6 +151,10 @@ class AndroidNovelSourceManagerTest {
         override val availablePluginsFlow = MutableStateFlow<List<NovelPlugin.Available>>(emptyList())
         override val untrustedPluginsFlow = MutableStateFlow<List<NovelPlugin.Untrusted>>(emptyList())
         override val updatesFlow = MutableStateFlow<List<NovelPlugin.Installed>>(emptyList())
+        override val signatureMismatchEvents: SharedFlow<NovelExtensionManager.SignatureMismatchEvent> =
+            MutableSharedFlow()
+        override fun reportSignatureMismatch(pluginId: String) = Unit
+        override val repoFetchErrors: Flow<Map<String, String>> = flowOf(emptyMap())
 
         fun emitSources(list: List<NovelSource>) {
             sourcesState.value = list

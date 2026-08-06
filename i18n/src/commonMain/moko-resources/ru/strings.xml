@@ -261,6 +261,9 @@
     <string name="label_extensions">Расширения</string>
     <string name="label_extension_info">Информация о расширении</string>
     <string name="ext_update">Обновить</string>
+    <string name="extension_signature_mismatch_title">Обновление требует переустановки</string>
+    <string name="extension_signature_mismatch_message">Новая версия %1$s подписана другим ключом. Установить её, удалив предыдущую версию?</string>
+    <string name="extension_reinstall">Переустановить</string>
     <string name="ext_repo_update_short">Другой репозиторий</string>
     <string name="ext_repo_update_required">Требуется переустановка</string>
     <string name="ext_repo_update_dialog_title">Переустановить из другого репозитория</string>
@@ -963,6 +966,10 @@
     <string name="ext_auto_update_security_title">Предупреждение о безопасности</string>
     <string name="ext_auto_update_security_dialog">Обновления расширений будут скачиваться и устанавливаться автоматически, без подтверждения каждый раз. Обновление применяется только если новый файл подписан тем же издателем, что и установленное расширение; всё остальное пропускается и попадает только в уведомление. Расширения выполняют код внутри приложения, поэтому включайте эту опцию только если доверяете всем добавленным репозиториям.</string>
     <string name="ext_auto_update_notif_title">Расширения обновлены</string>
+    <string name="ext_auto_update_shared_skipped_title">Некоторые обновления требуют переустановки</string>
+    <string name="ext_manual_apk_share_message">Ручная установка APK может потребовать разрешения «Установка неизвестных приложений».</string>
+    <string name="ext_install_failed_notification_body">PackageInstaller не сработал: %1$s. Откройте расширения и повторите с %2$s.</string>
+    <string name="ext_install_failed_notification_title">Не удалось установить расширение</string>
     <string name="action_open_repo">Открыть репозиторий источника</string>
     <string name="pref_webtoon_disable_zoom_out">Отключить уменьшение масштаба</string>
     <string name="pref_save_long_page_position">Сохранять позицию внутри длинных страниц</string>

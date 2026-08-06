@@ -106,8 +106,7 @@ DO UPDATE SET
     sha256 = :sha256,
     repo_url = :repo_url,
     repo_name = :repo_name,
-    version_name = :version_name
-WHERE id = id;
+    version_name = :version_name;
 
 delete:
 DELETE FROM novel_plugins

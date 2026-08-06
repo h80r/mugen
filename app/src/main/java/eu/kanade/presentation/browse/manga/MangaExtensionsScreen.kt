@@ -91,8 +91,18 @@ fun MangaExtensionScreen(
     onClickUpdateAll: () -> Unit,
     onRefresh: () -> Unit,
     onToggleSection: (MangaExtensionUiModel.Header.Text) -> Unit,
+    onReinstallAfterSignatureMismatch: () -> Unit,
+    onDismissSignatureMismatch: () -> Unit,
 ) {
     val navigator = LocalNavigator.currentOrThrow
+
+    state.signatureMismatchEvent?.let { event ->
+        SignatureMismatchDialog(
+            displayName = event.displayName,
+            onClickReinstall = onReinstallAfterSignatureMismatch,
+            onClickDismiss = onDismissSignatureMismatch,
+        )
+    }
 
     PullRefresh(
         refreshing = state.isRefreshing,
@@ -624,6 +634,31 @@ fun ExtensionHeader(
         )
         action()
     }
+}
+
+@Composable
+private fun SignatureMismatchDialog(
+    displayName: String,
+    onClickReinstall: () -> Unit,
+    onClickDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onClickDismiss,
+        title = { Text(text = stringResource(MR.strings.extension_signature_mismatch_title)) },
+        text = {
+            Text(text = stringResource(MR.strings.extension_signature_mismatch_message, displayName))
+        },
+        confirmButton = {
+            TextButton(onClick = onClickReinstall) {
+                Text(text = stringResource(MR.strings.extension_reinstall))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onClickDismiss) {
+                Text(text = stringResource(MR.strings.action_cancel))
+            }
+        },
+    )
 }
 
 @Composable

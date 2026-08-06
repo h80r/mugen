@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
@@ -192,6 +193,28 @@ class AnimeExtensionsScreenModel(
         basePreferences.extensionInstaller().changes()
             .onEach { mutableState.update { state -> state.copy(installer = it) } }
             .launchIn(screenModelScope)
+
+        extensionManager.signatureMismatchEvents
+            .onEach { event ->
+                mutableState.update { state ->
+                    state.copy(signatureMismatchEvent = event)
+                }
+            }
+            .launchIn(screenModelScope)
+    }
+
+    fun reinstallAfterSignatureMismatch() {
+        val event = state.value.signatureMismatchEvent ?: return
+        val candidate = event.candidate
+        val installed = extensionManager.installedExtensionsFlow.value
+            .firstOrNull { it.pkgName == event.packageName }
+        dismissSignatureMismatch()
+        if (installed == null || candidate == null) return
+        reinstallFromRepo(installed, candidate)
+    }
+
+    fun dismissSignatureMismatch() {
+        mutableState.update { state -> state.copy(signatureMismatchEvent = null) }
     }
 
     fun toggleSection(header: AnimeExtensionUiModel.Header.Text) {
@@ -356,6 +379,7 @@ class AnimeExtensionsScreenModel(
         val collapsedLanguages: Set<String> = emptySet(),
         val repoPickerPluginId: String? = null,
         val repoPickerOptions: List<AnimeExtension.Available> = emptyList(),
+        val signatureMismatchEvent: AnimeExtensionManager.SignatureMismatchEvent? = null,
     ) {
         val isEmpty = items.isEmpty()
     }

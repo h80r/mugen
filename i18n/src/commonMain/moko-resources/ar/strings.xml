@@ -380,6 +380,12 @@
     <string name="multi_lang">متعدد</string>
     <string name="ext_updates_pending">تحديثات معلقة</string>
     <string name="ext_update">تحديث</string>
+    <string name="ext_manual_apk_share_message">قد يتطلب تثبيت APK يدويًا إذن تثبيت التطبيقات غير المعروفة.</string>
+    <string name="ext_install_failed_notification_body">فشل PackageInstaller: %1$s. افتح الإضافات وأعد المحاولة مع %2$s.</string>
+    <string name="ext_install_failed_notification_title">فشل تثبيت الإضافة</string>
+    <string name="extension_signature_mismatch_title">التحديث يتطلب إعادة تثبيت</string>
+    <string name="extension_signature_mismatch_message">النسخة الجديدة من %1$s موقعة بمفتاح مختلف. تثبيتها يتطلب إزالة النسخة السابقة أولاً؟</string>
+    <string name="extension_reinstall">إعادة تثبيت</string>
     <string name="ext_update_all">تحديث الكل</string>
     <string name="ext_reinstall_required">إعادة التثبيت مطلوبة</string>
     <string name="ext_reinstall_required_hint">تم العثور على مكوّن إضافي أحدث في مستودع آخر. مطلوب إعادة التثبيت.</string>

@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference
  */
 abstract class InstallerManga(private val service: Service) {
 
-    private val extensionManager: MangaExtensionManager by injectLazy()
+    protected val extensionManager: MangaExtensionManager by injectLazy()
 
     private var waitingInstall = AtomicReference<Entry>(null)
     private val queue = Collections.synchronizedList(mutableListOf<Entry>())
@@ -33,10 +33,13 @@ abstract class InstallerManga(private val service: Service) {
      * @param downloadId Download ID as known by [MangaExtensionManager]
      * @param uri Uri of APK to install
      */
-    fun addToQueue(downloadId: Long, uri: Uri) {
-        queue.add(Entry(downloadId, uri))
+    fun addToQueue(downloadId: Long, uri: Uri, pkgName: String? = null) {
+        queue.add(Entry(downloadId, uri, pkgName))
         checkQueue()
     }
+
+    /** True when nothing is queued or being installed — safe to swap the backend. */
+    fun isIdle(): Boolean = queue.isEmpty() && waitingInstall.get() == null
 
     /**
      * Proceeds to install the APK of this entry inside this method. Call [continueQueue]
@@ -138,7 +141,11 @@ abstract class InstallerManga(private val service: Service) {
      * @param downloadId Download ID as known by [MangaExtensionManager]
      * @param uri Uri of APK to install
      */
-    data class Entry(val downloadId: Long, val uri: Uri)
+    data class Entry(
+        val downloadId: Long,
+        val uri: Uri,
+        val pkgName: String? = null,
+    )
 
     init {
         synchronized(activeInstallers) {

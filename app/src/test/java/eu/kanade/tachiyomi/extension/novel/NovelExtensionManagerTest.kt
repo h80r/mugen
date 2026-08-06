@@ -6,6 +6,7 @@ import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import tachiyomi.data.extension.novel.NovelPluginInstallerFacade
@@ -51,6 +52,7 @@ class NovelExtensionManagerTest {
         private val plugins: List<NovelPlugin.Available>,
     ) : NovelPluginApiFacade {
         override suspend fun fetchAvailablePlugins(): List<NovelPlugin.Available> = plugins
+        override val repoFetchErrors: Flow<Map<String, String>> = flowOf(emptyMap())
     }
 
     private class FakePluginInstaller(

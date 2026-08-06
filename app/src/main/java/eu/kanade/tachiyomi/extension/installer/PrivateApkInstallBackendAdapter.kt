@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.extension.installer
 
 import android.content.Context
 import eu.kanade.tachiyomi.extension.InstallStep
+import eu.kanade.tachiyomi.extension.installer.PrivateExtensionInstallResult
 import eu.kanade.tachiyomi.extension.novel.kotlin.KotlinNovelExtensionLoader
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -20,7 +21,13 @@ class PrivateApkInstallBackendAdapter(
         val installed = withIOContext {
             KotlinNovelExtensionLoader.installPrivateExtensionFile(context, file, request.packageName)
         }
-        emit(if (installed) InstallStep.Installed else InstallStep.Error)
+        emit(
+            if (installed == PrivateExtensionInstallResult.Success) {
+                InstallStep.Installed
+            } else {
+                InstallStep.Error
+            },
+        )
     }
 
     override suspend fun uninstall(request: ApkUninstallRequest): ApkInstallResult {

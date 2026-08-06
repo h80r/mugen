@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.extension.manga.installer.InstallerManga
 import eu.kanade.tachiyomi.extension.manga.installer.PackageInstallerInstallerManga
 import eu.kanade.tachiyomi.extension.manga.installer.ShizukuInstallerManga
 import eu.kanade.tachiyomi.extension.manga.util.MangaExtensionInstaller.Companion.EXTRA_DOWNLOAD_ID
+import eu.kanade.tachiyomi.extension.manga.util.MangaExtensionInstaller.Companion.EXTRA_PACKAGE_NAME
 import eu.kanade.tachiyomi.util.system.getSerializableExtraCompat
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import logcat.LogPriority
@@ -23,6 +24,7 @@ import tachiyomi.i18n.MR
 class MangaExtensionInstallService : Service() {
 
     private var installer: InstallerManga? = null
+    private var installerType: BasePreferences.ExtensionInstaller? = null
 
     override fun onCreate() {
         val notification = notificationBuilder(Notifications.CHANNEL_EXTENSIONS_UPDATE) {
@@ -42,12 +44,15 @@ class MangaExtensionInstallService : Service() {
         val installerUsed = intent?.getSerializableExtraCompat<BasePreferences.ExtensionInstaller>(
             EXTRA_INSTALLER,
         )
+        val pkgName = intent?.getStringExtra(MangaExtensionInstaller.Companion.EXTRA_PACKAGE_NAME)
         if (uri == null || id == null || installerUsed == null) {
             stopSelf()
             return START_NOT_STICKY
         }
 
-        if (installer == null) {
+        if (installer == null || (installerType != installerUsed && installer!!.isIdle())) {
+            // A different backend arrived while the queue was idle: create a fresh installer for
+            // it instead of routing through the previous one.
             installer = when (installerUsed) {
                 BasePreferences.ExtensionInstaller.PACKAGEINSTALLER -> PackageInstallerInstallerManga(
                     this,
@@ -61,13 +66,15 @@ class MangaExtensionInstallService : Service() {
                 }
             }
         }
-        installer!!.addToQueue(id, uri)
+        installerType = installerUsed
+        installer!!.addToQueue(id, uri, pkgName)
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         installer?.onDestroy()
         installer = null
+        installerType = null
     }
 
     override fun onBind(i: Intent?): IBinder? = null
@@ -80,11 +87,13 @@ class MangaExtensionInstallService : Service() {
             downloadId: Long,
             uri: Uri,
             installer: BasePreferences.ExtensionInstaller,
+            pkgName: String? = null,
         ): Intent {
             return Intent(context, MangaExtensionInstallService::class.java)
                 .setDataAndType(uri, MangaExtensionInstaller.APK_MIME)
                 .putExtra(EXTRA_DOWNLOAD_ID, downloadId)
                 .putExtra(EXTRA_INSTALLER, installer)
+                .putExtra(EXTRA_PACKAGE_NAME, pkgName)
         }
     }
 }

@@ -22,10 +22,15 @@ import eu.kanade.tachiyomi.extension.InstallStep
 import eu.kanade.tachiyomi.extension.canReplacePrivateExtension
 import eu.kanade.tachiyomi.extension.installer.ApkExtensionKind
 import eu.kanade.tachiyomi.extension.installer.ApkInstallRequest
+import eu.kanade.tachiyomi.extension.installer.ApkInstallResult
+import eu.kanade.tachiyomi.extension.installer.ApkUninstallRequest
 import eu.kanade.tachiyomi.extension.installer.ExtensionApkFileStore
+import eu.kanade.tachiyomi.extension.installer.ExtensionSignatureComparison
 import eu.kanade.tachiyomi.extension.installer.PendingApkInstallStore
+import eu.kanade.tachiyomi.extension.installer.PrivateExtensionInstallResult
 import eu.kanade.tachiyomi.extension.installer.UnifiedApkExtensionInstaller
 import eu.kanade.tachiyomi.extension.installer.toApkInstallBackend
+import eu.kanade.tachiyomi.extension.novel.NovelExtensionManager
 import eu.kanade.tachiyomi.extension.novel.runtime.NovelPluginIdentitySource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.awaitSuccess
@@ -63,8 +68,11 @@ import okhttp3.OkHttpClient
 import rx.Observable
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.extension.novel.model.NovelPlugin
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
 import java.io.File
+import java.security.MessageDigest
 import eu.kanade.tachiyomi.source.Source as TachiyomiSource
 
 private const val APK_MIME = "application/vnd.android.package-archive"
@@ -95,6 +103,25 @@ class KotlinNovelExtensionInstaller(
             file
         }
 
+        // Validate before handing the APK to a system installer: the index checksum and the
+        // package identity are the only gates a shared backend has (a private install re-checks
+        // signatures in the loader).
+        if (plugin.sha256.isNotBlank() && sha256Of(apkFile) != plugin.sha256) {
+            apkFile.delete()
+            error("Checksum mismatch for Kotlin novel extension $pkgName")
+        }
+        val archiveInfo = runCatching {
+            context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, packageInfoFlags)
+        }.getOrNull()
+        if (archiveInfo == null || !isNovelExtensionApk(archiveInfo)) {
+            apkFile.delete()
+            error("Downloaded file is not a Kotlin novel extension APK: $pkgName")
+        }
+        if (archiveInfo.packageName != pkgName) {
+            apkFile.delete()
+            error("Downloaded APK package mismatch: expected=$pkgName actual=${archiveInfo.packageName}")
+        }
+
         apkFileStore.save(
             ExtensionApkFileStore.ApkFile(
                 packageName = pkgName,
@@ -117,9 +144,41 @@ class KotlinNovelExtensionInstaller(
             ),
         ).first { it.isCompleted() }
         if (terminalStep != InstallStep.Installed) {
+            // The backend reported a generic failure — check whether the signing key changed,
+            // so the UI can offer reinstall-with-uninstall instead of a bare error.
+            if (ExtensionSignatureComparison.signaturesDiffer(context, apkFile, pkgName) == true) {
+                novelManager()?.reportSignatureMismatch(plugin.id)
+            }
             error("Failed to install Kotlin novel extension $pkgName using ${installer.name}: $terminalStep")
         }
         return plugin.toInstalledKotlin()
+    }
+
+    private fun novelManager(): NovelExtensionManager? =
+        runCatching { Injekt.get<NovelExtensionManager>() }.getOrNull()
+
+    @Suppress("DEPRECATION")
+    private val packageInfoFlags = PackageManager.GET_CONFIGURATIONS or
+        PackageManager.GET_META_DATA or
+        PackageManager.GET_SIGNATURES or
+        (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) PackageManager.GET_SIGNING_CERTIFICATES else 0)
+
+    private fun isNovelExtensionApk(pkgInfo: PackageInfo): Boolean {
+        return pkgInfo.reqFeatures.orEmpty().any { it.name == "tachiyomi.novelextension" }
+    }
+
+    /** SHA-256 hex of a file without loading it fully into memory. */
+    private fun sha256Of(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
     }
 
     suspend fun uninstall(plugin: NovelPlugin.Installed) {
@@ -128,12 +187,26 @@ class KotlinNovelExtensionInstaller(
             KotlinNovelExtensionLoader.uninstallPrivateExtension(context, pkgName)
         }
         if (context.isPackageInstalled(pkgName)) {
-            runCatching {
-                Intent(Intent.ACTION_DELETE, Uri.parse("package:$pkgName"))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    .let(context::startActivity)
-            }.onFailure {
-                logcat(LogPriority.WARN, it) { "Failed to launch system uninstall for Kotlin novel extension $pkgName" }
+            // Route through the backend that installed the plugin so the uninstall is performed by
+            // the same mechanism (Shizuku/Dhizuku do not need the system dialog this way).
+            val result = unifiedInstaller.uninstall(
+                ApkUninstallRequest(
+                    packageName = pkgName,
+                    kind = ApkExtensionKind.NOVEL_KOTLIN,
+                    backend = basePreferences.extensionInstaller().get().toApkInstallBackend(),
+                ),
+            )
+            if (result is ApkInstallResult.Error) {
+                logcat(LogPriority.WARN) { "Unified uninstall failed for $pkgName: ${result.reason}" }
+                runCatching {
+                    Intent(Intent.ACTION_DELETE, Uri.parse("package:$pkgName"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .let(context::startActivity)
+                }.onFailure {
+                    logcat(LogPriority.WARN, it) {
+                        "Failed to launch system uninstall for Kotlin novel extension $pkgName"
+                    }
+                }
             }
         }
     }
@@ -197,10 +270,10 @@ object KotlinNovelExtensionLoader {
         context: Context,
         file: File,
         pkgName: String,
-    ): Boolean {
+    ): PrivateExtensionInstallResult {
         if (!pkgName.matches(Regex("^[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)+$"))) {
             logcat(LogPriority.ERROR) { "Invalid package name: $pkgName" }
-            return false
+            return PrivateExtensionInstallResult.InvalidApk
         }
 
         val pkgManager = context.packageManager
@@ -208,19 +281,19 @@ object KotlinNovelExtensionLoader {
             ?.takeIf { isPackageAnExtension(it) }
             ?: run {
                 logcat(LogPriority.ERROR) { "File is not a Kotlin novel extension APK: ${file.absolutePath}" }
-                return false
+                return PrivateExtensionInstallResult.InvalidApk
             }
         if (archiveInfo.packageName != pkgName) {
             logcat(LogPriority.ERROR) {
                 "Kotlin novel extension package mismatch: expected=$pkgName actual=${archiveInfo.packageName}"
             }
-            return false
+            return PrivateExtensionInstallResult.InvalidApk
         }
 
         val privateExtensionDir = getPrivateExtensionDir(context)
         if (!privateExtensionDir.exists() && !privateExtensionDir.mkdirs()) {
             logcat(LogPriority.ERROR) { "Failed to create private Kotlin novel extension directory." }
-            return false
+            return PrivateExtensionInstallResult.Error
         }
 
         val target = File(privateExtensionDir, "$pkgName.$PRIVATE_EXTENSION_EXTENSION")
@@ -229,19 +302,27 @@ object KotlinNovelExtensionLoader {
         // goes through uninstall + install, where no installed copy is left to replace.
         val installedInfo = target.takeIf { it.exists() }
             ?.let { pkgManager.getPackageArchiveInfo(it.absolutePath, PACKAGE_FLAGS) }
-        if (installedInfo != null &&
-            !canReplacePrivateExtension(
-                installedVersionCode = PackageInfoCompat.getLongVersionCode(installedInfo),
-                newVersionCode = PackageInfoCompat.getLongVersionCode(archiveInfo),
-                installedSignatures = getSignatures(installedInfo).orEmpty(),
-                newSignatures = getSignatures(archiveInfo).orEmpty(),
-            )
-        ) {
-            logcat(LogPriority.ERROR) {
-                "Refusing to replace private Kotlin novel extension $pkgName: " +
-                    "signature mismatch or version downgrade."
+        if (installedInfo != null) {
+            if (PackageInfoCompat.getLongVersionCode(archiveInfo) <
+                PackageInfoCompat.getLongVersionCode(installedInfo)
+            ) {
+                logcat(LogPriority.ERROR) {
+                    "Refusing to downgrade private Kotlin novel extension $pkgName."
+                }
+                return PrivateExtensionInstallResult.Downgrade
             }
-            return false
+            if (!canReplacePrivateExtension(
+                    installedVersionCode = PackageInfoCompat.getLongVersionCode(installedInfo),
+                    newVersionCode = PackageInfoCompat.getLongVersionCode(archiveInfo),
+                    installedSignatures = getSignatures(installedInfo).orEmpty(),
+                    newSignatures = getSignatures(archiveInfo).orEmpty(),
+                )
+            ) {
+                logcat(LogPriority.ERROR) {
+                    "Refusing to replace private Kotlin novel extension $pkgName: signature mismatch."
+                }
+                return PrivateExtensionInstallResult.SignatureMismatch
+            }
         }
         val part = File(privateExtensionDir, "$pkgName.$PRIVATE_EXTENSION_EXTENSION.part")
         return try {
@@ -252,19 +333,29 @@ object KotlinNovelExtensionLoader {
                     "Failed to replace existing private Kotlin novel extension file: ${target.absolutePath}"
                 }
                 part.delete()
-                return false
+                return PrivateExtensionInstallResult.Error
             }
             if (!part.renameTo(target)) {
                 part.copyTo(target, overwrite = true)
                 target.setReadOnly()
                 part.delete()
             }
-            true
+            // Keep the user's trust across the update when the signing key is unchanged.
+            if (installedInfo != null) {
+                getSignatures(archiveInfo)?.lastOrNull()?.let { signatureHash ->
+                    trustExtension.trustIfSameSigner(
+                        pkgName,
+                        PackageInfoCompat.getLongVersionCode(archiveInfo),
+                        signatureHash,
+                    )
+                }
+            }
+            PrivateExtensionInstallResult.Success
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to install private Kotlin novel extension file for $pkgName." }
             part.delete()
             target.delete()
-            false
+            PrivateExtensionInstallResult.Error
         }
     }
 

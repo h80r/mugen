@@ -68,7 +68,9 @@ import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.data.updater.AppUpdateFileManager
 import eu.kanade.tachiyomi.di.AppModule
 import eu.kanade.tachiyomi.di.PreferenceModule
+import eu.kanade.tachiyomi.extension.anime.AnimeExtensionManager
 import eu.kanade.tachiyomi.extension.installer.PendingApkInstallStore
+import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import eu.kanade.tachiyomi.extension.novel.NovelPluginSourceFactory
 import eu.kanade.tachiyomi.extension.novel.runtime.NovelRuntimeCacheTrimCallbacks
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -535,6 +537,13 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
             sessionManager.onSessionStart()
             applicationScope.launch {
                 PendingApkInstallStore(basePreferences).resumeIfPermissionGranted(this@App)
+                // Creating the extension managers synchronously loads every installed extension on
+                // the main thread (MangaExtensionManager.initExtensions), so only touch them when
+                // there are orphaned downloads to actually recover.
+                if (basePreferences.extensionActiveDownloads().get().isNotEmpty()) {
+                    runCatching { Injekt.get<MangaExtensionManager>().resumeOrphanedDownloads() }
+                    runCatching { Injekt.get<AnimeExtensionManager>().resumeOrphanedDownloads() }
+                }
             }
             val libraryPreferences = Injekt.get<tachiyomi.domain.library.service.LibraryPreferences>()
             val autoUpdateInterval = libraryPreferences.autoUpdateInterval().get()

@@ -9,6 +9,7 @@ import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import java.io.File
+import tachiyomi.i18n.R as I18nR
 
 /**
  * Stores the last app-private APK downloaded for an extension so users can manually share/install
@@ -65,7 +66,7 @@ class ExtensionApkFileStore(
         }
 
         return runCatching {
-            val message = "Manual APK installation may require the Install unknown apps permission."
+            val message = context.getString(I18nR.string.ext_manual_apk_share_message)
             withUIContext {
                 context.startActivity(
                     file.getUriCompat(context).toShareIntent(

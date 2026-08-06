@@ -75,6 +75,33 @@ class ExtensionUpdateNotifier(
     }
 
     /**
+     * Auto-update is enabled, but updates were skipped because they are shared system installs
+     * (only privately installed extensions can be auto-updated). Shown once per run so the user
+     * understands why the count did not go down.
+     */
+    fun notifySharedAutoUpdateSkipped(names: List<String>, anime: Boolean = false) {
+        if (names.isEmpty()) return
+        context.notify(
+            notificationId(anime),
+            Notifications.CHANNEL_EXTENSIONS_UPDATE,
+        ) {
+            setContentTitle(context.getString(I18nR.string.ext_auto_update_shared_skipped_title))
+            if (!securityPreferences.hideNotificationContent().get()) {
+                val extNames = names.joinToString(", ")
+                setContentText(extNames)
+                setStyle(NotificationCompat.BigTextStyle().bigText(extNames))
+            }
+            setSmallIcon(R.drawable.ic_extension_24dp)
+            if (!anime) {
+                setContentIntent(NotificationReceiver.openExtensionsPendingActivity(context))
+            } else {
+                setContentIntent(NotificationReceiver.openAnimeExtensionsPendingActivity(context))
+            }
+            setAutoCancel(true)
+        }
+    }
+
+    /**
      * Anime and manga post their own notification: a shared id meant each media type dismissed the
      * other's pending update prompt.
      */

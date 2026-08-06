@@ -95,6 +95,8 @@ fun novelExtensionsTab(
                     )
                 },
                 onShareApk = extensionsScreenModel::shareApk,
+                onReinstallAfterSignatureMismatch = extensionsScreenModel::reinstallAfterSignatureMismatch,
+                onDismissSignatureMismatch = extensionsScreenModel::dismissSignatureMismatch,
             )
 
             pluginToUninstall?.let { plugin ->

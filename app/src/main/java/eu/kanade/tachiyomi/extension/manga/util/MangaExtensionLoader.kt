@@ -11,6 +11,7 @@ import dalvik.system.PathClassLoader
 import eu.kanade.domain.extension.manga.interactor.TrustMangaExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.canReplacePrivateExtension
+import eu.kanade.tachiyomi.extension.installer.PrivateExtensionInstallResult
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
 import eu.kanade.tachiyomi.extension.manga.model.MangaLoadResult
 import eu.kanade.tachiyomi.extension.matchesExtensionFeature
@@ -118,35 +119,36 @@ internal object MangaExtensionLoader {
         }
     }
 
-    fun installPrivateExtensionFile(context: Context, file: File): Boolean {
+    fun installPrivateExtensionFile(context: Context, file: File): PrivateExtensionInstallResult {
         val extension = context.packageManager.getPackageArchiveInfo(
             file.absolutePath,
             PACKAGE_FLAGS,
         )
-            ?.takeIf { isPackageAnExtension(it) } ?: return false
+            ?.takeIf { isPackageAnExtension(it) } ?: return PrivateExtensionInstallResult.InvalidApk
 
         val pkgName = extension.packageName
         if (!pkgName.matches(Regex("^[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)+$"))) {
             logcat(LogPriority.ERROR) { "Invalid package name: $pkgName" }
-            return false
+            return PrivateExtensionInstallResult.InvalidApk
         }
         val currentExtension = getMangaExtensionPackageInfoFromPkgName(
             context,
             extension.packageName,
         )
+        val newSignatures = getSignatures(extension)
 
         if (currentExtension != null) {
             if (PackageInfoCompat.getLongVersionCode(extension) <
                 PackageInfoCompat.getLongVersionCode(currentExtension)
             ) {
                 logcat(LogPriority.ERROR) { "Installed extension version is higher. Downgrading is not allowed." }
-                return false
+                return PrivateExtensionInstallResult.Downgrade
             }
 
-            val extensionSignatures = getSignatures(extension)
+            val extensionSignatures = newSignatures
             if (extensionSignatures.isNullOrEmpty()) {
                 logcat(LogPriority.ERROR) { "Extension to be installed is not signed." }
-                return false
+                return PrivateExtensionInstallResult.InvalidApk
             }
 
             // Cross-store re-publication is handled by the reinstall path (uninstall first), so a
@@ -159,14 +161,14 @@ internal object MangaExtensionLoader {
                 )
             ) {
                 logcat(LogPriority.ERROR) { "Installed extension signature is not matched." }
-                return false
+                return PrivateExtensionInstallResult.SignatureMismatch
             }
         }
 
         val privateExtensionDir = getPrivateExtensionDir(context)
         if (!privateExtensionDir.exists() && !privateExtensionDir.mkdirs()) {
             logcat(LogPriority.ERROR) { "Failed to create private extension directory." }
-            return false
+            return PrivateExtensionInstallResult.Error
         }
 
         val target = File(
@@ -178,14 +180,22 @@ internal object MangaExtensionLoader {
             file.copyAndSetReadOnlyTo(target, overwrite = true)
             if (currentExtension != null) {
                 MangaExtensionInstallReceiver.notifyReplaced(context, extension.packageName)
+                // Keep the user's trust across the update when the signing key is unchanged.
+                newSignatures?.lastOrNull()?.let { signatureHash ->
+                    trustExtension.trustIfSameSigner(
+                        extension.packageName,
+                        PackageInfoCompat.getLongVersionCode(extension),
+                        signatureHash,
+                    )
+                }
             } else {
                 MangaExtensionInstallReceiver.notifyAdded(context, extension.packageName)
             }
-            true
+            PrivateExtensionInstallResult.Success
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to copy extension file." }
             target.delete()
-            false
+            PrivateExtensionInstallResult.Error
         }
     }
 

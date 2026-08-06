@@ -78,7 +78,15 @@ class DhizukuApkInstallBackendAdapter(
             }
             emit(InstallStep.Installed)
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed Dhizuku APK install for ${request.packageName}" }
+            val failure = classifyInstallError(e.message)
+            if (failure == ApkInstallFailure.SignatureMismatch) {
+                logcat(LogPriority.WARN, e) {
+                    "Signature mismatch for Dhizuku APK install ${request.packageName}; " +
+                        "reinstall-with-uninstall required"
+                }
+            } else {
+                logcat(LogPriority.ERROR, e) { "Failed Dhizuku APK install for ${request.packageName}" }
+            }
             sessionId?.let { runCatching { DhizukuShellRunner.exec(arrayOf("pm", "install-abandon", it)) } }
             emit(InstallStep.Error)
         }
