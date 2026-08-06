@@ -23,11 +23,11 @@
     <color name="monochrome_surfaceVariant">#FFFFFF</color>
     <color name="monochrome_onSurfaceVariant">#000000</color>
     <color name="monochrome_outline">#000000</color>
-    <color name="monochrome_outlineVariant">#000000</color>
+    <color name="monochrome_outlineVariant">#888888</color>
     <color name="monochrome_scrim">#000000</color>
     <color name="monochrome_inverseSurface">#000000</color>
     <color name="monochrome_inverseOnSurface">#FFFFFF</color>
-    <color name="monochrome_inversePrimary">#FFFFFF</color>
+    <color name="monochrome_inversePrimary">#888888</color>
     <color name="monochrome_surfaceDim">#000000</color>
     <color name="monochrome_surfaceBright">#FFFFFF</color>
     <color name="monochrome_surfaceContainerLowest">#FFFFFF</color>

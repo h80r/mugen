@@ -118,7 +118,7 @@ private fun VerticalSliderInternal(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(targetHeight)
-                    .background(MaterialTheme.colorScheme.tertiary),
+                    .background(MaterialTheme.colorScheme.primary),
             )
             if (overflowPercentage != null) {
                 val overflowHeight by animateFloatAsState(
