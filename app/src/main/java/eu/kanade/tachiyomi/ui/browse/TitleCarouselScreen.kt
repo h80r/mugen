@@ -39,11 +39,19 @@ import tachiyomi.domain.source.novel.interactor.GetRemoteNovel
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-/** Which title flavour a carousel page hosts. */
-internal sealed interface TitleCarouselType {
-    data object Manga : TitleCarouselType
-    data object Anime : TitleCarouselType
-    data object Novel : TitleCarouselType
+/**
+ * Which title flavour a carousel page hosts.
+ *
+ * An enum on purpose: the screen is a Voyager [Screen] (java.io.Serializable) and is serialized
+ * into the saved navigation state whenever the activity stops. Enum constants survive Java
+ * serialization natively; the previous sealed interface with `data object`s did not implement
+ * Serializable, so stopping the activity with the carousel open crashed with
+ * `NotSerializableException: TitleCarouselType$Novel` inside `Parcel.writeSerializable`.
+ */
+internal enum class TitleCarouselType {
+    Manga,
+    Anime,
+    Novel,
 }
 
 /**
