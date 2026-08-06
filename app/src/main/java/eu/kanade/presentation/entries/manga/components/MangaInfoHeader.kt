@@ -79,16 +79,16 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.request.crossfade
 import com.tadami.aurora.R
+import eu.kanade.domain.description.DescriptionEngine
 import eu.kanade.presentation.components.AuroraCoverPlaceholderVariant
 import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.presentation.components.buildAuroraCoverImageRequest
 import eu.kanade.presentation.components.rememberThemeAwareCoverErrorPainter
+import eu.kanade.presentation.entries.components.DescriptionBlocks
 import eu.kanade.presentation.entries.components.DotSeparatorText
 import eu.kanade.presentation.entries.components.ItemCover
-import eu.kanade.presentation.entries.components.MarkdownRender
 import eu.kanade.presentation.entries.components.aurora.rememberAuroraPosterColorFilter
-import eu.kanade.presentation.entries.components.descriptionAnnotator
-import eu.kanade.presentation.entries.components.getMarkdownLinkStyle
+import eu.kanade.presentation.entries.components.defaultDescriptionBlockStyle
 import eu.kanade.tachiyomi.data.coil.staticBlur
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.system.copyToClipboard
@@ -597,14 +597,12 @@ private fun MangaSummary(
                         infoHeight = size.height
                     },
                 ) {
+                    val blocks = remember(description) { DescriptionEngine.beautify(description) }
                     SelectionContainer {
-                        MarkdownRender(
-                            content = description,
+                        DescriptionBlocks(
+                            blocks = blocks,
+                            style = defaultDescriptionBlockStyle(),
                             modifier = Modifier.secondaryItemAlpha(),
-                            annotator = descriptionAnnotator(
-                                loadImages = false,
-                                linkStyle = getMarkdownLinkStyle().toSpanStyle(),
-                            ),
                         )
                     }
                 }

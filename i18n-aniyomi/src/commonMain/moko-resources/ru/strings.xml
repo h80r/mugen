@@ -1693,6 +1693,8 @@
     <string name="aurora_progress">ПРОГРЕСС</string>
     <string name="aurora_select_dubbing">Выбрать озвучку</string>
     <string name="aurora_no_description">Нет описания</string>
+    <string name="aurora_show_more">Показать ещё</string>
+    <string name="aurora_collapse">Свернуть</string>
 
     <!-- Original Title -->
     <!-- Metadata -->

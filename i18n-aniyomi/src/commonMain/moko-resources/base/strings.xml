@@ -2009,6 +2009,8 @@
     <string name="aurora_progress">PROGRESS</string>
     <string name="aurora_select_dubbing">Select Dubbing</string>
     <string name="aurora_no_description">No description</string>
+    <string name="aurora_show_more">Show more</string>
+    <string name="aurora_collapse">Collapse</string>
 
     <!-- Metadata Integration -->
     <string name="pref_category_metadata">Anime and Manga Metadata</string>

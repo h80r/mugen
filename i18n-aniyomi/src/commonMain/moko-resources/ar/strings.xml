@@ -1748,6 +1748,8 @@
     <string name="aurora_progress">التقدم</string>
     <string name="aurora_select_dubbing">اختر الدبلجة</string>
     <string name="aurora_no_description">لا يوجد وصف</string>
+    <string name="aurora_show_more">عرض المزيد</string>
+    <string name="aurora_collapse">طيّ</string>
     <string name="pref_category_metadata">البيانات الوصفية للأنمي والمانجا</string>
     <string name="pref_anime_metadata_source">مصدر البيانات الوصفية</string>
     <string name="pref_anime_metadata_source_summary">مصدر ملصقات الأنمي والتقييمات والحالة</string>

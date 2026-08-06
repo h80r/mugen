@@ -19,20 +19,23 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import eu.kanade.domain.description.DescriptionEngine
+import eu.kanade.presentation.entries.components.ExpandableDescriptionBlocks
 import eu.kanade.presentation.entries.components.aurora.GlassmorphismCard
 import eu.kanade.presentation.entries.components.aurora.auroraSpringClick
-import eu.kanade.presentation.entries.components.getMarkdownLinkStyle
-import eu.kanade.presentation.entries.components.markdownDescriptionAnnotated
+import eu.kanade.presentation.entries.components.auroraDescriptionBlockStyle
 import eu.kanade.presentation.entries.translation.AuroraEntryTranslationState
 import eu.kanade.presentation.theme.AuroraTheme
 import tachiyomi.domain.entries.manga.model.Manga
@@ -80,54 +83,35 @@ fun MangaInfoCard(
                     overflow = TextOverflow.Ellipsis,
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    val displayDescription = translation?.description ?: manga.displayDescription
-                    val descriptionToggleEnabled = (displayDescription?.length ?: 0) > 200
-                    val descriptionStyle = TextStyle(
+                var hasDescriptionOverflow by remember { mutableStateOf(false) }
+                val displayDescription = translation?.description ?: manga.displayDescription
+                val descriptionBlocks = remember(displayDescription) {
+                    displayDescription?.let { DescriptionEngine.beautify(it) } ?: emptyList()
+                }
+                if (descriptionBlocks.isEmpty()) {
+                    Text(
+                        text = stringResource(AYMR.strings.aurora_no_description),
                         color = colors.textPrimary.copy(alpha = 0.9f),
                         fontSize = 14.sp,
                         lineHeight = 22.sp,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    val annotatedDescription = markdownDescriptionAnnotated(
-                        content = displayDescription,
-                        style = descriptionStyle,
-                        linkStyle = getMarkdownLinkStyle().toSpanStyle(),
-                    )
-                    Text(
-                        text =
-                        annotatedDescription ?: AnnotatedString(stringResource(AYMR.strings.aurora_no_description)),
-                        style = descriptionStyle,
-                        maxLines = if (descriptionExpanded) Int.MAX_VALUE else 5,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .weight(1f)
-                            .then(
-                                if (descriptionToggleEnabled) {
-                                    Modifier.auroraSpringClick { onToggleDescription() }
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                    )
-
-                    if (descriptionToggleEnabled) {
-                        Icon(
-                            imageVector = if (descriptionExpanded) {
-                                Icons.Filled.KeyboardArrowUp
+                } else {
+                    ExpandableDescriptionBlocks(
+                        blocks = descriptionBlocks,
+                        expanded = descriptionExpanded,
+                        onToggle = { onToggleDescription() },
+                        style = auroraDescriptionBlockStyle(colors),
+                        collapsedLines = 5,
+                        onOverflowChanged = { hasDescriptionOverflow = it },
+                        modifier = Modifier.then(
+                            if (hasDescriptionOverflow) {
+                                Modifier.auroraSpringClick { onToggleDescription() }
                             } else {
-                                Icons.Filled.KeyboardArrowDown
+                                Modifier
                             },
-                            contentDescription = null,
-                            tint = colors.accent,
-                            modifier = Modifier
-                                .padding(start = 8.dp)
-                                .auroraSpringClick { onToggleDescription() },
-                        )
-                    }
+                        ),
+                    )
                 }
             }
 

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aurora — варианты свёрнутого описания</title>
+<style>
+  :root {
+    /* Aurora dark theme (M3-based), значения из AuroraTheme.kt */
+    --page-bg: #17141f;
+    --gradient-start: #2b2440;              /* primary@0.15 over background */
+    --gradient-end: #100d16;
+    --accent: #c4b5fd;                      /* colorScheme.primary (dark) */
+    --text-primary: #e6e1e5;
+    --text-secondary: #cac4d0;
+    --card-bg-top: rgba(255,255,255,0.12);  /* resolveAuroraDetailCardBackgroundColors dark */
+    --card-bg-bottom: rgba(255,255,255,0.08);
+    --card-border-top: rgba(255,255,255,0.16);
+    --card-border-bottom: rgba(255,255,255,0.05);
+    --text: 14px;
+    --lh: 22px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: linear-gradient(180deg, var(--gradient-start) 0%, var(--gradient-end) 120%);
+    color: var(--text-primary);
+    font-family: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 32px 16px 80px;
+    min-height: 100vh;
+  }
+  .page-title { max-width: 420px; margin: 0 auto 8px; font-size: 20px; font-weight: 600; }
+  .page-sub { max-width: 420px; margin: 0 auto 32px; font-size: 13px; color: var(--text-secondary); line-height: 20px; }
+
+  /* ── Aurora glassmorphism card ─────────────────────────────── */
+  .card {
+    max-width: 420px;
+    margin: 0 auto 44px;
+    border-radius: 20px;
+    background: linear-gradient(180deg, var(--card-bg-top), var(--card-bg-bottom));
+    border: 1px solid transparent;
+    border-image: linear-gradient(180deg, var(--card-border-top), var(--card-border-bottom)) 1;
+    padding: 20px;
+    box-shadow:
+      0 1px 1px 1px rgba(0,0,0,0.035),     /* нейтральная тень */
+      0 2px 14px 2px rgba(196,181,253,0.05); /* акцентное свечение */
+  }
+  .proto-label {
+    max-width: 420px; margin: 0 auto 10px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--accent); opacity: 0.85;
+  }
+  .proto-note {
+    max-width: 420px; margin: 0 auto 12px;
+    font-size: 12px; color: var(--text-secondary); line-height: 18px;
+  }
+  .card > * + * { margin-top: 16px; }
+
+  .desc-header {
+    font-size: 9px; font-weight: 500; letter-spacing: 0.5px;
+    color: var(--text-secondary); opacity: 0.6;
+  }
+
+  .desc-row { display: flex; align-items: flex-start; gap: 0; }
+  .desc-body { flex: 1; min-width: 0; position: relative; }
+
+  /* ── блоки описания (auroraDescriptionBlockStyle) ──────────── */
+  .blocks { display: flex; flex-direction: column; }
+  .blocks > * { font-size: var(--text); line-height: var(--lh); color: var(--text-primary); opacity: 0.9; }
+  .blocks > * + * { margin-top: 6px; }
+  .blocks .h { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--accent); opacity: 1; margin-top: 10px; }
+  .blocks .link { font-weight: 600; color: var(--accent); opacity: 1; word-break: break-all; }
+
+  /* chevron как в приложении (KeyboardArrowDown, accent) */
+  .chevron {
+    flex: none; width: 24px; height: 24px; margin-left: 8px;
+    color: var(--accent); cursor: pointer; user-select: none;
+    transition: transform 0.28s cubic-bezier(0.34, 1.3, 0.64, 1);
+  }
+  .expanded .chevron { transform: rotate(180deg); }
+
+  .desc-body { cursor: pointer; }
+  .desc-body:active .blocks { transform: scale(0.995); }
+  .blocks { transition: transform 0.18s ease; }
+
+  /* ── P1 (1:1): клиппинг 5 строк + фейд 20px со скруглёнными верхними углами ── */
+  .p1 .desc-body .clamp {
+    display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .p1 .fade {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 20px;
+    border-radius: 8px 8px 0 0;               /* topStart/topEnd = 8dp */
+    background: linear-gradient(180deg,
+      transparent 0%,
+      var(--card-bg-top) 50%,
+      var(--card-bg-bottom) 100%);            /* transparent + card bg colors */
+    pointer-events: none;
+  }
+  .p1.expanded .fade { display: none; }
+
+  /* ── P2: без фейда, кнопка «Показать ещё» ───────────────────── */
+  .p2 .clamp {
+    display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .p2 .more-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-top: 8px; padding: 4px 2px;
+    font-size: 12px; font-weight: 600; color: var(--accent);
+    cursor: pointer; user-select: none; border: none; background: none;
+  }
+  .p2 .more-btn svg { transition: transform 0.25s cubic-bezier(0.34, 1.3, 0.64, 1); }
+  .p2.expanded .more-btn svg { transform: rotate(180deg); }
+  .p2.expanded .more-btn .txt { font-size: 0; }
+  .p2.expanded .more-btn .txt::before { content: "Свернуть"; font-size: 12px; }
+
+  /* ── P2a/P2b: секции описания и жанров ─────────────────────── */
+  .section .clamp {
+    display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .section.expanded .clamp { display: block; }
+  .more-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-top: 8px; padding: 4px 2px;
+    font-size: 12px; font-weight: 600; color: var(--accent);
+    cursor: pointer; user-select: none; border: none; background: none;
+  }
+  .more-link svg { transition: transform 0.25s cubic-bezier(0.34, 1.3, 0.64, 1); }
+  .section.expanded .more-link svg { transform: rotate(180deg); }
+  .section.expanded .more-link .txt { font-size: 0; }
+  .section.expanded .more-link .txt::before { content: "Свернуть"; font-size: 12px; }
+
+  /* жанры: чипы как в приложении (8dp, accent 0.15, 11px Medium) */
+  .genres-row { display: flex; align-items: flex-start; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+  .chip {
+    display: inline-flex; align-items: center;
+    border-radius: 8px; background: rgba(196,181,253,0.15);
+    padding: 4px 8px; font-size: 11px; font-weight: 500; color: var(--accent);
+  }
+  .chips .extra { display: none; }
+  .section.expanded .chips .extra { display: inline-flex; }
+
+  /* ── P3: блюр-фейд (морозное стекло) ────────────────────────── */
+  .p3 .clamp {
+    display: -webkit-box; -webkit-line-clamp: 7; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .p3 .blur-mask {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 34px;
+    pointer-events: none;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 85%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 85%);
+  }
+  .p3.expanded .blur-mask { display: none; }
+
+  /* ── P4: короткий фейд + pill «Ещё» ─────────────────────────── */
+  .p4 .clamp {
+    display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
+    padding-bottom: 18px; /* место для pill */
+  }
+  .p4 .fade {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 12px;
+    background: linear-gradient(180deg, transparent 0%, var(--card-bg-bottom) 100%);
+    pointer-events: none;
+  }
+  .p4 .pill {
+    position: absolute; left: 50%; bottom: 0; transform: translate(-50%, 50%);
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 6px 14px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; color: var(--accent);
+    background: rgba(28, 24, 40, 0.55);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.14);
+    cursor: pointer; user-select: none; white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+    transition: transform 0.25s cubic-bezier(0.34, 1.3, 0.64, 1);
+  }
+  .p4 .pill svg { transition: transform 0.25s cubic-bezier(0.34, 1.3, 0.64, 1); }
+  .p4.expanded .pill svg { transform: rotate(180deg); }
+  .p4.expanded .fade { display: none; }
+  .p4.expanded .pill { display: none; }
+
+  /* ── P5: радиальная виньетка вместо полосы ──────────────────── */
+  .p5 .clamp {
+    display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .p5 .vignette {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 48px;
+    pointer-events: none;
+    background: radial-gradient(
+      ellipse 100% 90% at 50% 100%,
+      rgba(255,255,255,0.11) 0%,
+      rgba(255,255,255,0.07) 45%,
+      transparent 75%
+    );
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 100%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 100%);
+  }
+  .p5.expanded .vignette { display: none; }
+
+  .footer { max-width: 420px; margin: 0 auto; font-size: 12px; color: var(--text-secondary); line-height: 19px; }
+</style>
+</head>
+<body>
+
+  <h1 class="page-title">Свёрнутое описание в Aurora</h1>
+  <p class="page-sub">5 вариантов: текущий (1:1 с приложением) и 4 альтернативы. Клик по описанию (или по кнопке) разворачивает/сворачивает. Тёмная тема, значения цветов — из <code>AuroraTheme.kt</code> / <code>GlassmorphismCard.kt</code>.</p>
+
+  <!-- ═══════════════════════ P1 ═══════════════════════ -->
+  <div class="proto-label">01 · Текущая реализация (1:1)</div>
+  <p class="proto-note">Клиппинг 5 строк; фейд 20dp, верхние углы скруглены 8dp; градиент = прозрачный → цвета фона карточки (<code>LocalAuroraCardBackground</code>); шеврон-стрелка справа; тап по блоку переключает.</p>
+  <div class="card p1 proto">
+    <div class="desc-header">Описание</div>
+    <div class="desc-row">
+      <div class="desc-body" data-toggle>
+        <div class="blocks clamp">
+          <p>Копия прибыла! Удача — мое главное оружие. Как элегантно пройти подземелье убийце с невероятной удачей? Заработать свободу благодаря удаче и начать идеальную жизнь? Моя удача EX, а навыки эволюции — это семь смертных грехов?!</p>
+          <div class="h">External links</div>
+          <div class="link">https://www.mangaupdates.com/series/pbivvin/the-billion-luck-player</div>
+        </div>
+        <div class="fade"></div>
+      </div>
+      <svg class="chevron" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ P2 ═══════════════════════ -->
+  <div class="proto-label">02 · Без фейда + «Показать ещё» (без боковой стрелки)</div>
+  <p class="proto-note">Никакого градиента и никакой стрелки сбоку. Под клиппнутым текстом — акцентная ссылка «Показать ещё» со стрелкой (в развёрнутом — «Свернуть»). Кнопка появляется только при реальном переполнении; тап по тексту тоже переключает. Текст занимает всю ширину.</p>
+  <div class="card p2 proto">
+    <div class="desc-header">Описание</div>
+    <div class="desc-body" data-toggle>
+      <div class="blocks clamp">
+        <p>Копия прибыла! Удача — мое главное оружие. Как элегантно пройти подземелье убийце с невероятной удачей? Заработать свободу благодаря удаче и начать идеальную жизнь? Моя удача EX, а навыки эволюции — это семь смертных грехов?!</p>
+        <div class="h">External links</div>
+        <div class="link">https://www.mangaupdates.com/series/pbivvin/the-billion-luck-player</div>
+      </div>
+      <button class="more-btn" data-toggle>
+        <span class="txt">Показать ещё</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ P2a ═══════════════════════ -->
+  <div class="proto-label">02a · Гибрид: описание = «Показать ещё», жанры = стрелка (как сейчас)</div>
+  <p class="proto-note">Описание без стрелки (кнопка снизу), жанры остаются как в приложении: 3 чипа + шеврон справа при &gt;3 жанрах. Два разных аффорданса в одной карточке — насколько это «органично», видно сразу.</p>
+  <div class="card p2 proto">
+    <div class="desc-header">Описание</div>
+    <div class="section" data-section>
+      <div class="clamp">
+        <div class="blocks">
+          <p>Копия прибыла! Удача — мое главное оружие. Как элегантно пройти подземелье убийце с невероятной удачей? Заработать свободу благодаря удаче и начать идеальную жизнь? Моя удача EX, а навыки эволюции — это семь смертных грехов?!</p>
+          <div class="h">External links</div>
+          <div class="link">https://www.mangaupdates.com/series/pbivvin/the-billion-luck-player</div>
+        </div>
+      </div>
+      <button class="more-link" data-toggle>
+        <span class="txt">Показать ещё</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+      </button>
+    </div>
+    <div class="section" data-section>
+      <div class="genres-row">
+        <div class="chips">
+          <span class="chip">Action</span><span class="chip">Adventure</span><span class="chip">Fantasy</span>
+          <span class="chip extra">Harem</span><span class="chip extra">Martial Arts</span><span class="chip extra">Romance</span><span class="chip extra">Xianxia</span>
+        </div>
+        <svg class="chevron" data-toggle viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ P2b ═══════════════════════ -->
+  <div class="proto-label">02b · Полное единство: описание и жанры = «Показать ещё»</div>
+  <p class="proto-note">Оба блока используют один паттерн: нижняя ссылка «Показать ещё» / «Свернуть». У жанров — счётчиком («Показать ещё · 4»). Никаких стрелок сбоку; единый язык для всех раскрываемых блоков карточки.</p>
+  <div class="card p2 proto">
+    <div class="desc-header">Описание</div>
+    <div class="section" data-section>
+      <div class="clamp">
+        <div class="blocks">
+          <p>Копия прибыла! Удача — мое главное оружие. Как элегантно пройти подземелье убийце с невероятной удачей? Заработать свободу благодаря удаче и начать идеальную жизнь? Моя удача EX, а навыки эволюции — это семь смертных грехов?!</p>
+          <div class="h">External links</div>
+          <div class="link">https://www.mangaupdates.com/series/pbivvin/the-billion-luck-player</div>
+        </div>
+      </div>
+      <button class="more-link" data-toggle>
+        <span class="txt">Показать ещё</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+      </button>
+    </div>
+    <div class="section" data-section>
+      <div class="chips">
+        <span class="chip">Action</span><span class="chip">Adventure</span><span class="chip">Fantasy</span>
+        <span class="chip extra">Harem</span><span class="chip extra">Martial Arts</span><span class="chip extra">Romance</span><span class="chip extra">Xianxia</span>
+      </div>
+      <button class="more-link" data-toggle>
+        <span class="txt">Показать ещё · 4</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="proto-label">03 · Морозное стекло (blur-фейд)</div>
+  <p class="proto-note">Вместо закрашивания — <code>backdrop-filter: blur</code> с маской: текст буквально «тает» в размытие, как за матовым стеклом. Идеально вписывается в glass-эстетику Aurora. Никаких прямоугольников и цветных полос.</p>
+  <div class="card p3 proto">
+    <div class="desc-header">Описание</div>
+    <div class="desc-row">
+      <div class="desc-body" data-toggle>
+        <div class="blocks clamp">
+          <p>Копия прибыла! Удача — мое главное оружие. Как элегантно пройти подземелье убийце с невероятной удачей? Заработать свободу благодаря удаче и начать идеальную жизнь? Моя удача EX, а навыки эволюции — это семь смертных грехов?!</p>
+          <div class="h">External links</div>
+          <div class="link">https://www.mangaupdates.com/series/pbivvin/the-billion-luck-player</div>
+        </div>
+        <div class="blur-mask"></div>
+      </div>
+      <svg class="chevron" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ P4 ═══════════════════════ -->
+  <div class="proto-label">04 · Короткий фейд + pill «Ещё»</div>
+  <p class="proto-note">Едва заметный фейд 12dp + плавающая «таблетка» на нижней кромке (glass, blur, accent). Намёк «там больше» и кнопка-аффорданс в одном элементе. Современный паттерн (как у видео-плееров).</p>
+  <div class="card p4 proto">
+    <div class="desc-header">Описание</div>
+    <div class="desc-row">
+      <div class="desc-body" data-toggle>
+        <div class="blocks clamp">
+          <p>Копия прибыла! Удача — мое главное оружие. Как элегантно пройти подземелье убийце с невероятной удачей? Заработать свободу благодаря удаче и начать идеальную жизнь? Моя удача EX, а навыки эволюции — это семь смертных грехов?!</p>
+          <div class="h">External links</div>
+          <div class="link">https://www.mangaupdates.com/series/pbivvin/the-billion-luck-player</div>
+        </div>
+        <div class="fade"></div>
+        <button class="pill" data-toggle>
+          <span>Показать ещё</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+        </button>
+      </div>
+      <svg class="chevron" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ P5 ═══════════════════════ -->
+  <div class="proto-label">05 · Радиальная виньетка</div>
+  <p class="proto-note">Прямоугольник исчезает полностью: вместо полосы — радиальный градиент-эллипс из нижней кромки (маска делает его мягким пятном). Текст растворяется органично, без единой прямой границы.</p>
+  <div class="card p5 proto">
+    <div class="desc-header">Описание</div>
+    <div class="desc-row">
+      <div class="desc-body" data-toggle>
+        <div class="blocks clamp">
+          <p>Копия прибыла! Удача — мое главное оружие. Как элегантно пройти подземелье убийце с невероятной удачей? Заработать свободу благодаря удаче и начать идеальную жизнь? Моя удача EX, а навыки эволюции — это семь смертных грехов?!</p>
+          <div class="h">External links</div>
+          <div class="link">https://www.mangaupdates.com/series/pbivvin/the-billion-luck-player</div>
+        </div>
+        <div class="vignette"></div>
+      </div>
+      <svg class="chevron" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+    </div>
+  </div>
+
+  <p class="footer">Для P3 (blur) и P4 (pill) на Android нужен <code>RenderEffect</code>/<code>graphicsLayer</code> или размытие фона — реализуемо, но тяжелее обычного градиента. P1/P2/P5 — чистые градиенты, один <code>Brush</code>.</p>
+
+<script>
+  document.querySelectorAll('[data-toggle]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const section = el.closest('[data-section]');
+      if (section) {
+        section.classList.toggle('expanded');
+      } else {
+        el.closest('.proto').classList.toggle('expanded');
+      }
+    });
+  });
+</script>
+</body>
+</html>

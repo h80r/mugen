@@ -72,16 +72,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.request.crossfade
+import eu.kanade.domain.description.DescriptionEngine
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AuroraCoverPlaceholderVariant
 import eu.kanade.presentation.components.relativeDateTimeText
 import eu.kanade.presentation.components.rememberThemeAwareCoverErrorPainter
+import eu.kanade.presentation.entries.components.DescriptionBlocks
 import eu.kanade.presentation.entries.components.EntryBottomActionMenu
 import eu.kanade.presentation.entries.components.EntryToolbar
 import eu.kanade.presentation.entries.components.ItemCover
-import eu.kanade.presentation.entries.components.MarkdownRender
 import eu.kanade.presentation.entries.components.aurora.rememberAuroraPosterColorFilter
 import eu.kanade.presentation.entries.manga.components.ScanlatorBranchSelector
 import eu.kanade.presentation.entries.novel.components.NovelChapterActionButton
@@ -753,8 +754,9 @@ fun NovelScreen(
 
                             state.novel.displayDescription?.takeIf { it.isNotBlank() }?.let {
                                 SelectionContainer {
-                                    MarkdownRender(
-                                        content = it,
+                                    val blocks = remember(it) { DescriptionEngine.beautify(it) }
+                                    DescriptionBlocks(
+                                        blocks = blocks,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(
