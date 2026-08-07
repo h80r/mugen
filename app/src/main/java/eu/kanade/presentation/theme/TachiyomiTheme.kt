@@ -46,6 +46,7 @@ import eu.kanade.presentation.theme.colorscheme.TachiyomiColorScheme
 import eu.kanade.presentation.theme.colorscheme.TakoColorScheme
 import eu.kanade.presentation.theme.colorscheme.TealTurqoiseColorScheme
 import eu.kanade.presentation.theme.colorscheme.TidalWaveColorScheme
+import eu.kanade.presentation.theme.colorscheme.TokyoNightColorScheme
 import eu.kanade.presentation.theme.colorscheme.VoidRedColorScheme
 import eu.kanade.presentation.theme.colorscheme.YinYangColorScheme
 import eu.kanade.presentation.theme.colorscheme.YotsubaColorScheme
@@ -230,6 +231,7 @@ private val colorSchemes: Map<AppTheme, BaseColorScheme> = mapOf(
     AppTheme.TIDAL_WAVE to TidalWaveColorScheme,
     AppTheme.YINYANG to YinYangColorScheme,
     AppTheme.YOTSUBA to YotsubaColorScheme,
+    AppTheme.TOKYONIGHT to TokyoNightColorScheme,
     AppTheme.AURORA to AuroraColorScheme,
     AppTheme.ONYX_GOLD to OnyxGoldColorScheme,
     AppTheme.SAKURA_NOIR to SakuraNoirColorScheme,

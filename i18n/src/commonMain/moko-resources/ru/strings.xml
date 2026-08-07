@@ -631,6 +631,7 @@
     <string name="pref_inverted_colors">Цвета наоборот</string>
     <string name="relative_time_today">Сегодня</string>
     <string name="theme_tealturquoise">Бирюзовая</string>
+    <string name="theme_tokyonight">Токийская ночь</string>
     <string name="confirm_lock_change">Выполните аутентификацию, чтобы подтвердить изменение</string>
     <string name="label_default">По умолчанию</string>
     <string name="pref_category_appearance">Отображение</string>
