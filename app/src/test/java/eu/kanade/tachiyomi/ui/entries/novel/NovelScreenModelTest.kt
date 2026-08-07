@@ -70,6 +70,7 @@ import tachiyomi.domain.category.novel.interactor.SetNovelCategories
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.entries.novel.interactor.GetNovelFavorites
 import tachiyomi.domain.entries.novel.interactor.GetNovelWithChapters
+import tachiyomi.domain.entries.novel.interactor.NovelFetchInterval
 import tachiyomi.domain.entries.novel.interactor.SetNovelChapterFlags
 import tachiyomi.domain.entries.novel.model.Novel
 import tachiyomi.domain.entries.novel.model.NovelUpdate
@@ -77,6 +78,7 @@ import tachiyomi.domain.history.novel.model.NovelHistory
 import tachiyomi.domain.history.novel.model.NovelHistoryUpdate
 import tachiyomi.domain.history.novel.model.NovelHistoryWithRelations
 import tachiyomi.domain.history.novel.repository.NovelHistoryRepository
+import tachiyomi.domain.items.novelchapter.interactor.GetNovelChapters
 import tachiyomi.domain.items.novelchapter.interactor.SetNovelDefaultChapterFlags
 import tachiyomi.domain.items.novelchapter.interactor.ShouldUpdateDbNovelChapter
 import tachiyomi.domain.items.novelchapter.model.NovelChapter
@@ -247,7 +249,10 @@ class NovelScreenModelTest {
                     ): List<NovelChapter> = emptyList()
                 },
             )
-            val updateNovel = UpdateNovel(novelRepository)
+            val updateNovel = UpdateNovel(
+                novelRepository,
+                NovelFetchInterval(GetNovelChapters(mockk())),
+            )
             val sourceManager = FakeNovelSourceManager()
             val preferenceStore = object : tachiyomi.core.common.preference.PreferenceStore {
                 override fun getString(key: String, defaultValue: String) = FakePreference(defaultValue)
@@ -341,6 +346,10 @@ class NovelScreenModelTest {
                             MutableStateFlow<Novel?>(null)
                         override suspend fun getNovelFavorites(): List<Novel> = emptyList()
                         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
+                        override suspend fun getUpcomingNovels(
+                            statuses: Set<Long>,
+                        ): kotlinx.coroutines.flow.Flow<List<Novel>> =
+                            kotlinx.coroutines.flow.flowOf(emptyList())
                         override suspend fun getLibraryNovel() =
                             emptyList<tachiyomi.domain.library.novel.LibraryNovel>()
                         override fun getLibraryNovelAsFlow() =
@@ -1634,7 +1643,10 @@ class NovelScreenModelTest {
         }
         val getNovelWithChapters = getNovelWithChaptersOverride
             ?: GetNovelWithChapters(novelRepository, chapterRepository)
-        val updateNovel = UpdateNovel(novelRepository)
+        val updateNovel = UpdateNovel(
+            novelRepository,
+            NovelFetchInterval(GetNovelChapters(chapterRepository)),
+        )
         val syncNovelChaptersWithSource = SyncNovelChaptersWithSource(
             novelChapterRepository = chapterRepository,
             shouldUpdateDbNovelChapter = ShouldUpdateDbNovelChapter(),
@@ -1869,6 +1881,10 @@ class NovelScreenModelTest {
         override fun getNovelByUrlAndSourceIdAsFlow(url: String, sourceId: Long) = MutableStateFlow<Novel?>(null)
         override suspend fun getNovelFavorites(): List<Novel> = emptyList()
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
+        override suspend fun getUpcomingNovels(
+            statuses: Set<Long>,
+        ): kotlinx.coroutines.flow.Flow<List<Novel>> =
+            kotlinx.coroutines.flow.flowOf(emptyList())
         override suspend fun getLibraryNovel() = emptyList<tachiyomi.domain.library.novel.LibraryNovel>()
         override fun getLibraryNovelAsFlow() =
             MutableStateFlow(emptyList<tachiyomi.domain.library.novel.LibraryNovel>())

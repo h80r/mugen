@@ -97,10 +97,12 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -269,13 +271,6 @@ class NovelScreenModel(
             get() = pending + active
     }
 
-    private data class ScanlatorStateSnapshot(
-        val state: State,
-        val excludedScanlators: Set<String>,
-        val availableScanlators: Set<String>,
-        val scanlatorChapterCounts: Map<String, Int>,
-    )
-
     private val downloadedStateVersion = AtomicLong(0L)
     private var downloadedStateJob: Job? = null
     private var chapterActionStatesJob: Job? = null
@@ -389,34 +384,64 @@ class NovelScreenModel(
         }
 
         screenModelScope.launchIO {
-            combine(
-                state,
-                getNovelExcludedScanlators.subscribe(novelId),
-                getAvailableNovelScanlators.subscribe(novelId),
-                getNovelScanlatorChapterCounts.subscribe(novelId),
-            ) { currentState, excluded, available, counts ->
-                ScanlatorStateSnapshot(
-                    state = currentState,
-                    excludedScanlators = excluded,
-                    availableScanlators = available,
-                    scanlatorChapterCounts = counts,
-                )
-            }
+            getNovelExcludedScanlators.subscribe(novelId)
                 .flowWithLifecycle(lifecycle)
                 .distinctUntilChanged()
-                .collectLatest { snapshot ->
-                    // The bootstrap publishes the first Success only after this subscription
-                    // may have already emitted into a Loading state; re-combining with `state`
-                    // guarantees a post-Success emission so the fields always get populated.
-                    if (snapshot.state !is State.Success) return@collectLatest
+                .collectLatest { excludedScanlators ->
                     updateSuccessState {
-                        it.copy(
-                            excludedScanlators = snapshot.excludedScanlators,
-                            availableScanlators = snapshot.availableScanlators,
-                            scanlatorChapterCounts = snapshot.scanlatorChapterCounts,
-                        )
+                        it.copy(excludedScanlators = excludedScanlators)
                     }
                     maybeNormalizeNovelBranchSelection()
+                }
+        }
+
+        screenModelScope.launchIO {
+            getAvailableNovelScanlators.subscribe(novelId)
+                .flowWithLifecycle(lifecycle)
+                .distinctUntilChanged()
+                .collectLatest { availableScanlators ->
+                    updateSuccessState {
+                        it.copy(availableScanlators = availableScanlators)
+                    }
+                    maybeNormalizeNovelBranchSelection()
+                }
+        }
+
+        screenModelScope.launchIO {
+            getNovelScanlatorChapterCounts.subscribe(novelId)
+                .flowWithLifecycle(lifecycle)
+                .distinctUntilChanged()
+                .collectLatest { scanlatorChapterCounts ->
+                    updateSuccessState {
+                        it.copy(scanlatorChapterCounts = scanlatorChapterCounts)
+                    }
+                    maybeNormalizeNovelBranchSelection()
+                }
+        }
+
+        // The subscriptions above may emit before the bootstrap publishes the first Success,
+        // in which case updateSuccessState() drops the update. Watch the state flow and, on the
+        // first Success, re-apply the latest values so the fields are never left empty. All
+        // writers read from the same DB tables, so the copy is idempotent; the guard keeps it
+        // from clobbering a selection the subscriptions already applied.
+        screenModelScope.launchIO {
+            state.dropWhile { it !is State.Success }
+                .take(1)
+                .collectLatest {
+                    val excludedScanlators = getNovelExcludedScanlators.await(novelId)
+                    val availableScanlators = getAvailableNovelScanlators.await(novelId)
+                    val scanlatorChapterCounts = getNovelScanlatorChapterCounts.await(novelId)
+                    updateSuccessState { current ->
+                        if (current.novel.id != novelId || current.excludedScanlators.isNotEmpty()) {
+                            current
+                        } else {
+                            current.copy(
+                                excludedScanlators = excludedScanlators,
+                                availableScanlators = availableScanlators,
+                                scanlatorChapterCounts = scanlatorChapterCounts,
+                            )
+                        }
+                    }
                 }
         }
 
