@@ -1056,16 +1056,19 @@ fun NovelScreenAuroraImpl(
                                 }
                                 if (onToggleReadAsBook != null && isBookBuilt) {
                                     val readAsBook = state.bookState.enabled
+                                    val bookModeMenu = resolveNovelBookModeMenu(readAsBook)
                                     AuroraEntryDropdownMenuItem(
                                         text = stringResource(
-                                            if (readAsBook) {
-                                                AYMR.strings.novel_book_read_as_chapters
-                                            } else {
+                                            if (bookModeMenu.current == NovelBookReadingMode.BOOK) {
                                                 AYMR.strings.novel_book_read_as_book
+                                            } else {
+                                                AYMR.strings.novel_book_read_as_chapters
                                             },
                                         ),
                                         onClick = {
-                                            onToggleReadAsBook(!readAsBook)
+                                            onToggleReadAsBook(
+                                                bookModeMenu.target == NovelBookReadingMode.BOOK,
+                                            )
                                             showMenu = false
                                         },
                                     )
@@ -1872,16 +1875,19 @@ fun NovelScreenAuroraImpl(
                             }
                             if (onToggleReadAsBook != null && isBookBuilt) {
                                 val readAsBook = state.bookState.enabled
+                                val bookModeMenu = resolveNovelBookModeMenu(readAsBook)
                                 AuroraEntryDropdownMenuItem(
                                     text = stringResource(
-                                        if (readAsBook) {
-                                            AYMR.strings.novel_book_read_as_chapters
-                                        } else {
+                                        if (bookModeMenu.current == NovelBookReadingMode.BOOK) {
                                             AYMR.strings.novel_book_read_as_book
+                                        } else {
+                                            AYMR.strings.novel_book_read_as_chapters
                                         },
                                     ),
                                     onClick = {
-                                        onToggleReadAsBook(!readAsBook)
+                                        onToggleReadAsBook(
+                                            bookModeMenu.target == NovelBookReadingMode.BOOK,
+                                        )
                                         showMenu = false
                                     },
                                 )

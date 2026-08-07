@@ -444,6 +444,7 @@ fun NovelScreen(
             val isBookBuilding = state.bookBuildProgress != null
             val appendableChapterCount = (state.chapters.size - (state.bookState?.chapterCount ?: 0)).coerceAtLeast(0)
             val readAsBook = state.bookState?.enabled == true
+            val bookModeMenu = resolveNovelBookModeMenu(readAsBook)
 
             val bookTitle = stringResource(
                 when {
@@ -454,7 +455,11 @@ fun NovelScreen(
             )
             val appendTitle = stringResource(AYMR.strings.novel_book_append_available, appendableChapterCount)
             val toggleTitle = stringResource(
-                if (readAsBook) AYMR.strings.novel_book_read_as_chapters else AYMR.strings.novel_book_read_as_book,
+                if (bookModeMenu.current == NovelBookReadingMode.BOOK) {
+                    AYMR.strings.novel_book_read_as_book
+                } else {
+                    AYMR.strings.novel_book_read_as_chapters
+                },
             )
             val deleteTitle = stringResource(AYMR.strings.novel_book_delete)
             val deleteSourceChaptersTitle = stringResource(AYMR.strings.novel_book_cleanup_source_chapters)
@@ -510,7 +515,9 @@ fun NovelScreen(
                         add(
                             AppBar.OverflowAction(
                                 title = toggleTitle,
-                                onClick = { onToggleReadAsBook(!readAsBook) },
+                                onClick = {
+                                    onToggleReadAsBook(bookModeMenu.target == NovelBookReadingMode.BOOK)
+                                },
                             ),
                         )
                     }
