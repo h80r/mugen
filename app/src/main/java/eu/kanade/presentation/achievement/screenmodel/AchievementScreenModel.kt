@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import eu.kanade.domain.easteregg.aurora.AuroraHeartManager
 import eu.kanade.presentation.achievement.utils.AchievementRevealHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,7 @@ class AchievementScreenModel(
     private val loader: AchievementLoader = Injekt.get(),
     private val pointsManager: PointsManager = Injekt.get(),
     private val activityDataRepository: ActivityDataRepository = Injekt.get(),
+    private val auroraHeartManager: AuroraHeartManager = Injekt.get(),
 ) : StateScreenModel<AchievementScreenState>(AchievementScreenState.Loading) {
 
     // Separate state for category to avoid being overwritten by combine
@@ -59,11 +61,22 @@ class AchievementScreenModel(
                     currentMonthStats = currentStats,
                     previousMonthStats = previousStats,
                 )
-            }.catch { error ->
-                error.printStackTrace()
-            }.collect { state ->
-                mutableState.update { state }
             }
+                .combine(auroraHeartManager.state) { state, auroraState ->
+                    if (state is AchievementScreenState.Success) {
+                        state.copy(
+                            auroraQuestStarted = auroraState.hintRevealed ||
+                                auroraState.stageIndex > 0 ||
+                                auroraState.unlocked,
+                        )
+                    } else {
+                        state
+                    }
+                }.catch { error ->
+                    error.printStackTrace()
+                }.collect { state ->
+                    mutableState.update { state }
+                }
         }
     }
 
@@ -118,6 +131,7 @@ sealed interface AchievementScreenState {
         val selectedCategory: AchievementCategory = AchievementCategory.BOTH,
         val selectedAchievement: Achievement? = null,
         val activityData: List<DayActivity> = emptyList(),
+        val auroraQuestStarted: Boolean = false,
         val yearlyStats: List<Pair<java.time.YearMonth, MonthStats>> = emptyList(),
         val currentMonthStats: MonthStats = MonthStats(0, 0, 0, 0),
         val previousMonthStats: MonthStats = MonthStats(0, 0, 0, 0),
@@ -157,7 +171,8 @@ sealed interface AchievementScreenState {
             get() {
                 val visible = achievements.filter { achievement ->
                     !AchievementRevealHelper.isCompletelyHiddenUntilUnlocked(achievement) ||
-                        progress[achievement.id]?.isUnlocked == true
+                        progress[achievement.id]?.isUnlocked == true ||
+                        (achievement.id == "aurora_heart" && auroraQuestStarted)
                 }
                 return when (selectedCategory) {
                     AchievementCategory.BOTH -> visible
@@ -188,7 +203,8 @@ sealed interface AchievementScreenState {
         val totalCount: Int
             get() = achievements.count { achievement ->
                 !AchievementRevealHelper.isCompletelyHiddenUntilUnlocked(achievement) ||
-                    progress[achievement.id]?.isUnlocked == true
+                    progress[achievement.id]?.isUnlocked == true ||
+                    (achievement.id == "aurora_heart" && auroraQuestStarted)
             }
 
         val currentStreak: Int

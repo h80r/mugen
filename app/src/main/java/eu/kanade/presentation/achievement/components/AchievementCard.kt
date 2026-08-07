@@ -18,7 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,19 +37,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import eu.kanade.domain.easteregg.aurora.AuroraHeartManager
 import eu.kanade.domain.easteregg.aurora.AuroraLocalization
+import eu.kanade.domain.easteregg.lattice.LatticeProtocolManager
 import eu.kanade.presentation.achievement.utils.AchievementRevealHelper
 import eu.kanade.presentation.easteregg.aurora.AuroraCodexScreen
 import eu.kanade.presentation.easteregg.aurora.AuroraMaterialSpec
 import eu.kanade.presentation.easteregg.aurora.auroraMetal
 import eu.kanade.presentation.theme.AuroraTheme
+import kotlinx.coroutines.launch
 import tachiyomi.domain.achievement.model.Achievement
 import tachiyomi.domain.achievement.model.AchievementProgress
 import tachiyomi.i18n.aniyomi.AYMR
@@ -68,10 +72,14 @@ fun AchievementCard(
     val colors = AuroraTheme.colors
     val isUnlocked = progress?.isUnlocked == true
 
-    val context = LocalContext.current
     val manager = remember { Injekt.get<eu.kanade.domain.easteregg.aurora.AuroraHeartManager>() }
     val managerState by manager.state.collectAsState()
     val isAuroraHeart = achievement.id == "aurora_heart"
+
+    // Lattice Resonance: Grid entry point (moved from the achievements screen top bar).
+    val isLatticeResonance = achievement.id == "lattice_resonance"
+    val latticeManager = remember { LatticeProtocolManager.get(Injekt.get<android.app.Application>()) }
+    val latticeAvailable = isLatticeResonance && latticeManager.canOpenGrid()
 
     // Canonical unlock state. After restoring a backup the stored progress can say the achievement
     // is unlocked while the local quest manager has no state for it, because the encrypted quest
@@ -112,7 +120,7 @@ fun AchievementCard(
                 auroraUnlocked ->
                     payload?.achievementTitle
                         ?: achievement.title.ifBlank { "Сердце Авроры" }
-                managerState.stageIndex > 0 -> "Сердце Авроры"
+                managerState.stageIndex > 0 || managerState.hintRevealed -> "Сердце Авроры"
                 else -> "???"
             }
             if (title == "???") title else AuroraLocalization.translate(title).orEmpty()
@@ -265,7 +273,9 @@ fun AchievementCard(
                 }
 
                 // Thin neon progress line (if locked and progress exists)
-                if (!customIsUnlocked && achievement.threshold != null && progress != null && !isAuroraHeart) {
+                if (!customIsUnlocked && achievement.threshold != null && progress != null &&
+                    !isAuroraHeart && !isLatticeResonance
+                ) {
                     Spacer(modifier = Modifier.height(8.dp))
                     ThinNeonProgressBar(
                         progress = progress.progress,
@@ -274,15 +284,32 @@ fun AchievementCard(
                 }
             }
 
-            // Unlocked Checkmark indicator on the right
-            if (customIsUnlocked) {
-                Spacer(modifier = Modifier.width(12.dp))
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = null,
-                    tint = colors.accent,
-                    modifier = Modifier.size(18.dp),
-                )
+            // Right side: unlock checkmark + Lattice Resonance Grid launch control
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (customIsUnlocked) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        tint = colors.accent,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                if (isLatticeResonance && latticeAvailable) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(
+                        onClick = { scope.launch { latticeManager.requestBreach() } },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Hub,
+                            contentDescription = stringResource(AYMR.strings.lattice_open_manual),
+                            tint = if (customIsUnlocked) colors.accent else colors.textSecondary.copy(alpha = 0.7f),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
             }
         }
     }
