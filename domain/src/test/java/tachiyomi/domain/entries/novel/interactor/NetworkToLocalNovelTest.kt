@@ -149,6 +149,8 @@ class NetworkToLocalNovelTest {
         override fun getNovelByUrlAndSourceIdAsFlow(url: String, sourceId: Long) = error("not used")
         override suspend fun getNovelFavorites(): List<Novel> = error("not used")
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = error("not used")
+        override suspend fun getUpcomingNovels(statuses: Set<Long>) =
+            kotlinx.coroutines.flow.flowOf(emptyList<Novel>())
         override suspend fun getLibraryNovel(): List<LibraryNovel> = error("not used")
         override fun getLibraryNovelAsFlow() = error("not used")
         override fun getNovelFavoritesBySourceId(sourceId: Long) = error("not used")

@@ -4,15 +4,18 @@ import eu.kanade.domain.entries.novel.model.hasCustomCover
 import eu.kanade.domain.entries.novel.model.normalizeNovelDescription
 import eu.kanade.tachiyomi.data.cache.NovelCoverCache
 import eu.kanade.tachiyomi.novelsource.model.SNovel
+import tachiyomi.domain.entries.novel.interactor.NovelFetchInterval
 import tachiyomi.domain.entries.novel.model.Novel
 import tachiyomi.domain.entries.novel.model.NovelUpdate
 import tachiyomi.domain.entries.novel.repository.NovelRepository
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
+import java.time.ZonedDateTime
 
 class UpdateNovel(
     private val novelRepository: NovelRepository,
+    private val novelFetchInterval: NovelFetchInterval = Injekt.get(),
 ) {
 
     suspend fun await(novelUpdate: NovelUpdate): Boolean {
@@ -98,6 +101,16 @@ class UpdateNovel(
                 updateStrategy = remoteNovel.update_strategy,
                 initialized = true,
             ),
+        )
+    }
+
+    suspend fun awaitUpdateFetchInterval(
+        novel: Novel,
+        dateTime: ZonedDateTime = ZonedDateTime.now(),
+        window: Pair<Long, Long> = novelFetchInterval.getWindow(dateTime),
+    ): Boolean {
+        return novelRepository.updateNovel(
+            novelFetchInterval.toNovelUpdate(novel, dateTime, window),
         )
     }
 }

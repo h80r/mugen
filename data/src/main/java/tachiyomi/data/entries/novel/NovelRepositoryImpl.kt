@@ -13,6 +13,8 @@ import tachiyomi.domain.entries.novel.model.Novel
 import tachiyomi.domain.entries.novel.model.NovelUpdate
 import tachiyomi.domain.entries.novel.repository.NovelRepository
 import tachiyomi.domain.library.novel.LibraryNovel
+import java.time.LocalDate
+import java.time.ZoneId
 
 class NovelRepositoryImpl(
     private val handler: NovelDatabaseHandler,
@@ -267,6 +269,13 @@ class NovelRepositoryImpl(
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             false
+        }
+    }
+
+    override suspend fun getUpcomingNovels(statuses: Set<Long>): Flow<List<Novel>> {
+        val epochMillis = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toEpochSecond() * 1000
+        return handler.subscribeToList { db ->
+            db.novelsQueries.getUpcomingNovels(epochMillis, statuses, NovelMapper::mapNovel)
         }
     }
 

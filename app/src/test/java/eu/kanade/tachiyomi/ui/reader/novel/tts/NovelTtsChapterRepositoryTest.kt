@@ -178,6 +178,9 @@ class NovelTtsChapterRepositoryTest {
         override fun getNovelByUrlAndSourceIdAsFlow(url: String, sourceId: Long) = MutableStateFlow<Novel?>(null)
         override suspend fun getNovelFavorites(): List<Novel> = emptyList()
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
+
+        override suspend fun getUpcomingNovels(statuses: Set<Long>): kotlinx.coroutines.flow.Flow<List<Novel>> =
+            kotlinx.coroutines.flow.flowOf(emptyList())
         override suspend fun getLibraryNovel(): List<LibraryNovel> = emptyList()
         override fun getLibraryNovelAsFlow() = MutableStateFlow(emptyList<LibraryNovel>())
         override fun getNovelFavoritesBySourceId(sourceId: Long) = MutableStateFlow(emptyList<Novel>())

@@ -109,6 +109,8 @@ class NovelInteractorsTest {
         override suspend fun getNovelFavorites(): List<Novel> = emptyList()
 
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
+        override suspend fun getUpcomingNovels(statuses: Set<Long>) =
+            kotlinx.coroutines.flow.flowOf(emptyList<Novel>())
 
         override suspend fun getLibraryNovel(): List<LibraryNovel> = library
 

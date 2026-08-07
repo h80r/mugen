@@ -42,6 +42,8 @@ interface NovelRepository {
 
     suspend fun updateAllNovel(novelUpdates: List<NovelUpdate>): Boolean
 
+    suspend fun getUpcomingNovels(statuses: Set<Long>): Flow<List<Novel>>
+
     suspend fun resetNovelViewerFlags(): Boolean
 
     suspend fun updateNovelMetadata(

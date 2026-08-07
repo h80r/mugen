@@ -52,6 +52,8 @@ class GetNovelWithChaptersTest {
             MutableStateFlow<Novel?>(null)
         override suspend fun getNovelFavorites(): List<Novel> = emptyList()
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
+        override suspend fun getUpcomingNovels(statuses: Set<Long>) =
+            kotlinx.coroutines.flow.flowOf(emptyList<Novel>())
         override suspend fun getLibraryNovel() = emptyList<tachiyomi.domain.library.novel.LibraryNovel>()
         override fun getLibraryNovelAsFlow() = MutableStateFlow(
             emptyList<tachiyomi.domain.library.novel.LibraryNovel>(),
