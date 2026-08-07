@@ -2495,9 +2495,9 @@
     <string name="treasury_exclusive_rarity_transcendent">Трансцендентный</string>
     <string name="treasury_exclusive_active">Активна</string>
     <string name="treasury_exclusive_unlocked">Разблокирована</string>
-    <string name="treasury_tagline_onyx_gold">Чёрно-бриллиантовые поверхности с королевским золотом и рубиновым акцентом</string>
+    <string name="treasury_tagline_onyx_gold">Чёрно-бриллиантовые поверхности с королевским золотом и бронзовым акцентом</string>
     <string name="treasury_tagline_sakura_noir">Полуночный неон сакуры, сливовые тона и нефритовое свечение</string>
-    <string name="treasury_tagline_nebula_tide">Бездонная космическая синева с плазменным цианом, фиолетовой гравитацией и лаймовыми искрами</string>
+    <string name="treasury_tagline_nebula_tide">Глубокая индиго-бездна с розовой туманностью и плазменно-циановыми искрами</string>
     <!-- Treasury Vault hero -->
     <string name="treasury_vault_group_title">Хранилище Авроры</string>
     <string name="treasury_vault_header">СОКРОВИЩНИЦА АВРОРЫ</string>
@@ -2648,7 +2648,7 @@
     <string name="player_subtitle_translation_progress">%1$d%%, %2$d/%3$d реплик</string>
     <string name="player_subtitle_translation_from_to">%1$s → %2$s</string>
 
-    <string name="treasury_tagline_event_horizon">Рентгеновски белые элементы, инфракрасные полосы горизонта, холодное линзирование и стеклянно-черные поверхности</string>
+    <string name="treasury_tagline_event_horizon">Тёмно-синие полосы аккреции, фиолетовая плазма, рентгеновски белые элементы и стеклянно-чёрные поверхности</string>
     <string name="treasury_bg_event_horizon_title">Библиотека горизонта событий</string>
     <string name="treasury_bg_event_horizon_desc">Кинематографичная сингулярность с линзирующими кольцами, архивными осколками, параллакс-рамками и сдержанным движением.</string>
     <string name="achievement_event_horizon_cartographer_title">Картограф горизонта событий</string>

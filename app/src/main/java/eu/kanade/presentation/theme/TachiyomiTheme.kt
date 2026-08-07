@@ -23,6 +23,7 @@ import eu.kanade.presentation.easteregg.aurora.AuroraPrimeColors
 import eu.kanade.presentation.easteregg.aurora.rememberAuroraPrimeColors
 import eu.kanade.presentation.easteregg.lattice.rememberLatticeProtocolLiveColors
 import eu.kanade.presentation.theme.colorscheme.AuroraColorScheme
+import eu.kanade.presentation.theme.colorscheme.AuroraPrimeColorScheme
 import eu.kanade.presentation.theme.colorscheme.BaseColorScheme
 import eu.kanade.presentation.theme.colorscheme.CloudflareColorScheme
 import eu.kanade.presentation.theme.colorscheme.CottoncandyColorScheme
@@ -212,7 +213,7 @@ val LocalIsAuroraTheme = staticCompositionLocalOf { false }
 val LocalIsEInkMode = staticCompositionLocalOf { false }
 val LocalIsDefaultAppUiFont = staticCompositionLocalOf { true }
 
-private val colorSchemes: Map<AppTheme, BaseColorScheme> = mapOf(
+internal val colorSchemes: Map<AppTheme, BaseColorScheme> = mapOf(
     AppTheme.DEFAULT to AuroraColorScheme,
     AppTheme.CLOUDFLARE to CloudflareColorScheme,
     AppTheme.COTTONCANDY to CottoncandyColorScheme,
@@ -238,7 +239,7 @@ private val colorSchemes: Map<AppTheme, BaseColorScheme> = mapOf(
     AppTheme.NEBULA_TIDE to NebulaTideColorScheme,
     AppTheme.EVENT_HORIZON to EventHorizonColorScheme,
     AppTheme.VOID_RED to VoidRedColorScheme,
-    AppTheme.AURORA_PRIME to AuroraColorScheme,
+    AppTheme.AURORA_PRIME to AuroraPrimeColorScheme,
     AppTheme.LATTICE_PROTOCOL to LatticeProtocolColorScheme,
 )
 
@@ -268,17 +269,17 @@ private fun latticeProtocolOverlay(base: ColorScheme, isAmoled: Boolean, isDark:
     val live = rememberLatticeProtocolLiveColors(animated = !powerSave)
     return base.copy(
         primary = live.primary,
-        onPrimary = if (isDark) Color(0xFF00323B) else Color.White,
+        onPrimary = base.onPrimary,
         primaryContainer = live.primary.copy(alpha = 0.22f),
-        onPrimaryContainer = live.primary,
+        onPrimaryContainer = base.onPrimary,
         secondary = live.secondary,
-        onSecondary = if (isDark) Color(0xFF00323B) else Color.White,
+        onSecondary = base.onSecondary,
         secondaryContainer = live.secondary.copy(alpha = 0.18f),
-        onSecondaryContainer = live.secondary,
+        onSecondaryContainer = base.onSecondary,
         tertiary = live.tertiary,
-        onTertiary = Color(0xFF442B00),
+        onTertiary = base.onTertiary,
         tertiaryContainer = live.tertiary.copy(alpha = 0.2f),
-        onTertiaryContainer = live.tertiary,
+        onTertiaryContainer = base.onTertiary,
         surfaceTint = live.primary,
         outline = live.primary.copy(alpha = if (isDark) 0.5f else 0.35f),
         outlineVariant = live.primary.copy(alpha = if (isDark) 0.22f else 0.16f),
@@ -328,10 +329,10 @@ internal fun applyAuroraPrimeOverlay(
     return withAccents.copy(
         // При AMOLED фон/поверхности оставляем чёрными (так делает BaseColorScheme)
         background = if (isAmoled) base.background else live.background,
-        onBackground = Color(0xFFDCEBFF),
+        onBackground = base.onBackground,
         surface = if (isAmoled) base.surface else live.surface,
-        onSurface = Color(0xFFDCEBFF),
+        onSurface = base.onSurface,
         surfaceVariant = (if (isAmoled) base.surface else live.surface).copy(alpha = 0.8f),
-        onSurfaceVariant = Color(0xCCDCEBFF),
+        onSurfaceVariant = base.onSurfaceVariant,
     )
 }

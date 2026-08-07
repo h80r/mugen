@@ -551,7 +551,7 @@ object SettingsTreasuryScreen : SearchableSettings {
                 unlockableId = "special_background_event_horizon_library",
                 title = stringResource(AYMR.strings.treasury_bg_event_horizon_title),
                 description = stringResource(AYMR.strings.treasury_bg_event_horizon_desc),
-                accentColor = Color(0xFFFF6F00),
+                accentColor = Color(0xFF1A4FE0),
                 isActive = { specialBackgroundStyleKey == "event_horizon_library" },
                 onApply = { uiPreferences.specialBackgroundStyle().set("event_horizon_library") },
                 onDeactivate = { uiPreferences.specialBackgroundStyle().set("none") },
@@ -591,7 +591,7 @@ object SettingsTreasuryScreen : SearchableSettings {
                 unlockableId = "special_navbar_lattice_circuit",
                 title = stringResource(MR.strings.reward_special_navbar_lattice_circuit_title),
                 description = stringResource(MR.strings.reward_special_navbar_lattice_circuit_desc),
-                accentColor = Color(0xFF5FE9FF),
+                accentColor = Color(0xFF0095AE),
                 isActive = { showCircuitNavbar },
                 onApply = { uiPreferences.showCircuitNavbar().set(true) },
                 onDeactivate = { uiPreferences.showCircuitNavbar().set(false) },
@@ -1721,9 +1721,9 @@ private fun TreasuryPathCard(
     }
 }
 
-private val TreasuryGold = Color(0xFFFFD36E)
+private val TreasuryGold = Color(0xFFA8841C)
 private val TreasuryViolet = Color(0xFF9C7CFF)
-private val TreasuryCyan = Color(0xFF5DE7D8)
+private val TreasuryCyan = Color(0xFF0095AE)
 
 private data class TreasuryPreset(
     val unlockableId: String,
@@ -1767,7 +1767,7 @@ private fun TreasuryThemeSelector(
             theme = AppTheme.SAKURA_NOIR,
             rarity = AYMR.strings.treasury_exclusive_rarity_secret,
             tagline = AYMR.strings.treasury_tagline_sakura_noir,
-            accentColor = Color(0xFFFF78B7),
+            accentColor = Color(0xFFAD1060),
         ),
         TreasuryExclusiveThemeSpec(
             theme = AppTheme.NEBULA_TIDE,
@@ -1779,27 +1779,27 @@ private fun TreasuryThemeSelector(
             theme = AppTheme.EVENT_HORIZON,
             rarity = AYMR.strings.treasury_exclusive_rarity_mythic,
             tagline = AYMR.strings.treasury_tagline_event_horizon,
-            accentColor = Color(0xFFFF6F00),
+            accentColor = Color(0xFF1A4FE0),
         ),
         TreasuryExclusiveThemeSpec(
             theme = AppTheme.VOID_RED,
             rarity = AYMR.strings.treasury_exclusive_rarity_mythic,
             tagline = AYMR.strings.treasury_tagline_void_red,
-            accentColor = Color(0xFF9E0B14),
+            accentColor = Color(0xFFB0003C),
             lockedRiddle = AYMR.strings.achievement_void_broadcast_unlocked_hint_vague,
         ),
         TreasuryExclusiveThemeSpec(
             theme = AppTheme.AURORA_PRIME,
             rarity = AYMR.strings.treasury_exclusive_rarity_mythic,
             tagline = AYMR.strings.treasury_tagline_aurora_prime,
-            accentColor = Color(0xFF3DDC97), // Prime greenish (matches actual Aurora Prime primary)
+            accentColor = Color(0xFFB6F04C), // Polar lime (matches actual Aurora Prime primary)
             isSecret = true,
         ),
         TreasuryExclusiveThemeSpec(
             theme = AppTheme.LATTICE_PROTOCOL,
             rarity = AYMR.strings.treasury_exclusive_rarity_mythic,
             tagline = AYMR.strings.treasury_tagline_lattice_protocol,
-            accentColor = Color(0xFF5FE9FF), // Lattice cyan signal
+            accentColor = Color(0xFF0095AE), // Lattice deep signal cyan
             isSecret = true,
         ),
     )

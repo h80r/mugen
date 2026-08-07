@@ -1697,8 +1697,6 @@
     <string name="achievement_secret_not_even_my_final_form_desc">Reach over 9,000 achievement points</string>
 
     <!-- Treasury rewards -->
-    <string name="unlockable_theme_achievement_gold">Achievement Gold Theme</string>
-    <string name="unlockable_theme_achievement_sapphire">Achievement Sapphire Theme</string>
     <string name="unlockable_theme_master">Content Master Theme</string>
     <string name="unlockable_theme_ONYX_GOLD">Onyx Regalia Theme</string>
     <string name="unlockable_theme_SAKURA_NOIR">Sakura Eclipse Theme</string>

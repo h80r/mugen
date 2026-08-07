@@ -677,6 +677,174 @@
     </style>
 
 
+    <!--== Sakura Noir Theme ==-->
+    <style name="Theme.Tachiyomi.SakuraNoir">
+        <!-- Theme Colors -->
+        <item name="colorPrimary">@color/sakuranoir_primary</item>
+        <item name="colorOnPrimary">@color/sakuranoir_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/sakuranoir_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/sakuranoir_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/sakuranoir_secondary</item>
+        <item name="colorOnSecondary">@color/sakuranoir_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/sakuranoir_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/sakuranoir_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/sakuranoir_tertiary</item>
+        <item name="colorOnTertiary">@color/sakuranoir_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/sakuranoir_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/sakuranoir_onTertiaryContainer</item>
+        <item name="android:colorBackground">@color/sakuranoir_background</item>
+        <item name="colorOnBackground">@color/sakuranoir_onBackground</item>
+        <item name="colorSurface">@color/sakuranoir_surface</item>
+        <item name="colorOnSurface">@color/sakuranoir_onSurface</item>
+        <item name="colorSurfaceVariant">@color/sakuranoir_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/sakuranoir_onSurfaceVariant</item>
+        <item name="colorOutline">@color/sakuranoir_outline</item>
+        <item name="colorOnSurfaceInverse">@color/sakuranoir_inverseOnSurface</item>
+        <item name="colorSurfaceInverse">@color/sakuranoir_inverseSurface</item>
+        <item name="colorPrimaryInverse">@color/sakuranoir_primaryInverse</item>
+    </style>
+
+
+    <!--== Nebula Tide Theme ==-->
+    <style name="Theme.Tachiyomi.NebulaTide">
+        <!-- Theme Colors -->
+        <item name="colorPrimary">@color/nebulatide_primary</item>
+        <item name="colorOnPrimary">@color/nebulatide_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/nebulatide_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/nebulatide_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/nebulatide_secondary</item>
+        <item name="colorOnSecondary">@color/nebulatide_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/nebulatide_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/nebulatide_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/nebulatide_tertiary</item>
+        <item name="colorOnTertiary">@color/nebulatide_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/nebulatide_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/nebulatide_onTertiaryContainer</item>
+        <item name="android:colorBackground">@color/nebulatide_background</item>
+        <item name="colorOnBackground">@color/nebulatide_onBackground</item>
+        <item name="colorSurface">@color/nebulatide_surface</item>
+        <item name="colorOnSurface">@color/nebulatide_onSurface</item>
+        <item name="colorSurfaceVariant">@color/nebulatide_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/nebulatide_onSurfaceVariant</item>
+        <item name="colorOutline">@color/nebulatide_outline</item>
+        <item name="colorOnSurfaceInverse">@color/nebulatide_inverseOnSurface</item>
+        <item name="colorSurfaceInverse">@color/nebulatide_inverseSurface</item>
+        <item name="colorPrimaryInverse">@color/nebulatide_primaryInverse</item>
+    </style>
+
+
+    <!--== Event Horizon Theme ==-->
+    <style name="Theme.Tachiyomi.EventHorizon">
+        <!-- Theme Colors -->
+        <item name="colorPrimary">@color/eventhorizon_primary</item>
+        <item name="colorOnPrimary">@color/eventhorizon_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/eventhorizon_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/eventhorizon_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/eventhorizon_secondary</item>
+        <item name="colorOnSecondary">@color/eventhorizon_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/eventhorizon_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/eventhorizon_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/eventhorizon_tertiary</item>
+        <item name="colorOnTertiary">@color/eventhorizon_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/eventhorizon_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/eventhorizon_onTertiaryContainer</item>
+        <item name="android:colorBackground">@color/eventhorizon_background</item>
+        <item name="colorOnBackground">@color/eventhorizon_onBackground</item>
+        <item name="colorSurface">@color/eventhorizon_surface</item>
+        <item name="colorOnSurface">@color/eventhorizon_onSurface</item>
+        <item name="colorSurfaceVariant">@color/eventhorizon_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/eventhorizon_onSurfaceVariant</item>
+        <item name="colorOutline">@color/eventhorizon_outline</item>
+        <item name="colorOnSurfaceInverse">@color/eventhorizon_inverseOnSurface</item>
+        <item name="colorSurfaceInverse">@color/eventhorizon_inverseSurface</item>
+        <item name="colorPrimaryInverse">@color/eventhorizon_primaryInverse</item>
+    </style>
+
+
+    <!--== Void Red Theme ==-->
+    <style name="Theme.Tachiyomi.VoidRed">
+        <!-- Theme Colors -->
+        <item name="colorPrimary">@color/voidred_primary</item>
+        <item name="colorOnPrimary">@color/voidred_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/voidred_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/voidred_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/voidred_secondary</item>
+        <item name="colorOnSecondary">@color/voidred_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/voidred_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/voidred_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/voidred_tertiary</item>
+        <item name="colorOnTertiary">@color/voidred_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/voidred_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/voidred_onTertiaryContainer</item>
+        <item name="android:colorBackground">@color/voidred_background</item>
+        <item name="colorOnBackground">@color/voidred_onBackground</item>
+        <item name="colorSurface">@color/voidred_surface</item>
+        <item name="colorOnSurface">@color/voidred_onSurface</item>
+        <item name="colorSurfaceVariant">@color/voidred_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/voidred_onSurfaceVariant</item>
+        <item name="colorOutline">@color/voidred_outline</item>
+        <item name="colorOnSurfaceInverse">@color/voidred_inverseOnSurface</item>
+        <item name="colorSurfaceInverse">@color/voidred_inverseSurface</item>
+        <item name="colorPrimaryInverse">@color/voidred_primaryInverse</item>
+    </style>
+
+
+    <!--== Aurora Prime Theme ==-->
+    <style name="Theme.Tachiyomi.AuroraPrime">
+        <!-- Theme Colors -->
+        <item name="colorPrimary">@color/auroraprime_primary</item>
+        <item name="colorOnPrimary">@color/auroraprime_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/auroraprime_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/auroraprime_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/auroraprime_secondary</item>
+        <item name="colorOnSecondary">@color/auroraprime_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/auroraprime_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/auroraprime_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/auroraprime_tertiary</item>
+        <item name="colorOnTertiary">@color/auroraprime_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/auroraprime_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/auroraprime_onTertiaryContainer</item>
+        <item name="android:colorBackground">@color/auroraprime_background</item>
+        <item name="colorOnBackground">@color/auroraprime_onBackground</item>
+        <item name="colorSurface">@color/auroraprime_surface</item>
+        <item name="colorOnSurface">@color/auroraprime_onSurface</item>
+        <item name="colorSurfaceVariant">@color/auroraprime_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/auroraprime_onSurfaceVariant</item>
+        <item name="colorOutline">@color/auroraprime_outline</item>
+        <item name="colorOnSurfaceInverse">@color/auroraprime_inverseOnSurface</item>
+        <item name="colorSurfaceInverse">@color/auroraprime_inverseSurface</item>
+        <item name="colorPrimaryInverse">@color/auroraprime_primaryInverse</item>
+    </style>
+
+
+    <!--== Lattice Protocol Theme ==-->
+    <style name="Theme.Tachiyomi.LatticeProtocol">
+        <!-- Theme Colors -->
+        <item name="colorPrimary">@color/latticeprotocol_primary</item>
+        <item name="colorOnPrimary">@color/latticeprotocol_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/latticeprotocol_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/latticeprotocol_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/latticeprotocol_secondary</item>
+        <item name="colorOnSecondary">@color/latticeprotocol_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/latticeprotocol_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/latticeprotocol_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/latticeprotocol_tertiary</item>
+        <item name="colorOnTertiary">@color/latticeprotocol_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/latticeprotocol_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/latticeprotocol_onTertiaryContainer</item>
+        <item name="android:colorBackground">@color/latticeprotocol_background</item>
+        <item name="colorOnBackground">@color/latticeprotocol_onBackground</item>
+        <item name="colorSurface">@color/latticeprotocol_surface</item>
+        <item name="colorOnSurface">@color/latticeprotocol_onSurface</item>
+        <item name="colorSurfaceVariant">@color/latticeprotocol_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/latticeprotocol_onSurfaceVariant</item>
+        <item name="colorOutline">@color/latticeprotocol_outline</item>
+        <item name="colorOnSurfaceInverse">@color/latticeprotocol_inverseOnSurface</item>
+        <item name="colorSurfaceInverse">@color/latticeprotocol_inverseSurface</item>
+        <item name="colorPrimaryInverse">@color/latticeprotocol_primaryInverse</item>
+    </style>
+
+
     <!--== Monochrome Theme ==-->
     <style name="Theme.Tachiyomi.Monochrome">
         <!-- Theme Colors -->

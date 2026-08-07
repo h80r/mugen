@@ -6,12 +6,12 @@ import androidx.compose.ui.graphics.Color
 object LatticeColors {
     val Void = Color(0xFF050608)
     val Panel = Color(0xFF0A1220)
-    val Signal = Color(0xFF5FE9FF)
-    val SignalDim = Color(0x665FE9FF)
+    val Signal = Color(0xFF0095AE)
+    val SignalDim = Color(0x660095AE)
     val TextPrimary = Color(0xFFF4FEFF)
-    val Service = Color(0xFFFFB84D)
+    val Service = Color(0xFFFFA726)
     val Alert = Color(0xFFFF3B4E)
-    val GridLine = Color(0x1A5FE9FF)
+    val GridLine = Color(0x1A0095AE)
 
     /** Cold desync violet: failed-topology reject (never a cartoon red alarm). */
     val Desync = Color(0xFFB84BFF)

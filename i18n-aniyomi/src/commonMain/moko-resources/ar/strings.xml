@@ -1844,10 +1844,10 @@
     <string name="treasury_exclusive_rarity_transcendent">متسامي</string>
     <string name="treasury_exclusive_active">حصري نشط</string>
     <string name="treasury_exclusive_unlocked">حصري مفتوح</string>
-    <string name="treasury_tagline_onyx_gold">أسطح من الأونيكس الأسود مع ذهب ملكي ولمسة كأس ياقوتي</string>
+    <string name="treasury_tagline_onyx_gold">أسطح من الأونيكس الأسود مع ذهب ملكي ولمسة برونزية</string>
     <string name="treasury_tagline_sakura_noir">نيون ساكورا منتصف الليل، بطاقات برقوق سوداء، وتوهج قاعة مخفية من اليشم</string>
-    <string name="treasury_tagline_nebula_tide">أزرق فضاء سحيق مع سيان بلازما، جاذبية بنفسجية، وشرارات ليمون غريبة</string>
-    <string name="treasury_tagline_event_horizon">عناصر تحكم بيضاء بالأشعة السينية، نطاقات أحداث تحت الحمراء، أخضر عدسي بارد، وأسطح فراغ من الزجاج المقطوع</string>
+    <string name="treasury_tagline_nebula_tide">هاوية نيليّة عميقة مع انجراف سديم وردي وشرارات سيان بلازما</string>
+    <string name="treasury_tagline_event_horizon">نطاقات تراكم زرقاء عميقة، بلازما بنفسجية، عناصر تحكم بيضاء بالأشعة السينية، وأسطح فراغ من الزجاج المقطوع</string>
     <string name="treasury_vault_group_title">خزينة أورورا</string>
     <string name="treasury_vault_header">خزينة أورورا</string>
     <string name="treasury_vault_headline">خزينة الآثار المكتسبة</string>

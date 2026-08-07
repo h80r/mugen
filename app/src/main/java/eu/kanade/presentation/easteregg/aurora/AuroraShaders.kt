@@ -147,10 +147,11 @@ half4 main(float2 fragCoord) {
 
 /** Общедоступная «камуфляжная» палитра сияния (НЕ секретная тема!). */
 object AuroraPublicPalette {
-    val Green = Color(0xFF3DDC97)
-    val Blue = Color(0xFF5E8BFF)
-    val Violet = Color(0xFFB07CFF)
-    val Night = Color(0xFF04070D)
+    // Mirrors AuroraPrimeColorScheme: Green=primary, Violet=secondary, Blue=tertiary.
+    val Green = Color(0xFFB6F04C)
+    val Blue = Color(0xFF2FC9A0)
+    val Violet = Color(0xFFC25CFF)
+    val Night = Color(0xFF030810)
 }
 
 /**

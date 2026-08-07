@@ -411,7 +411,7 @@ class AchievementBackupRestoreIntegrationTest {
                 rewards = listOf(
                     Reward(
                         type = RewardType.THEME,
-                        id = "theme_achievement_gold",
+                        id = "theme_ONYX_GOLD",
                         title = "Gold Theme",
                     ),
                 ),
@@ -428,7 +428,7 @@ class AchievementBackupRestoreIntegrationTest {
             achievementRepository.insertOrUpdateProgress(localProgress)
 
             // Preferences (Treasury) start empty
-            assertEquals(false, unlockableManager.isUnlockableUnlocked("theme_achievement_gold"))
+            assertEquals(false, unlockableManager.isUnlockableUnlocked("theme_ONYX_GOLD"))
 
             // Restore with an empty backup list (no backup achievements present)
             restorer.restoreAchievements(
@@ -439,7 +439,7 @@ class AchievementBackupRestoreIntegrationTest {
             )
 
             // Treasury should be rehydrated from the local merged state
-            assertEquals(true, unlockableManager.isUnlockableUnlocked("theme_achievement_gold"))
+            assertEquals(true, unlockableManager.isUnlockableUnlocked("theme_ONYX_GOLD"))
         }
     }
 

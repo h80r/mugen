@@ -2123,10 +2123,10 @@
     <string name="treasury_exclusive_rarity_transcendent">Transcendent</string>
     <string name="treasury_exclusive_active">Active exclusive</string>
     <string name="treasury_exclusive_unlocked">Unlocked exclusive</string>
-    <string name="treasury_tagline_onyx_gold">Black-diamond surfaces with royal gold and a ruby trophy accent</string>
+    <string name="treasury_tagline_onyx_gold">Black-diamond surfaces with royal gold and a bronze trophy accent</string>
     <string name="treasury_tagline_sakura_noir">Midnight sakura neon, plum noir cards, and jade hidden-hall glow</string>
-    <string name="treasury_tagline_nebula_tide">Abyssal space blue with plasma cyan, violet gravity, and alien-lime sparks</string>
-    <string name="treasury_tagline_event_horizon">X-ray white controls, infrared event bands, cold lensing green, and cut-glass void surfaces</string>
+    <string name="treasury_tagline_nebula_tide">Deep-indigo abyss with rose-nebula drift and plasma-cyan sparks</string>
+    <string name="treasury_tagline_event_horizon">Deep-blue accretion bands, violet plasma, X-ray white controls, and cut-glass void surfaces</string>
     <!-- Treasury Vault hero -->
     <string name="treasury_vault_group_title">Aurora Vault</string>
     <string name="treasury_vault_header">AURORA TREASURY</string>

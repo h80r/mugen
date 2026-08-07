@@ -110,6 +110,28 @@ class UnlockableManagerTest {
     }
 
     @Test
+    fun `removed legacy unlockables are never granted again`() = runTest {
+        val prefs = InMemorySharedPreferences()
+        val manager = UnlockableManager(prefs, stubProfileManager)
+
+        val achievement = Achievement(
+            id = "legacy_backup_achievement",
+            type = AchievementType.QUANTITY,
+            category = AchievementCategory.BOTH,
+            title = "Legacy",
+            unlockableId = "theme_achievement_sapphire",
+            rewards = listOf(
+                Reward(type = RewardType.THEME, id = "theme_achievement_gold", title = "Legacy Gold"),
+            ),
+        )
+
+        manager.unlockAchievementRewards(achievement)
+
+        manager.isUnlockableUnlocked("theme_achievement_sapphire") shouldBe false
+        manager.isUnlockableUnlocked("theme_achievement_gold") shouldBe false
+    }
+
+    @Test
     fun `achievement without rewards does not unlock unrelated items`() = runTest {
         val prefs = InMemorySharedPreferences()
         val manager = UnlockableManager(prefs, stubProfileManager)
@@ -153,8 +175,8 @@ class UnlockableManagerTest {
         val prefs = InMemorySharedPreferences()
         val manager = UnlockableManager(prefs, stubProfileManager)
 
-        val goldThemeRes = manager.getUnlockableNameRes("theme_achievement_gold")
-        goldThemeRes shouldBe tachiyomi.i18n.MR.strings.unlockable_theme_achievement_gold
+        val goldThemeRes = manager.getUnlockableNameRes("theme_ONYX_GOLD")
+        goldThemeRes shouldBe tachiyomi.i18n.MR.strings.unlockable_theme_ONYX_GOLD
 
         manager.getUnlockableNameRes("theme_EVENT_HORIZON") shouldBe
             tachiyomi.i18n.MR.strings.unlockable_theme_EVENT_HORIZON
