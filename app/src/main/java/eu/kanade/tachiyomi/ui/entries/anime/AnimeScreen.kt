@@ -148,11 +148,14 @@ class AnimeScreen(
             navigateUp = navigator::pop,
             onEpisodeClicked = { episode, alt ->
                 scope.launchIO {
+                    // Resolve preview (dummy-id) episodes to their persisted rows so the
+                    // player never launches with an id the DB does not know yet.
+                    val real = screenModel.resolveEpisodeForOpen(episode)
                     if (screenModel.alwaysAskOnEpisodeClick) {
-                        screenModel.showQualitiesDialog(episode)
+                        screenModel.showQualitiesDialog(real)
                     } else {
                         val extPlayer = screenModel.alwaysUseExternalPlayer != alt
-                        openEpisode(context, episode, extPlayer)
+                        openEpisode(context, real, extPlayer)
                     }
                 }
             },
