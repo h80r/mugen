@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.data.backup.restore.restorers
 
+import eu.kanade.domain.entries.novel.interactor.UpdateNovel
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupChapter
 import eu.kanade.tachiyomi.data.backup.models.BackupHistory
@@ -12,11 +13,13 @@ import tachiyomi.domain.book.novel.interactor.UpsertNovelBookState
 import tachiyomi.domain.book.novel.model.NovelBookState
 import tachiyomi.domain.category.novel.interactor.GetNovelCategories
 import tachiyomi.domain.entries.novel.interactor.GetNovelByUrlAndSourceId
+import tachiyomi.domain.entries.novel.interactor.NovelFetchInterval
 import tachiyomi.domain.entries.novel.model.Novel
 import tachiyomi.domain.items.novelchapter.model.NovelChapter
 import tachiyomi.domain.items.novelchapter.repository.NovelChapterRepository
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.time.ZonedDateTime
 import java.util.Date
 import kotlin.math.max
 
@@ -26,7 +29,12 @@ class NovelRestorer(
     private val getCategories: GetNovelCategories = Injekt.get(),
     private val chapterRepository: NovelChapterRepository = Injekt.get(),
     private val upsertNovelBookState: UpsertNovelBookState = Injekt.get(),
+    private val novelFetchInterval: NovelFetchInterval = Injekt.get(),
+    private val updateNovelUseCase: UpdateNovel = Injekt.get(),
 ) {
+
+    private val now: ZonedDateTime = ZonedDateTime.now()
+    private val currentFetchWindow: Pair<Long, Long> = novelFetchInterval.getWindow(now)
 
     suspend fun sortByNew(backupNovels: List<BackupNovel>): List<BackupNovel> {
         val urlsBySource = handler.awaitList { db -> db.novelsQueries.getAllNovelSourceAndUrl() }
@@ -306,6 +314,9 @@ class NovelRestorer(
         restoreHistory(history)
         restoreExcludedScanlators(novel, excludedScanlators)
         restoreBookState(novel, bookState)
+        // Recompute the expected next release date from the restored chapter rhythm so restored
+        // novels appear in the Upcoming calendar right away (parity with MangaRestorer).
+        updateNovelUseCase.awaitUpdateFetchInterval(novel, now, currentFetchWindow)
         return novel
     }
 
