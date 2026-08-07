@@ -110,6 +110,7 @@ import mihon.domain.items.chapter.interactor.FilterChaptersForDownload
 import mihon.domain.items.episode.interactor.FilterEpisodesForDownload
 import mihon.domain.upcoming.anime.interactor.GetUpcomingAnime
 import mihon.domain.upcoming.manga.interactor.GetUpcomingManga
+import mihon.domain.upcoming.novel.interactor.GetUpcomingNovel
 import tachiyomi.data.achievement.ActivityDataRepositoryImpl
 import tachiyomi.data.achievement.UserProfileManager
 import tachiyomi.data.achievement.handler.AchievementCalculator
@@ -238,6 +239,7 @@ import tachiyomi.domain.entries.novel.interactor.GetNovelByUrlAndSourceId
 import tachiyomi.domain.entries.novel.interactor.GetNovelFavorites
 import tachiyomi.domain.entries.novel.interactor.GetNovelWithChapters
 import tachiyomi.domain.entries.novel.interactor.NetworkToLocalNovel
+import tachiyomi.domain.entries.novel.interactor.NovelFetchInterval
 import tachiyomi.domain.entries.novel.interactor.ResetNovelViewerFlags
 import tachiyomi.domain.entries.novel.interactor.SetNovelChapterFlags
 import tachiyomi.domain.entries.novel.repository.NovelRepository
@@ -493,6 +495,7 @@ class DomainModule : InjektModule {
         addFactory { GetManga(get()) }
         addFactory { GetNextChapters(get(), get(), get()) }
         addFactory { GetUpcomingManga(get()) }
+        addFactory { GetUpcomingNovel(get()) }
         addFactory { ResetMangaViewerFlags(get()) }
         addFactory { SetMangaChapterFlags(get()) }
         addFactory { MangaFetchInterval(get()) }
@@ -529,7 +532,8 @@ class DomainModule : InjektModule {
         }
         addFactory { ResetNovelViewerFlags(get()) }
         addFactory { NetworkToLocalNovel(get()) }
-        addFactory { UpdateNovel(get()) }
+        addFactory { NovelFetchInterval(get()) }
+        addFactory { UpdateNovel(get(), get()) }
         addFactory { GetNovelExcludedScanlators(get()) }
         addFactory { SetNovelExcludedScanlators(get()) }
         addSingletonFactory<NovelPluginRepository> { NovelPluginRepositoryImpl(get()) }
