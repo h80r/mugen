@@ -14,7 +14,7 @@ class GetUpcomingNovel(
         SNovel.PUBLISHING_FINISHED.toLong(),
     )
 
-    suspend fun subscribe(): Flow<List<Novel>> {
+    fun subscribe(): Flow<List<Novel>> {
         return novelRepository.getUpcomingNovels(includedStatuses)
     }
 }

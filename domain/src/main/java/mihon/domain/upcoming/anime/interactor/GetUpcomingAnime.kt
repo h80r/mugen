@@ -14,7 +14,7 @@ class GetUpcomingAnime(
         SAnime.PUBLISHING_FINISHED.toLong(),
     )
 
-    suspend fun subscribe(): Flow<List<Anime>> {
+    fun subscribe(): Flow<List<Anime>> {
         return animeRepository.getUpcomingAnime(includedStatuses)
     }
 }

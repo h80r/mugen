@@ -2,7 +2,7 @@ package mihon.feature.upcoming.novel
 
 import androidx.compose.ui.util.fastMap
 import androidx.compose.ui.util.fastMapIndexedNotNull
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.util.insertSeparatorsReversed
 import eu.kanade.tachiyomi.util.lang.toLocalDate
@@ -12,7 +12,11 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableMap
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import mihon.domain.upcoming.novel.interactor.GetUpcomingNovel
@@ -24,22 +28,22 @@ import java.time.YearMonth
 
 class UpcomingNovelScreenModel(
     private val getUpcomingNovel: GetUpcomingNovel = Injekt.get(),
-) : StateScreenModel<UpcomingNovelScreenModel.State>(State()) {
+) : ScreenModel {
 
-    init {
-        screenModelScope.launch {
-            getUpcomingNovel.subscribe().collectLatest {
-                mutableState.update { state ->
-                    val upcomingItems = it.toUpcomingNovelUIModels()
-                    state.copy(
-                        items = upcomingItems,
-                        events = upcomingItems.toEvents(),
-                        headerIndexes = upcomingItems.getHeaderIndexes(),
-                    )
-                }
-            }
-        }
-    }
+    private val selectedYearMonthState = MutableStateFlow(YearMonth.now())
+
+    val state: StateFlow<State> = combine(
+        getUpcomingNovel.subscribe(),
+        selectedYearMonthState,
+    ) { it, selectedYearMonth ->
+        val upcomingItems = it.toUpcomingNovelUIModels()
+        State(
+            selectedYearMonth = selectedYearMonth,
+            items = upcomingItems,
+            events = upcomingItems.toEvents(),
+            headerIndexes = upcomingItems.getHeaderIndexes(),
+        )
+    }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), State())
 
     private fun List<Novel>.toUpcomingNovelUIModels(): ImmutableList<UpcomingNovelUIModel> {
         var novelCount = 0
@@ -78,7 +82,7 @@ class UpcomingNovelScreenModel(
     }
 
     fun setSelectedYearMonth(yearMonth: YearMonth) {
-        mutableState.update { it.copy(selectedYearMonth = yearMonth) }
+        selectedYearMonthState.update { yearMonth }
     }
 
     data class State(
