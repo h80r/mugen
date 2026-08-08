@@ -216,6 +216,86 @@ class NovelLibraryScreenModelTest {
     }
 
     @Test
+    fun `language filter keeps only entries from selected source languages`() = runTest(testDispatcher) {
+        val english = libraryNovel(id = 1L, title = "English Novel", source = 1L)
+        val japanese = libraryNovel(id = 2L, title = "Japanese Novel", source = 2L)
+        libraryFlow.value = listOf(english, japanese)
+        every { sourceManager.getOrStub(1L).lang } returns "en"
+        every { sourceManager.getOrStub(2L).lang } returns "ja"
+
+        val screenModel = trackedNovelLibraryScreenModel(
+            getLibraryNovel = getLibraryNovel,
+            chapterRepository = chapterRepository,
+            basePreferences = basePreferences,
+            libraryPreferences = libraryPreferences,
+            hasDownloadedChapters = { false },
+            downloadedIdsDispatcher = testDispatcher,
+        )
+
+        testDispatcher.scheduler.advanceUntilIdle()
+        screenModel.toggleLanguage("ja")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        screenModel.state.value.items.shouldContainExactly(
+            libraryNovelItem(id = 2L, title = "Japanese Novel", source = 2L),
+        )
+        screenModel.state.value.hasActiveFilters shouldBe true
+    }
+
+    @Test
+    fun `clearing language filter shows all entries again`() = runTest(testDispatcher) {
+        val english = libraryNovel(id = 1L, title = "English Novel", source = 1L)
+        val japanese = libraryNovel(id = 2L, title = "Japanese Novel", source = 2L)
+        libraryFlow.value = listOf(english, japanese)
+        every { sourceManager.getOrStub(1L).lang } returns "en"
+        every { sourceManager.getOrStub(2L).lang } returns "ja"
+
+        val screenModel = trackedNovelLibraryScreenModel(
+            getLibraryNovel = getLibraryNovel,
+            chapterRepository = chapterRepository,
+            basePreferences = basePreferences,
+            libraryPreferences = libraryPreferences,
+            hasDownloadedChapters = { false },
+            downloadedIdsDispatcher = testDispatcher,
+        )
+
+        testDispatcher.scheduler.advanceUntilIdle()
+        screenModel.toggleLanguage("ja")
+        testDispatcher.scheduler.advanceUntilIdle()
+        screenModel.clearLanguageFilter()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        screenModel.state.value.items.shouldContainExactly(
+            libraryNovelItem(id = 1L, title = "English Novel"),
+            libraryNovelItem(id = 2L, title = "Japanese Novel", source = 2L),
+        )
+        screenModel.state.value.hasActiveFilters shouldBe false
+    }
+
+    @Test
+    fun `library languages lists distinct sorted source languages`() = runTest(testDispatcher) {
+        val a = libraryNovel(id = 1L, title = "A", source = 1L)
+        val b = libraryNovel(id = 2L, title = "B", source = 2L)
+        val c = libraryNovel(id = 3L, title = "C", source = 1L)
+        libraryFlow.value = listOf(a, b, c)
+        every { sourceManager.getOrStub(1L).lang } returns "en"
+        every { sourceManager.getOrStub(2L).lang } returns "ja"
+
+        val screenModel = trackedNovelLibraryScreenModel(
+            getLibraryNovel = getLibraryNovel,
+            chapterRepository = chapterRepository,
+            basePreferences = basePreferences,
+            libraryPreferences = libraryPreferences,
+            hasDownloadedChapters = { false },
+            downloadedIdsDispatcher = testDispatcher,
+        )
+
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        screenModel.state.value.libraryLanguages shouldBe listOf("en", "ja")
+    }
+
+    @Test
     fun `completed filter keeps only completed entries`() = runTest(testDispatcher) {
         val ongoing = libraryNovel(id = 1L, title = "Ongoing", status = SManga.ONGOING.toLong())
         val completed = libraryNovel(id = 2L, title = "Completed", status = SManga.COMPLETED.toLong())
@@ -555,13 +635,14 @@ class NovelLibraryScreenModelTest {
         status: Long = 0L,
         lastRead: Long = 0L,
         fetchInterval: Int = 0,
+        source: Long = 1L,
     ): LibraryNovel {
         return LibraryNovel(
             novel = Novel.create().copy(
                 id = id,
                 title = title,
                 url = "https://example.com/$id",
-                source = 1L,
+                source = source,
                 favorite = true,
                 status = status,
                 fetchInterval = fetchInterval,
@@ -584,6 +665,7 @@ class NovelLibraryScreenModelTest {
         status: Long = 0L,
         lastRead: Long = 0L,
         fetchInterval: Int = 0,
+        source: Long = 1L,
     ): NovelLibraryItem.Single {
         return NovelLibraryItem.Single(
             libraryNovel(
@@ -594,6 +676,7 @@ class NovelLibraryScreenModelTest {
                 status = status,
                 lastRead = lastRead,
                 fetchInterval = fetchInterval,
+                source = source,
             ),
         )
     }

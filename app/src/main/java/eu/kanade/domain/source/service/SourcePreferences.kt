@@ -114,6 +114,15 @@ class SourcePreferences(
         false,
     )
 
+    fun searchFilterMangaLanguages() =
+        preferenceStore.getStringSet("pref_global_search_manga_languages", emptySet())
+
+    fun searchFilterNovelLanguages() =
+        preferenceStore.getStringSet("pref_global_search_novel_languages", emptySet())
+
+    fun searchFilterAnimeLanguages() =
+        preferenceStore.getStringSet("pref_global_search_anime_languages", emptySet())
+
     // Mixture Sources
 
     fun disabledAnimeSources() = preferenceStore.getStringSet("hidden_anime_catalogues", emptySet())

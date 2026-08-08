@@ -1292,6 +1292,7 @@ data object AnimeLibraryTab : Tab {
                 AnimeLibrarySettingsDialog(
                     onDismissRequest = onDismissRequest,
                     screenModel = settingsScreenModel,
+                    libraryScreenModel = screenModel,
                     category = category,
                 )
             }
@@ -1334,6 +1335,7 @@ data object AnimeLibraryTab : Tab {
                 MangaLibrarySettingsDialog(
                     onDismissRequest = onDismissMangaRequest,
                     screenModel = mangaSettingsScreenModel,
+                    libraryScreenModel = mangaScreenModel,
                     category = category,
                 )
             }

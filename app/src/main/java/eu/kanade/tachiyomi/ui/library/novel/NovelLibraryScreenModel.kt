@@ -166,7 +166,7 @@ class NovelLibraryScreenModel(
             libraryPipelineActive
                 .flatMapLatest { active ->
                     if (!active) {
-                        emptyFlow<NovelLibraryMap>()
+                        emptyFlow<Pair<NovelLibraryMap, List<String>>>()
                     } else {
                         val baseLibraryFlow = combine(
                             getLibraryFlow(),
@@ -207,6 +207,16 @@ class NovelLibraryScreenModel(
                             val hasActiveFilters = filterPrefs.hasActiveFilters()
                             val sourceCategories = library.keys.toList()
 
+                            val languageCache = HashMap<Long, String>()
+                            val libraryLanguages = library.values.flatten()
+                                .mapNotNull { item ->
+                                    val sourceId = (item as? NovelLibraryItem.Single)?.libraryNovel?.novel?.source
+                                        ?: (item as? NovelLibraryItem.Series)?.coverNovel?.source
+                                    sourceId?.let { languageCache.getOrPut(it) { sourceManager.getOrStub(it).lang } }
+                                }
+                                .distinct()
+                                .sorted()
+
                             NovelBaseLibraryResult(
                                 groupType = groupType,
                                 hasActiveFilters = hasActiveFilters,
@@ -219,11 +229,13 @@ class NovelLibraryScreenModel(
                                         bookmarkedFilter = filterPrefs.bookmarkedFilter,
                                         completedFilter = filterPrefs.completedFilter,
                                         filterIntervalCustom = filterPrefs.filterIntervalCustom,
+                                        languages = filterPrefs.languages,
                                     )
                                     .applySort(sortPrefs.sortMode, sortPrefs.randomSortSeed)
                                     .applyGrouping(groupType, tracks)
                                     .withFilteredEmptyPlaceholder(sourceCategories, hasActiveFilters)
                                     .withBadgeMetadata(downloadedIds, badgePrefs),
+                                libraryLanguages = libraryLanguages,
                             )
                         }
 
@@ -232,7 +244,7 @@ class NovelLibraryScreenModel(
                             state.map { it.searchQuery }.distinctUntilChanged().debounce(searchDebounceMillis),
                         ) { baseLibrary, searchQuery ->
                             val librarySearchQuery = searchQuery?.let(::LibrarySearchQuery)
-                            baseLibrary.library
+                            val filteredMap = baseLibrary.library
                                 .mapValues { (_, value) ->
                                     if (librarySearchQuery != null) {
                                         value.filter {
@@ -256,16 +268,18 @@ class NovelLibraryScreenModel(
                                         map.filterValues { it.isNotEmpty() }.toPersistentMap()
                                     }
                                 }
+                            filteredMap to baseLibrary.libraryLanguages
                         }
                     }
                 }
                 .flowOn(libraryDispatcher)
-                .collectLatest { libraryMap ->
+                .collectLatest { (libraryMap, libraryLanguages) ->
                     mutableState.update { state ->
                         state.copy(
                             isLoading = false,
                             hasLoaded = true,
                             library = libraryMap,
+                            libraryLanguages = libraryLanguages,
                         )
                     }
                 }
@@ -298,6 +312,7 @@ class NovelLibraryScreenModel(
                         bookmarkedFilter = filterPrefs.bookmarkedFilter,
                         completedFilter = filterPrefs.completedFilter,
                         filterIntervalCustom = filterPrefs.filterIntervalCustom,
+                        languageFilter = filterPrefs.languages,
                     )
                 }
             }
@@ -316,15 +331,7 @@ class NovelLibraryScreenModel(
 
         getFilterPreferencesFlow()
             .map { filterPrefs ->
-                filterPrefs.downloadedOnly ||
-                    listOf(
-                        filterPrefs.downloadedFilter,
-                        filterPrefs.unreadFilter,
-                        filterPrefs.startedFilter,
-                        filterPrefs.bookmarkedFilter,
-                        filterPrefs.completedFilter,
-                        filterPrefs.filterIntervalCustom,
-                    ).any { it != TriState.DISABLED }
+                filterPrefs.hasActiveFilters()
             }
             .distinctUntilChanged()
             .onEach { hasActiveFilters ->
@@ -671,6 +678,7 @@ class NovelLibraryScreenModel(
         libraryPreferences.filterBookmarkedNovel().set(TriState.DISABLED)
         libraryPreferences.filterCompletedNovel().set(TriState.DISABLED)
         libraryPreferences.filterIntervalCustom().set(TriState.DISABLED)
+        libraryPreferences.filterNovelLanguages().set(emptySet())
     }
 
     fun toggleDownloadedFilter() {
@@ -687,6 +695,21 @@ class NovelLibraryScreenModel(
 
     fun setUnreadFilter(filter: TriState) {
         libraryPreferences.filterUnreadNovel().set(filter)
+    }
+
+    fun toggleLanguage(language: String) {
+        val current = libraryPreferences.filterNovelLanguages().get()
+        libraryPreferences.filterNovelLanguages().set(
+            if (language in current) current - language else current + language,
+        )
+    }
+
+    fun setAllLanguages(languages: Set<String>) {
+        libraryPreferences.filterNovelLanguages().set(languages)
+    }
+
+    fun clearLanguageFilter() {
+        libraryPreferences.filterNovelLanguages().set(emptySet())
     }
 
     fun toggleStartedFilter() {
@@ -820,6 +843,7 @@ class NovelLibraryScreenModel(
         bookmarkedFilter: TriState,
         completedFilter: TriState,
         filterIntervalCustom: TriState,
+        languages: Set<String>,
     ): NovelLibraryMap {
         val filterFnDownloaded: (NovelLibraryItem) -> Boolean = { item ->
             applyFilter(effectiveDownloadedFilter) {
@@ -847,13 +871,24 @@ class NovelLibraryScreenModel(
                 (item as? NovelLibraryItem.Single)?.libraryNovel?.novel?.fetchInterval?.compareTo(0) == -1
             }
         }
+        val languageBySourceId = HashMap<Long, String>()
+        fun NovelLibraryItem.sourceLang(): String {
+            val sourceId = (this as? NovelLibraryItem.Single)?.libraryNovel?.novel?.source
+                ?: (this as? NovelLibraryItem.Series)?.coverNovel?.source
+                ?: return ""
+            return languageBySourceId.getOrPut(sourceId) { sourceManager.getOrStub(sourceId).lang }
+        }
+        val filterFnLanguage: (NovelLibraryItem) -> Boolean = { item ->
+            languages.isEmpty() || item.sourceLang() in languages
+        }
         val filterFn: (NovelLibraryItem) -> Boolean = {
             filterFnDownloaded(it) &&
                 filterFnUnread(it) &&
                 filterFnStarted(it) &&
                 filterFnBookmarked(it) &&
                 filterFnCompleted(it) &&
-                filterFnIntervalCustom(it)
+                filterFnIntervalCustom(it) &&
+                filterFnLanguage(it)
         }
         return mapValues { (_, value) -> value.filter(filterFn).toPersistentList() }
             .toPersistentMap()
@@ -878,6 +913,7 @@ class NovelLibraryScreenModel(
 
     private fun FilterPreferences.hasActiveFilters(): Boolean {
         return downloadedOnly ||
+            languages.isNotEmpty() ||
             listOf(
                 downloadedFilter,
                 unreadFilter,
@@ -1195,6 +1231,8 @@ class NovelLibraryScreenModel(
         val bookmarkedFilter: TriState = TriState.DISABLED,
         val completedFilter: TriState = TriState.DISABLED,
         val filterIntervalCustom: TriState = TriState.DISABLED,
+        val languageFilter: Set<String> = emptySet(),
+        val libraryLanguages: List<String> = emptyList(),
         val downloadedNovelIds: Set<Long> = emptySet(),
         val sort: NovelLibrarySort = NovelLibrarySort.default,
         val randomSortSeed: Int = 0,
@@ -1273,6 +1311,7 @@ class NovelLibraryScreenModel(
         val bookmarkedFilter: TriState,
         val completedFilter: TriState,
         val filterIntervalCustom: TriState,
+        val languages: Set<String> = emptySet(),
     )
 
     private data class SortPreferences(
@@ -1289,6 +1328,7 @@ class NovelLibraryScreenModel(
         val groupType: Int,
         val hasActiveFilters: Boolean,
         val library: NovelLibraryMap,
+        val libraryLanguages: List<String>,
     )
 
     private data class RecomputeInput(
@@ -1363,6 +1403,9 @@ class NovelLibraryScreenModel(
             }
             .combine(libraryPreferences.filterCompletedNovel().changes()) { prefs, completedFilter ->
                 prefs.copy(completedFilter = completedFilter)
+            }
+            .combine(libraryPreferences.filterNovelLanguages().changes()) { prefs, languages ->
+                prefs.copy(languages = languages)
             }
             .distinctUntilChanged()
     }

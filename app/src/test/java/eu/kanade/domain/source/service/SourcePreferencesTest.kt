@@ -107,6 +107,15 @@ class SourcePreferencesTest {
     }
 
     @Test
+    fun `search language filter prefs default to empty set`() {
+        val preferences = SourcePreferences(InMemoryPreferenceStore())
+
+        assertEquals(emptySet<String>(), preferences.searchFilterMangaLanguages().get())
+        assertEquals(emptySet<String>(), preferences.searchFilterNovelLanguages().get())
+        assertEquals(emptySet<String>(), preferences.searchFilterAnimeLanguages().get())
+    }
+
+    @Test
     fun `suggestions default is enabled`() {
         val preferences = SourcePreferences(InMemoryPreferenceStore())
         assertTrue(preferences.entrySuggestionsEnabled().get())

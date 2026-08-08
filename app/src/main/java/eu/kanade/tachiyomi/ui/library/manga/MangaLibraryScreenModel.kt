@@ -152,7 +152,7 @@ class MangaLibraryScreenModel(
             libraryPipelineActive
                 .flatMapLatest { active ->
                     if (!active) {
-                        emptyFlow<MangaLibraryMap>()
+                        emptyFlow<Pair<MangaLibraryMap, List<String>>>()
                     } else {
                         val baseLibraryFlow = combine(
                             getLibraryFlow(),
@@ -175,9 +175,21 @@ class MangaLibraryScreenModel(
                             val hasActiveFilters = itemPreferences.hasActiveFilters(trackingFilter)
                             val sourceCategories = library.keys.toList()
 
+                            val languageCache = HashMap<Long, String>()
+                            val libraryLanguages = library.values.flatten()
+                                .mapNotNull { item ->
+                                    val sourceId = (item as? MangaLibraryItem.Single)?.libraryManga?.manga?.source
+                                        ?: (item as? MangaLibraryItem.Series)?.librarySeries?.entries
+                                            ?.firstOrNull()?.manga?.source
+                                    sourceId?.let { languageCache.getOrPut(it) { sourceManager.getOrStub(it).lang } }
+                                }
+                                .distinct()
+                                .sorted()
+
                             MangaBaseLibraryResult(
                                 groupType = groupType,
                                 hasActiveFilters = hasActiveFilters,
+                                libraryLanguages = libraryLanguages,
                                 library = library
                                     .applyFilters(itemPreferences, tracks, trackingFilter)
                                     .applySort(tracks, trackingFilter.keys)
@@ -191,7 +203,7 @@ class MangaLibraryScreenModel(
                             state.map { it.searchQuery }.distinctUntilChanged().debounce(SEARCH_DEBOUNCE_MILLIS),
                         ) { baseLibrary, searchQuery ->
                             val librarySearchQuery = searchQuery?.let(::LibrarySearchQuery)
-                            baseLibrary.library
+                            val filteredMap = baseLibrary.library
                                 .mapValues { (_, value) ->
                                     if (librarySearchQuery != null) {
                                         value.filter { it.matches(librarySearchQuery) }.toPersistentList()
@@ -213,15 +225,17 @@ class MangaLibraryScreenModel(
                                         map.filterValues { it.isNotEmpty() }.toPersistentMap()
                                     }
                                 }
+                            filteredMap to baseLibrary.libraryLanguages
                         }
                     }
                 }
                 .flowOn(libraryDispatcher)
-                .collectLatest { libraryMap ->
+                .collectLatest { (libraryMap, libraryLanguages) ->
                     mutableState.update { state ->
                         state.copy(
                             isLoading = false,
                             library = libraryMap,
+                            libraryLanguages = libraryLanguages,
                         )
                     }
                 }
@@ -247,21 +261,20 @@ class MangaLibraryScreenModel(
             getLibraryItemPreferencesFlow(),
             getTrackingFilterFlow(),
         ) { prefs, trackFilter ->
-            (
-                listOf(
-                    prefs.filterDownloaded,
-                    prefs.filterUnread,
-                    prefs.filterStarted,
-                    prefs.filterBookmarked,
-                    prefs.filterCompleted,
-                    prefs.filterIntervalCustom,
-                ) + trackFilter.values
-                ).any { it != TriState.DISABLED }
+            prefs.hasActiveFilters(trackFilter)
         }
             .distinctUntilChanged()
             .onEach {
                 mutableState.update { state ->
                     state.copy(hasActiveFilters = it)
+                }
+            }
+            .launchIn(screenModelScope)
+
+        getLibraryItemPreferencesFlow()
+            .onEach { prefs ->
+                mutableState.update { state ->
+                    state.copy(languageFilter = prefs.filterLanguages)
                 }
             }
             .launchIn(screenModelScope)
@@ -315,6 +328,19 @@ class MangaLibraryScreenModel(
         val filterBookmarked = prefs.filterBookmarked
         val filterCompleted = prefs.filterCompleted
         val filterIntervalCustom = prefs.filterIntervalCustom
+        val filterLanguages = prefs.filterLanguages
+
+        val languageBySourceId = HashMap<Long, String>()
+        fun MangaLibraryItem.sourceLang(): String {
+            val sourceId = when (this) {
+                is MangaLibraryItem.Single -> libraryManga.manga.source
+                is MangaLibraryItem.Series -> librarySeries.entries.firstOrNull()?.manga?.source
+            } ?: return ""
+            return languageBySourceId.getOrPut(sourceId) { sourceManager.getOrStub(sourceId).lang }
+        }
+        val filterFnLanguage: (MangaLibraryItem) -> Boolean = { item ->
+            filterLanguages.isEmpty() || item.sourceLang() in filterLanguages
+        }
 
         val isNotLoggedInAnyTrack = trackingFilter.isEmpty()
 
@@ -440,6 +466,7 @@ class MangaLibraryScreenModel(
                 filterFnBookmarked(it) &&
                 filterFnCompleted(it) &&
                 filterFnIntervalCustom(it) &&
+                filterFnLanguage(it) &&
                 filterFnTracking(it)
         }
 
@@ -721,6 +748,7 @@ class MangaLibraryScreenModel(
             filterCompleted,
             filterIntervalCustom,
         ).any { it != TriState.DISABLED } ||
+            filterLanguages.isNotEmpty() ||
             trackingFilter.values.any { it != TriState.DISABLED }
     }
 
@@ -739,7 +767,10 @@ class MangaLibraryScreenModel(
             libraryPreferences.filterBookmarkedManga().changes(),
             libraryPreferences.filterCompletedManga().changes(),
             libraryPreferences.filterIntervalCustom().changes(),
+            libraryPreferences.filterMangaLanguages().changes(),
         ) {
+            @Suppress("UNCHECKED_CAST")
+            val filterLanguages = it[12] as Set<String>
             ItemPreferences(
                 downloadBadge = it[0] as Boolean,
                 unreadBadge = it[1] as Boolean,
@@ -753,6 +784,7 @@ class MangaLibraryScreenModel(
                 filterBookmarked = it[9] as TriState,
                 filterCompleted = it[10] as TriState,
                 filterIntervalCustom = it[11] as TriState,
+                filterLanguages = filterLanguages,
             )
         }
     }
@@ -1122,6 +1154,21 @@ class MangaLibraryScreenModel(
         mutableState.update { it.copy(searchQuery = query) }
     }
 
+    fun toggleLanguage(language: String) {
+        val current = libraryPreferences.filterMangaLanguages().get()
+        libraryPreferences.filterMangaLanguages().set(
+            if (language in current) current - language else current + language,
+        )
+    }
+
+    fun setAllLanguages(languages: Set<String>) {
+        libraryPreferences.filterMangaLanguages().set(languages)
+    }
+
+    fun clearLanguageFilter() {
+        libraryPreferences.filterMangaLanguages().set(emptySet())
+    }
+
     fun openChangeCategoryDialog() {
         screenModelScope.launchIO {
             // Create a copy of selected manga
@@ -1248,6 +1295,7 @@ class MangaLibraryScreenModel(
     private data class MangaBaseLibraryResult(
         val groupType: Int,
         val hasActiveFilters: Boolean,
+        val libraryLanguages: List<String>,
         val library: MangaLibraryMap,
     )
 
@@ -1266,6 +1314,7 @@ class MangaLibraryScreenModel(
         val filterBookmarked: TriState,
         val filterCompleted: TriState,
         val filterIntervalCustom: TriState,
+        val filterLanguages: Set<String> = emptySet(),
     )
 
     @Immutable
@@ -1275,6 +1324,8 @@ class MangaLibraryScreenModel(
         val searchQuery: String? = null,
         val selection: PersistentList<MangaLibraryItem> = persistentListOf(),
         val hasActiveFilters: Boolean = false,
+        val languageFilter: Set<String> = emptySet(),
+        val libraryLanguages: List<String> = emptyList(),
         val showCategoryTabs: Boolean = false,
         val showMangaCount: Boolean = false,
         val showMangaContinueButton: Boolean = false,

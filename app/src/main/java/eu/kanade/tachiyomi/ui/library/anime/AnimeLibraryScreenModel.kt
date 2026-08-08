@@ -45,6 +45,8 @@ import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -53,10 +55,12 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.common.util.lang.compareToWithCollator
@@ -110,6 +114,7 @@ class AnimeLibraryScreenModel(
     private val downloadManager: AnimeDownloadManager = Injekt.get(),
     private val downloadCache: AnimeDownloadCache = Injekt.get(),
     private val trackerManager: TrackerManager = Injekt.get(),
+    private val libraryDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : StateScreenModel<AnimeLibraryScreenModel.State>(
     State(
         groupType = if (libraryPreferences.globalGroupLibrary().get()) {
@@ -125,7 +130,7 @@ class AnimeLibraryScreenModel(
     )
 
     init {
-        screenModelScope.launchIO {
+        screenModelScope.launch {
             val baseLibraryFlow = combine(
                 getLibraryFlow(),
                 getTracksPerAnime.subscribe(),
@@ -147,9 +152,20 @@ class AnimeLibraryScreenModel(
                 val hasActiveFilters = itemPreferences.hasActiveFilters(trackingFilter)
                 val sourceCategories = library.keys.toList()
 
+                val languageCache = HashMap<Long, String>()
+                val libraryLanguages = library.values.flatten()
+                    .map { item ->
+                        languageCache.getOrPut(item.libraryAnime.anime.source) {
+                            sourceManager.getOrStub(item.libraryAnime.anime.source).lang
+                        }
+                    }
+                    .distinct()
+                    .sorted()
+
                 AnimeBaseLibraryResult(
                     groupType = groupType,
                     hasActiveFilters = hasActiveFilters,
+                    libraryLanguages = libraryLanguages,
                     library = library
                         .applyFilters(itemPreferences, tracks, trackingFilter)
                         .applySort(tracks, trackingFilter.keys)
@@ -163,7 +179,7 @@ class AnimeLibraryScreenModel(
                 state.map { it.searchQuery }.distinctUntilChanged().debounce(SEARCH_DEBOUNCE_MILLIS),
             ) { baseLibrary, searchQuery ->
                 val librarySearchQuery = searchQuery?.let(::LibrarySearchQuery)
-                baseLibrary.library
+                val filteredMap = baseLibrary.library
                     .mapValues { (_, value) ->
                         if (librarySearchQuery != null) {
                             value.filter { it.matches(librarySearchQuery, sourceManager) }.toPersistentList()
@@ -185,12 +201,15 @@ class AnimeLibraryScreenModel(
                             map.filterValues { it.isNotEmpty() }.toPersistentMap()
                         }
                     }
+                filteredMap to baseLibrary.libraryLanguages
             }
-                .collectLatest {
+                .flowOn(libraryDispatcher)
+                .collectLatest { (libraryMap, libraryLanguages) ->
                     mutableState.update { state ->
                         state.copy(
                             isLoading = false,
-                            library = it,
+                            library = libraryMap,
+                            libraryLanguages = libraryLanguages,
                         )
                     }
                 }
@@ -216,21 +235,20 @@ class AnimeLibraryScreenModel(
             getAnimelibItemPreferencesFlow(),
             getTrackingFilterFlow(),
         ) { prefs, trackFilter ->
-            (
-                listOf(
-                    prefs.filterDownloaded,
-                    prefs.filterUnseen,
-                    prefs.filterStarted,
-                    prefs.filterBookmarked,
-                    prefs.filterCompleted,
-                    prefs.filterIntervalCustom,
-                ) + trackFilter.values
-                ).any { it != TriState.DISABLED }
+            prefs.hasActiveFilters(trackFilter)
         }
             .distinctUntilChanged()
             .onEach {
                 mutableState.update { state ->
                     state.copy(hasActiveFilters = it)
+                }
+            }
+            .launchIn(screenModelScope)
+
+        getAnimelibItemPreferencesFlow()
+            .onEach { prefs ->
+                mutableState.update { state ->
+                    state.copy(languageFilter = prefs.filterLanguages)
                 }
             }
             .launchIn(screenModelScope)
@@ -284,6 +302,16 @@ class AnimeLibraryScreenModel(
         val filterBookmarked = prefs.filterBookmarked
         val filterCompleted = prefs.filterCompleted
         val filterIntervalCustom = prefs.filterIntervalCustom
+        val filterLanguages = prefs.filterLanguages
+
+        val languageBySourceId = HashMap<Long, String>()
+        fun AnimeLibraryItem.sourceLang(): String {
+            val sourceId = libraryAnime.anime.source
+            return languageBySourceId.getOrPut(sourceId) { sourceManager.getOrStub(sourceId).lang }
+        }
+        val filterFnLanguage: (AnimeLibraryItem) -> Boolean = { item ->
+            filterLanguages.isEmpty() || item.sourceLang() in filterLanguages
+        }
 
         val isNotLoggedInAnyTrack = trackingFilter.isEmpty()
 
@@ -362,6 +390,7 @@ class AnimeLibraryScreenModel(
                 filterFnBookmarked(it) &&
                 filterFnCompleted(it) &&
                 filterFnIntervalCustom(it) &&
+                filterFnLanguage(it) &&
                 filterFnTracking(it)
         }
 
@@ -620,6 +649,7 @@ class AnimeLibraryScreenModel(
             filterCompleted,
             filterIntervalCustom,
         ).any { it != TriState.DISABLED } ||
+            filterLanguages.isNotEmpty() ||
             trackingFilter.values.any { it != TriState.DISABLED }
     }
 
@@ -638,7 +668,10 @@ class AnimeLibraryScreenModel(
             libraryPreferences.filterBookmarkedAnime().changes(),
             libraryPreferences.filterCompletedAnime().changes(),
             libraryPreferences.filterIntervalCustom().changes(),
+            libraryPreferences.filterAnimeLanguages().changes(),
             transform = {
+                @Suppress("UNCHECKED_CAST")
+                val filterLanguages = it[12] as Set<String>
                 ItemPreferences(
                     downloadBadge = it[0] as Boolean,
                     unseenBadge = it[1] as Boolean,
@@ -652,6 +685,7 @@ class AnimeLibraryScreenModel(
                     filterBookmarked = it[9] as TriState,
                     filterCompleted = it[10] as TriState,
                     filterIntervalCustom = it[11] as TriState,
+                    filterLanguages = filterLanguages,
                 )
             },
         )
@@ -991,6 +1025,21 @@ class AnimeLibraryScreenModel(
         mutableState.update { it.copy(searchQuery = query) }
     }
 
+    fun toggleLanguage(language: String) {
+        val current = libraryPreferences.filterAnimeLanguages().get()
+        libraryPreferences.filterAnimeLanguages().set(
+            if (language in current) current - language else current + language,
+        )
+    }
+
+    fun setAllLanguages(languages: Set<String>) {
+        libraryPreferences.filterAnimeLanguages().set(languages)
+    }
+
+    fun clearLanguageFilter() {
+        libraryPreferences.filterAnimeLanguages().set(emptySet())
+    }
+
     fun openChangeCategoryDialog() {
         screenModelScope.launchIO {
             // Create a copy of selected anime
@@ -1037,6 +1086,7 @@ class AnimeLibraryScreenModel(
     private data class AnimeBaseLibraryResult(
         val groupType: Int,
         val hasActiveFilters: Boolean,
+        val libraryLanguages: List<String>,
         val library: AnimeLibraryMap,
     )
 
@@ -1055,6 +1105,7 @@ class AnimeLibraryScreenModel(
         val filterBookmarked: TriState,
         val filterCompleted: TriState,
         val filterIntervalCustom: TriState,
+        val filterLanguages: Set<String> = emptySet(),
     )
 
     @Immutable
@@ -1064,6 +1115,8 @@ class AnimeLibraryScreenModel(
         val searchQuery: String? = null,
         val selection: PersistentList<LibraryAnime> = persistentListOf(),
         val hasActiveFilters: Boolean = false,
+        val languageFilter: Set<String> = emptySet(),
+        val libraryLanguages: List<String> = emptyList(),
         val showCategoryTabs: Boolean = false,
         val showAnimeCount: Boolean = false,
         val showAnimeContinueButton: Boolean = false,

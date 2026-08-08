@@ -60,6 +60,8 @@
     <string name="action_filter_interval_custom">Customized update frequency</string>
     <!-- reserved for #4048 -->
     <string name="action_filter_empty">Remove filter</string>
+    <string name="all_languages">All languages</string>
+    <string name="filter_language">Language</string>
     <string name="action_sort_alpha">Alphabetically</string>
     <string name="action_sort_count">Total entries</string>
     <string name="action_sort_total">Total chapters</string>
@@ -90,6 +92,7 @@
     <string name="action_disable_all">Disable all</string>
     <string name="action_edit">Edit</string>
     <string name="action_add">Add</string>
+    <string name="action_clear">Clear</string>
     <string name="label_display_name">Display name</string>
     <string name="display_name_auto_detected">Auto-detected</string>
     <string name="action_update_category">Update category</string>

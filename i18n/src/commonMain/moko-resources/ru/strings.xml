@@ -37,6 +37,7 @@
     <string name="action_retry">Повторить</string>
     <string name="action_save">Сохранить</string>
     <string name="action_search">Искать</string>
+    <string name="action_clear">Очистить</string>
     <string name="action_select_all">Выбрать всё</string>
     <string name="action_settings">Настройки</string>
     <string name="action_share">Поделиться</string>
@@ -45,6 +46,8 @@
     <string name="action_sort_last_read">Последнее прочитанное</string>
     <string name="action_update_library">Обновить библиотеку</string>
     <string name="all">Все</string>
+    <string name="all_languages">Все языки</string>
+    <string name="filter_language">Язык</string>
     <string name="black_background">Чёрный</string>
     <string name="cache_delete_error">Возникла ошибка при очистке</string>
     <string name="cache_deleted">Кэш очищен, %1$d файлов удалено</string>

@@ -41,6 +41,7 @@ class MigrateAnimeSearchScreen(private val animeId: Long) : Screen() {
             },
             getAnime = { screenModel.getAnime(it) },
             onChangeSearchFilter = screenModel::setSourceFilter,
+            onChangeLanguageFilter = screenModel::setLanguageFilter,
             onToggleResults = screenModel::toggleFilterResults,
             onClickSource = {
                 navigator.push(

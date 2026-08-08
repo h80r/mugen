@@ -79,6 +79,7 @@ class GlobalNovelSearchScreen(
                         }
                     },
                     onChangeSearchFilter = screenModel::setSourceFilter,
+                    onChangeLanguageFilter = screenModel::setLanguageFilter,
                     onToggleResults = screenModel::toggleFilterResults,
                     getNovel = { screenModel.getNovel(it) },
                     onClickSource = {
