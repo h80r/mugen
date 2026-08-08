@@ -1534,7 +1534,7 @@ internal fun resolveCoverUrl(
     ).coverUrl.takeIf { it.isNotBlank() }
 }
 
-private fun formatTime(milliseconds: Long, useDayFormat: Boolean = false): String {
+fun formatTime(milliseconds: Long, useDayFormat: Boolean = false): String {
     return if (useDayFormat) {
         String.format(
             "Airing in %02dd %02dh %02dm %02ds",
