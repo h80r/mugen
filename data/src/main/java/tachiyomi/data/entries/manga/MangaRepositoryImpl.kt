@@ -25,7 +25,7 @@ class MangaRepositoryImpl(
         return handler.awaitOne { db -> db.mangasQueries.getMangaById(id, MangaMapper::mapManga) }
     }
 
-    override suspend fun getMangaByIdAsFlow(id: Long): Flow<Manga> {
+    override fun getMangaByIdAsFlow(id: Long): Flow<Manga> {
         return handler.subscribeToOne { db -> db.mangasQueries.getMangaById(id, MangaMapper::mapManga) }
     }
 
@@ -75,7 +75,7 @@ class MangaRepositoryImpl(
         }
     }
 
-    override suspend fun getUpcomingManga(statuses: Set<Long>): Flow<List<Manga>> {
+    override fun getUpcomingManga(statuses: Set<Long>): Flow<List<Manga>> {
         val epochMillis = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toEpochSecond() * 1000
         return handler.subscribeToList { db ->
             db.mangasQueries.getUpcomingManga(epochMillis, statuses, MangaMapper::mapManga)

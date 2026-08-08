@@ -2,7 +2,7 @@ package eu.kanade.tachiyomi.ui.history.manga
 
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Immutable
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.entries.manga.interactor.UpdateManga
@@ -15,14 +15,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
@@ -60,7 +63,7 @@ class MangaHistoryScreenModel(
     private val updateManga: UpdateManga = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
     private val sourceManager: MangaSourceManager = Injekt.get(),
-) : StateScreenModel<MangaHistoryScreenModel.State>(State()) {
+) : ScreenModel {
 
     private val _events: Channel<Event> = Channel(Channel.UNLIMITED)
     val events: Flow<Event> = _events.receiveAsFlow()
@@ -68,21 +71,29 @@ class MangaHistoryScreenModel(
     private val _query: MutableStateFlow<String?> = MutableStateFlow(null)
     val query: StateFlow<String?> = _query.asStateFlow()
 
-    init {
-        screenModelScope.launch {
-            _query.collectLatest { query ->
-                getHistory.subscribe(query ?: "")
-                    .distinctUntilChanged()
-                    .catch { error ->
-                        logcat(LogPriority.ERROR, error)
-                        _events.send(Event.InternalError)
-                    }
-                    .map { it.toHistoryUiModels() }
-                    .flowOn(Dispatchers.IO)
-                    .collect { newList -> mutableState.update { it.copy(list = newList) } }
-            }
-        }
-    }
+    private val searchQueryState = MutableStateFlow<String?>(null)
+    private val dialogState = MutableStateFlow<Dialog?>(null)
+
+    val state: StateFlow<State> = combine(
+        _query.flatMapLatest { query ->
+            getHistory.subscribe(query ?: "")
+                .distinctUntilChanged()
+                .catch { error ->
+                    logcat(LogPriority.ERROR, error)
+                    _events.send(Event.InternalError)
+                }
+                .map { it.toHistoryUiModels() }
+                .flowOn(Dispatchers.IO)
+        },
+        dialogState,
+        searchQueryState,
+    ) { list, dialog, searchQuery ->
+        State(
+            searchQuery = searchQuery,
+            list = list,
+            dialog = dialog,
+        )
+    }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), State())
 
     fun search(query: String?) {
         screenModelScope.launchIO {
@@ -139,11 +150,11 @@ class MangaHistoryScreenModel(
     }
 
     fun updateSearchQuery(query: String?) {
-        mutableState.update { it.copy(searchQuery = query) }
+        searchQueryState.update { query }
     }
 
     fun setDialog(dialog: Dialog?) {
-        mutableState.update { it.copy(dialog = dialog) }
+        dialogState.update { dialog }
     }
 
     /**
@@ -187,7 +198,7 @@ class MangaHistoryScreenModel(
 
             val duplicate = getDuplicateLibraryManga.await(manga).getOrNull(0)
             if (duplicate != null) {
-                mutableState.update { it.copy(dialog = Dialog.DuplicateManga(manga, duplicate)) }
+                dialogState.update { Dialog.DuplicateManga(manga, duplicate) }
                 return@launchIO
             }
 
@@ -227,21 +238,17 @@ class MangaHistoryScreenModel(
     }
 
     fun showMigrateDialog(currentManga: Manga, duplicate: Manga) {
-        mutableState.update { currentState ->
-            currentState.copy(dialog = Dialog.Migrate(newManga = currentManga, oldManga = duplicate))
-        }
+        dialogState.update { Dialog.Migrate(newManga = currentManga, oldManga = duplicate) }
     }
 
     fun showChangeCategoryDialog(manga: Manga) {
         screenModelScope.launch {
             val categories = getCategories()
             val selection = getMangaCategoryIds(manga)
-            mutableState.update { currentState ->
-                currentState.copy(
-                    dialog = Dialog.ChangeCategory(
-                        manga = manga,
-                        initialSelection = categories.mapAsCheckboxState { it.id in selection }.toImmutableList(),
-                    ),
+            dialogState.update {
+                Dialog.ChangeCategory(
+                    manga = manga,
+                    initialSelection = categories.mapAsCheckboxState { it.id in selection }.toImmutableList(),
                 )
             }
         }

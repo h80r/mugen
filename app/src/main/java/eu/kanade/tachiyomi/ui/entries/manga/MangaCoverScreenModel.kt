@@ -3,7 +3,7 @@ package eu.kanade.tachiyomi.ui.entries.manga
 import android.content.Context
 import android.net.Uri
 import androidx.compose.material3.SnackbarHostState
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import coil3.asDrawable
 import coil3.imageLoader
@@ -17,7 +17,9 @@ import eu.kanade.tachiyomi.data.saver.Location
 import eu.kanade.tachiyomi.util.editCover
 import eu.kanade.tachiyomi.util.system.getBitmapOrNull
 import eu.kanade.tachiyomi.util.system.toShareIntent
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
@@ -39,14 +41,10 @@ class MangaCoverScreenModel(
     private val updateManga: UpdateManga = Injekt.get(),
 
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
-) : StateScreenModel<Manga?>(null) {
+) : ScreenModel {
 
-    init {
-        screenModelScope.launchIO {
-            getManga.subscribe(mangaId)
-                .collect { newManga -> mutableState.update { newManga } }
-        }
-    }
+    val state: StateFlow<Manga?> = getManga.subscribe(mangaId)
+        .stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     fun saveCover(context: Context) {
         screenModelScope.launch {

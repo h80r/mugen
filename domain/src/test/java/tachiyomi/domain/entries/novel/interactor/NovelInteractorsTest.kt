@@ -100,7 +100,7 @@ class NovelInteractorsTest {
             return checkNotNull(novelById)
         }
 
-        override suspend fun getNovelByIdAsFlow(id: Long) = novelFlow
+        override fun getNovelByIdAsFlow(id: Long) = novelFlow
 
         override suspend fun getNovelByUrlAndSourceId(url: String, sourceId: Long) = novelByUrl
 
@@ -109,7 +109,7 @@ class NovelInteractorsTest {
         override suspend fun getNovelFavorites(): List<Novel> = emptyList()
 
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
-        override suspend fun getUpcomingNovels(statuses: Set<Long>) =
+        override fun getUpcomingNovels(statuses: Set<Long>) =
             kotlinx.coroutines.flow.flowOf(emptyList<Novel>())
 
         override suspend fun getLibraryNovel(): List<LibraryNovel> = library

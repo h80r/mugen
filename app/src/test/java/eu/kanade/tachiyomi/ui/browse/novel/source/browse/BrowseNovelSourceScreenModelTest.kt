@@ -477,14 +477,14 @@ class BrowseNovelSourceScreenModelTest {
         private val favorites: List<Novel>
         var lastNovelUpdate: NovelUpdate? = null
         override suspend fun getNovelById(id: Long): Novel = Novel.create()
-        override suspend fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(Novel.create())
+        override fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(Novel.create())
         override suspend fun getNovelByUrlAndSourceId(url: String, sourceId: Long): Novel? = null
         override fun getNovelByUrlAndSourceIdAsFlow(url: String, sourceId: Long) =
             MutableStateFlow<Novel?>(null)
         override suspend fun getNovelFavorites(): List<Novel> = favorites
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
 
-        override suspend fun getUpcomingNovels(statuses: Set<Long>): kotlinx.coroutines.flow.Flow<List<Novel>> =
+        override fun getUpcomingNovels(statuses: Set<Long>): kotlinx.coroutines.flow.Flow<List<Novel>> =
             kotlinx.coroutines.flow.flowOf(emptyList())
         override suspend fun getLibraryNovel() = emptyList<tachiyomi.domain.library.novel.LibraryNovel>()
         override fun getLibraryNovelAsFlow() = MutableStateFlow(

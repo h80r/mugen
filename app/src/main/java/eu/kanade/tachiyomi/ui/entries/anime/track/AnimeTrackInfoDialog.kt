@@ -59,10 +59,12 @@ import eu.kanade.tachiyomi.util.system.copyToClipboard
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
@@ -202,25 +204,19 @@ data class AnimeTrackInfoDialogHomeScreen(
         private val animeId: Long,
         private val sourceId: Long,
         private val getTracks: GetAnimeTracks = Injekt.get(),
-    ) : StateScreenModel<Model.State>(State()) {
+    ) : ScreenModel {
+
+        val state: StateFlow<Model.State> = getTracks.subscribe(animeId)
+            .catch { logcat(LogPriority.ERROR, it) }
+            .distinctUntilChanged()
+            .map { tracks ->
+                State(trackItems = tracks.mapToTrackItem())
+            }
+            .stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), State())
 
         init {
             screenModelScope.launch {
                 refreshTrackers()
-            }
-
-            screenModelScope.launch {
-                getTracks.subscribe(animeId)
-                    .catch { logcat(LogPriority.ERROR, it) }
-                    .distinctUntilChanged()
-                    .map { it.mapToTrackItem() }
-                    .collectLatest { trackItems ->
-                        mutableState.update {
-                            it.copy(
-                                trackItems = trackItems,
-                            )
-                        }
-                    }
             }
         }
 

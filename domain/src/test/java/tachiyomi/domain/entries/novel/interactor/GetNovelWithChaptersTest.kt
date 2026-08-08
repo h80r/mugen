@@ -46,13 +46,13 @@ class GetNovelWithChaptersTest {
         private val novelFlow: MutableStateFlow<Novel>,
     ) : NovelRepository {
         override suspend fun getNovelById(id: Long): Novel = novelFlow.value
-        override suspend fun getNovelByIdAsFlow(id: Long) = novelFlow
+        override fun getNovelByIdAsFlow(id: Long) = novelFlow
         override suspend fun getNovelByUrlAndSourceId(url: String, sourceId: Long): Novel? = null
         override fun getNovelByUrlAndSourceIdAsFlow(url: String, sourceId: Long) =
             MutableStateFlow<Novel?>(null)
         override suspend fun getNovelFavorites(): List<Novel> = emptyList()
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
-        override suspend fun getUpcomingNovels(statuses: Set<Long>) =
+        override fun getUpcomingNovels(statuses: Set<Long>) =
             kotlinx.coroutines.flow.flowOf(emptyList<Novel>())
         override suspend fun getLibraryNovel() = emptyList<tachiyomi.domain.library.novel.LibraryNovel>()
         override fun getLibraryNovelAsFlow() = MutableStateFlow(
@@ -103,7 +103,7 @@ class GetNovelWithChaptersTest {
         override fun getScanlatorsByNovelIdAsFlow(novelId: Long): Flow<List<String>> = MutableStateFlow(emptyList())
         override suspend fun getBookmarkedChaptersByNovelId(novelId: Long): List<NovelChapter> = emptyList()
         override suspend fun getChapterById(id: Long): NovelChapter? = null
-        override suspend fun getChapterByNovelIdAsFlow(
+        override fun getChapterByNovelIdAsFlow(
             novelId: Long,
             applyScanlatorFilter: Boolean,
         ) = chaptersFlow

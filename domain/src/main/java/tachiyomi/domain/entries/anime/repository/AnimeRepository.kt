@@ -11,7 +11,7 @@ interface AnimeRepository {
 
     suspend fun getAnimeById(id: Long): Anime
 
-    suspend fun getAnimeByIdAsFlow(id: Long): Flow<Anime>
+    fun getAnimeByIdAsFlow(id: Long): Flow<Anime>
 
     suspend fun getAnimeByUrlAndSourceId(url: String, sourceId: Long): Anime?
 
@@ -33,7 +33,7 @@ interface AnimeRepository {
 
     suspend fun getDuplicateLibraryAnime(id: Long, title: String): List<Anime>
 
-    suspend fun getUpcomingAnime(statuses: Set<Long>): Flow<List<Anime>>
+    fun getUpcomingAnime(statuses: Set<Long>): Flow<List<Anime>>
 
     suspend fun resetAnimeViewerFlags(): Boolean
 

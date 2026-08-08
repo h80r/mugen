@@ -28,7 +28,7 @@ class AnimeRepositoryImpl(
         return handler.awaitOne { db -> db.animesQueries.getAnimeById(id, AnimeMapper::mapAnime) }
     }
 
-    override suspend fun getAnimeByIdAsFlow(id: Long): Flow<Anime> {
+    override fun getAnimeByIdAsFlow(id: Long): Flow<Anime> {
         return handler.subscribeToOne { db -> db.animesQueries.getAnimeById(id, AnimeMapper::mapAnime) }
     }
 
@@ -90,7 +90,7 @@ class AnimeRepositoryImpl(
         }
     }
 
-    override suspend fun getUpcomingAnime(statuses: Set<Long>): Flow<List<Anime>> {
+    override fun getUpcomingAnime(statuses: Set<Long>): Flow<List<Anime>> {
         val epochMillis = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toEpochSecond() * 1000
         return handler.subscribeToList { db ->
             db.animesQueries.getUpcomingAnime(epochMillis, statuses, AnimeMapper::mapAnime)

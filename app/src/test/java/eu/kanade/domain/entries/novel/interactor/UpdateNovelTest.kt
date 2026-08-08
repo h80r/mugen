@@ -91,7 +91,7 @@ class UpdateNovelTest {
 
         override suspend fun getNovelById(id: Long): Novel = Novel.create()
 
-        override suspend fun getNovelByIdAsFlow(id: Long) = novelFlow
+        override fun getNovelByIdAsFlow(id: Long) = novelFlow
 
         override suspend fun getNovelByUrlAndSourceId(url: String, sourceId: Long): Novel? = null
 
@@ -101,7 +101,7 @@ class UpdateNovelTest {
 
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
 
-        override suspend fun getUpcomingNovels(statuses: Set<Long>): kotlinx.coroutines.flow.Flow<List<Novel>> =
+        override fun getUpcomingNovels(statuses: Set<Long>): kotlinx.coroutines.flow.Flow<List<Novel>> =
             kotlinx.coroutines.flow.flowOf(emptyList())
 
         override suspend fun getLibraryNovel() = emptyList<tachiyomi.domain.library.novel.LibraryNovel>()

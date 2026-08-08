@@ -139,7 +139,7 @@ class NetworkToLocalNovelTest {
         var inserted: Novel? = null
 
         override suspend fun getNovelById(id: Long): Novel = error("not used")
-        override suspend fun getNovelByIdAsFlow(id: Long) = error("not used")
+        override fun getNovelByIdAsFlow(id: Long) = error("not used")
         override suspend fun getNovelByUrlAndSourceId(url: String, sourceId: Long): Novel? {
             if (lookupResults.isNotEmpty()) {
                 return lookupResults.removeAt(0)
@@ -149,7 +149,7 @@ class NetworkToLocalNovelTest {
         override fun getNovelByUrlAndSourceIdAsFlow(url: String, sourceId: Long) = error("not used")
         override suspend fun getNovelFavorites(): List<Novel> = error("not used")
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = error("not used")
-        override suspend fun getUpcomingNovels(statuses: Set<Long>) =
+        override fun getUpcomingNovels(statuses: Set<Long>) =
             kotlinx.coroutines.flow.flowOf(emptyList<Novel>())
         override suspend fun getLibraryNovel(): List<LibraryNovel> = error("not used")
         override fun getLibraryNovelAsFlow() = error("not used")

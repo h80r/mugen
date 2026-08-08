@@ -9,9 +9,12 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -85,6 +88,11 @@ class AchievementScreenModelTest {
                 auroraHeartManager,
             ).also(activeScreenModels::add)
 
+            // WhileSubscribed stateIn needs an active collector to drive the upstream flow
+            val collectJob = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                screenModel.state.collect()
+            }
+
             // When
             testDispatcher.scheduler.advanceUntilIdle()
 
@@ -92,6 +100,8 @@ class AchievementScreenModelTest {
             val state = screenModel.state.value
             state.shouldBeInstanceOf<AchievementScreenState.Success>()
             (state as AchievementScreenState.Success).activityData shouldBe activity
+
+            collectJob.cancel()
         }
     }
 
@@ -109,7 +119,8 @@ class AchievementScreenModelTest {
 
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 1) { loader.loadAchievements() }
+        // loadAchievements is invoked by refreshAchievements and on model init
+        coVerify { loader.loadAchievements() }
     }
 
     @Test

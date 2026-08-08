@@ -9,7 +9,7 @@ interface MangaRepository {
 
     suspend fun getMangaById(id: Long): Manga
 
-    suspend fun getMangaByIdAsFlow(id: Long): Flow<Manga>
+    fun getMangaByIdAsFlow(id: Long): Flow<Manga>
 
     suspend fun getMangaByUrlAndSourceId(url: String, sourceId: Long): Manga?
 
@@ -27,7 +27,7 @@ interface MangaRepository {
 
     suspend fun getDuplicateLibraryManga(id: Long, title: String): List<Manga>
 
-    suspend fun getUpcomingManga(statuses: Set<Long>): Flow<List<Manga>>
+    fun getUpcomingManga(statuses: Set<Long>): Flow<List<Manga>>
 
     suspend fun resetMangaViewerFlags(): Boolean
 

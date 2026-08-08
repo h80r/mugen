@@ -25,7 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastMap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -39,7 +39,12 @@ import eu.kanade.presentation.more.settings.rememberResolvedSettingsUiStyle
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.launchIO
@@ -189,26 +194,25 @@ class ClearDatabaseScreen : Screen() {
     }
 }
 
-private class ClearDatabaseScreenModel : StateScreenModel<ClearDatabaseScreenModel.State>(
-    State.Loading,
-) {
+private class ClearDatabaseScreenModel : ScreenModel {
     private val getSourcesWithNonLibraryManga: GetMangaSourcesWithNonLibraryManga = Injekt.get()
     private val database: Database = Injekt.get()
 
-    init {
-        screenModelScope.launchIO {
-            getSourcesWithNonLibraryManga.subscribe()
-                .collectLatest { list ->
-                    mutableState.update { old ->
-                        val items = list.sortedBy { it.name }
-                        when (old) {
-                            State.Loading -> State.Ready(items)
-                            is State.Ready -> old.copy(items = items)
-                        }
-                    }
-                }
-        }
-    }
+    private val selectionState = MutableStateFlow<List<Long>>(emptyList())
+    private val showConfirmationState = MutableStateFlow(false)
+
+    val state: StateFlow<State> = combine(
+        getSourcesWithNonLibraryManga.subscribe()
+            .map { list -> list.sortedBy { it.name } },
+        selectionState,
+        showConfirmationState,
+    ) { items, selection, showConfirmation ->
+        State.Ready(
+            items = items,
+            selection = selection,
+            showConfirmation = showConfirmation,
+        )
+    }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), State.Loading)
 
     suspend fun removeMangaBySourceId() = withNonCancellableContext {
         val state = state.value as? State.Ready ?: return@withNonCancellableContext
@@ -216,44 +220,35 @@ private class ClearDatabaseScreenModel : StateScreenModel<ClearDatabaseScreenMod
         database.historyQueries.removeResettedHistory()
     }
 
-    fun toggleSelection(source: Source) = mutableState.update { state ->
-        if (state !is State.Ready) return@update state
-        val mutableList = state.selection.toMutableList()
-        if (mutableList.contains(source.id)) {
-            mutableList.remove(source.id)
-        } else {
-            mutableList.add(source.id)
+    fun toggleSelection(source: Source) {
+        selectionState.update { selection ->
+            if (source.id in selection) selection - source.id else selection + source.id
         }
-        state.copy(selection = mutableList)
     }
 
-    fun clearSelection() = mutableState.update { state ->
-        if (state !is State.Ready) return@update state
-        state.copy(selection = emptyList())
+    fun clearSelection() {
+        selectionState.update { emptyList() }
     }
 
-    fun selectAll() = mutableState.update { state ->
-        if (state !is State.Ready) return@update state
-        state.copy(selection = state.items.fastMap { it.id })
+    fun selectAll() {
+        selectionState.update {
+            (state.value as? State.Ready)?.items?.fastMap { it.id } ?: it
+        }
     }
 
-    fun invertSelection() = mutableState.update { state ->
-        if (state !is State.Ready) return@update state
-        state.copy(
-            selection = state.items
-                .fastMap { it.id }
-                .filterNot { it in state.selection },
-        )
+    fun invertSelection() {
+        selectionState.update {
+            val ready = state.value as? State.Ready ?: return@update it
+            ready.items.fastMap { it.id }.filterNot { id -> id in ready.selection }
+        }
     }
 
-    fun showConfirmation() = mutableState.update { state ->
-        if (state !is State.Ready) return@update state
-        state.copy(showConfirmation = true)
+    fun showConfirmation() {
+        showConfirmationState.update { true }
     }
 
-    fun hideConfirmation() = mutableState.update { state ->
-        if (state !is State.Ready) return@update state
-        state.copy(showConfirmation = false)
+    fun hideConfirmation() {
+        showConfirmationState.update { false }
     }
 
     sealed interface State {

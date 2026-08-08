@@ -1,14 +1,19 @@
 package eu.kanade.presentation.more.settings.screen.player.custombutton
 
 import androidx.compose.runtime.Immutable
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import dev.icerock.moko.resources.StringResource
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tachiyomi.domain.custombuttons.interactor.CreateCustomButton
@@ -30,23 +35,22 @@ class PlayerSettingsCustomButtonScreenModel(
     private val updateCustomButton: UpdateCustomButton = Injekt.get(),
     private val reorderCustomButton: ReorderCustomButton = Injekt.get(),
     private val toggleFavoriteCustomButton: ToggleFavoriteCustomButton = Injekt.get(),
-) : StateScreenModel<CustomButtonScreenState>(CustomButtonScreenState.Loading) {
+) : ScreenModel {
 
     private val _events: Channel<CustomButtonEvent> = Channel()
     val events = _events.receiveAsFlow()
 
-    init {
-        screenModelScope.launch {
-            getCustomButtons.subscribeAll()
-                .collectLatest { customButtons ->
-                    mutableState.update {
-                        CustomButtonScreenState.Success(
-                            customButtons = customButtons.toImmutableList(),
-                        )
-                    }
-                }
-        }
-    }
+    private val dialogState = MutableStateFlow<CustomButtonDialog?>(null)
+
+    val state: StateFlow<CustomButtonScreenState> = combine(
+        getCustomButtons.subscribeAll(),
+        dialogState,
+    ) { customButtons, dialog ->
+        CustomButtonScreenState.Success(
+            customButtons = customButtons.toImmutableList(),
+            dialog = dialog,
+        )
+    }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), CustomButtonScreenState.Loading)
 
     fun createCustomButton(name: String, content: String, longPressContent: String, onStartup: String) {
         screenModelScope.launch {
@@ -104,21 +108,11 @@ class PlayerSettingsCustomButtonScreenModel(
     }
 
     fun showDialog(dialog: CustomButtonDialog) {
-        mutableState.update {
-            when (it) {
-                CustomButtonScreenState.Loading -> it
-                is CustomButtonScreenState.Success -> it.copy(dialog = dialog)
-            }
-        }
+        dialogState.update { dialog }
     }
 
     fun dismissDialog() {
-        mutableState.update {
-            when (it) {
-                CustomButtonScreenState.Loading -> it
-                is CustomButtonScreenState.Success -> it.copy(dialog = null)
-            }
-        }
+        dialogState.update { null }
     }
 }
 

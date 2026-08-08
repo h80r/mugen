@@ -1,15 +1,19 @@
 package eu.kanade.presentation.more.settings.screen.browse
 
 import androidx.compose.runtime.Immutable
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import logcat.LogPriority
 import mihon.domain.extensionrepo.manga.interactor.CreateMangaExtensionRepo
@@ -31,29 +35,29 @@ class MangaExtensionStoreScreenModel(
     private val replaceExtensionRepo: ReplaceMangaExtensionRepo = Injekt.get(),
     private val updateExtensionRepo: UpdateMangaExtensionRepo = Injekt.get(),
     private val extensionManager: MangaExtensionManager = Injekt.get(),
-) : StateScreenModel<RepoScreenState>(RepoScreenState.Loading) {
+) : ScreenModel {
 
     private val _events: Channel<RepoEvent> = Channel(Int.MAX_VALUE)
     val events = _events.receiveAsFlow()
+
+    private val dialogState = MutableStateFlow<RepoDialog?>(null)
 
     init {
         screenModelScope.launchIO {
             // Trigger legacy port on first open of extension store screen (after Home launch)
             getExtensionRepo.getAll() // this will call ensureLegacyMigrated inside
-            getExtensionRepo.subscribeAll()
-                .collectLatest { repos ->
-                    mutableState.update { current ->
-                        RepoScreenState.Success(
-                            repos = repos.toImmutableSet(),
-                            // Carry over a dialog requested while still loading (deep link) or one
-                            // the user has open, instead of dropping it on every list update.
-                            dialog = consumePendingDialog()
-                                ?: (current as? RepoScreenState.Success)?.dialog,
-                        )
-                    }
-                }
         }
     }
+
+    val state: StateFlow<RepoScreenState> = combine(
+        getExtensionRepo.subscribeAll(),
+        dialogState,
+    ) { repos, dialog ->
+        RepoScreenState.Success(
+            repos = repos.toImmutableSet(),
+            dialog = dialog,
+        )
+    }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), RepoScreenState.Loading)
 
     /**
      * Creates and adds a new repo to the database.
@@ -152,36 +156,12 @@ class MangaExtensionStoreScreenModel(
             }
     }
 
-    @Volatile
-    private var pendingDialog: RepoDialog? = null
-
-    private fun consumePendingDialog(): RepoDialog? {
-        val dialog = pendingDialog
-        pendingDialog = null
-        return dialog
-    }
-
     fun showDialog(dialog: RepoDialog) {
-        mutableState.update {
-            when (it) {
-                // Deep links (tachiyomi://add-repo and friends) reach the screen on the first frame,
-                // before the repo list has loaded; remember the request instead of dropping it.
-                RepoScreenState.Loading -> {
-                    pendingDialog = dialog
-                    it
-                }
-                is RepoScreenState.Success -> it.copy(dialog = dialog)
-            }
-        }
+        dialogState.update { dialog }
     }
 
     fun dismissDialog() {
-        mutableState.update {
-            when (it) {
-                RepoScreenState.Loading -> it
-                is RepoScreenState.Success -> it.copy(dialog = null)
-            }
-        }
+        dialogState.update { null }
     }
 }
 

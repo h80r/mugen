@@ -237,7 +237,7 @@ class NovelScreenModelTest {
                         MutableStateFlow(emptyList())
                     override suspend fun getBookmarkedChaptersByNovelId(novelId: Long): List<NovelChapter> = emptyList()
                     override suspend fun getChapterById(id: Long): NovelChapter? = null
-                    override suspend fun getChapterByNovelIdAsFlow(
+                    override fun getChapterByNovelIdAsFlow(
                         novelId: Long,
                         applyScanlatorFilter: Boolean,
                     ): Flow<List<NovelChapter>> = MutableStateFlow(emptyList())
@@ -291,7 +291,7 @@ class NovelScreenModelTest {
                     MutableStateFlow(emptyList())
                 override suspend fun getBookmarkedChaptersByNovelId(novelId: Long): List<NovelChapter> = emptyList()
                 override suspend fun getChapterById(id: Long): NovelChapter? = null
-                override suspend fun getChapterByNovelIdAsFlow(
+                override fun getChapterByNovelIdAsFlow(
                     novelId: Long,
                     applyScanlatorFilter: Boolean,
                 ): Flow<List<NovelChapter>> = MutableStateFlow(emptyList())
@@ -324,7 +324,7 @@ class NovelScreenModelTest {
                         MutableStateFlow(emptyList())
                     override suspend fun getBookmarkedChaptersByNovelId(novelId: Long): List<NovelChapter> = emptyList()
                     override suspend fun getChapterById(id: Long): NovelChapter? = null
-                    override suspend fun getChapterByNovelIdAsFlow(
+                    override fun getChapterByNovelIdAsFlow(
                         novelId: Long,
                         applyScanlatorFilter: Boolean,
                     ): Flow<List<NovelChapter>> = MutableStateFlow(emptyList())
@@ -340,13 +340,13 @@ class NovelScreenModelTest {
                 updateNovel = UpdateNovel(
                     novelRepository = object : tachiyomi.domain.entries.novel.repository.NovelRepository {
                         override suspend fun getNovelById(id: Long): Novel = Novel.create()
-                        override suspend fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(Novel.create())
+                        override fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(Novel.create())
                         override suspend fun getNovelByUrlAndSourceId(url: String, sourceId: Long): Novel? = null
                         override fun getNovelByUrlAndSourceIdAsFlow(url: String, sourceId: Long) =
                             MutableStateFlow<Novel?>(null)
                         override suspend fun getNovelFavorites(): List<Novel> = emptyList()
                         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
-                        override suspend fun getUpcomingNovels(
+                        override fun getUpcomingNovels(
                             statuses: Set<Long>,
                         ): kotlinx.coroutines.flow.Flow<List<Novel>> =
                             kotlinx.coroutines.flow.flowOf(emptyList())
@@ -1816,7 +1816,7 @@ class NovelScreenModelTest {
             chapterFlow.value.filter { it.bookmark }
         override suspend fun getChapterById(id: Long): NovelChapter? =
             chapterFlow.value.firstOrNull { it.id == id }
-        override suspend fun getChapterByNovelIdAsFlow(
+        override fun getChapterByNovelIdAsFlow(
             novelId: Long,
             applyScanlatorFilter: Boolean,
         ): Flow<List<NovelChapter>> = chapterFlow
@@ -1876,12 +1876,12 @@ class NovelScreenModelTest {
         val allUpdates = mutableListOf<NovelUpdate>()
 
         override suspend fun getNovelById(id: Long): Novel = novel
-        override suspend fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(novel)
+        override fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(novel)
         override suspend fun getNovelByUrlAndSourceId(url: String, sourceId: Long): Novel? = null
         override fun getNovelByUrlAndSourceIdAsFlow(url: String, sourceId: Long) = MutableStateFlow<Novel?>(null)
         override suspend fun getNovelFavorites(): List<Novel> = emptyList()
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
-        override suspend fun getUpcomingNovels(
+        override fun getUpcomingNovels(
             statuses: Set<Long>,
         ): kotlinx.coroutines.flow.Flow<List<Novel>> =
             kotlinx.coroutines.flow.flowOf(emptyList())

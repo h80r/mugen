@@ -3,11 +3,17 @@ package eu.kanade.tachiyomi.ui.series.novel
 import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.Immutable
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.tachiyomi.data.cache.SeriesCoverCache
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tachiyomi.domain.category.novel.interactor.GetNovelCategories
@@ -40,44 +46,48 @@ class NovelSeriesScreenModel(
     private val getNovelCategories: GetNovelCategories = Injekt.get(),
     private val setNovelCategories: SetNovelCategories = Injekt.get(),
     private val seriesCoverCache: SeriesCoverCache = Injekt.get(),
-) : StateScreenModel<NovelSeriesScreenModel.State>(State()) {
+) : ScreenModel {
 
-    init {
-        screenModelScope.launch {
-            combine(
-                getNovelSeriesWithEntries.subscribe(seriesId),
-                getNovelCategories.subscribe(),
-            ) { wrapper, categories ->
-                wrapper to categories
-            }.collectLatest { (wrapper, categories) ->
-                if (wrapper == null) {
-                    mutableState.update { it.copy(isLoading = false, series = null, categories = categories) }
-                    return@collectLatest
-                }
-                mutableState.update {
-                    val customCoverFile = seriesCoverCache.getNovelSeriesCoverFile(seriesId).takeIf { it.exists() }
-                    it.copy(
-                        isLoading = false,
-                        series = wrapper.series,
-                        entryIds = wrapper.entryIds,
-                        categories = categories,
-                        hasCustomCover = customCoverFile != null,
-                        customCoverFile = customCoverFile,
-                    )
-                }
-                fetchChapters(wrapper.series.entries)
+    private val customCoverState = MutableStateFlow(
+        seriesCoverCache.getNovelSeriesCoverFile(seriesId).takeIf { it.exists() },
+    )
+
+    private val chaptersState: StateFlow<List<Pair<LibraryNovel, List<NovelChapter>>>> = combine(
+        getNovelSeriesWithEntries.subscribe(seriesId),
+        getNovelCategories.subscribe(),
+    ) { wrapper, _ -> wrapper }
+        .filterNotNull()
+        .flatMapLatest { wrapper ->
+            flow {
+                emit(
+                    wrapper.series.entries.map { entry ->
+                        entry to getNovelChapters.await(entry.id)
+                    },
+                )
             }
         }
-    }
+        .stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private fun fetchChapters(entries: List<LibraryNovel>) {
-        screenModelScope.launch {
-            val chapters = entries.map { entry ->
-                entry to getNovelChapters.await(entry.id)
-            }
-            mutableState.update { it.copy(chapters = chapters) }
+    val state: StateFlow<State> = combine(
+        getNovelSeriesWithEntries.subscribe(seriesId),
+        getNovelCategories.subscribe(),
+        chaptersState,
+        customCoverState,
+    ) { wrapper, categories, chapters, customCoverFile ->
+        if (wrapper == null) {
+            State(isLoading = false, series = null, categories = categories, chapters = chapters)
+        } else {
+            State(
+                isLoading = false,
+                series = wrapper.series,
+                entryIds = wrapper.entryIds,
+                categories = categories,
+                chapters = chapters,
+                hasCustomCover = customCoverFile?.exists() == true,
+                customCoverFile = customCoverFile,
+            )
         }
-    }
+    }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), State())
 
     fun renameSeries(newTitle: String) {
         val series = state.value.series?.series ?: return
@@ -159,7 +169,7 @@ class NovelSeriesScreenModel(
                         coverLastModified = System.currentTimeMillis(),
                     ),
                 )
-                mutableState.update { it.copy(hasCustomCover = true, customCoverFile = file) }
+                customCoverState.update { file }
             }
         }
     }
@@ -174,7 +184,7 @@ class NovelSeriesScreenModel(
                     coverEntryId = null,
                 ),
             )
-            mutableState.update { it.copy(hasCustomCover = false, customCoverFile = null) }
+            customCoverState.update { null }
         }
     }
 

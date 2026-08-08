@@ -30,7 +30,7 @@ interface NovelChapterRepository {
 
     suspend fun getChapterById(id: Long): NovelChapter?
 
-    suspend fun getChapterByNovelIdAsFlow(
+    fun getChapterByNovelIdAsFlow(
         novelId: Long,
         applyScanlatorFilter: Boolean = false,
     ): Flow<List<NovelChapter>>

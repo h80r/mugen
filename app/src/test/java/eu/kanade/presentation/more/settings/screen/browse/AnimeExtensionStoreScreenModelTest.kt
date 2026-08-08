@@ -8,7 +8,9 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -63,7 +65,12 @@ class AnimeExtensionStoreScreenModelTest {
                 replaceExtensionRepo = replaceExtensionRepo,
                 updateExtensionRepo = updateExtensionRepo,
                 extensionManager = extensionManager,
+
             ).also(activeScreenModels::add)
+
+            // WhileSubscribed stateIn needs an active collector to drive the upstream flow
+            val collectJob = launch { screenModel.state.collect() }
+            yield()
 
             withTimeout(1_000) {
                 while (screenModel.state.value !is RepoScreenState.Success) {
@@ -74,6 +81,7 @@ class AnimeExtensionStoreScreenModelTest {
             val state = screenModel.state.value
             state.shouldBeInstanceOf<RepoScreenState.Success>()
             (state as RepoScreenState.Success).repos.first() shouldBe repo
+            collectJob.cancel()
         }
     }
 

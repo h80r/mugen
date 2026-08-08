@@ -2,7 +2,7 @@ package eu.kanade.tachiyomi.ui.browse.novel.extension.details
 
 import android.content.Context
 import androidx.compose.runtime.Immutable
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.extension.novel.interactor.GetNovelExtensionSources
 import eu.kanade.domain.extension.novel.interactor.NovelExtensionSourceItem
@@ -18,12 +18,17 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.receiveAsFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -41,30 +46,24 @@ class NovelExtensionDetailsScreenModel(
     private val toggleSource: ToggleNovelSource = Injekt.get(),
     private val toggleIncognito: ToggleNovelIncognito = Injekt.get(),
     private val preferences: SourcePreferences = Injekt.get(),
-) : StateScreenModel<NovelExtensionDetailsScreenModel.State>(State()) {
+) : ScreenModel {
 
     private val _events: Channel<NovelExtensionDetailsEvent> = Channel()
     val events: Flow<NovelExtensionDetailsEvent> = _events.receiveAsFlow()
 
-    init {
-        screenModelScope.launch {
-            launch {
-                extensionManager.installedPluginsFlow
-                    .map { it.firstOrNull { plugin -> plugin.id == pluginId } }
-                    .collectLatest { extension ->
-                        if (extension == null) {
-                            _events.send(NovelExtensionDetailsEvent.Uninstalled)
-                            return@collectLatest
-                        }
-                        mutableState.update { state -> state.copy(extension = extension) }
+    private val extensionAndSources: Flow<Pair<NovelPlugin.Installed, List<NovelExtensionSourceItem>>?> =
+        extensionManager.installedPluginsFlow
+            .map { it.firstOrNull { plugin -> plugin.id == pluginId } }
+            .flatMapLatest { extension ->
+                if (extension == null) {
+                    flow<Pair<NovelPlugin.Installed, List<NovelExtensionSourceItem>>?> {
+                        _events.send(NovelExtensionDetailsEvent.Uninstalled)
+                        emit(null)
                     }
-            }
-            launch {
-                state.collectLatest { state ->
-                    if (state.extension == null) return@collectLatest
-                    getExtensionSources.subscribe(state.extension)
-                        .map {
-                            it.sortedWith(
+                } else {
+                    getExtensionSources.subscribe(extension)
+                        .map { sources ->
+                            extension to sources.sortedWith(
                                 compareBy(
                                     { !it.enabled },
                                     { item ->
@@ -79,25 +78,30 @@ class NovelExtensionDetailsScreenModel(
                         }
                         .catch { throwable ->
                             logcat(LogPriority.ERROR, throwable)
-                            mutableState.update { it.copy(_sources = persistentListOf()) }
-                        }
-                        .collectLatest { sources ->
-                            mutableState.update { it.copy(_sources = sources.toImmutableList()) }
+                            emit(extension to persistentListOf())
                         }
                 }
             }
-            launch {
-                preferences.incognitoNovelExtensions()
-                    .changes()
-                    .map { pluginId in it }
-                    .distinctUntilChanged()
-                    .collectLatest { isIncognito ->
-                        mutableState.update { it.copy(isIncognito = isIncognito) }
-                    }
-            }
+
+    val state: StateFlow<State> = combine(
+        extensionAndSources,
+        preferences.incognitoNovelExtensions()
+            .changes()
+            .onStart { emit(preferences.incognitoNovelExtensions().get()) }
+            .map { pluginId in it }
+            .distinctUntilChanged(),
+    ) { pair, isIncognito ->
+        if (pair == null) {
+            State()
+        } else {
+            State(
+                extension = pair.first,
+                _sources = pair.second.toImmutableList(),
+                isIncognito = isIncognito,
+            )
         }
     }
-
+        .stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), State())
     fun clearCookies() {
         val extension = state.value.extension ?: return
         val sourceUrls = state.value.sources.mapNotNull { sourceItem ->

@@ -3,14 +3,16 @@ package eu.kanade.presentation.achievement.screenmodel
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.easteregg.aurora.AuroraHeartManager
 import eu.kanade.presentation.achievement.utils.AchievementRevealHelper
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tachiyomi.data.achievement.handler.PointsManager
@@ -32,53 +34,64 @@ class AchievementScreenModel(
     private val pointsManager: PointsManager = Injekt.get(),
     private val activityDataRepository: ActivityDataRepository = Injekt.get(),
     private val auroraHeartManager: AuroraHeartManager = Injekt.get(),
-) : StateScreenModel<AchievementScreenState>(AchievementScreenState.Loading) {
+) : ScreenModel {
 
     // Separate state for category to avoid being overwritten by combine
     private val _categoryState = MutableStateFlow(AchievementCategory.BOTH)
     val categoryState: StateFlow<AchievementCategory> = _categoryState
 
+    private val selectedAchievementState = MutableStateFlow<Achievement?>(null)
+
     init {
         screenModelScope.launch {
-            combine(
-                repository.getAll(),
-                repository.getAllProgress(),
-                pointsManager.subscribeToPoints(),
-                categoryState,
-                activityDataRepository.getActivityData(365),
-            ) { achievements, progress, userPoints, selectedCategory, activityData ->
-                val currentStats = activityDataRepository.getCurrentMonthStats()
-                val previousStats = activityDataRepository.getPreviousMonthStats()
-                val yearlyStats = activityDataRepository.getLastTwelveMonthsStats()
-
-                AchievementScreenState.Success(
-                    achievements = achievements,
-                    progress = progress.associateBy { it.achievementId },
-                    userPoints = userPoints,
-                    selectedCategory = selectedCategory,
-                    activityData = activityData,
-                    yearlyStats = yearlyStats,
-                    currentMonthStats = currentStats,
-                    previousMonthStats = previousStats,
-                )
-            }
-                .combine(auroraHeartManager.state) { state, auroraState ->
-                    if (state is AchievementScreenState.Success) {
-                        state.copy(
-                            auroraQuestStarted = auroraState.hintRevealed ||
-                                auroraState.stageIndex > 0 ||
-                                auroraState.unlocked,
-                        )
-                    } else {
-                        state
-                    }
-                }.catch { error ->
-                    error.printStackTrace()
-                }.collect { state ->
-                    mutableState.update { state }
-                }
+            loader.loadAchievements()
         }
     }
+
+    val state: StateFlow<AchievementScreenState> = combine(
+        repository.getAll(),
+        repository.getAllProgress(),
+        pointsManager.subscribeToPoints(),
+        categoryState,
+        activityDataRepository.getActivityData(365),
+    ) { achievements, progress, userPoints, selectedCategory, activityData ->
+        val currentStats = activityDataRepository.getCurrentMonthStats()
+        val previousStats = activityDataRepository.getPreviousMonthStats()
+        val yearlyStats = activityDataRepository.getLastTwelveMonthsStats()
+
+        AchievementScreenState.Success(
+            achievements = achievements,
+            progress = progress.associateBy { it.achievementId },
+            userPoints = userPoints,
+            selectedCategory = selectedCategory,
+            activityData = activityData,
+            yearlyStats = yearlyStats,
+            currentMonthStats = currentStats,
+            previousMonthStats = previousStats,
+        )
+    }
+        .combine(auroraHeartManager.state) { state, auroraState ->
+            if (state is AchievementScreenState.Success) {
+                state.copy(
+                    auroraQuestStarted = auroraState.hintRevealed ||
+                        auroraState.stageIndex > 0 ||
+                        auroraState.unlocked,
+                )
+            } else {
+                state
+            }
+        }
+        .combine(selectedAchievementState) { state, selectedAchievement ->
+            if (state is AchievementScreenState.Success) {
+                state.copy(selectedAchievement = selectedAchievement)
+            } else {
+                state
+            }
+        }
+        .catch { error ->
+            error.printStackTrace()
+        }
+        .stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), AchievementScreenState.Loading)
 
     fun onCategoryChanged(category: AchievementCategory) {
         _categoryState.value = category
@@ -91,21 +104,11 @@ class AchievementScreenModel(
     }
 
     fun onAchievementClick(achievement: Achievement) {
-        mutableState.update {
-            when (it) {
-                AchievementScreenState.Loading -> it
-                is AchievementScreenState.Success -> it.copy(selectedAchievement = achievement)
-            }
-        }
+        selectedAchievementState.update { achievement }
     }
 
     fun onDialogDismiss() {
-        mutableState.update {
-            when (it) {
-                AchievementScreenState.Loading -> it
-                is AchievementScreenState.Success -> it.copy(selectedAchievement = null)
-            }
-        }
+        selectedAchievementState.update { null }
     }
 }
 

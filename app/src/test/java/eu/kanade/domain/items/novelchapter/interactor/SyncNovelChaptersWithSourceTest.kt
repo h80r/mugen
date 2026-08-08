@@ -277,7 +277,7 @@ class SyncNovelChaptersWithSourceTest {
 
         override suspend fun getChapterById(id: Long): NovelChapter? = null
 
-        override suspend fun getChapterByNovelIdAsFlow(
+        override fun getChapterByNovelIdAsFlow(
             novelId: Long,
             applyScanlatorFilter: Boolean,
         ) = throw UnsupportedOperationException()

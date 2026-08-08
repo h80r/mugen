@@ -82,7 +82,7 @@ class GetScanlatorChapterCountsTest {
         override fun getScanlatorsByMangaIdAsFlow(mangaId: Long): Flow<List<String>> = MutableStateFlow(emptyList())
         override suspend fun getBookmarkedChaptersByMangaId(mangaId: Long): List<Chapter> = emptyList()
         override suspend fun getChapterById(id: Long): Chapter? = flow.value.firstOrNull { it.id == id }
-        override suspend fun getChapterByMangaIdAsFlow(
+        override fun getChapterByMangaIdAsFlow(
             mangaId: Long,
             applyScanlatorFilter: Boolean,
         ): Flow<List<Chapter>> = flow
