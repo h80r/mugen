@@ -543,6 +543,7 @@ class NovelLibraryScreenModelTest {
             downloadCache = downloadCache,
             searchDebounceMillis = searchDebounceMillis,
             trackerManager = trackerManager,
+            libraryDispatcher = testDispatcher,
         ).also(activeScreenModels::add)
     }
 

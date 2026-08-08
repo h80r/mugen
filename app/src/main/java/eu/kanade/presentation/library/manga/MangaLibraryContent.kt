@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import eu.kanade.core.preference.PreferenceMutableState
@@ -121,8 +122,15 @@ fun MangaLibraryContent(
             )
         }
 
-        LaunchedEffect(pagerState.currentPage) {
-            onChangeCurrentPage(pagerState.currentPage)
+        // Write the active category only when the pager settles (not mid-fling), so the
+        // DataStore-backed preference is not written on every intermediate page change.
+        LaunchedEffect(pagerState) {
+            snapshotFlow { pagerState.currentPage to pagerState.isScrollInProgress }
+                .collect { (page, scrolling) ->
+                    if (!scrolling) {
+                        onChangeCurrentPage(page)
+                    }
+                }
         }
     }
 }

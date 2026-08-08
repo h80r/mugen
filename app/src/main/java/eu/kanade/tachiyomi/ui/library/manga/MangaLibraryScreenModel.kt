@@ -35,10 +35,16 @@ import eu.kanade.tachiyomi.util.removeCovers
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.collections.immutable.PersistentList
+import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.collections.immutable.toPersistentList
+import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -50,6 +56,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -95,7 +102,7 @@ import kotlin.random.Random
 /**
  * Typealias for the library manga, using the category as keys, and list of manga as values.
  */
-typealias MangaLibraryMap = Map<Category, List<MangaLibraryItem>>
+typealias MangaLibraryMap = PersistentMap<Category, PersistentList<MangaLibraryItem>>
 
 class MangaLibraryScreenModel(
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
@@ -119,6 +126,7 @@ class MangaLibraryScreenModel(
     private val downloadCache: MangaDownloadCache = Injekt.get(),
     private val trackerManager: TrackerManager = Injekt.get(),
     private val startActive: Boolean = true,
+    private val libraryDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : StateScreenModel<MangaLibraryScreenModel.State>(
     State(
         groupType = if (libraryPreferences.globalGroupLibrary().get()) {
@@ -186,11 +194,12 @@ class MangaLibraryScreenModel(
                             baseLibrary.library
                                 .mapValues { (_, value) ->
                                     if (librarySearchQuery != null) {
-                                        value.filter { it.matches(librarySearchQuery) }
+                                        value.filter { it.matches(librarySearchQuery) }.toPersistentList()
                                     } else {
                                         value
                                     }
                                 }
+                                .toPersistentMap()
                                 .let { map ->
                                     if (
                                         baseLibrary.groupType == LibraryGroup.BY_DEFAULT ||
@@ -201,12 +210,13 @@ class MangaLibraryScreenModel(
                                         // still show the global search action.
                                         map
                                     } else {
-                                        map.filterValues { it.isNotEmpty() }
+                                        map.filterValues { it.isNotEmpty() }.toPersistentMap()
                                     }
                                 }
                         }
                     }
                 }
+                .flowOn(libraryDispatcher)
                 .collectLatest { libraryMap ->
                     mutableState.update { state ->
                         state.copy(
@@ -332,11 +342,22 @@ class MangaLibraryScreenModel(
             return when (this) {
                 is MangaLibraryItem.Single -> {
                     libraryManga.manga.isLocal() ||
-                        downloadManager.getDownloadCount(libraryManga.manga) > 0
+                        if (prefs.downloadBadge) {
+                            // Reuse the count computed for the badge in the same pipeline pass
+                            downloadCount > 0
+                        } else {
+                            downloadManager.getDownloadCount(libraryManga.manga) > 0
+                        }
                 }
                 is MangaLibraryItem.Series -> {
-                    librarySeries.entries.fastAny { entry ->
-                        entry.manga.isLocal() || downloadManager.getDownloadCount(entry.manga) > 0
+                    if (prefs.downloadBadge) {
+                        // Reuse the count computed for the badge in the same pipeline pass;
+                        // local entries do not contribute to downloadCount, so check them too
+                        librarySeries.entries.fastAny { entry -> entry.manga.isLocal() } || downloadCount > 0
+                    } else {
+                        librarySeries.entries.fastAny { entry ->
+                            entry.manga.isLocal() || downloadManager.getDownloadCount(entry.manga) > 0
+                        }
                     }
                 }
             }
@@ -422,7 +443,8 @@ class MangaLibraryScreenModel(
                 filterFnTracking(it)
         }
 
-        return mapValues { (_, value) -> value.fastFilter(filterFn) }
+        return mapValues { (_, value) -> value.fastFilter(filterFn).toPersistentList() }
+            .toPersistentMap()
     }
 
     private fun MangaLibraryMap.applySort(
@@ -533,7 +555,7 @@ class MangaLibraryScreenModel(
                     isSeries = isSeries,
                     comparator = sortAlphabetically,
                     randomSeed = libraryPreferences.randomMangaSortSeed().get(),
-                )
+                ).toPersistentList()
             }
 
             val comparator = key.sort.comparator()
@@ -544,8 +566,8 @@ class MangaLibraryScreenModel(
                 isPinned = isPinned,
                 isSeries = isSeries,
                 comparator = comparator,
-            )
-        }
+            ).toPersistentList()
+        }.toPersistentMap()
     }
 
     private fun MangaLibraryMap.applyGrouping(
@@ -567,10 +589,10 @@ class MangaLibraryScreenModel(
                     hidden = false,
                     hiddenFromHomeHub = false,
                 )
-                mapOf(ungroupedCategory to items)
+                mapOf(ungroupedCategory to items.toPersistentList())
             }
             LibraryGroup.BY_STATUS -> {
-                val statusCategories = mutableMapOf<Category, MutableList<MangaLibraryItem>>()
+                val statusCategories = LinkedHashMap<Long, Pair<Category, MutableList<MangaLibraryItem>>>()
                 items.forEach { item ->
                     val status = item.libraryManga.manga.status
                     val statusInt = status.toInt()
@@ -583,52 +605,62 @@ class MangaLibraryScreenModel(
                         SManga.ON_HIATUS -> "On Hiatus" to -26L
                         else -> "Unknown" to -20L
                     }
-                    val category = statusCategories.keys.find { it.id == statusId } ?: Category(
-                        id = statusId,
-                        name = statusName,
-                        order = statusId,
-                        flags = sortFlags,
-                        hidden = false,
-                        hiddenFromHomeHub = false,
-                    )
-                    statusCategories.getOrPut(category) { mutableListOf() }.add(item)
+                    val (_, list) = statusCategories.getOrPut(statusId) {
+                        Category(
+                            id = statusId,
+                            name = statusName,
+                            order = statusId,
+                            flags = sortFlags,
+                            hidden = false,
+                            hiddenFromHomeHub = false,
+                        ) to mutableListOf()
+                    }
+                    list.add(item)
                 }
-                statusCategories
+                statusCategories.entries.associate { (_, pair) ->
+                    pair.first to pair.second.toPersistentList()
+                }.toPersistentMap()
             }
             LibraryGroup.BY_SOURCE -> {
-                val sourceCategories = mutableMapOf<Category, MutableList<MangaLibraryItem>>()
+                val sourceCategories = LinkedHashMap<Long, Pair<Category, MutableList<MangaLibraryItem>>>()
                 items.forEach { item ->
                     val sourceId = item.libraryManga.manga.source
                     val sourceName = sourceManager.getOrStub(sourceId).name
                     val categoryId = -sourceId - 1000L
-                    val category = sourceCategories.keys.find { it.id == categoryId } ?: Category(
-                        id = categoryId,
-                        name = sourceName,
-                        order = categoryId,
-                        flags = sortFlags,
-                        hidden = false,
-                        hiddenFromHomeHub = false,
-                    )
-                    sourceCategories.getOrPut(category) { mutableListOf() }.add(item)
-                }
-                sourceCategories
-            }
-            LibraryGroup.BY_TRACK_STATUS -> {
-                val trackMapper = MapMangaTrackStatusToLibrary(trackerManager)
-                val trackCategories = mutableMapOf<Category, MutableList<MangaLibraryItem>>()
-                items.forEach { item ->
-                    val itemTracks = tracks[item.libraryManga.manga.id].orEmpty()
-                    if (itemTracks.isEmpty()) {
-                        val categoryId = -2L
-                        val category = trackCategories.keys.find { it.id == categoryId } ?: Category(
+                    val (_, list) = sourceCategories.getOrPut(categoryId) {
+                        Category(
                             id = categoryId,
-                            name = "Untracked",
+                            name = sourceName,
                             order = categoryId,
                             flags = sortFlags,
                             hidden = false,
                             hiddenFromHomeHub = false,
-                        )
-                        trackCategories.getOrPut(category) { mutableListOf() }.add(item)
+                        ) to mutableListOf()
+                    }
+                    list.add(item)
+                }
+                sourceCategories.entries.associate { (_, pair) ->
+                    pair.first to pair.second.toPersistentList()
+                }.toPersistentMap()
+            }
+            LibraryGroup.BY_TRACK_STATUS -> {
+                val trackMapper = MapMangaTrackStatusToLibrary(trackerManager)
+                val trackCategories = LinkedHashMap<Long, Pair<Category, MutableList<MangaLibraryItem>>>()
+                items.forEach { item ->
+                    val itemTracks = tracks[item.libraryManga.manga.id].orEmpty()
+                    if (itemTracks.isEmpty()) {
+                        val categoryId = -2L
+                        val (_, list) = trackCategories.getOrPut(categoryId) {
+                            Category(
+                                id = categoryId,
+                                name = "Untracked",
+                                order = categoryId,
+                                flags = sortFlags,
+                                hidden = false,
+                                hiddenFromHomeHub = false,
+                            ) to mutableListOf()
+                        }
+                        list.add(item)
                     } else {
                         val statuses = itemTracks.map { track ->
                             trackMapper.map(track.trackerId, track.status)
@@ -644,19 +676,23 @@ class MangaLibraryScreenModel(
                                 LibraryTrackStatus.OTHER -> "Other"
                             }
                             val statusId = -(status.int + 10L)
-                            val category = trackCategories.keys.find { it.id == statusId } ?: Category(
-                                id = statusId,
-                                name = statusName,
-                                order = statusId,
-                                flags = sortFlags,
-                                hidden = false,
-                                hiddenFromHomeHub = false,
-                            )
-                            trackCategories.getOrPut(category) { mutableListOf() }.add(item)
+                            val (_, list) = trackCategories.getOrPut(statusId) {
+                                Category(
+                                    id = statusId,
+                                    name = statusName,
+                                    order = statusId,
+                                    flags = sortFlags,
+                                    hidden = false,
+                                    hiddenFromHomeHub = false,
+                                ) to mutableListOf()
+                            }
+                            list.add(item)
                         }
                     }
                 }
-                trackCategories
+                trackCategories.entries.associate { (_, pair) ->
+                    pair.first to pair.second.toPersistentList()
+                }.toPersistentMap()
             }
             else -> this
         }
@@ -664,6 +700,7 @@ class MangaLibraryScreenModel(
         return grouped.entries
             .sortedBy { entry -> entry.key.id }
             .associate { entry -> entry.key to entry.value }
+            .toPersistentMap()
     }
 
     private fun MangaLibraryMap.withFilteredEmptyPlaceholder(
@@ -672,7 +709,7 @@ class MangaLibraryScreenModel(
     ): MangaLibraryMap {
         if (isNotEmpty() || !hasActiveFilters) return this
         val fallbackCategory = sourceCategories.firstOrNull() ?: return this
-        return mapOf(fallbackCategory to emptyList())
+        return persistentMapOf(fallbackCategory to persistentListOf())
     }
 
     private fun ItemPreferences.hasActiveFilters(trackingFilter: Map<Long, TriState>): Boolean {
@@ -788,7 +825,9 @@ class MangaLibraryScreenModel(
                 categories
             }
 
-            displayCategories.associateWith { libraryManga[it.id].orEmpty() }
+            displayCategories
+                .associateWith { libraryManga[it.id].orEmpty().toPersistentList() }
+                .toPersistentMap()
         }
     }
 
@@ -1232,7 +1271,7 @@ class MangaLibraryScreenModel(
     @Immutable
     data class State(
         val isLoading: Boolean = true,
-        val library: MangaLibraryMap = emptyMap(),
+        val library: MangaLibraryMap = persistentMapOf(),
         val searchQuery: String? = null,
         val selection: PersistentList<MangaLibraryItem> = persistentListOf(),
         val hasActiveFilters: Boolean = false,

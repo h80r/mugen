@@ -1,13 +1,12 @@
 package eu.kanade.presentation.library.novel
 
+import androidx.compose.runtime.Immutable
 import eu.kanade.tachiyomi.ui.library.LibrarySearchQuery
 import tachiyomi.domain.entries.novel.model.Novel
 import tachiyomi.domain.entries.novel.model.asNovelCover
 import tachiyomi.domain.library.novel.LibraryNovel
 import tachiyomi.domain.series.novel.model.LibraryNovelSeries
 import tachiyomi.domain.source.novel.service.NovelSourceManager
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 sealed interface NovelLibraryItem {
     val id: Long
@@ -27,13 +26,13 @@ sealed interface NovelLibraryItem {
     /** Returns the underlying [Novel] for cover display, or null for Series. */
     val coverNovel: Novel?
 
-    fun matches(query: LibrarySearchQuery): Boolean
+    fun matches(query: LibrarySearchQuery, sourceManager: NovelSourceManager): Boolean
 
+    @Immutable
     data class Single(
         val libraryNovel: LibraryNovel,
         override val isDownloaded: Boolean = false,
         override val sourceLanguage: String = "",
-        private val sourceManager: NovelSourceManager = Injekt.get(),
     ) : NovelLibraryItem {
         override val id = libraryNovel.id
         override val category = libraryNovel.category
@@ -48,17 +47,17 @@ sealed interface NovelLibraryItem {
         override val title = libraryNovel.novel.displayTitle
         override val coverNovel = libraryNovel.novel
 
-        override fun matches(query: LibrarySearchQuery): Boolean {
+        override fun matches(query: LibrarySearchQuery, sourceManager: NovelSourceManager): Boolean {
             query.id?.let { id -> return libraryNovel.id == id }
             return libraryNovel.novel.matches(query, sourceManager)
         }
     }
 
+    @Immutable
     data class Series(
         val librarySeries: LibraryNovelSeries,
         override val isDownloaded: Boolean = false,
         override val sourceLanguage: String = "",
-        private val sourceManager: NovelSourceManager = Injekt.get(),
     ) : NovelLibraryItem {
         override val id = -librarySeries.id // Negative to prevent collisions with single novels in compose keys
         override val category = librarySeries.categoryId
@@ -74,7 +73,7 @@ sealed interface NovelLibraryItem {
         override val coverNovel = librarySeries.selectedCoverNovel ?: librarySeries.coverNovels.firstOrNull()
         val covers = librarySeries.coverNovels.map { it.asNovelCover() }
 
-        override fun matches(query: LibrarySearchQuery): Boolean {
+        override fun matches(query: LibrarySearchQuery, sourceManager: NovelSourceManager): Boolean {
             query.id?.let { id -> return librarySeries.id == id }
             if (librarySeries.title.contains(query.raw, ignoreCase = true)) return true
             return librarySeries.entries.any { it.novel.matches(query, sourceManager) }

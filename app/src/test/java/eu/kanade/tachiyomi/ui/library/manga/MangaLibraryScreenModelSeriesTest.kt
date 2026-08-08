@@ -168,6 +168,7 @@ class MangaLibraryScreenModelSeriesTest {
             downloadManager = downloadManager,
             downloadCache = downloadCache,
             trackerManager = trackerManager,
+            libraryDispatcher = testDispatcher,
         )
         activeScreenModels += screenModel
 
@@ -215,6 +216,7 @@ class MangaLibraryScreenModelSeriesTest {
             downloadManager = downloadManager,
             downloadCache = downloadCache,
             trackerManager = trackerManager,
+            libraryDispatcher = testDispatcher,
         )
         activeScreenModels += screenModel
 
@@ -268,6 +270,7 @@ class MangaLibraryScreenModelSeriesTest {
             downloadManager = downloadManager,
             downloadCache = downloadCache,
             trackerManager = trackerManager,
+            libraryDispatcher = testDispatcher,
         )
         activeScreenModels += screenModel
 
@@ -317,6 +320,7 @@ class MangaLibraryScreenModelSeriesTest {
             downloadManager = downloadManager,
             downloadCache = downloadCache,
             trackerManager = trackerManager,
+            libraryDispatcher = testDispatcher,
         )
         activeScreenModels += screenModel
 
@@ -364,6 +368,7 @@ class MangaLibraryScreenModelSeriesTest {
             downloadManager = downloadManager,
             downloadCache = downloadCache,
             trackerManager = trackerManager,
+            libraryDispatcher = testDispatcher,
         )
         activeScreenModels += screenModel
 
@@ -408,6 +413,7 @@ class MangaLibraryScreenModelSeriesTest {
             downloadManager = downloadManager,
             downloadCache = downloadCache,
             trackerManager = trackerManager,
+            libraryDispatcher = testDispatcher,
         )
         activeScreenModels += screenModel
 
@@ -456,6 +462,7 @@ class MangaLibraryScreenModelSeriesTest {
             downloadManager = downloadManager,
             downloadCache = downloadCache,
             trackerManager = trackerManager,
+            libraryDispatcher = testDispatcher,
         )
         activeScreenModels += screenModel
 
@@ -503,6 +510,7 @@ class MangaLibraryScreenModelSeriesTest {
             downloadManager = downloadManager,
             downloadCache = downloadCache,
             trackerManager = trackerManager,
+            libraryDispatcher = testDispatcher,
         )
         activeScreenModels += screenModel
 

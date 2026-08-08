@@ -37,10 +37,14 @@ import eu.kanade.tachiyomi.util.removeCovers
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.collections.immutable.PersistentList
+import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.collections.immutable.toPersistentList
+import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -87,7 +91,7 @@ import kotlin.random.Random
 /**
  * Typealias for the library anime, using the category as keys, and list of anime as values.
  */
-typealias AnimeLibraryMap = Map<Category, List<AnimeLibraryItem>>
+typealias AnimeLibraryMap = PersistentMap<Category, PersistentList<AnimeLibraryItem>>
 
 class AnimeLibraryScreenModel(
     private val getLibraryAnime: GetLibraryAnime = Injekt.get(),
@@ -162,11 +166,12 @@ class AnimeLibraryScreenModel(
                 baseLibrary.library
                     .mapValues { (_, value) ->
                         if (librarySearchQuery != null) {
-                            value.filter { it.matches(librarySearchQuery) }
+                            value.filter { it.matches(librarySearchQuery, sourceManager) }.toPersistentList()
                         } else {
                             value
                         }
                     }
+                    .toPersistentMap()
                     .let { map ->
                         if (
                             baseLibrary.groupType == LibraryGroup.BY_DEFAULT ||
@@ -177,7 +182,7 @@ class AnimeLibraryScreenModel(
                             // still show the global search action.
                             map
                         } else {
-                            map.filterValues { it.isNotEmpty() }
+                            map.filterValues { it.isNotEmpty() }.toPersistentMap()
                         }
                     }
             }
@@ -360,7 +365,8 @@ class AnimeLibraryScreenModel(
                 filterFnTracking(it)
         }
 
-        return mapValues { (_, value) -> value.fastFilter(filterFn) }
+        return mapValues { (_, value) -> value.fastFilter(filterFn).toPersistentList() }
+            .toPersistentMap()
     }
 
     private fun AnimeLibraryMap.applySort(
@@ -449,7 +455,7 @@ class AnimeLibraryScreenModel(
                     isPinned = isPinned,
                     comparator = sortAlphabetically,
                     randomSeed = libraryPreferences.randomAnimeSortSeed().get(),
-                )
+                ).toPersistentList()
             }
 
             val comparator = key.sort.comparator()
@@ -459,8 +465,8 @@ class AnimeLibraryScreenModel(
             value.sortPinnedFirst(
                 isPinned = isPinned,
                 comparator = comparator,
-            )
-        }
+            ).toPersistentList()
+        }.toPersistentMap()
     }
 
     private fun AnimeLibraryMap.applyGrouping(
@@ -482,10 +488,10 @@ class AnimeLibraryScreenModel(
                     hidden = false,
                     hiddenFromHomeHub = false,
                 )
-                mapOf(ungroupedCategory to items)
+                mapOf(ungroupedCategory to items.toPersistentList())
             }
             LibraryGroup.BY_STATUS -> {
-                val statusCategories = mutableMapOf<Category, MutableList<AnimeLibraryItem>>()
+                val statusCategories = LinkedHashMap<Long, Pair<Category, MutableList<AnimeLibraryItem>>>()
                 items.forEach { item ->
                     val status = item.libraryAnime.anime.status
                     val statusInt = status.toInt()
@@ -498,52 +504,62 @@ class AnimeLibraryScreenModel(
                         SAnime.ON_HIATUS -> "On Hiatus" to -26L
                         else -> "Unknown" to -20L
                     }
-                    val category = statusCategories.keys.find { it.id == statusId } ?: Category(
-                        id = statusId,
-                        name = statusName,
-                        order = statusId,
-                        flags = sortFlags,
-                        hidden = false,
-                        hiddenFromHomeHub = false,
-                    )
-                    statusCategories.getOrPut(category) { mutableListOf() }.add(item)
+                    val (_, list) = statusCategories.getOrPut(statusId) {
+                        Category(
+                            id = statusId,
+                            name = statusName,
+                            order = statusId,
+                            flags = sortFlags,
+                            hidden = false,
+                            hiddenFromHomeHub = false,
+                        ) to mutableListOf()
+                    }
+                    list.add(item)
                 }
-                statusCategories
+                statusCategories.entries.associate { (_, pair) ->
+                    pair.first to pair.second.toPersistentList()
+                }.toPersistentMap()
             }
             LibraryGroup.BY_SOURCE -> {
-                val sourceCategories = mutableMapOf<Category, MutableList<AnimeLibraryItem>>()
+                val sourceCategories = LinkedHashMap<Long, Pair<Category, MutableList<AnimeLibraryItem>>>()
                 items.forEach { item ->
                     val sourceId = item.libraryAnime.anime.source
                     val sourceName = sourceManager.getOrStub(sourceId).name
                     val categoryId = -sourceId - 1000L
-                    val category = sourceCategories.keys.find { it.id == categoryId } ?: Category(
-                        id = categoryId,
-                        name = sourceName,
-                        order = categoryId,
-                        flags = sortFlags,
-                        hidden = false,
-                        hiddenFromHomeHub = false,
-                    )
-                    sourceCategories.getOrPut(category) { mutableListOf() }.add(item)
-                }
-                sourceCategories
-            }
-            LibraryGroup.BY_TRACK_STATUS -> {
-                val trackMapper = MapAnimeTrackStatusToLibrary(trackerManager)
-                val trackCategories = mutableMapOf<Category, MutableList<AnimeLibraryItem>>()
-                items.forEach { item ->
-                    val itemTracks = tracks[item.libraryAnime.anime.id].orEmpty()
-                    if (itemTracks.isEmpty()) {
-                        val categoryId = -2L
-                        val category = trackCategories.keys.find { it.id == categoryId } ?: Category(
+                    val (_, list) = sourceCategories.getOrPut(categoryId) {
+                        Category(
                             id = categoryId,
-                            name = "Untracked",
+                            name = sourceName,
                             order = categoryId,
                             flags = sortFlags,
                             hidden = false,
                             hiddenFromHomeHub = false,
-                        )
-                        trackCategories.getOrPut(category) { mutableListOf() }.add(item)
+                        ) to mutableListOf()
+                    }
+                    list.add(item)
+                }
+                sourceCategories.entries.associate { (_, pair) ->
+                    pair.first to pair.second.toPersistentList()
+                }.toPersistentMap()
+            }
+            LibraryGroup.BY_TRACK_STATUS -> {
+                val trackMapper = MapAnimeTrackStatusToLibrary(trackerManager)
+                val trackCategories = LinkedHashMap<Long, Pair<Category, MutableList<AnimeLibraryItem>>>()
+                items.forEach { item ->
+                    val itemTracks = tracks[item.libraryAnime.anime.id].orEmpty()
+                    if (itemTracks.isEmpty()) {
+                        val categoryId = -2L
+                        val (_, list) = trackCategories.getOrPut(categoryId) {
+                            Category(
+                                id = categoryId,
+                                name = "Untracked",
+                                order = categoryId,
+                                flags = sortFlags,
+                                hidden = false,
+                                hiddenFromHomeHub = false,
+                            ) to mutableListOf()
+                        }
+                        list.add(item)
                     } else {
                         val statuses = itemTracks.map { track ->
                             trackMapper.map(track.trackerId, track.status)
@@ -559,19 +575,23 @@ class AnimeLibraryScreenModel(
                                 LibraryTrackStatus.OTHER -> "Other"
                             }
                             val statusId = -(status.int + 10L)
-                            val category = trackCategories.keys.find { it.id == statusId } ?: Category(
-                                id = statusId,
-                                name = statusName,
-                                order = statusId,
-                                flags = sortFlags,
-                                hidden = false,
-                                hiddenFromHomeHub = false,
-                            )
-                            trackCategories.getOrPut(category) { mutableListOf() }.add(item)
+                            val (_, list) = trackCategories.getOrPut(statusId) {
+                                Category(
+                                    id = statusId,
+                                    name = statusName,
+                                    order = statusId,
+                                    flags = sortFlags,
+                                    hidden = false,
+                                    hiddenFromHomeHub = false,
+                                ) to mutableListOf()
+                            }
+                            list.add(item)
                         }
                     }
                 }
-                trackCategories
+                trackCategories.entries.associate { (_, pair) ->
+                    pair.first to pair.second.toPersistentList()
+                }.toPersistentMap()
             }
             else -> this
         }
@@ -579,6 +599,7 @@ class AnimeLibraryScreenModel(
         return grouped.entries
             .sortedBy { entry -> entry.key.id }
             .associate { entry -> entry.key to entry.value }
+            .toPersistentMap()
     }
 
     private fun AnimeLibraryMap.withFilteredEmptyPlaceholder(
@@ -587,7 +608,7 @@ class AnimeLibraryScreenModel(
     ): AnimeLibraryMap {
         if (isNotEmpty() || !hasActiveFilters) return this
         val fallbackCategory = sourceCategories.firstOrNull() ?: return this
-        return mapOf(fallbackCategory to emptyList())
+        return persistentMapOf(fallbackCategory to persistentListOf())
     }
 
     private fun ItemPreferences.hasActiveFilters(trackingFilter: Map<Long, TriState>): Boolean {
@@ -674,7 +695,9 @@ class AnimeLibraryScreenModel(
                 categories
             }
 
-            displayCategories.associateWith { animelibAnime[it.id].orEmpty() }
+            displayCategories
+                .associateWith { animelibAnime[it.id].orEmpty().toPersistentList() }
+                .toPersistentMap()
         }
     }
 
@@ -1037,7 +1060,7 @@ class AnimeLibraryScreenModel(
     @Immutable
     data class State(
         val isLoading: Boolean = true,
-        val library: AnimeLibraryMap = emptyMap(),
+        val library: AnimeLibraryMap = persistentMapOf(),
         val searchQuery: String? = null,
         val selection: PersistentList<LibraryAnime> = persistentListOf(),
         val hasActiveFilters: Boolean = false,

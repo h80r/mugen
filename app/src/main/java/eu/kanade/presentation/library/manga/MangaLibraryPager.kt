@@ -7,11 +7,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -21,6 +24,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import eu.kanade.core.preference.PreferenceMutableState
 import eu.kanade.presentation.library.components.GlobalSearchItem
+import eu.kanade.presentation.library.components.idsToHashSet
 import eu.kanade.tachiyomi.ui.library.manga.MangaLibraryItem
 import tachiyomi.domain.library.manga.LibraryManga
 import tachiyomi.domain.library.model.LibraryDisplayMode
@@ -49,6 +53,13 @@ fun MangaLibraryPager(
         val density = LocalDensity.current
         val containerHeightPx = with(density) { this@BoxWithConstraints.maxHeight.roundToPx() }
 
+        // Scroll positions per category page: the pager only keeps ±1 page composed, so the
+        // lazy state inside a page slot dies when the page is swiped away. Remember the
+        // position and restore it on the way back (initial index of the state, no visual jump).
+        val scrollPositions = remember { mutableMapOf<Pair<Long, LibraryDisplayMode>, Pair<Int, Int>>() }
+
+        val selectedIds = remember(selectedItems) { selectedItems.idsToHashSet { it.id } }
+
         HorizontalPager(
             modifier = Modifier.fillMaxSize(),
             state = state,
@@ -75,14 +86,30 @@ fun MangaLibraryPager(
             val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
             val columns by remember(isLandscape) { getColumnsForOrientation(isLandscape) }
 
+            val categoryId = library.firstOrNull()?.category ?: -1L
+
             when (displayMode) {
                 LibraryDisplayMode.List -> {
+                    val restoredPosition = remember(categoryId, displayMode) {
+                        scrollPositions[categoryId to displayMode] ?: (0 to 0)
+                    }
+                    val listState = remember(categoryId, displayMode) {
+                        LazyListState(restoredPosition.first, restoredPosition.second)
+                    }
+                    DisposableEffect(categoryId, displayMode, listState) {
+                        onDispose {
+                            scrollPositions[categoryId to displayMode] =
+                                listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+                        }
+                    }
                     MangaLibraryList(
                         items = library,
                         entries = columns,
                         containerHeight = containerHeightPx,
                         contentPadding = contentPadding,
                         selection = selectedItems,
+                        selectedIds = selectedIds,
+                        state = listState,
                         onClick = onClickItem,
                         onSeriesClicked = onClickSeries,
                         onLongClick = onLongClickItem,
@@ -93,12 +120,26 @@ fun MangaLibraryPager(
                 }
 
                 LibraryDisplayMode.CompactGrid, LibraryDisplayMode.CoverOnlyGrid -> {
+                    val restoredPosition = remember(categoryId, displayMode) {
+                        scrollPositions[categoryId to displayMode] ?: (0 to 0)
+                    }
+                    val gridState = remember(categoryId, displayMode) {
+                        LazyGridState(restoredPosition.first, restoredPosition.second)
+                    }
+                    DisposableEffect(categoryId, displayMode, gridState) {
+                        onDispose {
+                            scrollPositions[categoryId to displayMode] =
+                                gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
+                        }
+                    }
                     MangaLibraryCompactGrid(
                         items = library,
                         showTitle = displayMode is LibraryDisplayMode.CompactGrid,
                         columns = columns,
                         contentPadding = contentPadding,
                         selection = selectedItems,
+                        selectedIds = selectedIds,
+                        state = gridState,
                         onClick = onClickItem,
                         onSeriesClicked = onClickSeries,
                         onLongClick = onLongClickItem,
@@ -110,11 +151,25 @@ fun MangaLibraryPager(
                 }
 
                 LibraryDisplayMode.ComfortableGrid -> {
+                    val restoredPosition = remember(categoryId, displayMode) {
+                        scrollPositions[categoryId to displayMode] ?: (0 to 0)
+                    }
+                    val gridState = remember(categoryId, displayMode) {
+                        LazyGridState(restoredPosition.first, restoredPosition.second)
+                    }
+                    DisposableEffect(categoryId, displayMode, gridState) {
+                        onDispose {
+                            scrollPositions[categoryId to displayMode] =
+                                gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
+                        }
+                    }
                     MangaLibraryComfortableGrid(
                         items = library,
                         columns = columns,
                         contentPadding = contentPadding,
                         selection = selectedItems,
+                        selectedIds = selectedIds,
+                        state = gridState,
                         onClick = onClickItem,
                         onSeriesClicked = onClickSeries,
                         onLongClick = onLongClickItem,

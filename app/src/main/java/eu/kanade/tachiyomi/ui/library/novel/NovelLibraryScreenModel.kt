@@ -37,10 +37,15 @@ import eu.kanade.tachiyomi.ui.novel.resolveNovelResumeChapter
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.collections.immutable.PersistentList
+import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.collections.immutable.toPersistentList
+import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,6 +57,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -97,7 +104,7 @@ import uy.kohesive.injekt.api.get
 import java.io.IOException
 import kotlin.random.Random
 
-typealias NovelLibraryMap = Map<Category, List<NovelLibraryItem>>
+typealias NovelLibraryMap = PersistentMap<Category, PersistentList<NovelLibraryItem>>
 
 class NovelLibraryScreenModel(
     private val getLibraryNovel: GetLibraryNovel = Injekt.get(),
@@ -127,6 +134,7 @@ class NovelLibraryScreenModel(
     () -> eu.kanade.tachiyomi.data.book.novel.LocalNovelBookArtifactBuilder = {
         eu.kanade.tachiyomi.data.book.novel.LocalNovelBookArtifactBuilder()
     },
+    private val libraryDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : StateScreenModel<NovelLibraryScreenModel.State>(
     State(
         groupType = if (libraryPreferences.globalGroupLibrary().get()) {
@@ -166,7 +174,7 @@ class NovelLibraryScreenModel(
                             getSortPreferencesFlow(),
                             getTracksPerNovel.subscribe(),
                             state.map { it.groupType }.distinctUntilChanged(),
-                            downloadedIdsFlow,
+                            getDownloadedIdsFlow(),
                             getBadgePreferencesFlow(),
                         ) { flowsArray ->
                             @Suppress("UNCHECKED_CAST")
@@ -227,11 +235,14 @@ class NovelLibraryScreenModel(
                             baseLibrary.library
                                 .mapValues { (_, value) ->
                                     if (librarySearchQuery != null) {
-                                        value.filter { it.matches(librarySearchQuery) }
+                                        value.filter {
+                                            it.matches(librarySearchQuery, sourceManager)
+                                        }.toPersistentList()
                                     } else {
                                         value
                                     }
                                 }
+                                .toPersistentMap()
                                 .let { map ->
                                     if (
                                         baseLibrary.groupType == LibraryGroup.BY_DEFAULT ||
@@ -242,12 +253,13 @@ class NovelLibraryScreenModel(
                                         // still show the global search action.
                                         map
                                     } else {
-                                        map.filterValues { it.isNotEmpty() }
+                                        map.filterValues { it.isNotEmpty() }.toPersistentMap()
                                     }
                                 }
                         }
                     }
                 }
+                .flowOn(libraryDispatcher)
                 .collectLatest { libraryMap ->
                     mutableState.update { state ->
                         state.copy(
@@ -843,14 +855,16 @@ class NovelLibraryScreenModel(
                 filterFnCompleted(it) &&
                 filterFnIntervalCustom(it)
         }
-        return mapValues { (_, value) -> value.filter(filterFn) }
+        return mapValues { (_, value) -> value.filter(filterFn).toPersistentList() }
+            .toPersistentMap()
     }
 
     private fun NovelLibraryMap.applySort(
         sort: NovelLibrarySort,
         randomSortSeed: Int,
     ): NovelLibraryMap {
-        return mapValues { (_, value) -> sortItems(value, sort, randomSortSeed) }
+        return mapValues { (_, value) -> sortItems(value, sort, randomSortSeed).toPersistentList() }
+            .toPersistentMap()
     }
 
     private fun NovelLibraryMap.withFilteredEmptyPlaceholder(
@@ -859,7 +873,7 @@ class NovelLibraryScreenModel(
     ): NovelLibraryMap {
         if (isNotEmpty() || !hasActiveFilters) return this
         val fallbackCategory = sourceCategories.firstOrNull() ?: return this
-        return mapOf(fallbackCategory to emptyList())
+        return persistentMapOf(fallbackCategory to persistentListOf())
     }
 
     private fun FilterPreferences.hasActiveFilters(): Boolean {
@@ -903,7 +917,8 @@ class NovelLibraryScreenModel(
                 )
             }
         }
-        return mapValues { (_, value) -> value.map { it.withBadgeMetadata() } }
+        return mapValues { (_, value) -> value.map { it.withBadgeMetadata() }.toPersistentList() }
+            .toPersistentMap()
     }
 
     private fun NovelLibraryMap.applyGrouping(
@@ -925,10 +940,10 @@ class NovelLibraryScreenModel(
                     hidden = false,
                     hiddenFromHomeHub = false,
                 )
-                mapOf(ungroupedCategory to items)
+                mapOf(ungroupedCategory to items.toPersistentList())
             }
             LibraryGroup.BY_STATUS -> {
-                val statusCategories = mutableMapOf<Category, MutableList<NovelLibraryItem>>()
+                val statusCategories = LinkedHashMap<Long, Pair<Category, MutableList<NovelLibraryItem>>>()
                 items.forEach { item ->
                     val single = item as? NovelLibraryItem.Single
                     val status = single?.libraryNovel?.novel?.status ?: 0L
@@ -942,54 +957,64 @@ class NovelLibraryScreenModel(
                         SManga.ON_HIATUS -> "On Hiatus" to -26L
                         else -> "Unknown" to -20L
                     }
-                    val category = statusCategories.keys.find { it.id == statusId } ?: Category(
-                        id = statusId,
-                        name = statusName,
-                        order = statusId,
-                        flags = sortFlags,
-                        hidden = false,
-                        hiddenFromHomeHub = false,
-                    )
-                    statusCategories.getOrPut(category) { mutableListOf() }.add(item)
+                    val (_, list) = statusCategories.getOrPut(statusId) {
+                        Category(
+                            id = statusId,
+                            name = statusName,
+                            order = statusId,
+                            flags = sortFlags,
+                            hidden = false,
+                            hiddenFromHomeHub = false,
+                        ) to mutableListOf()
+                    }
+                    list.add(item)
                 }
-                statusCategories
+                statusCategories.entries.associate { (_, pair) ->
+                    pair.first to pair.second.toPersistentList()
+                }.toPersistentMap()
             }
             LibraryGroup.BY_SOURCE -> {
-                val sourceCategories = mutableMapOf<Category, MutableList<NovelLibraryItem>>()
+                val sourceCategories = LinkedHashMap<Long, Pair<Category, MutableList<NovelLibraryItem>>>()
                 items.forEach { item ->
                     val single = item as? NovelLibraryItem.Single
                     val sourceId = single?.libraryNovel?.novel?.source ?: 0L
                     val sourceName = sourceManager.getOrStub(sourceId).name
                     val categoryId = -sourceId - 1000L
-                    val category = sourceCategories.keys.find { it.id == categoryId } ?: Category(
-                        id = categoryId,
-                        name = sourceName,
-                        order = categoryId,
-                        flags = sortFlags,
-                        hidden = false,
-                        hiddenFromHomeHub = false,
-                    )
-                    sourceCategories.getOrPut(category) { mutableListOf() }.add(item)
+                    val (_, list) = sourceCategories.getOrPut(categoryId) {
+                        Category(
+                            id = categoryId,
+                            name = sourceName,
+                            order = categoryId,
+                            flags = sortFlags,
+                            hidden = false,
+                            hiddenFromHomeHub = false,
+                        ) to mutableListOf()
+                    }
+                    list.add(item)
                 }
-                sourceCategories
+                sourceCategories.entries.associate { (_, pair) ->
+                    pair.first to pair.second.toPersistentList()
+                }.toPersistentMap()
             }
             LibraryGroup.BY_TRACK_STATUS -> {
                 val trackMapper = MapNovelTrackStatusToLibrary(trackerManager)
-                val trackCategories = mutableMapOf<Category, MutableList<NovelLibraryItem>>()
+                val trackCategories = LinkedHashMap<Long, Pair<Category, MutableList<NovelLibraryItem>>>()
                 items.forEach { item ->
                     val single = item as? NovelLibraryItem.Single
                     val itemTracks = single?.libraryNovel?.novel?.id?.let { tracks[it] }.orEmpty()
                     if (itemTracks.isEmpty()) {
                         val categoryId = -2L
-                        val category = trackCategories.keys.find { it.id == categoryId } ?: Category(
-                            id = categoryId,
-                            name = "Untracked",
-                            order = categoryId,
-                            flags = sortFlags,
-                            hidden = false,
-                            hiddenFromHomeHub = false,
-                        )
-                        trackCategories.getOrPut(category) { mutableListOf() }.add(item)
+                        val (_, list) = trackCategories.getOrPut(categoryId) {
+                            Category(
+                                id = categoryId,
+                                name = "Untracked",
+                                order = categoryId,
+                                flags = sortFlags,
+                                hidden = false,
+                                hiddenFromHomeHub = false,
+                            ) to mutableListOf()
+                        }
+                        list.add(item)
                     } else {
                         val statuses = itemTracks.map { track ->
                             trackMapper.map(track.trackerId, track.status)
@@ -1005,19 +1030,23 @@ class NovelLibraryScreenModel(
                                 LibraryTrackStatus.OTHER -> "Other"
                             }
                             val statusId = -(status.int + 10L)
-                            val category = trackCategories.keys.find { it.id == statusId } ?: Category(
-                                id = statusId,
-                                name = statusName,
-                                order = statusId,
-                                flags = sortFlags,
-                                hidden = false,
-                                hiddenFromHomeHub = false,
-                            )
-                            trackCategories.getOrPut(category) { mutableListOf() }.add(item)
+                            val (_, list) = trackCategories.getOrPut(statusId) {
+                                Category(
+                                    id = statusId,
+                                    name = statusName,
+                                    order = statusId,
+                                    flags = sortFlags,
+                                    hidden = false,
+                                    hiddenFromHomeHub = false,
+                                ) to mutableListOf()
+                            }
+                            list.add(item)
                         }
                     }
                 }
-                trackCategories
+                trackCategories.entries.associate { (_, pair) ->
+                    pair.first to pair.second.toPersistentList()
+                }.toPersistentMap()
             }
             else -> this
         }
@@ -1025,6 +1054,7 @@ class NovelLibraryScreenModel(
         return grouped.entries
             .sortedBy { entry -> entry.key.id }
             .associate { entry -> entry.key to entry.value }
+            .toPersistentMap()
     }
 
     private fun getLibraryFlow(): Flow<NovelLibraryMap> {
@@ -1057,7 +1087,9 @@ class NovelLibraryScreenModel(
                 mappedCategories
             }
 
-            displayCategories.associateWith { libraryNovels[it.id].orEmpty() }
+            displayCategories
+                .associateWith { libraryNovels[it.id].orEmpty().toPersistentList() }
+                .toPersistentMap()
         }
     }
 
@@ -1148,7 +1180,7 @@ class NovelLibraryScreenModel(
     data class State(
         val isLoading: Boolean = true,
         val hasLoaded: Boolean = false,
-        val library: NovelLibraryMap = emptyMap(),
+        val library: NovelLibraryMap = persistentMapOf(),
         val searchQuery: String? = null,
         val selection: PersistentList<NovelLibraryItem> = persistentListOf(),
         val hasActiveFilters: Boolean = false,
@@ -1282,6 +1314,30 @@ class NovelLibraryScreenModel(
                 showLanguageBadge = showLanguageBadge,
             )
         }
+    }
+
+    /**
+     * Only subscribe to download events while the UI needs them (downloaded filter
+     * active or download badge enabled). Without this gate every download/delete
+     * event re-runs the whole library pipeline on a large library.
+     */
+    private fun getDownloadedIdsFlow(): Flow<Set<Long>> {
+        return combine(
+            getFilterPreferencesFlow(),
+            getBadgePreferencesFlow(),
+        ) { filterPrefs, badgePrefs ->
+            filterPrefs.downloadedOnly ||
+                filterPrefs.downloadedFilter != TriState.DISABLED ||
+                badgePrefs.showDownloadBadge
+        }
+            .distinctUntilChanged()
+            .flatMapLatest { needsDownloadState ->
+                if (needsDownloadState) {
+                    downloadedIdsFlow
+                } else {
+                    flowOf(emptySet())
+                }
+            }
     }
 
     private fun getFilterPreferencesFlow(): Flow<FilterPreferences> {
