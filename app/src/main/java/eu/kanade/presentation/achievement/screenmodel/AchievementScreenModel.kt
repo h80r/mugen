@@ -71,22 +71,15 @@ class AchievementScreenModel(
         )
     }
         .combine(auroraHeartManager.state) { state, auroraState ->
-            if (state is AchievementScreenState.Success) {
-                state.copy(
-                    auroraQuestStarted = auroraState.hintRevealed ||
-                        auroraState.stageIndex > 0 ||
-                        auroraState.unlocked,
-                )
-            } else {
-                state
-            }
+            // The pipeline above always emits Success, so state is already narrowed
+            state.copy(
+                auroraQuestStarted = auroraState.hintRevealed ||
+                    auroraState.stageIndex > 0 ||
+                    auroraState.unlocked,
+            )
         }
         .combine(selectedAchievementState) { state, selectedAchievement ->
-            if (state is AchievementScreenState.Success) {
-                state.copy(selectedAchievement = selectedAchievement)
-            } else {
-                state
-            }
+            state.copy(selectedAchievement = selectedAchievement)
         }
         .catch { error ->
             error.printStackTrace()
