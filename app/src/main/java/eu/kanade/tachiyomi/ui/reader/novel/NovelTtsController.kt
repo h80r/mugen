@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.SystemClock
 import eu.kanade.presentation.reader.novel.NovelReaderTtsChapterHandoffPolicy
 import eu.kanade.tachiyomi.source.novel.NovelWebUrlSource
+import eu.kanade.tachiyomi.ui.reader.novel.replace.applyReplaceRulesToHtml
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderOverride
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
@@ -383,7 +384,14 @@ internal class NovelTtsController(
                 chapterName = snapshot.chapter.name,
             )
             val sanitized = sanitizeChapterHtmlForReader(withHeading)
-            if (sanitized.isBlank()) withHeading else sanitized
+            if (sanitized.isBlank()) {
+                withHeading
+            } else {
+                applyReplaceRulesToHtml(
+                    rawHtml = sanitized,
+                    rules = novelReaderPreferences.enabledReplaceRules(),
+                )
+            }
         }
         val chapterWebUrl = resolveChapterWebUrl(
             source = source,

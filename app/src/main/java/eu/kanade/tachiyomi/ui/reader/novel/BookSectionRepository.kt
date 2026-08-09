@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.reader.novel
 
 import eu.kanade.presentation.reader.novel.buildBookSectionHtml
 import eu.kanade.tachiyomi.data.book.novel.NovelBookChapterNormalizer
+import eu.kanade.tachiyomi.ui.reader.novel.replace.applyReplaceRulesToHtml
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
@@ -94,6 +95,10 @@ internal class DefaultBookSectionRepository(
     private val loadRawSection: suspend (Long) -> NovelBookRawSection,
     /** Overlays the translation of one chapter onto that chapter's markup. */
     private val translateChapterHtml: suspend (Long, String) -> String,
+    /** Applies user text-replacement rules to sanitized chapter markup. */
+    private val replaceTextHtml: (String) -> String = { it },
+    /** Identity of the user's replacement rules, folded into the disk cache key. */
+    private val replaceRulesFingerprint: () -> String = { "" },
     private val showChapterHeadings: () -> Boolean = { true },
     /** Visible translation variant, e.g. `gemini`, `google` or `raw`. */
     private val translationVariant: () -> String = { "raw" },
@@ -101,7 +106,9 @@ internal class DefaultBookSectionRepository(
 
     override fun transformSignature(): String {
         val headings = if (showChapterHeadings()) "h1" else "h0"
-        return "$BOOK_SECTION_PIPELINE_VERSION-$headings-${translationVariant()}"
+        val base = "$BOOK_SECTION_PIPELINE_VERSION-$headings-${translationVariant()}"
+        val rules = replaceRulesFingerprint()
+        return if (rules.isBlank()) base else "$base-r$rules"
     }
 
     override suspend fun prepareChapterSection(section: NovelBookSection): BookSectionContent {
@@ -112,7 +119,7 @@ internal class DefaultBookSectionRepository(
                 chapterName = raw.chapterName.ifBlank { section.name },
             )
             val sanitized = sanitizeChapterHtmlForReader(withHeading)
-            if (sanitized.isBlank()) withHeading else sanitized
+            if (sanitized.isBlank()) withHeading else replaceTextHtml(sanitized)
         }
         if (bodyHtml.isBlank()) {
             return BookSectionContent(html = "", baseUrl = raw.chapterWebUrl?.takeIf { it.isNotBlank() })

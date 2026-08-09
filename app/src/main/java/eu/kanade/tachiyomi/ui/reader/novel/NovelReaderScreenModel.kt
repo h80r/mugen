@@ -31,6 +31,7 @@ import eu.kanade.tachiyomi.ui.novel.resolveNovelResumeChapter
 import eu.kanade.tachiyomi.ui.novel.sortedByNovelReadingOrder
 import eu.kanade.tachiyomi.ui.reader.novel.dictionary.CompositeNovelDictionaryProvider
 import eu.kanade.tachiyomi.ui.reader.novel.dictionary.OfflineStarDictDictionaryProvider
+import eu.kanade.tachiyomi.ui.reader.novel.replace.applyReplaceRulesToHtml
 import eu.kanade.tachiyomi.ui.reader.novel.setting.GeminiPromptMode
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderOverride
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
@@ -840,6 +841,9 @@ class NovelReaderScreenModel(
         mistralTranslationService = mistralTranslationService,
         nvidiaTranslationService = nvidiaTranslationService,
         ollamaCloudTranslationService = ollamaCloudTranslationService,
+        replaceTextHtml = { html ->
+            applyReplaceRulesToHtml(html, novelReaderPreferences.enabledReplaceRules())
+        },
     )
 
     /** Snapshot of the translation UI state, merged into the reader state by the screen model. */
@@ -934,7 +938,14 @@ class NovelReaderScreenModel(
                 chapterName = chapter.name,
             )
             val sanitizedChapterHtml = sanitizeChapterHtmlForReader(normalizedChapterHtml)
-            if (sanitizedChapterHtml.isBlank()) normalizedChapterHtml else sanitizedChapterHtml
+            if (sanitizedChapterHtml.isBlank()) {
+                normalizedChapterHtml
+            } else {
+                applyReplaceRulesToHtml(
+                    rawHtml = sanitizedChapterHtml,
+                    rules = novelReaderPreferences.enabledReplaceRules(),
+                )
+            }
         }
         lastSavedProgress = chapter.lastPageRead
         lastSavedRead = chapter.read

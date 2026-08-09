@@ -1,5 +1,8 @@
 package eu.kanade.tachiyomi.ui.reader.novel
 
+import eu.kanade.tachiyomi.ui.reader.novel.replace.applyReplaceRulesToHtml
+import eu.kanade.tachiyomi.ui.reader.novel.replace.applyReplaceRulesToNativeBlocks
+import eu.kanade.tachiyomi.ui.reader.novel.replace.replaceRulesFingerprint
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.novel.tts.NovelTtsChapterRepository
 import kotlinx.coroutines.CoroutineScope
@@ -94,6 +97,12 @@ internal class NovelBookReaderController(
         },
         showChapterHeadings = { novelReaderPreferences.bookModeShowChapterHeadings().get() },
         translationVariant = { bookTranslationVariant() },
+        replaceTextHtml = { html ->
+            applyReplaceRulesToHtml(html, novelReaderPreferences.enabledReplaceRules())
+        },
+        replaceRulesFingerprint = {
+            replaceRulesFingerprint(novelReaderPreferences.enabledReplaceRules())
+        },
     )
 
     private val bookModeRuntime = NovelBookModeRuntime(
@@ -148,6 +157,9 @@ internal class NovelBookReaderController(
     fun nativeBookBlocksForSection(sectionIndex: Int): List<NovelRichContentBlock>? =
         artifactSource
             ?.anchoredNativeBlocksFor(sectionIndex)
+            ?.let { blocks ->
+                applyReplaceRulesToNativeBlocks(blocks, novelReaderPreferences.enabledReplaceRules())
+            }
             ?.toAnchoredRichContentBlocks()
             ?.takeIf { it.isNotEmpty() }
 
@@ -459,6 +471,9 @@ internal class NovelBookReaderController(
                         sourceId = novel.source,
                         novelId = novel.id,
                     ),
+                    replaceTextHtml = { html ->
+                        applyReplaceRulesToHtml(html, novelReaderPreferences.enabledReplaceRules())
+                    },
                 )
             }.getOrNull() ?: return@launch
             if (host.bookCurrentNovel()?.id == novel.id) {
@@ -485,6 +500,9 @@ internal class NovelBookReaderController(
                         sourceId = novel.source,
                         novelId = novel.id,
                     ),
+                    replaceTextHtml = { html ->
+                        applyReplaceRulesToHtml(html, novelReaderPreferences.enabledReplaceRules())
+                    },
                 )
             }
         } else {
