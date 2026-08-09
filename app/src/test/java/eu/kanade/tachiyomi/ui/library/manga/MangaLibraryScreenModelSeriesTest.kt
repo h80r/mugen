@@ -38,6 +38,7 @@ import tachiyomi.domain.entries.manga.model.Manga
 import tachiyomi.domain.history.manga.interactor.GetNextChapters
 import tachiyomi.domain.items.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.library.manga.LibraryManga
+import tachiyomi.domain.library.manga.model.MangaLibrarySort
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.series.manga.interactor.AddMangasToSeries
 import tachiyomi.domain.series.manga.interactor.CreateMangaSeries
@@ -522,11 +523,145 @@ class MangaLibraryScreenModelSeriesTest {
         )
     }
 
+    @Test
+    fun `sorts by latest chapter upload date not last update`() = runTest(testDispatcher) {
+        val newerUpload = libraryManga(
+            id = 1L,
+            title = "Newer Upload",
+            lastUpdate = 100L,
+            latestUpload = 1_000L,
+        )
+        val olderUpload = libraryManga(
+            id = 2L,
+            title = "Older Upload",
+            lastUpdate = 200L,
+            latestUpload = 500L,
+        )
+        categoriesFlow.value = listOf(
+            category(
+                flags = MangaLibrarySort(
+                    MangaLibrarySort.Type.LatestChapter,
+                    MangaLibrarySort.Direction.Descending,
+                ).flag,
+            ),
+        )
+        mangaFlow.value = listOf(olderUpload, newerUpload)
+
+        val screenModel = MangaLibraryScreenModel(
+            getLibraryManga = getLibraryManga,
+            getLibraryMangaSeries = getLibraryMangaSeries,
+            getMangaIdsInAnySeries = getMangaIdsInAnySeries,
+            getCategories = getCategories,
+            getTracksPerManga = getTracksPerManga,
+            getNextChapters = mockk(relaxed = true),
+            getChaptersByMangaId = mockk(relaxed = true),
+            setReadStatus = mockk(relaxed = true),
+            updateManga = mockk(relaxed = true),
+            setMangaCategories = mockk(relaxed = true),
+            createMangaSeries = createMangaSeries,
+            addMangasToSeries = addMangasToSeries,
+            updateMangaSeries = updateMangaSeries,
+            preferences = basePreferences,
+            libraryPreferences = libraryPreferences,
+            coverCache = mockk(relaxed = true),
+            sourceManager = sourceManager,
+            downloadManager = downloadManager,
+            downloadCache = downloadCache,
+            trackerManager = trackerManager,
+            libraryDispatcher = testDispatcher,
+        )
+        activeScreenModels += screenModel
+
+        advanceTimeBy(SEARCH_DEBOUNCE_MILLIS + 1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        screenModel.state.value.library.values.single().shouldContainExactly(
+            MangaLibraryItem.Single(newerUpload, downloadCountValue = 0, sourceManager = sourceManager),
+            MangaLibraryItem.Single(olderUpload, downloadCountValue = 0, sourceManager = sourceManager),
+        )
+    }
+
+    @Test
+    fun `sorts series by max last update of entries`() = runTest(testDispatcher) {
+        val olderSeriesEntry1 = libraryManga(
+            id = 2L,
+            title = "Older Series Volume 1",
+            lastUpdate = 100L,
+            latestUpload = 1_000L,
+        )
+        val olderSeriesEntry2 = libraryManga(
+            id = 3L,
+            title = "Older Series Volume 2",
+            lastUpdate = 200L,
+        )
+        val olderSeries = librarySeries(
+            id = 7L,
+            title = "Older Series",
+            entries = listOf(olderSeriesEntry1, olderSeriesEntry2),
+        )
+        val newerSeriesEntry = libraryManga(
+            id = 4L,
+            title = "Newer Series Volume 1",
+            lastUpdate = 300L,
+            latestUpload = 5L,
+        )
+        val newerSeries = librarySeries(
+            id = 8L,
+            title = "Newer Series",
+            entries = listOf(newerSeriesEntry),
+        )
+        categoriesFlow.value = listOf(
+            category(
+                flags = MangaLibrarySort(
+                    MangaLibrarySort.Type.LastUpdate,
+                    MangaLibrarySort.Direction.Descending,
+                ).flag,
+            ),
+        )
+        mangaFlow.value = listOf(olderSeriesEntry1, olderSeriesEntry2, newerSeriesEntry)
+        seriesFlow.value = listOf(olderSeries, newerSeries)
+        seriesIdsFlow.value = setOf(olderSeriesEntry1.id, olderSeriesEntry2.id, newerSeriesEntry.id)
+
+        val screenModel = MangaLibraryScreenModel(
+            getLibraryManga = getLibraryManga,
+            getLibraryMangaSeries = getLibraryMangaSeries,
+            getMangaIdsInAnySeries = getMangaIdsInAnySeries,
+            getCategories = getCategories,
+            getTracksPerManga = getTracksPerManga,
+            getNextChapters = mockk(relaxed = true),
+            getChaptersByMangaId = mockk(relaxed = true),
+            setReadStatus = mockk(relaxed = true),
+            updateManga = mockk(relaxed = true),
+            setMangaCategories = mockk(relaxed = true),
+            createMangaSeries = createMangaSeries,
+            addMangasToSeries = addMangasToSeries,
+            updateMangaSeries = updateMangaSeries,
+            preferences = basePreferences,
+            libraryPreferences = libraryPreferences,
+            coverCache = mockk(relaxed = true),
+            sourceManager = sourceManager,
+            downloadManager = downloadManager,
+            downloadCache = downloadCache,
+            trackerManager = trackerManager,
+            libraryDispatcher = testDispatcher,
+        )
+        activeScreenModels += screenModel
+
+        advanceTimeBy(SEARCH_DEBOUNCE_MILLIS + 1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        screenModel.state.value.library.values.single()
+            .filterIsInstance<MangaLibraryItem.Series>()
+            .map { it.librarySeries.id } shouldContainExactly listOf(8L, 7L)
+    }
+
     private fun libraryManga(
         id: Long,
         title: String,
         readCount: Long = 1L,
         totalChapters: Long = 10L,
+        lastUpdate: Long = 0L,
+        latestUpload: Long = 0L,
     ): LibraryManga {
         return LibraryManga(
             manga = Manga.create().copy(
@@ -535,12 +670,13 @@ class MangaLibraryScreenModelSeriesTest {
                 url = "https://example.com/$id",
                 source = 1L,
                 favorite = true,
+                lastUpdate = lastUpdate,
             ),
             category = 0L,
             totalChapters = totalChapters,
             readCount = readCount,
             bookmarkCount = 0L,
-            latestUpload = 0L,
+            latestUpload = latestUpload,
             chapterFetchedAt = 0L,
             lastRead = 0L,
         )
@@ -568,12 +704,12 @@ class MangaLibraryScreenModelSeriesTest {
         )
     }
 
-    private fun category(id: Long = 0L, name: String = "Default"): Category {
+    private fun category(id: Long = 0L, name: String = "Default", flags: Long = 0L): Category {
         return Category(
             id = id,
             name = name,
             order = 0,
-            flags = 0,
+            flags = flags,
             hidden = false,
             hiddenFromHomeHub = false,
         )

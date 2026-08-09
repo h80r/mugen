@@ -503,6 +503,13 @@ class MangaLibraryScreenModel(
         fun MangaLibraryItem.lastUpdateSortValue(): Long {
             return when (this) {
                 is MangaLibraryItem.Single -> libraryManga.manga.lastUpdate
+                is MangaLibraryItem.Series -> librarySeries.entries.maxOfOrNull { it.manga.lastUpdate } ?: 0L
+            }
+        }
+
+        fun MangaLibraryItem.latestUploadSortValue(): Long {
+            return when (this) {
+                is MangaLibraryItem.Single -> libraryManga.latestUpload
                 is MangaLibraryItem.Series -> librarySeries.latestUpload
             }
         }
@@ -556,7 +563,7 @@ class MangaLibraryScreenModel(
                     i1.totalChapters.compareTo(i2.totalChapters)
                 }
                 MangaLibrarySort.Type.LatestChapter -> {
-                    i1.lastUpdateSortValue().compareTo(i2.lastUpdateSortValue())
+                    i1.latestUploadSortValue().compareTo(i2.latestUploadSortValue())
                 }
                 MangaLibrarySort.Type.ChapterFetchDate -> {
                     i1.chapterFetchDateSortValue().compareTo(i2.chapterFetchDateSortValue())
