@@ -837,11 +837,6 @@ class ReaderActivity : BaseActivity() {
                     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
         }
-        updateViewerInset(
-            readerPreferences.fullscreen().get(),
-            readerPreferences.cutoutShort().get(),
-            visible,
-        )
     }
 
     /**
@@ -869,7 +864,6 @@ class ReaderActivity : BaseActivity() {
         updateViewerInset(
             readerPreferences.fullscreen().get(),
             readerPreferences.cutoutShort().get(),
-            viewModel.state.value.menuVisible,
         )
 
         // Touch cooldown: pause auto-scroll briefly on any touch in the active viewer.
@@ -1127,14 +1121,18 @@ class ReaderActivity : BaseActivity() {
 
     /**
      * Updates viewer inset depending on fullscreen reader preferences.
+     *
+     * The padding is independent of the menu visibility: resizing the pager when the menu
+     * shows/hides (e.g. while settling on the end-of-chapter transition page) left the
+     * current page blank until the next layout pass. The menu bars overlay the content.
      */
-    private fun updateViewerInset(fullscreen: Boolean, cutoutShort: Boolean, menuVisible: Boolean) {
+    private fun updateViewerInset(fullscreen: Boolean, cutoutShort: Boolean) {
         if (!::binding.isInitialized) return
         val view = binding.viewerContainer
 
-        view.applyInsetsPadding(ViewCompat.getRootWindowInsets(view), fullscreen, cutoutShort, menuVisible)
+        view.applyInsetsPadding(ViewCompat.getRootWindowInsets(view), fullscreen, cutoutShort)
         ViewCompat.setOnApplyWindowInsetsListener(view) { v, windowInsets ->
-            v.applyInsetsPadding(windowInsets, fullscreen, cutoutShort, menuVisible)
+            v.applyInsetsPadding(windowInsets, fullscreen, cutoutShort)
             windowInsets
         }
     }
@@ -1143,10 +1141,9 @@ class ReaderActivity : BaseActivity() {
         windowInsets: WindowInsetsCompat?,
         fullscreen: Boolean,
         cutoutShort: Boolean,
-        menuVisible: Boolean,
     ) {
         val insets = when {
-            !fullscreen || menuVisible -> windowInsets?.getInsets(WindowInsetsCompat.Type.systemBars())
+            !fullscreen -> windowInsets?.getInsets(WindowInsetsCompat.Type.systemBars())
             !cutoutShort -> windowInsets?.getInsets(WindowInsetsCompat.Type.displayCutout())
             else -> null
         }
@@ -1246,7 +1243,7 @@ class ReaderActivity : BaseActivity() {
             ) { fullscreen, cutoutShort -> fullscreen to cutoutShort }
                 .onEach { (fullscreen, cutoutShort) ->
                     WindowCompat.setDecorFitsSystemWindows(window, !fullscreen)
-                    updateViewerInset(fullscreen, cutoutShort, viewModel.state.value.menuVisible)
+                    updateViewerInset(fullscreen, cutoutShort)
                     setMenuVisibility(viewModel.state.value.menuVisible)
                 }
                 .launchIn(lifecycleScope)
