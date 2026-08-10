@@ -1469,6 +1469,8 @@ class NovelReaderPreferences(
             oledEdgeGradient().changes(),
             customThemes().changes(),
         ) { values: Array<Any?> ->
+            @Suppress("UNCHECKED_CAST")
+            val colorThemes = values[11] as List<NovelReaderColorTheme>
             ThemeSettings(
                 (values[0] as? NovelReaderTheme) ?: NovelReaderTheme.SYSTEM,
                 values[1] as String,
@@ -1481,7 +1483,7 @@ class NovelReaderPreferences(
                 values[8] as String,
                 values[9] as String,
                 values[10] as Boolean,
-                values[11] as List<NovelReaderColorTheme>,
+                colorThemes,
             )
         }.distinctUntilChanged()
 
@@ -1632,6 +1634,8 @@ class NovelReaderPreferences(
             googleTranslationTargetLang().changes(),
             googleTranslationAutoStart().changes(),
         ) { values: Array<Any?> ->
+            @Suppress("UNCHECKED_CAST")
+            val enabledPromptModifiers = values[15] as List<String>
             GeminiSettings(
                 enabled = values[0] as Boolean,
                 apiKey = values[1] as String,
@@ -1648,7 +1652,7 @@ class NovelReaderPreferences(
                 sourceLang = values[12] as String,
                 targetLang = values[13] as String,
                 promptMode = (values[14] as? GeminiPromptMode) ?: GeminiPromptMode.ADULT_18,
-                enabledPromptModifiers = values[15] as List<String>,
+                enabledPromptModifiers = enabledPromptModifiers,
                 customPromptModifier = values[16] as String,
                 stylePreset = (values[17] as? NovelTranslationStylePreset) ?: NovelTranslationStylePreset.PROFESSIONAL,
                 promptModifiers = values[18] as String,
@@ -1730,6 +1734,8 @@ class NovelReaderPreferences(
             val advanced = values[4] as AdvancedSettings
             val gemini = values[5] as GeminiSettings
             val tts = values[6] as TtsSettings
+
+            @Suppress("UNCHECKED_CAST")
             val overrides = values[7] as Map<Long, NovelReaderOverride>
 
             val override = overrides[sourceId]

@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.reader.novel.replace
 
+import android.content.ClipData
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -46,6 +47,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,7 +55,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -81,6 +84,7 @@ import eu.kanade.presentation.theme.auroraHeaderIconSurface
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -100,7 +104,8 @@ class NovelTextReplaceRulesScreen : Screen() {
 @Composable
 private fun NovelTextReplaceRulesScreenContent(onBack: () -> Unit) {
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     val colors = AuroraTheme.colors
     val uiStyle = rememberResolvedSettingsUiStyle()
     val isAurora = uiStyle == SettingsUiStyle.Aurora
@@ -178,7 +183,11 @@ private fun NovelTextReplaceRulesScreenContent(onBack: () -> Unit) {
                                         ),
                                         onClick = {
                                             menuExpanded = false
-                                            clipboard.setText(AnnotatedString(prefs.exportReplaceRules()))
+                                            scope.launch {
+                                                clipboard.setClipEntry(
+                                                    ClipEntry(ClipData.newPlainText(null, prefs.exportReplaceRules())),
+                                                )
+                                            }
                                             Toast.makeText(
                                                 context,
                                                 context.contextStringResource(
@@ -214,7 +223,11 @@ private fun NovelTextReplaceRulesScreenContent(onBack: () -> Unit) {
                                         text = { Text(stringResource(AYMR.strings.novel_reader_text_replace_export)) },
                                         onClick = {
                                             menuExpanded = false
-                                            clipboard.setText(AnnotatedString(prefs.exportReplaceRules()))
+                                            scope.launch {
+                                                clipboard.setClipEntry(
+                                                    ClipEntry(ClipData.newPlainText(null, prefs.exportReplaceRules())),
+                                                )
+                                            }
                                             Toast.makeText(
                                                 context,
                                                 context.contextStringResource(

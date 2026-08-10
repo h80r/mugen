@@ -826,7 +826,15 @@ class ReaderActivity : BaseActivity() {
         viewModel.showMenus(visible)
         applyReaderSystemBarIconStyle(visible)
         if (visible) {
-            windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+            // Defer showing the system bars until after the current layout pass. Showing them
+            // synchronously while the ViewPager is settling on the end-of-chapter transition
+            // page triggers a window relayout in fullscreen mode, which leaves the freshly
+            // composed transition page blank (black screen) until the next swipe.
+            binding.root.post {
+                if (viewModel.state.value.menuVisible) {
+                    windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+                }
+            }
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
             // Pause auto-scroll when menu is shown
             viewModel.pauseAutoScroll()
