@@ -7,17 +7,17 @@ import com.tadami.aurora.R
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.util.system.notificationBuilder
+import tachiyomi.i18n.R as I18nR
 
 class ApkInstallFallbackNotifier(
     private val context: Context,
 ) {
     fun show(suggestion: ApkInstallFallbackSuggestion) {
-        val content = buildString {
-            append("PackageInstaller failed: ${suggestion.reason}. ")
-            append("Open extensions and retry with ")
-            append(suggestion.suggestedBackends.joinToString { it.name })
-            append(".")
-        }
+        val content = context.getString(
+            I18nR.string.ext_install_failed_notification_body,
+            suggestion.reason,
+            suggestion.suggestedBackends.joinToString { it.name },
+        )
         val pendingIntent = when (suggestion.kind) {
             ApkExtensionKind.ANIME -> NotificationReceiver.openAnimeExtensionsPendingActivity(context)
             ApkExtensionKind.MANGA,
@@ -26,7 +26,7 @@ class ApkInstallFallbackNotifier(
         }
         val notification = context.notificationBuilder(Notifications.CHANNEL_EXTENSIONS_UPDATE) {
             setSmallIcon(R.drawable.ic_warning_white_24dp)
-            setContentTitle("Extension install failed")
+            setContentTitle(context.getString(I18nR.string.ext_install_failed_notification_title))
             setContentText(content)
             setStyle(NotificationCompat.BigTextStyle().bigText(content))
             setContentIntent(pendingIntent)

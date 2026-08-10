@@ -29,7 +29,16 @@ class UnlockableManager(
 
     companion object {
         private const val PREFIX = "unlocked_"
-        private val EXCLUSIVE_THEME_IDS = setOf("ONYX_GOLD", "SAKURA_NOIR", "NEBULA_TIDE", "EVENT_HORIZON")
+
+        /**
+         * Tombstones for unlockables removed from the game (achievements v25).
+         * Old backups / stale DB rows may still carry these ids; they must never
+         * be granted again.
+         */
+        private val REMOVED_UNLOCKABLE_IDS = setOf(
+            "theme_achievement_gold",
+            "theme_achievement_sapphire",
+        )
     }
 
     /**
@@ -47,6 +56,19 @@ class UnlockableManager(
             putBoolean("$PREFIX$unlockableId", true)
         }
         logcat(LogPriority.INFO) { "Unlockable unlocked: $unlockableId" }
+    }
+
+    /**
+     * Remove a previously granted unlockable (legacy cleanup).
+     */
+    fun removeUnlockable(unlockableId: String) {
+        val key = "$PREFIX$unlockableId"
+        if (preferences.contains(key)) {
+            preferences.edit(commit = true) {
+                remove(key)
+            }
+            logcat(LogPriority.INFO) { "Unlockable removed: $unlockableId" }
+        }
     }
 
     /**
@@ -92,6 +114,7 @@ class UnlockableManager(
     suspend fun unlockAchievementRewards(achievement: Achievement) {
         // Unlock main unlockable if exists
         achievement.unlockableId?.let { unlockableId ->
+            if (unlockableId in REMOVED_UNLOCKABLE_IDS) return@let
             setUnlockableUnlocked(unlockableId)
             // Apply the unlockable effect
             applyUnlockable(unlockableId)
@@ -99,6 +122,7 @@ class UnlockableManager(
 
         // Unlock all rewards in the rewards list
         achievement.rewards?.forEach { reward ->
+            if (reward.id in REMOVED_UNLOCKABLE_IDS) return@forEach
             setUnlockableUnlocked(reward.id)
             applyUnlockable(reward.id)
         }
@@ -229,8 +253,6 @@ class UnlockableManager(
     fun getUnlockableNameRes(unlockableId: String): StringResource? {
         return when (unlockableId) {
             // Themes
-            "theme_achievement_gold" -> MR.strings.unlockable_theme_achievement_gold
-            "theme_achievement_sapphire" -> MR.strings.unlockable_theme_achievement_sapphire
             "theme_master" -> MR.strings.unlockable_theme_master
             "theme_ONYX_GOLD" -> MR.strings.unlockable_theme_ONYX_GOLD
             "theme_SAKURA_NOIR" -> MR.strings.unlockable_theme_SAKURA_NOIR

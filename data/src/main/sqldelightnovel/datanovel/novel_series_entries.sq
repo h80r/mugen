@@ -20,7 +20,10 @@ getAllNovelIdsInAnySeries:
 SELECT novel_id FROM novel_series_entries;
 
 insert:
-INSERT INTO novel_series_entries(series_id, novel_id, position)
+-- OR REPLACE: a novel can only belong to one series (UNIQUE novel_id), so adding a selection
+-- again (or moving a title into another series) must replace the existing entry instead of
+-- crashing the whole add-selection flow on a constraint violation.
+INSERT OR REPLACE INTO novel_series_entries(series_id, novel_id, position)
 VALUES (:seriesId, :novelId, :position);
 
 deleteByNovelId:

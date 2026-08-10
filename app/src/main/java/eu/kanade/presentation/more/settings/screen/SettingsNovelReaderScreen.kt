@@ -111,6 +111,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.NovelReaderChapterDiskCacheStore
 import eu.kanade.tachiyomi.ui.reader.novel.dictionary.NovelDictionaryHistory
 import eu.kanade.tachiyomi.ui.reader.novel.dictionary.NovelDictionaryHistoryScreen
 import eu.kanade.tachiyomi.ui.reader.novel.dictionary.StarDictManager
+import eu.kanade.tachiyomi.ui.reader.novel.replace.NovelTextReplaceRulesScreen
 import eu.kanade.tachiyomi.ui.reader.novel.setting.GeminiPromptMode
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelAutoScrollChapterEndBehavior
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
@@ -223,6 +224,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
 
     @Composable
     private fun getDisplayGroup(prefs: NovelReaderPreferences): Preference.PreferenceGroup {
+        val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val typographyPresetPref = prefs.typographyPreset()
         val typographyPreset by typographyPresetPref.collectAsState()
@@ -447,6 +449,11 @@ object SettingsNovelReaderScreen : SearchableSettings {
                         },
                     )
                 },
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(AYMR.strings.novel_reader_text_replace),
+                    subtitle = stringResource(AYMR.strings.novel_reader_text_replace_summary),
+                    onClick = { navigator.push(NovelTextReplaceRulesScreen()) },
+                ),
             ),
         )
     }

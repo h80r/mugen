@@ -2,7 +2,7 @@ package eu.kanade.tachiyomi.ui.updates.novel
 
 import android.app.Application
 import androidx.compose.runtime.Immutable
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.util.addOrRemove
 import eu.kanade.core.util.insertSeparators
@@ -12,9 +12,14 @@ import eu.kanade.tachiyomi.util.lang.toLocalDate
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.system.logcat
@@ -34,63 +39,50 @@ class NovelUpdatesScreenModel(
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val chapterRepository: NovelChapterRepository = Injekt.get(),
     private val eventBus: AchievementEventBus? = runCatching { Injekt.get<AchievementEventBus>() }.getOrNull(),
-) : StateScreenModel<NovelUpdatesScreenModel.State>(State()) {
+) : ScreenModel {
 
     val lastUpdated = libraryPreferences.lastUpdatedTimestamp().get()
-    private val selectedChapterIds = hashSetOf<Long>()
+    private val limit = ZonedDateTime.now().minusMonths(3).toInstant()
+    private val selectedChapterIds = MutableStateFlow<Set<Long>>(emptySet())
 
-    init {
-        screenModelScope.launchIO {
-            val limit = ZonedDateTime.now().minusMonths(3).toInstant()
-            getUpdates.subscribe(limit)
-                .distinctUntilChanged()
-                .catch { logcat(LogPriority.ERROR, it) }
-                .collectLatest { updates ->
-                    mutableState.value = State(
-                        isLoading = false,
-                        items = updates
-                            .filter { !it.read }
-                            .map { update ->
-                                NovelUpdatesItem(
-                                    update = update,
-                                    selected = selectedChapterIds.contains(update.chapterId),
-                                )
-                            }
-                            .toPersistentList(),
+    val state: StateFlow<State> = combine(
+        getUpdates.subscribe(limit)
+            .distinctUntilChanged()
+            .catch { logcat(LogPriority.ERROR, it) },
+        selectedChapterIds,
+    ) { updates, selectedChapterIds ->
+        State(
+            isLoading = false,
+            items = updates
+                .filter { !it.read }
+                .map { update ->
+                    NovelUpdatesItem(
+                        update = update,
+                        selected = selectedChapterIds.contains(update.chapterId),
                     )
                 }
+                .toPersistentList(),
+        )
+    }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), State())
+
+    fun toggleSelection(item: NovelUpdatesItem, selected: Boolean) {
+        selectedChapterIds.update { ids ->
+            if (selected) ids + item.update.chapterId else ids - item.update.chapterId
         }
     }
 
-    fun toggleSelection(item: NovelUpdatesItem, selected: Boolean) {
-        mutableState.value = mutableState.value.copy(
-            items = mutableState.value.items.map {
-                if (it.update.chapterId == item.update.chapterId) {
-                    selectedChapterIds.addOrRemove(item.update.chapterId, selected)
-                    it.copy(selected = selected)
-                } else {
-                    it
-                }
-            }.toPersistentList(),
-        )
-    }
-
     fun toggleAllSelection(selected: Boolean) {
-        mutableState.value = mutableState.value.copy(
-            items = mutableState.value.items.map {
-                selectedChapterIds.addOrRemove(it.update.chapterId, selected)
-                it.copy(selected = selected)
-            }.toPersistentList(),
-        )
+        selectedChapterIds.update { ids ->
+            val current = state.value.items.map { it.update.chapterId }
+            if (selected) ids + current else ids - current
+        }
     }
 
     fun invertSelection() {
-        mutableState.value = mutableState.value.copy(
-            items = mutableState.value.items.map {
-                selectedChapterIds.addOrRemove(it.update.chapterId, !it.selected)
-                it.copy(selected = !it.selected)
-            }.toPersistentList(),
-        )
+        selectedChapterIds.update { ids ->
+            val current = state.value.items.map { it.update.chapterId }
+            (ids - current) + (current - ids)
+        }
     }
 
     fun markUpdatesRead(updates: List<NovelUpdatesItem>, read: Boolean) {

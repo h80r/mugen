@@ -61,10 +61,12 @@ import eu.kanade.tachiyomi.util.system.copyToClipboard
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
@@ -219,32 +221,27 @@ data class MangaTrackInfoDialogHomeScreen(
         private val isNovelEntry: Boolean,
         private val getTracks: GetMangaTracks = Injekt.get(),
         private val getNovelTracks: GetNovelTracks = Injekt.get(),
-    ) : StateScreenModel<Model.State>(State()) {
+    ) : ScreenModel {
+
+        val state: StateFlow<Model.State> = (
+            if (isNovelEntry) {
+                getNovelTracks.subscribe(mangaId)
+                    .map { it.mapNovelToTrackItem() }
+            } else {
+                getTracks.subscribe(mangaId)
+                    .map { it.mapToTrackItem() }
+            }
+            )
+            .catch { logcat(LogPriority.ERROR, it) }
+            .distinctUntilChanged()
+            .map { trackItems ->
+                State(trackItems = trackItems)
+            }
+            .stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), State())
 
         init {
             screenModelScope.launch {
                 refreshTrackers()
-            }
-
-            screenModelScope.launch {
-                val trackItemsFlow = if (isNovelEntry) {
-                    getNovelTracks.subscribe(mangaId)
-                        .map { it.mapNovelToTrackItem() }
-                } else {
-                    getTracks.subscribe(mangaId)
-                        .map { it.mapToTrackItem() }
-                }
-
-                trackItemsFlow
-                    .catch { logcat(LogPriority.ERROR, it) }
-                    .distinctUntilChanged()
-                    .collectLatest { trackItems ->
-                        mutableState.update {
-                            it.copy(
-                                trackItems = trackItems,
-                            )
-                        }
-                    }
             }
         }
 

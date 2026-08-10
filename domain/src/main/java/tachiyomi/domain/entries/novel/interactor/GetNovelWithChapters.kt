@@ -12,7 +12,7 @@ class GetNovelWithChapters(
     private val novelChapterRepository: NovelChapterRepository,
 ) {
 
-    suspend fun subscribe(
+    fun subscribe(
         id: Long,
         applyScanlatorFilter: Boolean = false,
     ): Flow<Pair<Novel, List<NovelChapter>>> {

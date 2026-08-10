@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.browse.novel.extension
 
 import android.app.Application
+import android.widget.Toast
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
@@ -21,7 +22,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
@@ -41,6 +44,7 @@ class NovelExtensionsScreenModel(
     private val currentDownloads = MutableStateFlow<Map<String, InstallStep>>(hashMapOf())
     private val allPluginVariants = MutableStateFlow<Map<String, List<NovelPlugin.Available>>>(emptyMap())
     private val lastDiagnostics = MutableStateFlow<Map<String, ExtensionInstallDiagnostic>>(emptyMap())
+    private val installedPluginsSnapshot = MutableStateFlow<List<NovelPlugin.Installed>>(emptyList())
     private val apkFileStore = ExtensionApkFileStore(basePreferences)
 
     init {
@@ -52,6 +56,7 @@ class NovelExtensionsScreenModel(
                 extensionManager.availablePluginsFlow,
                 extensionManager.untrustedPluginsFlow,
             ) { downloads, installed, installedSources, available, untrusted ->
+                installedPluginsSnapshot.value = installed
                 ListingSourceState(
                     downloads = downloads,
                     installed = installed,
@@ -208,6 +213,24 @@ class NovelExtensionsScreenModel(
         }
 
         screenModelScope.launchIO { refresh() }
+
+        extensionManager.signatureMismatchEvents
+            .onEach { event ->
+                mutableState.update { state -> state.copy(signatureMismatchEvent = event) }
+            }
+            .launchIn(screenModelScope)
+
+        // Repo indexes that failed to load are otherwise invisible: the manager returns whatever
+        // it has and the user cannot tell a dead repo from an empty one.
+        extensionManager.repoFetchErrors
+            .distinctUntilChanged()
+            .onEach { errors ->
+                if (errors.isNotEmpty()) {
+                    val summary = errors.entries.joinToString("\n") { (url, msg) -> "$url: $msg" }
+                    Toast.makeText(context, summary, Toast.LENGTH_LONG).show()
+                }
+            }
+            .launchIn(screenModelScope)
     }
 
     fun refresh() {
@@ -378,6 +401,21 @@ class NovelExtensionsScreenModel(
         mutableState.update { it.copy(repoPickerPluginId = null, repoPickerOptions = emptyList()) }
     }
 
+    fun reinstallAfterSignatureMismatch() {
+        val event = state.value.signatureMismatchEvent ?: return
+        val candidate = event.candidate
+        val installed = installedPluginsSnapshot.value.firstOrNull { it.id == event.pluginId }
+        dismissSignatureMismatch()
+        if (installed == null || candidate == null) return
+        screenModelScope.launchIO {
+            extensionManager.replacePluginFromRepo(installed, candidate)
+        }
+    }
+
+    fun dismissSignatureMismatch() {
+        mutableState.update { it.copy(signatureMismatchEvent = null) }
+    }
+
     fun uninstallExtension(plugin: NovelPlugin.Installed) {
         screenModelScope.launchIO {
             extensionManager.uninstallPlugin(plugin)
@@ -436,6 +474,7 @@ class NovelExtensionsScreenModel(
         val collapsedLanguages: Set<String> = emptySet(),
         val repoPickerPluginId: String? = null,
         val repoPickerOptions: List<NovelPlugin.Available> = emptyList(),
+        val signatureMismatchEvent: NovelExtensionManager.SignatureMismatchEvent? = null,
     )
 
     private companion object {

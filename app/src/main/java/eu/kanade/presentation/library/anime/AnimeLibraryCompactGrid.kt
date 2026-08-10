@@ -2,7 +2,9 @@ package eu.kanade.presentation.library.anime
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -27,6 +29,7 @@ fun AnimeLibraryCompactGrid(
     contentPadding: PaddingValues,
     selection: List<LibraryAnime>,
     selectedIds: Set<Long> = selection.idsToHashSet { it.id },
+    state: LazyGridState = rememberLazyGridState(),
     onClick: (LibraryAnime) -> Unit,
     onLongClick: (LibraryAnime) -> Unit,
     onClickContinueWatching: ((LibraryAnime) -> Unit)?,
@@ -35,6 +38,7 @@ fun AnimeLibraryCompactGrid(
     onGlobalSearchClicked: () -> Unit,
 ) {
     LazyLibraryGrid(
+        state = state,
         modifier = Modifier.fillMaxSize(),
         columns = columns,
         contentPadding = contentPadding,
@@ -58,7 +62,7 @@ fun AnimeLibraryCompactGrid(
             }
             EntryCompactGridItem(
                 isSelected = selectedIds.contains(libraryItem.libraryAnime.id),
-                title = anime.title.takeIf { showTitle },
+                title = anime.displayTitle.takeIf { showTitle },
                 coverData = coverData,
                 coverBadgeStart = {
                     DownloadsBadge(count = libraryItem.downloadCount)

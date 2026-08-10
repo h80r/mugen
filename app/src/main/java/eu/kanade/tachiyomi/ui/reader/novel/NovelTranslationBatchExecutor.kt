@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.reader.novel
 
 import eu.kanade.domain.items.novelchapter.model.toSNovelChapter
 import eu.kanade.tachiyomi.novelsource.NovelSource
+import eu.kanade.tachiyomi.ui.reader.novel.replace.applyReplaceRulesToHtml
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTranslationProvider
 import eu.kanade.tachiyomi.ui.reader.novel.translation.DeepSeekTranslationService
@@ -73,6 +74,8 @@ internal class NovelTranslationBatchExecutor(
     private val mistralTranslationService: MistralTranslationService,
     private val nvidiaTranslationService: NvidiaTranslationService,
     private val ollamaCloudTranslationService: OllamaCloudTranslationService,
+    /** Applies user text-replacement rules to sanitized chapter markup. */
+    private val replaceTextHtml: (String) -> String = { it },
 ) {
     private var hasTriggeredNextChapterGeminiPrefetch: Boolean = false
     private var nextChapterGeminiPrefetchJob: Job? = null
@@ -140,8 +143,9 @@ internal class NovelTranslationBatchExecutor(
                     rawHtml = nextHtml.normalizeStructuredChapterPayload(),
                     chapterName = nextChapter.name,
                 )
-                val sanitizedNextHtml = sanitizeChapterHtmlForReader(normalizedNextHtml)
-                    .ifBlank { normalizedNextHtml }
+                val sanitizedNextHtml = replaceTextHtml(
+                    sanitizeChapterHtmlForReader(normalizedNextHtml).ifBlank { normalizedNextHtml },
+                )
                 val nextTextBlocks = extractTextBlocks(sanitizedNextHtml)
                 if (nextTextBlocks.isEmpty()) return@runCatching
                 val chunkSize = settings.effectiveTranslationBatchSize()

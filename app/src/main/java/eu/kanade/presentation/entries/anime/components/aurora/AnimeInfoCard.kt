@@ -18,16 +18,21 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import eu.kanade.domain.description.DescriptionEngine
+import eu.kanade.presentation.entries.components.ExpandableDescriptionBlocks
 import eu.kanade.presentation.entries.components.aurora.GlassmorphismCard
+import eu.kanade.presentation.entries.components.auroraDescriptionBlockStyle
 import eu.kanade.presentation.entries.translation.AuroraEntryTranslationState
 import eu.kanade.presentation.theme.AuroraTheme
 import tachiyomi.domain.entries.anime.model.Anime
@@ -97,44 +102,34 @@ fun AnimeInfoCard(
                 letterSpacing = 0.8.sp,
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
-            ) {
-                val descriptionToggleEnabled = (filteredDescription?.length ?: 0) > 200
+            var hasDescriptionOverflow by remember { mutableStateOf(false) }
+            val descriptionBlocks = remember(filteredDescription) {
+                filteredDescription?.let { DescriptionEngine.beautify(it) } ?: emptyList()
+            }
+            if (descriptionBlocks.isEmpty()) {
                 Text(
-                    text = filteredDescription ?: stringResource(AYMR.strings.aurora_no_description),
+                    text = stringResource(AYMR.strings.aurora_no_description),
                     color = colors.textPrimary.copy(alpha = 0.9f),
                     fontSize = 14.sp,
                     lineHeight = 22.sp,
-                    maxLines = if (descriptionExpanded) Int.MAX_VALUE else 5,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f)
-                        .then(
-                            if (descriptionToggleEnabled) {
-                                Modifier.clickable { onToggleDescription() }
-                            } else {
-                                Modifier
-                            },
-                        ),
+                    modifier = Modifier.fillMaxWidth(),
                 )
-
-                if (descriptionToggleEnabled) {
-                    Icon(
-                        imageVector = if (descriptionExpanded) {
-                            Icons.Filled.KeyboardArrowUp
+            } else {
+                ExpandableDescriptionBlocks(
+                    blocks = descriptionBlocks,
+                    expanded = descriptionExpanded,
+                    onToggle = { onToggleDescription() },
+                    style = auroraDescriptionBlockStyle(colors),
+                    collapsedLines = 5,
+                    onOverflowChanged = { hasDescriptionOverflow = it },
+                    modifier = Modifier.then(
+                        if (hasDescriptionOverflow) {
+                            Modifier.clickable { onToggleDescription() }
                         } else {
-                            Icons.Filled.KeyboardArrowDown
+                            Modifier
                         },
-                        contentDescription = null,
-                        tint = colors.accent,
-                        modifier = Modifier
-                            .padding(start = 8.dp)
-                            .clickable { onToggleDescription() },
-                    )
-                }
+                    ),
+                )
             }
 
             if (!anime.displayGenre.isNullOrEmpty()) {

@@ -54,6 +54,15 @@ class LibraryPreferencesDefaultsTest {
     }
 
     @Test
+    fun `language filter prefs default to empty set`() {
+        val prefs = LibraryPreferences(InMemoryPreferenceStore())
+
+        prefs.filterMangaLanguages().get() shouldBe emptySet()
+        prefs.filterNovelLanguages().get() shouldBe emptySet()
+        prefs.filterAnimeLanguages().get() shouldBe emptySet()
+    }
+
+    @Test
     fun `aurora library card style preference persists`() {
         val prefs = LibraryPreferences(InMemoryPreferenceStore())
         val cardStylePref = prefs.auroraLibraryCardStyle()

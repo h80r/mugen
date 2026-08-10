@@ -108,6 +108,7 @@ data class GlobalAnimeSearchScreen(
                         },
                         getAnime = { screenModel.getAnime(it) },
                         onChangeSearchFilter = screenModel::setSourceFilter,
+                        onChangeLanguageFilter = screenModel::setLanguageFilter,
                         onToggleResults = screenModel::toggleFilterResults,
                         onClickSource = {
                             navigator.push(BrowseAnimeSourceScreen(it.id, state.searchQuery ?: ""))

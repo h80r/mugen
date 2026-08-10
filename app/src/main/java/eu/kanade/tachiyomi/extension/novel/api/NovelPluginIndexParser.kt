@@ -118,7 +118,11 @@ private fun JsonElement?.parseNsfwFlag(): Boolean {
 private fun String.resolveApkAgainstRepo(repoUrl: String): String? {
     val raw = trim()
     if (raw.isBlank()) return null
-    raw.toHttpUrlOrNull()?.let { return it.toString() }
+    raw.toHttpUrlOrNull()?.let { url ->
+        // Unencrypted transports let a MITM replace the APK before the checksum can be checked.
+        if (url.isHttps) return url.toString()
+        return null
+    }
 
     val normalizedRepoUrl = repoUrl.trim()
     val repoRoot = if (normalizedRepoUrl.endsWith(".json", ignoreCase = true)) {
@@ -126,9 +130,10 @@ private fun String.resolveApkAgainstRepo(repoUrl: String): String? {
     } else {
         normalizedRepoUrl.trimEnd('/')
     }
-    val base = "$repoRoot/".toHttpUrlOrNull() ?: return raw
+    val base = "$repoRoot/".toHttpUrlOrNull() ?: return null
+    if (!base.isHttps) return null
     val apkPath = if (raw.startsWith("apk/")) raw else "apk/$raw"
-    return base.resolve(apkPath)?.toString() ?: raw
+    return base.resolve(apkPath)?.takeIf { it.isHttps }?.toString()
 }
 
 private fun parseVersion(element: JsonElement?): Int {

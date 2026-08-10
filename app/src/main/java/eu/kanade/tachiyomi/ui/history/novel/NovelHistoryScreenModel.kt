@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.ui.history.novel
 
 import androidx.compose.runtime.Immutable
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.entries.novel.LocalNovelVisibility
@@ -10,11 +10,16 @@ import eu.kanade.tachiyomi.util.lang.toLocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
@@ -32,26 +37,28 @@ class NovelHistoryScreenModel(
     private val historyRepository: NovelHistoryRepository = Injekt.get(),
     private val getNovel: GetNovel = Injekt.get(),
     private val localNovelSourceFileSystem: LocalNovelSourceFileSystem = Injekt.get(),
-) : StateScreenModel<NovelHistoryScreenModel.State>(State()) {
+) : ScreenModel {
 
     private val _events: Channel<Event> = Channel(Channel.UNLIMITED)
     val events: Flow<Event> = _events.receiveAsFlow()
 
-    init {
-        screenModelScope.launch {
-            historyRepository.getNovelHistory("")
-                .catch { error ->
-                    logcat(LogPriority.ERROR, error)
-                    _events.send(Event.InternalError)
-                }
-                .distinctUntilChanged()
-                .map { items -> items.filterVisibleLocalNovels().toHistoryUiModels() }
-                .flowOn(Dispatchers.IO)
-                .collect { newList ->
-                    mutableState.update { it.copy(list = newList) }
-                }
+    private val dialogState = MutableStateFlow<Dialog?>(null)
+
+    val state: StateFlow<State> = historyRepository.getNovelHistory("")
+        .catch { error ->
+            logcat(LogPriority.ERROR, error)
+            _events.send(Event.InternalError)
         }
-    }
+        .distinctUntilChanged()
+        .map { items -> items.filterVisibleLocalNovels().toHistoryUiModels() }
+        .flowOn(Dispatchers.IO)
+        .combine(dialogState) { list, dialog ->
+            State(
+                list = list,
+                dialog = dialog,
+            )
+        }
+        .stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), State())
 
     private suspend fun List<NovelHistoryWithRelations>.filterVisibleLocalNovels(): List<NovelHistoryWithRelations> {
         if (isEmpty()) return this
@@ -92,7 +99,7 @@ class NovelHistoryScreenModel(
     }
 
     fun setDialog(dialog: Dialog?) {
-        mutableState.update { it.copy(dialog = dialog) }
+        dialogState.update { dialog }
     }
 
     fun removeFromHistory(history: NovelHistoryWithRelations) {

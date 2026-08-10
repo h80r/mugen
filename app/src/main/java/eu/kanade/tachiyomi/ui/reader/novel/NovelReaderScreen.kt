@@ -112,6 +112,13 @@ class NovelReaderScreen(
             val observer = LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_STOP) {
                     screenModel.flushBookModeProgress()
+                    // Per-chapter progress has the same debounce tail: a reader recreated after the
+                    // process is killed restores from the last flushed row, so an unflushed tail
+                    // shows up as a jump back, a jump to the chapter start, or a resume on the
+                    // previous chapter (its history snapshot was flushed, the current one was not).
+                    coroutineScope.launch {
+                        screenModel.persistCurrentChapterExitState()
+                    }
                 }
             }
             lifecycleOwner.lifecycle.addObserver(observer)
@@ -360,6 +367,14 @@ class NovelReaderScreen(
                         onCancelAutoScrollHandoff = screenModel::cancelAutoScrollHandoff,
                         onRequestAutoScrollNextChapterPrefetch = screenModel::requestAutoScrollNextChapterPrefetch,
                         onOpenPreviousChapter = { previousChapterId ->
+                            // In book mode the whole novel is one continuous document, so moving to
+                            // the previous chapter only seeks within the book instead of replacing
+                            // the reader screen.
+                            if (successState.bookMode.isEnabled &&
+                                screenModel.onBookModeChapterSelected(previousChapterId)
+                            ) {
+                                return@NovelReaderScreenActions
+                            }
                             // A seamless in-place switch keeps this screen and its live document
                             // alive, so the reader never shows the chapter loading screen.
                             NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
@@ -384,6 +399,14 @@ class NovelReaderScreen(
                             }
                         },
                         onOpenNextChapter = { nextChapterId ->
+                            // In book mode the whole novel is one continuous document, so moving to
+                            // the next chapter only seeks within the book instead of replacing the
+                            // reader screen.
+                            if (successState.bookMode.isEnabled &&
+                                screenModel.onBookModeChapterSelected(nextChapterId)
+                            ) {
+                                return@NovelReaderScreenActions
+                            }
                             NovelReaderChapterHandoffPolicy.markInternalChapterHandoff(
                                 NovelReaderPageReaderHandoffTarget.START,
                             )

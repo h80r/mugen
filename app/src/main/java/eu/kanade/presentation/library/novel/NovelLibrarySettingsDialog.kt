@@ -1,8 +1,11 @@
 package eu.kanade.presentation.library.novel
 
 import android.content.res.Configuration
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -10,14 +13,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.presentation.components.AuroraAccordionItem
 import eu.kanade.presentation.components.AuroraBaseSortItem
 import eu.kanade.presentation.components.AuroraCheckboxItem
 import eu.kanade.presentation.components.AuroraChipRow
@@ -32,6 +40,7 @@ import eu.kanade.presentation.components.TabbedDialogPaddings
 import eu.kanade.presentation.library.auroraLibraryCardStyleOptions
 import eu.kanade.presentation.library.components.GroupPage
 import eu.kanade.tachiyomi.ui.library.novel.NovelLibraryScreenModel
+import eu.kanade.tachiyomi.util.system.LocaleHelper
 import eu.kanade.tachiyomi.util.system.isReleaseBuildType
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.domain.library.model.LibraryDisplayMode
@@ -124,6 +133,38 @@ private fun ColumnScope.FilterPage(
             state = state.filterIntervalCustom,
             onClick = screenModel::setIntervalCustomFilter,
         )
+    }
+
+    if (state.libraryLanguages.isNotEmpty()) {
+        var languageExpanded by remember { mutableStateOf(false) }
+        AuroraAccordionItem(
+            label = stringResource(MR.strings.filter_language),
+            expanded = languageExpanded,
+            onToggle = { languageExpanded = !languageExpanded },
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Start,
+            ) {
+                TextButton(onClick = { screenModel.setAllLanguages(state.libraryLanguages.toSet()) }) {
+                    Text(text = stringResource(MR.strings.action_select_all))
+                }
+                TextButton(onClick = screenModel::clearLanguageFilter) {
+                    Text(text = stringResource(MR.strings.action_clear))
+                }
+            }
+            state.libraryLanguages.forEach { language ->
+                AuroraCheckboxItem(
+                    label = if (language == "all") {
+                        stringResource(MR.strings.label_local)
+                    } else {
+                        LocaleHelper.getLocalizedDisplayName(language)
+                    },
+                    checked = language in state.languageFilter,
+                    onClick = { screenModel.toggleLanguage(language) },
+                )
+            }
+        }
     }
 }
 

@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.extension.anime.installer.InstallerAnime
 import eu.kanade.tachiyomi.extension.anime.installer.PackageInstallerInstallerAnime
 import eu.kanade.tachiyomi.extension.anime.installer.ShizukuInstallerAnime
 import eu.kanade.tachiyomi.extension.anime.util.AnimeExtensionInstaller.Companion.EXTRA_DOWNLOAD_ID
+import eu.kanade.tachiyomi.extension.anime.util.AnimeExtensionInstaller.Companion.EXTRA_PACKAGE_NAME
 import eu.kanade.tachiyomi.util.system.getSerializableExtraCompat
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import logcat.LogPriority
@@ -23,6 +24,7 @@ import tachiyomi.i18n.MR
 class AnimeExtensionInstallService : Service() {
 
     private var installer: InstallerAnime? = null
+    private var installerType: BasePreferences.ExtensionInstaller? = null
 
     override fun onCreate() {
         val notification = notificationBuilder(Notifications.CHANNEL_EXTENSIONS_UPDATE) {
@@ -42,12 +44,15 @@ class AnimeExtensionInstallService : Service() {
         val installerUsed = intent?.getSerializableExtraCompat<BasePreferences.ExtensionInstaller>(
             EXTRA_INSTALLER,
         )
+        val pkgName = intent?.getStringExtra(AnimeExtensionInstaller.Companion.EXTRA_PACKAGE_NAME)
         if (uri == null || id == null || installerUsed == null) {
             stopSelf()
             return START_NOT_STICKY
         }
 
-        if (installer == null) {
+        if (installer == null || (installerType != installerUsed && installer!!.isIdle())) {
+            // A different backend arrived while the queue was idle: create a fresh installer for
+            // it instead of routing through the previous one.
             installer = when (installerUsed) {
                 BasePreferences.ExtensionInstaller.PACKAGEINSTALLER -> PackageInstallerInstallerAnime(
                     this,
@@ -61,7 +66,8 @@ class AnimeExtensionInstallService : Service() {
                 }
             }
         }
-        installer!!.addToQueue(id, uri)
+        installerType = installerUsed
+        installer!!.addToQueue(id, uri, pkgName)
         return START_NOT_STICKY
     }
 
@@ -80,11 +86,13 @@ class AnimeExtensionInstallService : Service() {
             downloadId: Long,
             uri: Uri,
             installer: BasePreferences.ExtensionInstaller,
+            pkgName: String? = null,
         ): Intent {
             return Intent(context, AnimeExtensionInstallService::class.java)
                 .setDataAndType(uri, AnimeExtensionInstaller.APK_MIME)
                 .putExtra(EXTRA_DOWNLOAD_ID, downloadId)
                 .putExtra(EXTRA_INSTALLER, installer)
+                .putExtra(EXTRA_PACKAGE_NAME, pkgName)
         }
     }
 }

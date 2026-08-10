@@ -30,12 +30,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import eu.kanade.domain.description.DescriptionEngine
 import eu.kanade.domain.entries.novel.model.normalizeNovelDescription
+import eu.kanade.presentation.entries.components.ExpandableDescriptionBlocks
 import eu.kanade.presentation.entries.components.aurora.GlassmorphismCard
 import eu.kanade.presentation.entries.components.aurora.auroraSpringClick
+import eu.kanade.presentation.entries.components.auroraDescriptionBlockStyle
 import eu.kanade.presentation.entries.translation.AuroraEntryTranslationState
 import eu.kanade.presentation.theme.AuroraTheme
 import tachiyomi.domain.entries.novel.model.Novel
@@ -101,55 +103,38 @@ fun NovelInfoCard(
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
                     letterSpacing = 0.8.sp,
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    val descriptionToggleEnabled = shouldShowNovelDescriptionToggle(
-                        hasDescriptionOverflow = hasDescriptionOverflow,
-                        descriptionExpanded = descriptionExpanded,
+                val descriptionBlocks = remember(normalizedDescription) {
+                    normalizedDescription?.let { DescriptionEngine.beautify(it) } ?: emptyList()
+                }
+                val descriptionToggleEnabled = shouldShowNovelDescriptionToggle(
+                    hasDescriptionOverflow = hasDescriptionOverflow,
+                    descriptionExpanded = descriptionExpanded,
+                )
+                if (descriptionBlocks.isEmpty()) {
+                    Text(
+                        text = stringResource(AYMR.strings.aurora_no_description),
+                        color = colors.textPrimary.copy(alpha = 0.9f),
+                        fontSize = 14.sp,
+                        lineHeight = 22.sp,
+                        modifier = Modifier.fillMaxWidth(),
                     )
+                } else {
                     SelectionContainer(
-                        modifier = Modifier
-                            .weight(1f)
-                            .then(
-                                if (descriptionToggleEnabled) {
-                                    Modifier.auroraSpringClick(onClick = onToggleDescription)
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                    ) {
-                        Text(
-                            text = normalizedDescription ?: stringResource(AYMR.strings.aurora_no_description),
-                            color = colors.textPrimary.copy(alpha = 0.9f),
-                            fontSize = 14.sp,
-                            lineHeight = 22.sp,
-                            maxLines = if (descriptionExpanded) Int.MAX_VALUE else 5,
-                            overflow = TextOverflow.Ellipsis,
-                            onTextLayout = { textLayoutResult ->
-                                if (textLayoutResult.hasVisualOverflow) {
-                                    hasDescriptionOverflow = true
-                                }
-                            },
-                        )
-                    }
-
-                    if (descriptionToggleEnabled) {
-                        Icon(
-                            imageVector = if (descriptionExpanded) {
-                                Icons.Filled.KeyboardArrowUp
+                        modifier = Modifier.then(
+                            if (descriptionToggleEnabled) {
+                                Modifier.auroraSpringClick(onClick = onToggleDescription)
                             } else {
-                                Icons.Filled.KeyboardArrowDown
+                                Modifier
                             },
-                            contentDescription = null,
-                            tint = colors.accent,
-                            modifier = Modifier
-                                .padding(start = 8.dp)
-                                .auroraSpringClick(onClick = onToggleDescription),
+                        ),
+                    ) {
+                        ExpandableDescriptionBlocks(
+                            blocks = descriptionBlocks,
+                            expanded = descriptionExpanded,
+                            onToggle = { onToggleDescription() },
+                            style = auroraDescriptionBlockStyle(colors),
+                            collapsedLines = 5,
+                            onOverflowChanged = { hasDescriptionOverflow = it },
                         )
                     }
                 }

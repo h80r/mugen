@@ -380,6 +380,12 @@
     <string name="multi_lang">متعدد</string>
     <string name="ext_updates_pending">تحديثات معلقة</string>
     <string name="ext_update">تحديث</string>
+    <string name="ext_manual_apk_share_message">قد يتطلب تثبيت APK يدويًا إذن تثبيت التطبيقات غير المعروفة.</string>
+    <string name="ext_install_failed_notification_body">فشل PackageInstaller: %1$s. افتح الإضافات وأعد المحاولة مع %2$s.</string>
+    <string name="ext_install_failed_notification_title">فشل تثبيت الإضافة</string>
+    <string name="extension_signature_mismatch_title">التحديث يتطلب إعادة تثبيت</string>
+    <string name="extension_signature_mismatch_message">النسخة الجديدة من %1$s موقعة بمفتاح مختلف. تثبيتها يتطلب إزالة النسخة السابقة أولاً؟</string>
+    <string name="extension_reinstall">إعادة تثبيت</string>
     <string name="ext_update_all">تحديث الكل</string>
     <string name="ext_reinstall_required">إعادة التثبيت مطلوبة</string>
     <string name="ext_reinstall_required_hint">تم العثور على مكوّن إضافي أحدث في مستودع آخر. مطلوب إعادة التثبيت.</string>
@@ -1497,8 +1503,6 @@
     <string name="achievement_secret_king_of_pirates_desc">صل إلى الخط الكبير لـ 1,000 نقطة</string>
     <string name="achievement_secret_not_even_my_final_form_title">ليس حتى شكلي النهائي!</string>
     <string name="achievement_secret_not_even_my_final_form_desc">صل إلى أكثر من 9,000 نقطة إنجاز</string>
-    <string name="unlockable_theme_achievement_gold">مظهر الإنجازات الذهبي</string>
-    <string name="unlockable_theme_achievement_sapphire">مظهر الإنجازات الياقوتي</string>
     <string name="unlockable_theme_master">مظهر سيد المحتوى</string>
     <string name="unlockable_theme_ONYX_GOLD">مظهر الأونيكس الملكي</string>
     <string name="unlockable_theme_SAKURA_NOIR">مظهر خسوف الساكورا</string>

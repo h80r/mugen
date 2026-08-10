@@ -40,10 +40,16 @@ class ExtensionAutoUpdateRunner(
     }
 
     private suspend fun updateMangaExtensions(context: Context, installer: BasePreferences.ExtensionInstaller) {
-        val candidates = mangaExtensionManager.installedExtensionsFlow.first()
-            .filter { it.hasUpdate }
+        val installed = mangaExtensionManager.installedExtensionsFlow.first()
+        val sharedSkipped = installed.filter { it.hasUpdate && it.isShared }
+        val candidates = installed.filter { it.hasUpdate }
             .filter { canAutoUpdateExtension(true, installer, isSharedInstall = it.isShared) }
-        if (candidates.isEmpty()) return
+        if (candidates.isEmpty()) {
+            if (sharedSkipped.isNotEmpty()) {
+                ExtensionUpdateNotifier(context).notifySharedAutoUpdateSkipped(sharedSkipped.map { it.name })
+            }
+            return
+        }
 
         val updated = candidates.mapNotNull { extension ->
             val terminalStep = runCatching {
@@ -51,7 +57,12 @@ class ExtensionAutoUpdateRunner(
             }.getOrNull()
             extension.name.takeIf { terminalStep == InstallStep.Installed }
         }
-        if (updated.isEmpty()) return
+        if (updated.isEmpty()) {
+            if (sharedSkipped.isNotEmpty()) {
+                ExtensionUpdateNotifier(context).notifySharedAutoUpdateSkipped(sharedSkipped.map { it.name })
+            }
+            return
+        }
 
         sourcePreferences.mangaExtensionUpdatesCount()
             .set(mangaExtensionManager.installedExtensionsFlow.first().count { it.hasUpdate })
@@ -59,10 +70,21 @@ class ExtensionAutoUpdateRunner(
     }
 
     private suspend fun updateAnimeExtensions(context: Context, installer: BasePreferences.ExtensionInstaller) {
-        val candidates = animeExtensionManager.installedExtensionsFlow.first()
-            .filter { it.hasUpdate }
+        val installed = animeExtensionManager.installedExtensionsFlow.first()
+        val sharedSkipped = installed.filter { it.hasUpdate && it.isShared }
+        val candidates = installed.filter { it.hasUpdate }
             .filter { canAutoUpdateExtension(true, installer, isSharedInstall = it.isShared) }
-        if (candidates.isEmpty()) return
+        if (candidates.isEmpty()) {
+            if (sharedSkipped.isNotEmpty()) {
+                ExtensionUpdateNotifier(context).notifySharedAutoUpdateSkipped(
+                    sharedSkipped.map {
+                        it.name
+                    },
+                    anime = true,
+                )
+            }
+            return
+        }
 
         val updated = candidates.mapNotNull { extension ->
             val terminalStep = runCatching {
@@ -70,7 +92,17 @@ class ExtensionAutoUpdateRunner(
             }.getOrNull()
             extension.name.takeIf { terminalStep == InstallStep.Installed }
         }
-        if (updated.isEmpty()) return
+        if (updated.isEmpty()) {
+            if (sharedSkipped.isNotEmpty()) {
+                ExtensionUpdateNotifier(context).notifySharedAutoUpdateSkipped(
+                    sharedSkipped.map {
+                        it.name
+                    },
+                    anime = true,
+                )
+            }
+            return
+        }
 
         sourcePreferences.animeExtensionUpdatesCount()
             .set(animeExtensionManager.installedExtensionsFlow.first().count { it.hasUpdate })
@@ -81,11 +113,21 @@ class ExtensionAutoUpdateRunner(
         val manager = novelExtensionManager.get() ?: return
         val pending = manager.updatesFlow.first()
         val available = manager.availablePluginsFlow.first()
+        val userRepos = sourcePreferences.novelInstalledExtensionRepos().get()
         val candidates = pending.filter { plugin ->
-            // Only Kotlin novel extensions are APKs; JS plugins are plain files and are updated by
-            // the plugin installer regardless of the APK installer setting.
-            !plugin.isKotlinExtension ||
+            if (plugin.isKotlinExtension) {
                 canAutoUpdateExtension(true, installer, isSharedInstall = false)
+            } else {
+                // JS plugins are plain files executed inside the app process and carry no
+                // signature, so auto-update them only when the plugin comes from a repo the user
+                // added and the replacement provides a checksum to verify against.
+                plugin.repoUrl in userRepos &&
+                    available.any {
+                        it.id == plugin.id &&
+                            it.versionCode > plugin.versionCode &&
+                            it.sha256.isNotBlank()
+                    }
+            }
         }
         if (candidates.isEmpty()) return
 

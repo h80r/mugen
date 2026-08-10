@@ -69,6 +69,7 @@ fun FullscreenPosterBackground(
     resolvedCoverUrl: String? = null,
     resolvedCoverUrlFallback: String? = null,
     refererUrl: String? = null,
+    sourceHeaders: Map<String, String>? = null,
     onPosterLongPress: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -85,6 +86,7 @@ fun FullscreenPosterBackground(
         resolvedCoverUrl,
         resolvedCoverUrlFallback,
         refererUrl,
+        sourceHeaders,
         manga.thumbnailUrl,
         customCoverFile,
         manga.coverLastModified,
@@ -93,6 +95,7 @@ fun FullscreenPosterBackground(
             primaryUrl = resolvedCoverUrl?.takeIf { it.isNotBlank() },
             fallbackUrl = resolvedCoverUrlFallback?.takeIf { it.isNotBlank() } ?: manga.thumbnailUrl,
             refererUrl = refererUrl?.takeIf { it.isNotBlank() },
+            headers = sourceHeaders,
             customCoverFile = customCoverFile,
             coverLastModified = manga.coverLastModified,
         )

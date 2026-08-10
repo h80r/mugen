@@ -28,7 +28,15 @@ LEFT JOIN(
     GROUP BY novel_chapters.novel_id
 ) AS C
 ON N._id = C.novel_id
-LEFT JOIN novels_categories AS NC
+LEFT JOIN(
+    -- Categories are many-to-many: a plain join would return one row per category of a novel and
+    -- the library would list that novel multiple times, which crashes the LazyColumn (duplicate
+    -- keys) as soon as a title sits in two categories. One row per novel, with the lowest
+    -- category id as the display category.
+    SELECT novel_id, MIN(category_id) AS category_id
+    FROM novels_categories
+    GROUP BY novel_id
+) AS NC
 ON NC.novel_id = N._id
 WHERE N.favorite = 1;
 

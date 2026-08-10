@@ -3,6 +3,9 @@ package eu.kanade.tachiyomi.extension.novel
 import eu.kanade.tachiyomi.extension.novel.runtime.NovelPluginCapabilities
 import eu.kanade.tachiyomi.novelsource.NovelSource
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import tachiyomi.domain.extension.novel.model.NovelPlugin
 import tachiyomi.domain.source.novel.model.StubNovelSource
 
@@ -12,6 +15,23 @@ interface NovelExtensionManager {
     val availablePluginsFlow: Flow<List<NovelPlugin.Available>>
     val untrustedPluginsFlow: Flow<List<NovelPlugin.Untrusted>>
     val updatesFlow: Flow<List<NovelPlugin.Installed>>
+
+    /** Repo indexes that failed to load during the last refresh (baseUrl to error). */
+    val repoFetchErrors: Flow<Map<String, String>>
+
+    /**
+     * Install attempts that failed because the APK is signed with a different key than the
+     * installed copy. The UI subscribes to offer reinstall-with-uninstall.
+     */
+    data class SignatureMismatchEvent(
+        val pluginId: String,
+        val displayName: String,
+        val candidate: NovelPlugin.Available? = null,
+    )
+
+    val signatureMismatchEvents: SharedFlow<SignatureMismatchEvent>
+
+    fun reportSignatureMismatch(pluginId: String)
 
     suspend fun refreshAvailablePlugins()
 

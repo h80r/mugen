@@ -200,7 +200,7 @@ class BrowseMangaSourceScreenModel(
         return filters
     }
 
-    private fun serializeFilters(filters: FilterList): String? {
+    internal fun serializeFilters(filters: FilterList): String? {
         return runCatching {
             Json.encodeToString(filterSerializer.serialize(filters))
         }.getOrNull()

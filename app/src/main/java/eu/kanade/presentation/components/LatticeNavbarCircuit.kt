@@ -32,8 +32,8 @@ import kotlin.math.sin
 
 const val LATTICE_CIRCUIT_NAVBAR_UNLOCKABLE = "special_navbar_lattice_circuit"
 
-private val LatticeCyan = Color(0xFF5FE9FF)
-private val LatticeAmber = Color(0xFFFFB84D)
+private val LatticeCyan = Color(0xFF0095AE)
+private val LatticeAmber = Color(0xFFFFA726)
 
 /**
  * Circuit Edge active when user equipped it **and** unlockable is available
@@ -202,7 +202,7 @@ fun Modifier.latticeCircuitBar(animate: Boolean = true): Modifier {
 /** Vertical circuit line along the trailing edge of a navigation rail (tablet / landscape). */
 @Composable
 fun Modifier.latticeCircuitRail(animate: Boolean = true): Modifier {
-    val accent = Color(0xFF5FE9FF)
+    val accent = Color(0xFF0095AE)
     val reduced = rememberLatticeReducedMotion()
     val progress: Float
     if (animate && !reduced) {

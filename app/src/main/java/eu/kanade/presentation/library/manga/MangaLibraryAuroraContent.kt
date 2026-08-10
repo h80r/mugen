@@ -277,7 +277,7 @@ private fun MangaLibraryAuroraList(
                 libraryManga
             }
             val manga = libraryItem.coverManga ?: targetManga.manga
-            val title = if (isSeries) libraryItem.title else manga.title
+            val title = if (isSeries) libraryItem.title else manga.displayTitle
             val subtitle = if (libraryItem.totalChapters > 0) {
                 stringResource(
                     AYMR.strings.manga_series_chapters_progress,
@@ -466,7 +466,7 @@ private fun MangaLibraryAuroraCardGrid(
                 libraryManga
             }
             val manga = libraryItem.coverManga ?: targetManga.manga
-            val title = if (isSeries) libraryItem.title else manga.title
+            val title = if (isSeries) libraryItem.title else manga.displayTitle
             val subtitle = if (showMetadata && libraryItem.totalChapters > 0) {
                 stringResource(
                     AYMR.strings.manga_series_chapters_progress,

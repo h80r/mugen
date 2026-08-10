@@ -5,15 +5,25 @@ import android.content.Intent
 import android.os.Build
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.util.storage.getUriCompat
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import logcat.LogPriority
+import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import java.io.File
 
 /**
- * Persisted pending APK install request used when Android requires the user to grant
+ * Persisted pending APK install requests used when Android requires the user to grant
  * "Install unknown apps" permission before the install intent can be launched.
+ *
+ * Multiple requests can accumulate while the user is away in the system settings; the queue is
+ * replayed in order once the permission is granted.
  */
 class PendingApkInstallStore(
     private val basePreferences: BasePreferences,
@@ -27,29 +37,39 @@ class PendingApkInstallStore(
     )
 
     fun save(request: PendingInstall) {
-        basePreferences.pendingApkInstallPackage().set(request.packageName)
-        basePreferences.pendingApkInstallDisplayName().set(request.displayName)
-        basePreferences.pendingApkInstallPath().set(request.filePath)
-        basePreferences.pendingApkInstallKind().set(request.kind.name)
-        basePreferences.pendingApkInstallBackend().set(request.backend.name)
+        basePreferences.pendingApkInstallQueue().getAndSet { queue ->
+            (queue - request.packageName + request.encode()).toSet()
+        }
     }
 
-    fun get(): PendingInstall? {
-        val packageName = basePreferences.pendingApkInstallPackage().get().takeIf { it.isNotBlank() } ?: return null
-        val displayName = basePreferences.pendingApkInstallDisplayName().get()
-        val filePath = basePreferences.pendingApkInstallPath().get().takeIf { it.isNotBlank() } ?: return null
-        val kind = basePreferences.pendingApkInstallKind().get().toEnumOrNull<ApkExtensionKind>() ?: return null
-        val backend = basePreferences.pendingApkInstallBackend().get().toEnumOrNull<ApkInstallBackend>() ?: return null
-        return PendingInstall(
-            packageName = packageName,
-            displayName = displayName,
-            filePath = filePath,
-            kind = kind,
-            backend = backend,
-        )
+    fun get(): PendingInstall? = getAll().firstOrNull()
+
+    fun getAll(): List<PendingInstall> {
+        migrateLegacyPendingIfNeeded()
+        return basePreferences.pendingApkInstallQueue().get().mapNotNull { it.decode() }
     }
 
     fun clear() {
+        basePreferences.pendingApkInstallQueue().set(emptySet())
+    }
+
+    /**
+     * One-time port of the pre-queue single-slot pending install (separate prefs) into the queue,
+     * so an in-flight permission wait survives the app upgrade.
+     */
+    private fun migrateLegacyPendingIfNeeded() {
+        val packageName = basePreferences.pendingApkInstallPackage().get().takeIf { it.isNotBlank() } ?: return
+        val displayName = basePreferences.pendingApkInstallDisplayName().get()
+        val filePath = basePreferences.pendingApkInstallPath().get().takeIf { it.isNotBlank() }
+        val kind = basePreferences.pendingApkInstallKind().get().toEnumOrNull<ApkExtensionKind>()
+        val backend = basePreferences.pendingApkInstallBackend().get().toEnumOrNull<ApkInstallBackend>()
+        if (filePath != null && kind != null && backend != null) {
+            save(PendingInstall(packageName, displayName, filePath, kind, backend))
+        }
+        clearLegacy()
+    }
+
+    private fun clearLegacy() {
         basePreferences.pendingApkInstallPackage().set("")
         basePreferences.pendingApkInstallDisplayName().set("")
         basePreferences.pendingApkInstallPath().set("")
@@ -59,41 +79,77 @@ class PendingApkInstallStore(
 
     @Suppress("DEPRECATION")
     suspend fun resumeIfPermissionGranted(context: Context): Boolean {
-        val pending = get() ?: return false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
             return false
         }
 
-        val apkFile = File(pending.filePath)
-        val exists = withIOContext { apkFile.isFile }
-        if (!exists) {
-            logcat(LogPriority.WARN) {
-                "Pending APK install file is missing package=${pending.packageName} path=${pending.filePath}"
+        var resumedAny = false
+        for (pending in getAll()) {
+            val apkFile = File(pending.filePath)
+            val exists = withIOContext { apkFile.isFile }
+            if (!exists) {
+                logcat(LogPriority.WARN) {
+                    "Pending APK install file is missing package=${pending.packageName} path=${pending.filePath}"
+                }
+                remove(pending.packageName)
+                continue
             }
-            clear()
-            return false
-        }
 
-        return runCatching {
-            withUIContext {
-                Intent(Intent.ACTION_INSTALL_PACKAGE)
-                    .setDataAndType(apkFile.getUriCompat(context), APK_MIME)
-                    .putExtra(Intent.EXTRA_RETURN_RESULT, false)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    .let(context::startActivity)
+            val launched = runCatching {
+                withUIContext {
+                    Intent(Intent.ACTION_INSTALL_PACKAGE)
+                        .setDataAndType(apkFile.getUriCompat(context), APK_MIME)
+                        .putExtra(Intent.EXTRA_RETURN_RESULT, false)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        .let(context::startActivity)
+                }
+                logcat(LogPriority.INFO) {
+                    "Resumed pending APK install package=${pending.packageName} kind=${pending.kind} backend=${pending.backend}"
+                }
+                true
+            }.getOrElse { error ->
+                logcat(LogPriority.ERROR, error) {
+                    "Failed to resume pending APK install package=${pending.packageName} path=${pending.filePath}"
+                }
+                false
             }
-            logcat(LogPriority.INFO) {
-                "Resumed pending APK install package=${pending.packageName} kind=${pending.kind} backend=${pending.backend}"
+            if (launched) {
+                resumedAny = true
+                remove(pending.packageName)
             }
-            clear()
-            true
-        }.getOrElse { error ->
-            logcat(LogPriority.ERROR, error) {
-                "Failed to resume pending APK install package=${pending.packageName} path=${pending.filePath}"
-            }
-            clear()
-            false
         }
+        return resumedAny
+    }
+
+    private fun remove(packageName: String) {
+        basePreferences.pendingApkInstallQueue().getAndSet { queue ->
+            queue.filterNot { it.decode()?.packageName == packageName }.toSet()
+        }
+    }
+
+    private fun PendingInstall.encode(): String {
+        return buildJsonObject {
+            put("packageName", packageName)
+            put("displayName", displayName)
+            put("filePath", filePath)
+            put("kind", kind.name)
+            put("backend", backend.name)
+        }.toString()
+    }
+
+    private fun String.decode(): PendingInstall? {
+        return runCatching {
+            val obj = Json.parseToJsonElement(this).jsonObject
+            PendingInstall(
+                packageName = obj["packageName"]?.jsonPrimitive?.contentOrNull ?: return null,
+                displayName = obj["displayName"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                filePath = obj["filePath"]?.jsonPrimitive?.contentOrNull ?: return null,
+                kind = obj["kind"]?.jsonPrimitive?.contentOrNull
+                    ?.toEnumOrNull<ApkExtensionKind>() ?: return null,
+                backend = obj["backend"]?.jsonPrimitive?.contentOrNull
+                    ?.toEnumOrNull<ApkInstallBackend>() ?: return null,
+            )
+        }.getOrNull()
     }
 
     private inline fun <reified T : Enum<T>> String.toEnumOrNull(): T? {

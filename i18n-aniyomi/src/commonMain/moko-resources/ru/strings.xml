@@ -291,7 +291,7 @@
     <string name="timer_title">Автоотключение</string>
     <string name="timer_remaining">%s осталось</string>
     <string name="timer_picker_enter_timer">Введите длительность</string>
-    <string name="timer_picker_pick_time">��ыбор длительности</string>
+    <string name="timer_picker_pick_time">Выбор длительности</string>
     <string name="timer_cancel_timer">Отмена текущего таймера</string>
     <string name="player_sheets_speed_slider_label">Скорость</string>
     <string name="player_sheets_speed_make_default">Задать нормальную скорость</string>
@@ -447,7 +447,7 @@
     <string name="novel_reader_prefer_webview_renderer_summary">По умолчанию открывать главу в WebView. Отключите, чтобы вернуться к нативному рендереру.</string>
     <string name="novel_reader_rich_native_renderer_experimental">Расширенный нативный режим(рекомендуется)</string>
     <string name="novel_reader_rich_native_renderer_experimental_summary">Сохранять базовые HTML-стили в нативном ридере с автоматическим переходом в WebView для неподдерживаемого содержимого.</string>
-    <string name="novel_reader_renderer_disabled_page_mode_summary">��едоступно, пока включён постраничный режим.</string>
+    <string name="novel_reader_renderer_disabled_page_mode_summary">Недоступно, пока включён постраничный режим.</string>
     <string name="novel_reader_renderer_disabled_webview_summary">Недоступно, пока глава открыта в WebView.</string>
     <string name="novel_reader_renderer_disabled_bionic_summary">Недоступно, пока включено Bionic Reading.</string>
     <string name="novel_reader_settings_surface_strategy">Доступность настроек</string>
@@ -511,7 +511,35 @@
     <string name="novel_reader_dictionary_quick_access">История словаря в читалке</string>
     <string name="novel_reader_dictionary_quick_access_summary">Показывать кнопку истории словаря в нижней панели читалки ранобэ</string>
     <string name="novel_reader_dictionary_history">История словаря</string>
-    <string name="novel_reader_dictionary_history_summary">Ваши слов��: поиск, избранное, повторение</string>
+    <string name="novel_reader_dictionary_history_summary">Ваши слова: поиск, избранное, повторение</string>
+    <string name="novel_reader_text_replace">Замена текста</string>
+    <string name="novel_reader_text_replace_summary">Свои правила «найти и заменить» для текста глав</string>
+    <string name="novel_reader_text_replace_empty">Правил пока нет. Добавьте правило, чтобы заменять текст в главах.</string>
+    <string name="novel_reader_text_replace_add">Добавить правило</string>
+    <string name="novel_reader_text_replace_edit">Изменить правило</string>
+    <string name="novel_reader_text_replace_delete">Удалить правило</string>
+    <string name="novel_reader_text_replace_name">Название</string>
+    <string name="novel_reader_text_replace_pattern">Найти</string>
+    <string name="novel_reader_text_replace_pattern_hint">Текст или регулярное выражение</string>
+    <string name="novel_reader_text_replace_replacement">Заменить на</string>
+    <string name="novel_reader_text_replace_regex">Регулярное выражение</string>
+    <string name="novel_reader_text_replace_scope">Применять к</string>
+    <string name="novel_reader_text_replace_scope_title">Заголовкам глав</string>
+    <string name="novel_reader_text_replace_scope_content">Содержимому глав</string>
+    <string name="novel_reader_text_replace_scope_both">Заголовкам и содержимому</string>
+    <string name="novel_reader_text_replace_enabled">Включено</string>
+    <string name="novel_reader_text_replace_import">Импортировать правила</string>
+    <string name="novel_reader_text_replace_import_prompt">Вставьте JSON правил (формат Legado)</string>
+    <string name="novel_reader_text_replace_import_done">Импортировано правил: %1$d</string>
+    <string name="novel_reader_text_replace_import_failed">Не удалось разобрать JSON правил</string>
+    <string name="novel_reader_text_replace_export">Экспортировать правила</string>
+    <string name="novel_reader_text_replace_export_copied">Правила скопированы в буфер обмена</string>
+    <string name="novel_reader_text_replace_test">Проверить правила</string>
+    <string name="novel_reader_text_replace_test_sample">Образец текста</string>
+    <string name="novel_reader_text_replace_test_result">Результат</string>
+    <string name="novel_reader_text_replace_invalid_pattern">Некорректное регулярное выражение</string>
+    <string name="novel_reader_text_replace_save">Сохранить</string>
+    <string name="novel_reader_text_replace_cancel">Отмена</string>
     <string name="novel_reader_dictionary_history_search_hint">Поиск слов</string>
     <string name="novel_reader_dictionary_history_stats">%1$s слов &#8226; %2$s сегодня</string>
     <string name="novel_reader_dictionary_history_top_language">топ %1$s</string>
@@ -960,6 +988,7 @@
     <string name="pref_search_pinned_anime_sources_only">Искать аниме в глобальном поиске только по закреплённым источникам</string>
     <string name="pref_hide_in_manga_library_items">Скрыть мангу, которая уже есть в библиотеке</string>
     <string name="pref_hide_in_novel_library_items">Скрыть ранобэ, которое уже есть в библиотеке</string>
+    <string name="pref_title_carousel_enabled">Листать тайтлы свайпом в браузере источника</string>
     <string name="pref_hide_in_anime_library_items">Скрыть аниме, которое уже есть в библиотеке</string>
     <string name="action_order_by_episode_number">По номеру эпизода</string>
     <string name="action_start_download_externally">Использовать внешний загрузчик</string>
@@ -1012,7 +1041,7 @@
     <string name="pref_download_new_unseen_episodes_only">Пропуск загрузки дублированных просмотренных эпизодов</string>
     <string name="pref_download_new_unread_novel_chapters_only">Пропуск загрузки дублированных прочитанных глав ранобэ</string>
     <string name="auto_download_while_watching">Автоматическая загрузка во время просмотра</string>
-    <string name="download_ahead_info_anime">Работает только для эпизодов в библиотеке и если текущий и следующий эп��зоды уже загружены</string>
+    <string name="download_ahead_info_anime">Работает только для эпизодов в библиотеке и если текущий и следующий эпизоды уже загружены</string>
     <string name="pref_track_on_add_library">Открывать меню отслеживания при добавлении в библиотеку</string>
     <string name="pref_show_next_episode_airing_time">Показать время показа следующего эпизода</string>
     <string name="pref_backup_flags_summary">Какую информацию следует включить в файл резервной копии</string>
@@ -1052,7 +1081,7 @@
     <string name="also_set_novel_chapter_settings_for_library">Также применить ко всем ранобэ в моей библиотеке</string>
     <string name="no_episodes_error">Эпизоды не найдены</string>
     <string name="watching">Смотрю</string>
-    <string name="currently_reading">Сейчас читае��ся</string>
+    <string name="currently_reading">Сейчас читается</string>
     <string name="currently_watching">Сейчас смотрю</string>
     <string name="plan_to_watch">Планирую смотреть</string>
     <string name="not_interesting">Не интересно</string>
@@ -1313,7 +1342,7 @@
     <string name="aurora_episode_progress">Эпизод %d</string>
     <string name="aurora_tap_to_change">Нажмите для изменения</string>
     <string name="aurora_nothing_to_continue">Нечего продолжать</string>
-    <string name="aurora_add_anime_to_library">Добавьте ан��ме в библиотеку, чтобы увидеть их здесь</string>
+    <string name="aurora_add_anime_to_library">Добавьте аниме в библиотеку, чтобы увидеть их здесь</string>
 
     <!-- Dynamic Greetings -->
     <string name="aurora_greeting_ready">Запасы вкусняшек готовы? Начинаем!</string>
@@ -1457,7 +1486,7 @@
     <string name="aurora_greeting_absence_amnesia">Ты помнишь, на чём остановился, или у нас арка амнезии? 🤕</string>
     <string name="aurora_greeting_frequent_touch_grass">Говорят, на улице есть такая штука... «трава». Не хочешь потрогать? 🌱</string>
     <string name="aurora_greeting_frequent_coffee_iv">Тебе чайник по венам пустить или сам нальёшь? ☕🩸</string>
-    <string name="aurora_greeting_frequent_resident">Твоя виртуальная 2D-комната уже ��отова. Заходи! 🚪</string>
+    <string name="aurora_greeting_frequent_resident">Твоя виртуальная 2D-комната уже готова. Заходи! 🚪</string>
     <string name="aurora_greeting_streak_30">Месяц без перерывов. Настоящий хикки-профессионал! 🏆</string>
     <string name="aurora_greeting_streak_100">100 дней?! Ты познал дзен и слился с 2D миром 🧘‍♂️</string>
     <string name="aurora_greeting_streak_dedication">Твоей целеустремлённости позавидует любой сёнэн-герой! 💪</string>
@@ -1605,7 +1634,7 @@
     <string name="download_folder_not_set">Папка загрузок не задана</string>
     <string name="no_file_manager_found">Файловый менеджер не найден</string>
     <string name="aurora_updating_library">Обновление всей библиотеки</string>
-    <string name="aurora_update_already_running">Обновление уже за��ущено</string>
+    <string name="aurora_update_already_running">Обновление уже запущено</string>
 
     <!-- Statistics Screen -->
     <string name="aurora_anime_statistics">Статистика аниме</string>
@@ -1692,6 +1721,8 @@
     <string name="aurora_progress">ПРОГРЕСС</string>
     <string name="aurora_select_dubbing">Выбрать озвучку</string>
     <string name="aurora_no_description">Нет описания</string>
+    <string name="aurora_show_more">Показать ещё</string>
+    <string name="aurora_collapse">Свернуть</string>
 
     <!-- Original Title -->
     <!-- Metadata -->
@@ -1907,7 +1938,7 @@
     <string name="achievement_settings_explorer_title">Исследователь настроек</string>
     <string name="achievement_settings_explorer_desc">Откройте настройки 15 раз</string>
     <string name="achievement_stats_viewer_title">Просмотрщик статистики</string>
-    <string name="achievement_stats_viewer_desc">Откройте стати��тику 5 раз</string>
+    <string name="achievement_stats_viewer_desc">Откройте статистику 5 раз</string>
     <string name="achievement_theme_changer_title">Сменщик тем</string>
     <string name="achievement_theme_changer_desc">Измените тему 10 раз</string>
     <string name="achievement_persistent_clicker_title">Настойчивый кликер</string>
@@ -2412,7 +2443,7 @@
     <string name="pref_disable_aniskip_chapter">Отключать AniSkip, если видео уже содержит главы</string>
     <!-- Subtitle exact match -->
     <string name="pref_player_subtitle_exact_match">Предпочитать точное совпадение языка субтитров</string>
-    <string name="pref_player_subtitle_exact_match_summary">Выбирать субтитры с точным совпадением метки языка до перехода �� более широким совпадениям</string>
+    <string name="pref_player_subtitle_exact_match_summary">Выбирать субтитры с точным совпадением метки языка до перехода к более широким совпадениям</string>
     <string name="pref_player_subtitle_invalid_lang">Неверный код: \"%s\"</string>
     <!-- Skip button text -->
     <string name="player_skip_action">Пропустить %1$s</string>
@@ -2492,9 +2523,9 @@
     <string name="treasury_exclusive_rarity_transcendent">Трансцендентный</string>
     <string name="treasury_exclusive_active">Активна</string>
     <string name="treasury_exclusive_unlocked">Разблокирована</string>
-    <string name="treasury_tagline_onyx_gold">Чёрно-бриллиантовые поверхности с королевским золотом и рубиновым акцентом</string>
+    <string name="treasury_tagline_onyx_gold">Чёрно-бриллиантовые поверхности с королевским золотом и бронзовым акцентом</string>
     <string name="treasury_tagline_sakura_noir">Полуночный неон сакуры, сливовые тона и нефритовое свечение</string>
-    <string name="treasury_tagline_nebula_tide">Бездонная космическая синева с плазменным цианом, фиолетовой гравитацией и лаймовыми искрами</string>
+    <string name="treasury_tagline_nebula_tide">Глубокая индиго-бездна с розовой туманностью и плазменно-циановыми искрами</string>
     <!-- Treasury Vault hero -->
     <string name="treasury_vault_group_title">Хранилище Авроры</string>
     <string name="treasury_vault_header">СОКРОВИЩНИЦА АВРОРЫ</string>
@@ -2645,7 +2676,7 @@
     <string name="player_subtitle_translation_progress">%1$d%%, %2$d/%3$d реплик</string>
     <string name="player_subtitle_translation_from_to">%1$s → %2$s</string>
 
-    <string name="treasury_tagline_event_horizon">Рентгеновски белые элементы, инфракрасные полосы горизонта, холодное линзирование и стеклянно-черные поверхности</string>
+    <string name="treasury_tagline_event_horizon">Тёмно-синие полосы аккреции, фиолетовая плазма, рентгеновски белые элементы и стеклянно-чёрные поверхности</string>
     <string name="treasury_bg_event_horizon_title">Библиотека горизонта событий</string>
     <string name="treasury_bg_event_horizon_desc">Кинематографичная сингулярность с линзирующими кольцами, архивными осколками, параллакс-рамками и сдержанным движением.</string>
     <string name="achievement_event_horizon_cartographer_title">Картограф горизонта событий</string>
@@ -2860,7 +2891,7 @@
     <string name="lattice_frame_whisper">ОБНАРУЖЕН ДРЕЙФ КАРКАСА</string>
     <string name="lattice_breach_line1">ОБОЛОЧКА СНЯТА</string>
     <string name="lattice_breach_line2">ПРОВЕДИ СИГНАЛ ОТ ПОРТА К ЯДРУ</string>
-    <string name="lattice_routing_line1">РЕЖИМ ТР��ССИРОВКИ</string>
+    <string name="lattice_routing_line1">РЕЖИМ ТРАССИРОВКИ</string>
     <string name="lattice_track_hint">ЗАМКНИ ТРАССУ ЧЕРЕЗ ВСЕ УЗЛЫ</string>
     <string name="lattice_track_closed_title">ТРАССА ЗАМКНУТА</string>
     <string name="lattice_track_closed_sub">ЯДРО ОНЛАЙН · СВЕТ-ЦИКЛ НА КОНТУРЕ</string>

@@ -68,7 +68,9 @@ import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.data.updater.AppUpdateFileManager
 import eu.kanade.tachiyomi.di.AppModule
 import eu.kanade.tachiyomi.di.PreferenceModule
+import eu.kanade.tachiyomi.extension.anime.AnimeExtensionManager
 import eu.kanade.tachiyomi.extension.installer.PendingApkInstallStore
+import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import eu.kanade.tachiyomi.extension.novel.NovelPluginSourceFactory
 import eu.kanade.tachiyomi.extension.novel.runtime.NovelRuntimeCacheTrimCallbacks
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -356,6 +358,30 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
                     }
                 }
 
+                // Clean up legacy phantom theme unlockables (theme_achievement_* no longer exist)
+                achievementScope.launch {
+                    try {
+                        val unlockableManager = Injekt.get<tachiyomi.data.achievement.UnlockableManager>()
+                        val userProfileManager = Injekt.get<tachiyomi.data.achievement.UserProfileManager>()
+                        val validThemeIds = eu.kanade.domain.ui.model.AppTheme.entries
+                            .filter { it.titleRes != null }
+                            .map { it.name.uppercase() }
+                            .toSet()
+
+                        unlockableManager.removeUnlockable("theme_achievement_gold")
+                        unlockableManager.removeUnlockable("theme_achievement_sapphire")
+
+                        val staleThemes = userProfileManager.getUnlockedThemes()
+                            .filter { it.uppercase() !in validThemeIds }
+                        staleThemes.forEach { themeId ->
+                            logcat(LogPriority.INFO) { "[ACHIEVEMENTS] Removing stale legacy theme: $themeId" }
+                            userProfileManager.removeTheme(themeId)
+                        }
+                    } catch (e: Exception) {
+                        logcat(LogPriority.ERROR) { "Error during legacy theme cleanup: ${e.message}" }
+                    }
+                }
+
                 // Migrate legacy activity data from SharedPreferences to database (v4 → v5)
                 achievementScope.launch {
                     try {
@@ -535,6 +561,13 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
             sessionManager.onSessionStart()
             applicationScope.launch {
                 PendingApkInstallStore(basePreferences).resumeIfPermissionGranted(this@App)
+                // Creating the extension managers synchronously loads every installed extension on
+                // the main thread (MangaExtensionManager.initExtensions), so only touch them when
+                // there are orphaned downloads to actually recover.
+                if (basePreferences.extensionActiveDownloads().get().isNotEmpty()) {
+                    runCatching { Injekt.get<MangaExtensionManager>().resumeOrphanedDownloads() }
+                    runCatching { Injekt.get<AnimeExtensionManager>().resumeOrphanedDownloads() }
+                }
             }
             val libraryPreferences = Injekt.get<tachiyomi.domain.library.service.LibraryPreferences>()
             val autoUpdateInterval = libraryPreferences.autoUpdateInterval().get()

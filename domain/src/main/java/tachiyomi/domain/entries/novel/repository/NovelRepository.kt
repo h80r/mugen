@@ -9,7 +9,7 @@ interface NovelRepository {
 
     suspend fun getNovelById(id: Long): Novel
 
-    suspend fun getNovelByIdAsFlow(id: Long): Flow<Novel>
+    fun getNovelByIdAsFlow(id: Long): Flow<Novel>
 
     suspend fun getNovelByUrlAndSourceId(url: String, sourceId: Long): Novel?
 
@@ -41,6 +41,8 @@ interface NovelRepository {
     suspend fun updateNovel(update: NovelUpdate): Boolean
 
     suspend fun updateAllNovel(novelUpdates: List<NovelUpdate>): Boolean
+
+    fun getUpcomingNovels(statuses: Set<Long>): Flow<List<Novel>>
 
     suspend fun resetNovelViewerFlags(): Boolean
 

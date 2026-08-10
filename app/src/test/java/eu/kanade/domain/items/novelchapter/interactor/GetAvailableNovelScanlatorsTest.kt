@@ -53,7 +53,7 @@ class GetAvailableNovelScanlatorsTest {
         override fun getScanlatorsByNovelIdAsFlow(novelId: Long): Flow<List<String>> = scanlatorFlow
         override suspend fun getBookmarkedChaptersByNovelId(novelId: Long): List<NovelChapter> = emptyList()
         override suspend fun getChapterById(id: Long): NovelChapter? = null
-        override suspend fun getChapterByNovelIdAsFlow(
+        override fun getChapterByNovelIdAsFlow(
             novelId: Long,
             applyScanlatorFilter: Boolean,
         ): Flow<List<NovelChapter>> = MutableStateFlow(emptyList())

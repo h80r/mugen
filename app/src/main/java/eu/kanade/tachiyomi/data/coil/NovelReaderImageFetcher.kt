@@ -8,7 +8,9 @@ import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
 import coil3.key.Keyer
 import coil3.request.Options
+import eu.kanade.tachiyomi.extension.novel.runtime.resolveUrl
 import okhttp3.Call
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import java.io.IOException
 
@@ -30,9 +32,15 @@ class NovelReaderRefererImageFetcher(
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult {
+        // Sources frequently reference images by relative paths. The referer is the page the image
+        // was read from, so resolving against it is exactly what a browser does; without this the
+        // relative URL used to hit HttpUrl.get and fail the whole load.
+        val resolvedUrl = resolveUrl(data.url, data.referer)
+        val httpUrl = resolvedUrl.toHttpUrlOrNull()
+            ?: throw IOException("Unsupported image URL: ${data.url}")
         val request = Request.Builder()
-            .url(data.url)
-            .header("Referer", data.referer.trimEnd('/') + "/")
+            .url(httpUrl)
+            .header("Referer", refererHeaderValue(data.referer))
             .build()
 
         val response = callFactory.value.newCall(request).execute()
@@ -47,6 +55,18 @@ class NovelReaderRefererImageFetcher(
             mimeType = body.contentType()?.toString() ?: "image/*",
             dataSource = DataSource.NETWORK,
         )
+    }
+
+    /**
+     * HTTP header values must be ASCII: a referer with a non-ASCII (IDN) host — e.g. a cyrillic
+     * domain — has to be sent in punycode, otherwise okhttp rejects the header outright and the
+     * whole image load fails. Parsing through [HttpUrl] canonicalizes the host exactly like the
+     * URL above.
+     */
+    private fun refererHeaderValue(referer: String): String {
+        val trimmed = referer.trim().trimEnd('/')
+        val ascii = trimmed.toHttpUrlOrNull()?.toString()?.trimEnd('/') ?: trimmed
+        return "$ascii/"
     }
 
     class Factory(

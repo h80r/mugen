@@ -51,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -83,6 +84,7 @@ import eu.kanade.presentation.entries.TitleFastScrollOverlayAccumulator
 import eu.kanade.presentation.entries.anime.components.AnimeSeasonListItem
 import eu.kanade.presentation.entries.anime.components.AnimeSeasonSwitcherAurora
 import eu.kanade.presentation.entries.anime.components.EpisodeDownloadAction
+import eu.kanade.presentation.entries.anime.components.NextEpisodeAiringListItem
 import eu.kanade.presentation.entries.anime.components.aurora.AnimeActionCard
 import eu.kanade.presentation.entries.anime.components.aurora.AnimeEpisodeCardCompact
 import eu.kanade.presentation.entries.anime.components.aurora.AnimeHeroContent
@@ -117,6 +119,7 @@ import eu.kanade.presentation.theme.aurora.adaptive.auroraCenteredMaxWidth
 import eu.kanade.presentation.theme.aurora.adaptive.resolveAuroraAdaptiveSpec
 import eu.kanade.presentation.util.formatEpisodeNumber
 import eu.kanade.tachiyomi.animesource.model.FetchType
+import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.download.anime.model.AnimeDownload
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeScreenModel
@@ -125,6 +128,7 @@ import eu.kanade.tachiyomi.ui.entries.anime.EpisodeList
 import eu.kanade.tachiyomi.util.debugTitleCoverFlow
 import eu.kanade.tachiyomi.util.previewTitleCoverUrl
 import eu.kanade.tachiyomi.util.system.copyToClipboardSilently
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -387,6 +391,9 @@ fun AnimeScreenAuroraImpl(
     val refererUrl = remember(state.source) {
         (state.source as? HttpSource)?.baseUrl
     }
+    val sourceHeaders = remember(state.source) {
+        (state.source as? HttpSource)?.headers?.toMap()
+    }
     LaunchedEffect(
         anime.id,
         state.isMetadataLoading,
@@ -612,7 +619,7 @@ fun AnimeScreenAuroraImpl(
     val onTitleCopy: () -> Unit = {
         val ok = context.copyToClipboardSilently(
             "Entry title",
-            auroraEntryTranslation.title ?: anime.displayTitle,
+            auroraEntryTranslation.title,
         )
         scope.launch {
             snackbarHostState.showSnackbar(if (ok) copiedToClipboardMessage else clipboardCopyErrorMessage)
@@ -639,6 +646,7 @@ fun AnimeScreenAuroraImpl(
                 resolvedCoverUrl = resolvedCover.coverUrl,
                 resolvedCoverUrlFallback = resolvedCover.coverUrlFallback,
                 refererUrl = refererUrl,
+                sourceHeaders = sourceHeaders,
             )
 
             if (useTwoPaneLayout) {
@@ -876,6 +884,34 @@ fun AnimeScreenAuroraImpl(
                                                 .fillMaxWidth()
                                                 .padding(horizontal = 16.dp, vertical = 6.dp),
                                         )
+                                    }
+                                }
+
+                                if (state.anime.fetchType == FetchType.Episodes && state.airingTime > 0L) {
+                                    item(key = "airing-time") {
+                                        // Handles the second by second countdown
+                                        var timer by remember { mutableLongStateOf(state.airingTime) }
+                                        LaunchedEffect(key1 = timer) {
+                                            if (timer > 0L) {
+                                                delay(1000L)
+                                                timer -= 1000L
+                                            }
+                                        }
+                                        if (timer > 0L &&
+                                            showNextEpisodeAirTime &&
+                                            state.anime.displayStatus.toInt() != SAnime.COMPLETED
+                                        ) {
+                                            NextEpisodeAiringListItem(
+                                                title = stringResource(
+                                                    AYMR.strings.display_mode_episode,
+                                                    formatEpisodeNumber(state.airingEpisodeNumber),
+                                                ),
+                                                date = formatTime(state.airingTime, useDayFormat = true),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 16.dp),
+                                            )
+                                        }
                                     }
                                 }
 

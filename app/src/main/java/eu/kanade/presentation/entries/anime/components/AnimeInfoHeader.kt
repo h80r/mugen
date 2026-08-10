@@ -56,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -70,6 +71,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -83,12 +85,15 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.tadami.aurora.R
+import eu.kanade.domain.description.DescriptionEngine
 import eu.kanade.presentation.components.AuroraCoverPlaceholderVariant
 import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.presentation.components.rememberThemeAwareCoverErrorPainter
+import eu.kanade.presentation.entries.components.DescriptionBlocks
 import eu.kanade.presentation.entries.components.DotSeparatorText
 import eu.kanade.presentation.entries.components.ItemCover
 import eu.kanade.presentation.entries.components.aurora.rememberAuroraPosterColorFilter
+import eu.kanade.presentation.entries.components.defaultDescriptionBlockStyle
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.coil.staticBlur
 import eu.kanade.tachiyomi.data.coil.useBackground
@@ -106,8 +111,6 @@ import tachiyomi.presentation.core.util.secondaryItemAlpha
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
-
-private val whitespaceLineRegex = Regex("[\\r\\n]{2,}", setOf(RegexOption.MULTILINE))
 
 @Composable
 fun AnimeInfoBox(
@@ -321,14 +324,8 @@ fun ExpandableAnimeDescription(
             description.takeIf { !it.isNullOrBlank() } ?: stringResource(
                 MR.strings.description_placeholder,
             )
-        val trimmedDescription = remember(desc) {
-            desc
-                .replace(whitespaceLineRegex, "\n")
-                .trimEnd()
-        }
         AnimeSummary(
-            expandedDescription = desc,
-            shrunkDescription = trimmedDescription,
+            description = desc,
             expanded = expanded,
             modifier = Modifier
                 .padding(top = 8.dp)
@@ -656,12 +653,12 @@ private fun ColumnScope.AnimeContentInfo(
 
 @Composable
 private fun AnimeSummary(
-    expandedDescription: String,
-    shrunkDescription: String,
+    description: String,
     expanded: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val animProgress by animateFloatAsState(if (expanded) 1f else 0f)
+    var infoHeight by remember { mutableIntStateOf(0) }
     Layout(
         modifier = modifier.clipToBounds(),
         contents = listOf(
@@ -672,20 +669,19 @@ private fun AnimeSummary(
                 )
             },
             {
-                Text(
-                    text = expandedDescription,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            },
-            {
-                SelectionContainer {
-                    Text(
-                        text = if (expanded) expandedDescription else shrunkDescription,
-                        maxLines = Int.MAX_VALUE,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.secondaryItemAlpha(),
-                    )
+                Column(
+                    modifier = Modifier.onSizeChanged { size ->
+                        infoHeight = size.height
+                    },
+                ) {
+                    val blocks = remember(description) { DescriptionEngine.beautify(description) }
+                    SelectionContainer {
+                        DescriptionBlocks(
+                            blocks = blocks,
+                            style = defaultDescriptionBlockStyle(),
+                            modifier = Modifier.secondaryItemAlpha(),
+                        )
+                    }
                 }
             },
             {
@@ -706,14 +702,11 @@ private fun AnimeSummary(
                 }
             },
         ),
-    ) { (shrunk, expanded, actual, scrim), constraints ->
+    ) { (shrunk, actual, scrim), constraints ->
         val shrunkHeight = shrunk.single()
             .measure(constraints)
             .height
-        val expandedHeight = expanded.single()
-            .measure(constraints)
-            .height
-        val heightDelta = expandedHeight - shrunkHeight
+        val heightDelta = infoHeight - shrunkHeight
         val scrimHeight = 24.dp.roundToPx()
 
         val actualPlaceable = actual.single()

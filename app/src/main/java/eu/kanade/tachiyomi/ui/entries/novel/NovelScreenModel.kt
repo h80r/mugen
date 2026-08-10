@@ -79,6 +79,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
 import eu.kanade.tachiyomi.ui.reader.novel.translation.NovelReaderTranslationDiskCacheStore
 import eu.kanade.tachiyomi.ui.reader.novel.translation.toTranslationCacheRequirements
+import eu.kanade.tachiyomi.util.TtlCache
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
@@ -96,14 +97,18 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.CheckboxState
@@ -379,24 +384,64 @@ class NovelScreenModel(
         }
 
         screenModelScope.launchIO {
-            combine(
-                getNovelExcludedScanlators.subscribe(novelId),
-                getAvailableNovelScanlators.subscribe(novelId),
-                getNovelScanlatorChapterCounts.subscribe(novelId),
-            ) { excluded, available, counts ->
-                Triple(excluded, available, counts)
-            }
+            getNovelExcludedScanlators.subscribe(novelId)
                 .flowWithLifecycle(lifecycle)
                 .distinctUntilChanged()
-                .collectLatest { (excludedScanlators, availableScanlators, scanlatorChapterCounts) ->
+                .collectLatest { excludedScanlators ->
                     updateSuccessState {
-                        it.copy(
-                            excludedScanlators = excludedScanlators,
-                            availableScanlators = availableScanlators,
-                            scanlatorChapterCounts = scanlatorChapterCounts,
-                        )
+                        it.copy(excludedScanlators = excludedScanlators)
                     }
                     maybeNormalizeNovelBranchSelection()
+                }
+        }
+
+        screenModelScope.launchIO {
+            getAvailableNovelScanlators.subscribe(novelId)
+                .flowWithLifecycle(lifecycle)
+                .distinctUntilChanged()
+                .collectLatest { availableScanlators ->
+                    updateSuccessState {
+                        it.copy(availableScanlators = availableScanlators)
+                    }
+                    maybeNormalizeNovelBranchSelection()
+                }
+        }
+
+        screenModelScope.launchIO {
+            getNovelScanlatorChapterCounts.subscribe(novelId)
+                .flowWithLifecycle(lifecycle)
+                .distinctUntilChanged()
+                .collectLatest { scanlatorChapterCounts ->
+                    updateSuccessState {
+                        it.copy(scanlatorChapterCounts = scanlatorChapterCounts)
+                    }
+                    maybeNormalizeNovelBranchSelection()
+                }
+        }
+
+        // The subscriptions above may emit before the bootstrap publishes the first Success,
+        // in which case updateSuccessState() drops the update. Watch the state flow and, on the
+        // first Success, re-apply the latest values so the fields are never left empty. All
+        // writers read from the same DB tables, so the copy is idempotent; the guard keeps it
+        // from clobbering a selection the subscriptions already applied.
+        screenModelScope.launchIO {
+            state.dropWhile { it !is State.Success }
+                .take(1)
+                .collectLatest {
+                    val excludedScanlators = getNovelExcludedScanlators.await(novelId)
+                    val availableScanlators = getAvailableNovelScanlators.await(novelId)
+                    val scanlatorChapterCounts = getNovelScanlatorChapterCounts.await(novelId)
+                    updateSuccessState { current ->
+                        if (current.novel.id != novelId || current.excludedScanlators.isNotEmpty()) {
+                            current
+                        } else {
+                            current.copy(
+                                excludedScanlators = excludedScanlators,
+                                availableScanlators = availableScanlators,
+                                scanlatorChapterCounts = scanlatorChapterCounts,
+                            )
+                        }
+                    }
                 }
         }
 
@@ -458,28 +503,23 @@ class NovelScreenModel(
         }
 
         screenModelScope.launchIO {
-            val novel = getNovelWithChapters.awaitNovel(novelId)
-            if (shouldApplyDefaultChapterFlags(novel)) {
-                setNovelDefaultChapterFlags.await(novel)
+            // PERF: first frame. All critical-path DB reads run in parallel so the initial
+            // State.Success is published as early as possible; default chapter flags are
+            // applied after the first frame.
+            val novelDeferred = async { getNovelWithChapters.awaitNovel(novelId) }
+            val chaptersDeferred = async {
+                getNovelWithChapters.awaitChapters(novelId, applyScanlatorFilter = true)
             }
-
-            val availableScanlators = getAvailableNovelScanlators.await(novelId)
-            val scanlatorChapterCounts = getNovelScanlatorChapterCounts.await(novelId)
-            val storedExcludedScanlators = getNovelExcludedScanlators.await(novelId)
-            val initialExcludedScanlators = resolveDefaultNovelExcludedScanlatorsByChapterCount(
-                scanlatorChapterCounts = scanlatorChapterCounts,
-                availableScanlators = availableScanlators,
-                excludedScanlators = storedExcludedScanlators,
-            ) ?: storedExcludedScanlators
-            val resumeChapterId = novelHistoryRepository.getHistoryByNovelId(novelId)
-                .maxByOrNull { it.readAt?.time ?: Long.MIN_VALUE }
-                ?.chapterId
-
-            if (initialExcludedScanlators != storedExcludedScanlators) {
-                setNovelExcludedScanlators.await(novelId, initialExcludedScanlators)
+            val resumeChapterIdDeferred = async {
+                novelHistoryRepository.getHistoryByNovelId(novelId)
+                    .maxByOrNull { it.readAt?.time ?: Long.MIN_VALUE }
+                    ?.chapterId
             }
-
-            val chapters = getNovelWithChapters.awaitChapters(novelId, applyScanlatorFilter = true)
+            val bookStateDeferred = async { getNovelBookState.await(novelId) }
+            val novel = novelDeferred.await()
+            val chapters = chaptersDeferred.await()
+            val resumeChapterId = resumeChapterIdDeferred.await()
+            val initialBookState = bookStateDeferred.await()
             val source = sourceManager.getOrStub(novel.source)
             val readerSettings = novelReaderPreferences.resolveSettings(novel.source)
             readerSettingsCache = readerSettings
@@ -528,9 +568,10 @@ class NovelScreenModel(
                 isSourceConfigurable = isSourceConfigurable,
                 rating = restoredState?.rating,
                 chapters = chapters,
-                availableScanlators = availableScanlators,
-                scanlatorChapterCounts = scanlatorChapterCounts,
-                excludedScanlators = initialExcludedScanlators,
+                // Populated by the scanlator subscription right after the first frame.
+                availableScanlators = emptySet(),
+                scanlatorChapterCounts = emptyMap(),
+                excludedScanlators = emptySet(),
                 downloadedOnly = basePreferences.downloadedOnly().get(),
                 geminiEnabled = readerSettings.geminiEnabled,
                 translatedDownloadFormat = translatedDownloadFormat,
@@ -559,9 +600,20 @@ class NovelScreenModel(
                 } else {
                     SuggestionState.Disabled
                 },
+                bookState = initialBookState,
             )
             mutableState.update {
                 initialState
+            }
+
+            // PERF: apply default chapter flags off the critical path. Scanlator branch data
+            // (available/counts/excluded) is deliberately NOT resolved here: the scanlator
+            // subscription above is the single writer of those state fields and applies the
+            // same default-selection normalization, avoiding any second-writer race.
+            screenModelScope.launchIO {
+                if (shouldApplyDefaultChapterFlags(novel)) {
+                    setNovelDefaultChapterFlags.await(novel)
+                }
             }
 
             if (!isSourceConfigurable) {
@@ -842,6 +894,12 @@ class NovelScreenModel(
     // Keyed by novelId + very short TTL. Manual refresh always bypasses.
     private val recentChapterListCache =
         mutableMapOf<Long, Pair<Long, List<eu.kanade.tachiyomi.novelsource.model.SNovelChapter>>>()
+
+    // Lightweight in-memory TTL cache for recent novel details responses from source.
+    // Bypasses the network for re-opens within the TTL; manual refresh always bypasses the
+    // read but overwrites the entry with the fresh response. Never persists to disk.
+    private val recentNovelDetailsCache =
+        TtlCache<Long, eu.kanade.tachiyomi.novelsource.model.SNovel>(ttlMs = 90_000L)
 
     private fun loadSuggestions(
         seed: SuggestionSeed,
@@ -1795,7 +1853,25 @@ class NovelScreenModel(
         state: State.Success,
         manualFetch: Boolean,
     ) {
-        val networkNovel = state.source.getNovelDetails(state.novel.toSNovel())
+        // PERF: short-lived details cache (mirrors recentChapterListCache) so re-opening a
+        // title shortly after a refresh does not re-hit the network; manual refresh bypasses
+        // the read but still refreshes the entry with the fresh response.
+        val detailsCacheKey = state.novel.id
+        val cachedNovel = if (!manualFetch) recentNovelDetailsCache[detailsCacheKey] else null
+        val networkNovel = if (cachedNovel != null) {
+            logcat(LogPriority.DEBUG) {
+                "TADAMI_PERF_NOVEL_TITLE using-novel-details-cache id=$detailsCacheKey"
+            }
+            cachedNovel
+        } else {
+            val fresh = state.source.getNovelDetails(state.novel.toSNovel())
+            // Only cache responses that actually carried details; failed/empty parses must
+            // not poison the cache.
+            if (fresh.initialized) {
+                recentNovelDetailsCache.put(detailsCacheKey, fresh)
+            }
+            fresh
+        }
         logcat {
             "Fetched novel details for id=${state.novel.id} source=${state.source.name}, " +
                 "initialized=${networkNovel.initialized}, " +
@@ -2022,6 +2098,7 @@ class NovelScreenModel(
             novelChapterRepository.removeChaptersWithIds(existing.map { it.id })
         }
         recentChapterListCache.remove(state.novel.id)
+        recentNovelDetailsCache.remove(state.novel.id)
         updateSuccessState { current ->
             if (current.novel.id != state.novel.id) {
                 current
@@ -2649,14 +2726,19 @@ class NovelScreenModel(
 
     suspend fun resolveChapterForOpen(previewOrReal: NovelChapter): NovelChapter {
         if (previewOrReal.id > 0) return previewOrReal
-        val start = System.currentTimeMillis()
-        while (System.currentTimeMillis() - start < 8000) {
-            val current = state.value as? State.Success
-            val real = current?.chapters?.firstOrNull { it.url == previewOrReal.url }
-            if (real != null && real.id > 0) return real
-            delay(30)
+        // Wait for the sync to populate the real persisted chapter (by url) without
+        // busy-polling: the state flow emits on sync progress, so a first{} with a short
+        // timeout resolves as soon as the chapter lands in state.
+        val resolved = withTimeoutOrNull(3_000L) {
+            state.first { current ->
+                val success = current as? State.Success
+                val real = success?.chapters?.firstOrNull { it.url == previewOrReal.url }
+                real != null && real.id > 0
+            }
         }
-        return previewOrReal
+        val success = resolved as? State.Success
+        return success?.chapters?.firstOrNull { it.url == previewOrReal.url }
+            ?: previewOrReal
     }
 
     fun openTranslatedFolder(chapterId: Long) {

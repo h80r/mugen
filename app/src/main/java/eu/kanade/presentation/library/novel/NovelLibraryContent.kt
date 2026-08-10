@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -27,12 +29,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -91,6 +95,14 @@ fun NovelLibraryContent(
     ) {
         val coercedCurrentPage = remember { currentPage().coerceAtMost(categories.lastIndex) }
         val pagerState = rememberPagerState(coercedCurrentPage) { categories.size }
+
+        // Scroll positions per category page: the pager only keeps ±1 page composed, so a
+        // LazyListState/LazyGridState living inside a page slot dies when the page is swiped
+        // away. Remember the position and restore it on the way back to avoid rebuilding the
+        // grid from the top (and re-fetching covers) on every category switch.
+        val scrollPositions = remember { mutableMapOf<Pair<Long, LibraryDisplayMode>, Pair<Int, Int>>() }
+
+        val selectedIds = remember(selection) { selection.idsToHashSet { it.id } }
 
         val scope = rememberCoroutineScope()
         var isRefreshing by remember(pagerState.currentPage) { mutableStateOf(false) }
@@ -167,10 +179,23 @@ fun NovelLibraryContent(
                     return@HorizontalPager
                 }
 
-                val selectedIds = remember(selection) { selection.idsToHashSet { it.id } }
+                val categoryId = categories.getOrNull(page)?.id ?: -1L
 
                 if (displayMode == LibraryDisplayMode.List) {
+                    val restoredPosition = remember(categoryId, displayMode) {
+                        scrollPositions[categoryId to displayMode] ?: (0 to 0)
+                    }
+                    val listState = remember(categoryId, displayMode) {
+                        LazyListState(restoredPosition.first, restoredPosition.second)
+                    }
+                    DisposableEffect(categoryId, displayMode, listState) {
+                        onDispose {
+                            scrollPositions[categoryId to displayMode] =
+                                listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+                        }
+                    }
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(
                             horizontal = MaterialTheme.padding.medium,
@@ -178,7 +203,7 @@ fun NovelLibraryContent(
                         ) + PaddingValues(bottom = contentPadding.calculateBottomPadding()),
                         verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
                     ) {
-                        items(library, key = { it.id }) { item ->
+                        items(library, key = { it.id }, contentType = { "novel_library_item" }) { item ->
                             val isSelected = item.id in selectedIds
                             NovelLibraryListItem(
                                 item = item,
@@ -203,8 +228,22 @@ fun NovelLibraryContent(
                         else -> GridCells.Adaptive(minSize = 140.dp)
                     }
 
+                    val restoredPosition = remember(categoryId, displayMode) {
+                        scrollPositions[categoryId to displayMode] ?: (0 to 0)
+                    }
+                    val gridState = remember(categoryId, displayMode) {
+                        LazyGridState(restoredPosition.first, restoredPosition.second)
+                    }
+                    DisposableEffect(categoryId, displayMode, gridState) {
+                        onDispose {
+                            scrollPositions[categoryId to displayMode] =
+                                gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
+                        }
+                    }
+
                     LazyVerticalGrid(
                         columns = gridCells,
+                        state = gridState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(
                             horizontal = MaterialTheme.padding.medium,
@@ -213,7 +252,7 @@ fun NovelLibraryContent(
                         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
                         verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
                     ) {
-                        items(library, key = { it.id }) { item ->
+                        items(library, key = { it.id }, contentType = { "novel_library_item" }) { item ->
                             val isSelected = item.id in selectedIds
                             NovelLibraryGridItem(
                                 item = item,
@@ -236,8 +275,15 @@ fun NovelLibraryContent(
             }
         }
 
-        LaunchedEffect(pagerState.currentPage) {
-            onChangeCurrentPage(pagerState.currentPage)
+        // Write the active category only when the pager settles (not mid-fling), so the
+        // DataStore-backed preference is not written on every intermediate page change.
+        LaunchedEffect(pagerState) {
+            snapshotFlow { pagerState.currentPage to pagerState.isScrollInProgress }
+                .collect { (page, scrolling) ->
+                    if (!scrolling) {
+                        onChangeCurrentPage(page)
+                    }
+                }
         }
     }
 }

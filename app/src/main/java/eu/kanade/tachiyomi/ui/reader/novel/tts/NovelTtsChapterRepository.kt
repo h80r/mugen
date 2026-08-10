@@ -22,6 +22,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.decodePageReaderProgress
 import eu.kanade.tachiyomi.ui.reader.novel.decodeWebScrollProgressPercent
 import eu.kanade.tachiyomi.ui.reader.novel.parseNovelRichContent
 import eu.kanade.tachiyomi.ui.reader.novel.prependChapterHeadingIfMissing
+import eu.kanade.tachiyomi.ui.reader.novel.replace.applyReplaceRulesToHtml
 import eu.kanade.tachiyomi.ui.reader.novel.resolveNovelChapterWebUrl
 import eu.kanade.tachiyomi.ui.reader.novel.sanitizeChapterHtmlForReader
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
@@ -135,10 +136,17 @@ class NovelTtsChapterRepository internal constructor(
                 chapterName = chapter.name,
             )
         }
-        val sanitizedChapterHtml = withContext(Dispatchers.Default) {
-            sanitizeChapterHtmlForReader(normalizedChapterHtml)
+        val readerHtml = withContext(Dispatchers.Default) {
+            val sanitized = sanitizeChapterHtmlForReader(normalizedChapterHtml)
+            if (sanitized.isBlank()) {
+                normalizedChapterHtml
+            } else {
+                applyReplaceRulesToHtml(
+                    rawHtml = sanitized,
+                    rules = novelReaderPreferences.enabledReplaceRules(),
+                )
+            }
         }
-        val readerHtml = if (sanitizedChapterHtml.isBlank()) normalizedChapterHtml else sanitizedChapterHtml
         val contentBlocks = withContext(Dispatchers.Default) {
             extractSnapshotContentBlocks(
                 rawHtml = readerHtml,

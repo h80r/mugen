@@ -18,6 +18,7 @@ import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.debugTitleCoverFlow
 import eu.kanade.tachiyomi.util.previewTitleCoverUrl
+import kotlinx.coroutines.delay
 import logcat.LogPriority
 import okhttp3.CacheControl
 import okhttp3.Call
@@ -220,12 +221,32 @@ class MangaCoverFetcher(
 
     private suspend fun executeNetworkRequest(url: String): Response {
         val client = sourceLazy.value?.client ?: callFactoryLazy.value
-        val response = client.newCall(newRequest(url)).await()
-        if (!response.isSuccessful && response.code != HTTP_NOT_MODIFIED) {
-            response.close()
-            throw IOException("HTTP ${response.code}: ${response.message.ifBlank { "No response message" }}")
+        var lastException: IOException? = null
+        repeat(COVER_NETWORK_ATTEMPTS) { attempt ->
+            val response = try {
+                client.newCall(newRequest(url)).await()
+            } catch (e: IOException) {
+                lastException = e
+                if (attempt < COVER_NETWORK_ATTEMPTS - 1) {
+                    // Transient DNS/connect failures (UnknownHostException, timeouts) usually
+                    // resolve within a moment; retry once before giving up.
+                    debugTitleCoverFlow(scope = "manga-fetcher") {
+                        "network-retry url=${previewTitleCoverUrl(url)} error=${e.message}"
+                    }
+                    delay(COVER_NETWORK_RETRY_DELAY_MS)
+                }
+                null
+            }
+            if (response != null) {
+                // HTTP errors are not retried here (CoverRecoveryInterceptor handles those).
+                if (!response.isSuccessful && response.code != HTTP_NOT_MODIFIED) {
+                    response.close()
+                    throw IOException("HTTP ${response.code}: ${response.message.ifBlank { "No response message" }}")
+                }
+                return response
+            }
         }
-        return response
+        throw lastException ?: IOException("Failed to fetch cover")
     }
 
     private fun newRequest(url: String): Request {
@@ -416,5 +437,11 @@ class MangaCoverFetcher(
         private val CACHE_CONTROL_NO_NETWORK_NO_CACHE = CacheControl.Builder().noCache().onlyIfCached().build()
 
         private const val HTTP_NOT_MODIFIED = 304
+
+        /** Cover network attempts before giving up (first try + one retry). */
+        private const val COVER_NETWORK_ATTEMPTS = 2
+
+        /** Delay between the first failed attempt and the retry. */
+        private const val COVER_NETWORK_RETRY_DELAY_MS = 500L
     }
 }

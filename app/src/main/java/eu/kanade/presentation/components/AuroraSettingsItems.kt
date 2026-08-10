@@ -1,6 +1,11 @@
 package eu.kanade.presentation.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.Row
@@ -25,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.Icon
@@ -37,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -802,5 +810,60 @@ private fun AuroraDisplayModePreview(mode: LibraryDisplayMode, tint: Color) {
                 Box(Modifier.width(28.dp).height(4.dp).background(tint, cellShape))
             }
         }
+    }
+}
+
+/**
+ * Aurora-styled accordion row: a clickable label + rotating chevron that
+ * expands/collapses an animated content block beneath it.
+ * E-ink profiles keep the default high-contrast text colors.
+ */
+@Composable
+fun ColumnScope.AuroraAccordionItem(
+    label: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val appHaptics = LocalAppHaptics.current
+    val colors = AuroraTheme.colors
+    val rotation by animateFloatAsState(if (expanded) 180f else 0f)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                appHaptics.tap()
+                onToggle()
+            }
+            .padding(
+                horizontal = SettingsItemsPaddings.Horizontal,
+                vertical = SettingsItemsPaddings.Vertical,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = label,
+            color = colors.textPrimary,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            imageVector = Icons.Filled.KeyboardArrowDown,
+            contentDescription = null,
+            modifier = Modifier
+                .size(20.dp)
+                .rotate(rotation),
+            tint = colors.textPrimary.copy(alpha = 0.6f),
+        )
+    }
+
+    AnimatedVisibility(
+        visible = expanded,
+        enter = expandVertically() + fadeIn(),
+        exit = shrinkVertically() + fadeOut(),
+    ) {
+        Column(content = content)
     }
 }

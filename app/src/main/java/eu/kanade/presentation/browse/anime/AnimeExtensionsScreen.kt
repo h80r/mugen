@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.VerifiedUser
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -31,6 +32,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -89,8 +91,18 @@ fun AnimeExtensionScreen(
     onClickUpdateAll: () -> Unit,
     onRefresh: () -> Unit,
     onToggleSection: (AnimeExtensionUiModel.Header.Text) -> Unit,
+    onReinstallAfterSignatureMismatch: () -> Unit,
+    onDismissSignatureMismatch: () -> Unit,
 ) {
     val navigator = LocalNavigator.currentOrThrow
+
+    state.signatureMismatchEvent?.let { event ->
+        SignatureMismatchDialog(
+            displayName = event.displayName,
+            onClickReinstall = onReinstallAfterSignatureMismatch,
+            onClickDismiss = onDismissSignatureMismatch,
+        )
+    }
 
     PullRefresh(
         refreshing = state.isRefreshing,
@@ -590,4 +602,29 @@ private fun AnimeExtensionItemActions(
             }
         }
     }
+}
+
+@Composable
+private fun SignatureMismatchDialog(
+    displayName: String,
+    onClickReinstall: () -> Unit,
+    onClickDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onClickDismiss,
+        title = { Text(text = stringResource(MR.strings.extension_signature_mismatch_title)) },
+        text = {
+            Text(text = stringResource(MR.strings.extension_signature_mismatch_message, displayName))
+        },
+        confirmButton = {
+            TextButton(onClick = onClickReinstall) {
+                Text(text = stringResource(MR.strings.extension_reinstall))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onClickDismiss) {
+                Text(text = stringResource(MR.strings.action_cancel))
+            }
+        },
+    )
 }

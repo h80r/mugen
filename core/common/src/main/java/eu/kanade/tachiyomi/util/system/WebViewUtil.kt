@@ -75,7 +75,7 @@ suspend fun WebView.getHtml(): String = suspendCancellableCoroutine {
     evaluateJavascript("document.documentElement.outerHTML") { html -> it.resume(html) }
 }
 
-@SuppressLint("SetJavaScriptEnabled")
+@SuppressLint("SetJavaScriptEnabled", "RestrictedApi")
 fun WebView.setDefaultSettings() {
     with(settings) {
         javaScriptEnabled = true

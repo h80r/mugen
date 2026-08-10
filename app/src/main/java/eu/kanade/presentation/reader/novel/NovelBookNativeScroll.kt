@@ -88,6 +88,9 @@ internal data class NovelBookNativeSeekTarget(
  * Both renderers now take their moves from the same channel: an explicit [BookSeekRequest] that is
  * applied at most once and acknowledged by id. Reported positions never travel back down into the
  * renderer, so an append arriving mid-scroll can no longer throw the reader back.
+ *
+ * The target is the block whose text range contains the requested char offset; the returned
+ * [NovelBookNativeSeekTarget.fraction] is the position inside that block's row.
  */
 internal fun resolveNovelBookNativeSeekTarget(
     entries: List<NovelBookNativeEntry>,
@@ -96,12 +99,23 @@ internal fun resolveNovelBookNativeSeekTarget(
     sectionFraction: Float,
 ): NovelBookNativeSeekTarget? {
     if (request == null || request.id <= lastAppliedSeekId) return null
-    val itemIndex = entries.indexOfFirst { it.sectionIndex == request.location.sectionIndex }
-    if (itemIndex < 0) return null
+    val sectionBlocks = entries.filterIsInstance<NovelBookNativeEntry.Block>()
+        .filter { it.sectionIndex == request.location.sectionIndex }
+    if (sectionBlocks.isEmpty()) return null
+    val sectionCharCount = sectionBlocks.first().sectionCharCount.coerceAtLeast(1)
+    val targetChar = if (request.location.charOffset > 0) {
+        request.location.charOffset
+    } else {
+        (sectionFraction.coerceIn(0f, 1f) * sectionCharCount).toInt()
+    }.coerceIn(0, sectionCharCount - 1)
+    val target = sectionBlocks.lastOrNull { it.charOffsetBefore <= targetChar } ?: sectionBlocks.first()
+    val itemIndex = entries.indexOf(target)
+    val within = ((targetChar - target.charOffsetBefore).toFloat() / target.blockCharCount.coerceAtLeast(1))
+        .coerceIn(0f, 1f)
     return NovelBookNativeSeekTarget(
         seekRequestId = request.id,
         itemIndex = itemIndex,
-        fraction = sectionFraction.coerceIn(0f, 1f),
+        fraction = within,
     )
 }
 
@@ -113,33 +127,77 @@ internal typealias NovelBookNativeSections = List<NovelBookNativeSection<NovelRi
  *
  * A section that failed to load still occupies its place in the book, so the reader sees an inline
  * error with a retry action instead of the book silently skipping a chapter.
+ *
+ * Every block of a section is its own row: a section is a whole chapter, and rendering it as one
+ * LazyColumn item kept hundreds of AndroidView text blocks composed (and drawn) for as long as any
+ * part of the chapter was visible, which is what made the native book scroll at ~15fps.
  */
 internal sealed interface NovelBookNativeEntry {
     val sectionIndex: Int
 
-    data class Section(
-        val section: NovelBookNativeSection<NovelRichContentBlock>,
-    ) : NovelBookNativeEntry {
-        override val sectionIndex: Int get() = section.sectionIndex
-    }
+    data class Block(
+        override val sectionIndex: Int,
+        /** Index of the block inside its section; the reader chrome addresses blocks by it. */
+        val blockIndex: Int,
+        val block: NovelRichContentBlock,
+        /** Text length of all blocks before this one inside the section. */
+        val charOffsetBefore: Int,
+        /** Text length of this block (at least 1, so every block stays addressable). */
+        val blockCharCount: Int,
+        /** Total text length of the section this block belongs to. */
+        val sectionCharCount: Int,
+        /** Number of blocks in the section, so the last block can be recognized. */
+        val sectionBlockCount: Int,
+    ) : NovelBookNativeEntry
 
     data class Failed(override val sectionIndex: Int) : NovelBookNativeEntry
 }
 
-/** Merges resident sections and failed sections into one list in spine order. */
+/** Merges resident sections and failed sections into one row list in spine order. */
 internal fun buildNovelBookNativeEntries(
     sections: NovelBookNativeSections,
     failedSectionIndices: List<Int>,
 ): List<NovelBookNativeEntry> {
-    if (failedSectionIndices.isEmpty()) {
-        return sections.map { NovelBookNativeEntry.Section(it) }
-    }
     val residentIndices = sections.mapTo(mutableSetOf()) { it.sectionIndex }
     val failures = failedSectionIndices
         .distinct()
         .filterNot { it in residentIndices }
-        .map { NovelBookNativeEntry.Failed(it) }
-    return (sections.map { NovelBookNativeEntry.Section(it) } + failures).sortedBy { it.sectionIndex }
+        .mapTo(mutableSetOf()) { it }
+    val entries = ArrayList<NovelBookNativeEntry>()
+    for (section in sections) {
+        entries += novelBookBlockEntries(section)
+        failures.remove(section.sectionIndex)
+    }
+    entries += failures.map { NovelBookNativeEntry.Failed(it) }
+    return entries.sortedBy { it.sectionIndex }
+}
+
+/** One list row per block, with the char offsets the position math is built on. */
+private fun novelBookBlockEntries(
+    section: NovelBookNativeSection<NovelRichContentBlock>,
+): List<NovelBookNativeEntry> {
+    val sectionCharCount = section.blocks.sumOf { novelBookBlockCharCount(it) }
+    var offsetBefore = 0
+    return section.blocks.mapIndexed { blockIndex, block ->
+        val blockCharCount = novelBookBlockCharCount(block)
+        NovelBookNativeEntry.Block(
+            sectionIndex = section.sectionIndex,
+            blockIndex = blockIndex,
+            block = block,
+            charOffsetBefore = offsetBefore,
+            blockCharCount = blockCharCount,
+            sectionCharCount = sectionCharCount,
+            sectionBlockCount = section.blocks.size,
+        ).also { offsetBefore += blockCharCount }
+    }
+}
+
+/** Text length a block contributes to the position math; non-text blocks weigh one char. */
+private fun novelBookBlockCharCount(block: NovelRichContentBlock): Int = when (block) {
+    is NovelRichContentBlock.Paragraph -> block.segments.sumOf { it.text.length }.coerceAtLeast(1)
+    is NovelRichContentBlock.Heading -> block.segments.sumOf { it.text.length }.coerceAtLeast(1)
+    is NovelRichContentBlock.BlockQuote -> block.segments.sumOf { it.text.length }.coerceAtLeast(1)
+    else -> 1
 }
 
 /**
@@ -151,17 +209,25 @@ internal fun buildNovelBookNativeEntries(
 internal fun parseNovelBookNativeSection(html: String): List<NovelRichContentBlock> =
     parseNovelRichContent(html).blocks
 
-/** A section as the native list currently lays it out, in viewport coordinates. */
+/** A block as the native list currently lays it out, in viewport coordinates. */
 internal data class NovelBookNativeViewportItem(
     val sectionIndex: Int,
-    /** Offset of the section top relative to the viewport top; negative once scrolled past. */
+    /** Text length of the blocks before this one inside the section. */
+    val charOffsetBefore: Int,
+    /** Text length of this block. */
+    val blockCharCount: Int,
+    /** Total text length of the section. */
+    val sectionCharCount: Int,
+    /** Offset of the block top relative to the viewport top; negative once scrolled past. */
     val offsetPx: Int,
     val heightPx: Int,
 )
 
 /**
  * Derives the reading position from the native list layout, mirroring what the WebView relocate
- * bridge reports: the section under the top of the viewport, plus how far into it the reader is.
+ * bridge reports: the block under the top of the viewport, plus how far into its section the
+ * reader is. The fraction is char-weighted: the block's own progress is scaled by its share of the
+ * section's text, so uneven paragraph lengths map to honest positions.
  */
 internal fun resolveNovelBookNativeRelocate(
     items: List<NovelBookNativeViewportItem>,
@@ -169,11 +235,13 @@ internal fun resolveNovelBookNativeRelocate(
     if (items.isEmpty()) return null
     val current = items.firstOrNull { it.offsetPx <= 0 && it.offsetPx + it.heightPx > 0 }
         ?: items.first()
-    val height = current.heightPx
-    val fraction = if (height <= 0) {
+    val withinBlock = if (current.heightPx <= 0) {
         0f
     } else {
-        ((-current.offsetPx).toFloat() / height.toFloat()).coerceIn(0f, 1f)
+        ((-current.offsetPx).toFloat() / current.heightPx.toFloat()).coerceIn(0f, 1f)
     }
+    val sectionSpan = current.sectionCharCount.coerceAtLeast(1)
+    val charInSection = current.charOffsetBefore + withinBlock * current.blockCharCount.coerceAtLeast(1)
+    val fraction = (charInSection / sectionSpan).coerceIn(0f, 1f)
     return NovelBookViewLocation(sectionIndex = current.sectionIndex, sectionFraction = fraction)
 }

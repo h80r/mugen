@@ -248,6 +248,15 @@ class LibraryPreferences(
     fun filterCompletedNovel() =
         preferenceStore.getEnum("pref_filter_novellib_completed_v2", TriState.DISABLED)
 
+    fun filterMangaLanguages() =
+        preferenceStore.getStringSet("pref_filter_library_manga_languages", emptySet())
+
+    fun filterNovelLanguages() =
+        preferenceStore.getStringSet("pref_filter_novellib_novel_languages", emptySet())
+
+    fun filterAnimeLanguages() =
+        preferenceStore.getStringSet("pref_filter_animelib_anime_languages", emptySet())
+
     fun filterTrackedAnime(id: Int) =
         preferenceStore.getEnum("pref_filter_animelib_tracked_${id}_v2", TriState.DISABLED)
 

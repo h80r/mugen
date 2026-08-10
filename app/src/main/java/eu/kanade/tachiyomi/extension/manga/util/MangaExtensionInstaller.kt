@@ -25,6 +25,7 @@ import eu.kanade.tachiyomi.extension.installer.DownloadManagerIdRegistry
 import eu.kanade.tachiyomi.extension.installer.ExtensionApkFileStore
 import eu.kanade.tachiyomi.extension.installer.PendingApkFileMaterializer
 import eu.kanade.tachiyomi.extension.installer.PendingApkInstallStore
+import eu.kanade.tachiyomi.extension.installer.PrivateExtensionInstallResult
 import eu.kanade.tachiyomi.extension.installer.toApkInstallBackend
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import eu.kanade.tachiyomi.extension.manga.installer.InstallerManga
@@ -52,6 +53,7 @@ import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.i18n.MR
@@ -167,6 +169,7 @@ internal class MangaExtensionInstaller(private val context: Context) {
         downloadManagerIdRegistry.put(pkgName, id)
         activeDownloads[pkgName] = id
         downloadIdToPkgName[id] = pkgName
+        basePreferences.extensionActiveDownloads().getAndSet { it + "$id|$pkgName" }
 
         val downloadStateFlow = MutableStateFlow(InstallStep.Pending)
         downloadsStateFlows[id] = downloadStateFlow
@@ -332,8 +335,17 @@ internal class MangaExtensionInstaller(private val context: Context) {
         while (true) {
             // Get the current download status
             val downloadStatus = downloadManager.query(query).use { cursor ->
-                if (!cursor.moveToFirst()) return@flow
-                cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                if (!cursor.moveToFirst()) {
+                    null
+                } else {
+                    cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                }
+            } ?: run {
+                // The download vanished from the DownloadManager (removed externally or by the
+                // system). Emit a terminal failure instead of silently ending the flow, which
+                // would leave the UI stuck on the last observed step.
+                emit(DownloadManager.STATUS_FAILED)
+                return@flow
             }
 
             emit(downloadStatus)
@@ -398,14 +410,21 @@ internal class MangaExtensionInstaller(private val context: Context) {
                         }
                     }
 
-                    if (MangaExtensionLoader.installPrivateExtensionFile(context, tempFile)) {
-                        val pkgName = downloadIdToPkgName[downloadId]
-                        if (pkgName != null) {
-                            extensionManager.reloadAndRegisterExtension(pkgName)
+                    when (MangaExtensionLoader.installPrivateExtensionFile(context, tempFile)) {
+                        PrivateExtensionInstallResult.Success -> {
+                            val pkgName = downloadIdToPkgName[downloadId]
+                            if (pkgName != null) {
+                                extensionManager.reloadAndRegisterExtension(pkgName)
+                            }
+                            extensionManager.updateInstallStep(downloadId, InstallStep.Installed)
                         }
-                        extensionManager.updateInstallStep(downloadId, InstallStep.Installed)
-                    } else {
-                        extensionManager.updateInstallStep(downloadId, InstallStep.Error)
+                        PrivateExtensionInstallResult.SignatureMismatch -> {
+                            downloadIdToPkgName[downloadId]?.let { extensionManager.reportSignatureMismatch(it) }
+                            extensionManager.updateInstallStep(downloadId, InstallStep.Error)
+                        }
+                        else -> {
+                            extensionManager.updateInstallStep(downloadId, InstallStep.Error)
+                        }
                     }
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e) { "Failed to read downloaded extension file." }
@@ -416,7 +435,13 @@ internal class MangaExtensionInstaller(private val context: Context) {
             }
             else -> {
                 val intent =
-                    MangaExtensionInstallService.getIntent(context, downloadId, uri, installer)
+                    MangaExtensionInstallService.getIntent(
+                        context,
+                        downloadId,
+                        uri,
+                        installer,
+                        downloadIdToPkgName[downloadId],
+                    )
                 try {
                     ContextCompat.startForegroundService(context, intent)
                 } catch (e: ForegroundServiceStartNotAllowedException) {
@@ -447,8 +472,42 @@ internal class MangaExtensionInstaller(private val context: Context) {
     }
 
     /**
-     * Cancels extension install and remove from download manager and installer.
+     * Reconnects DownloadManager downloads that were left without a receiver when the process
+     * died mid-download: finished ones are installed, dead ones are dropped.
      */
+    fun resumeOrphanedDownloads(context: Context) {
+        val saved = basePreferences.extensionActiveDownloads().get()
+        val stillActive = mutableSetOf<String>()
+        saved.forEach { entry ->
+            val parts = entry.split("|", limit = 2)
+            val id = parts.firstOrNull()?.toLongOrNull()
+            val pkgName = parts.getOrNull(1)
+            if (id == null || pkgName == null) return@forEach
+            val status = runCatching {
+                downloadManager.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
+                    if (!cursor.moveToFirst()) {
+                        null
+                    } else {
+                        cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                    }
+                }
+            }.getOrNull()
+            when (status) {
+                null, DownloadManager.STATUS_FAILED, DownloadManager.STATUS_PAUSED -> Unit // drop
+                DownloadManager.STATUS_SUCCESSFUL -> {
+                    if (!context.isPackageInstalled(pkgName)) {
+                        downloadIdToPkgName[id] = pkgName
+                        activeDownloads[pkgName] = id
+                        downloadReceiver.register()
+                        handleDownloadCompletion(id)
+                    }
+                }
+                else -> stillActive += entry
+            }
+        }
+        basePreferences.extensionActiveDownloads().set(stillActive)
+    }
+
     fun cancelInstall(pkgName: String) {
         val downloadId = activeDownloads.remove(pkgName) ?: return
         if (downloadId >= 0) {
@@ -470,6 +529,16 @@ internal class MangaExtensionInstaller(private val context: Context) {
             val intent = Intent(Intent.ACTION_UNINSTALL_PACKAGE, "package:$pkgName".toUri())
                 .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
+            // The system dialog can be dismissed, which would leave the extension in place while
+            // the app already told the user it was removed. Verify the outcome and report back.
+            installerScope.launch {
+                delay(UNINSTALL_VERIFICATION_DELAY_MS)
+                if (context.isPackageInstalled(pkgName)) {
+                    logcat(LogPriority.WARN) {
+                        "Uninstall of $pkgName was not completed (dialog dismissed?) — state kept as installed"
+                    }
+                }
+            }
         } else {
             MangaExtensionInstallReceiver.notifyRemoved(context, pkgName)
         }
@@ -684,5 +753,6 @@ internal class MangaExtensionInstaller(private val context: Context) {
         const val EXTRA_DOWNLOAD_ID = "ExtensionInstaller.extra.DOWNLOAD_ID"
         const val EXTRA_PACKAGE_NAME = "ExtensionInstaller.extra.PACKAGE_NAME"
         const val FILE_SCHEME = "file://"
+        const val UNINSTALL_VERIFICATION_DELAY_MS = 30_000L
     }
 }

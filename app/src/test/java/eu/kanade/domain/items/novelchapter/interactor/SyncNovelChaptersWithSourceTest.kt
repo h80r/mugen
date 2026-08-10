@@ -58,6 +58,7 @@ class SyncNovelChaptersWithSourceTest {
             every { duplicatePref.get() } returns emptySet()
             every { preferences.markDuplicateReadChapterAsRead() } returns duplicatePref
             coEvery { updateNovel.await(any()) } returns true
+            coEvery { updateNovel.awaitUpdateFetchInterval(any(), any(), any()) } returns true
 
             val interactor = SyncNovelChaptersWithSource(
                 novelChapterRepository = repository,
@@ -86,6 +87,7 @@ class SyncNovelChaptersWithSourceTest {
             repository.addedChapters.first().sourceOrder shouldBe 0L
 
             coVerify { updateNovel.await(match { it.id == novel.id && it.lastUpdate != null }) }
+            coVerify { updateNovel.awaitUpdateFetchInterval(novel, any(), any()) }
         }
     }
 
@@ -100,6 +102,7 @@ class SyncNovelChaptersWithSourceTest {
             every { duplicatePref.get() } returns emptySet()
             every { preferences.markDuplicateReadChapterAsRead() } returns duplicatePref
             coEvery { updateNovel.await(any()) } returns true
+            coEvery { updateNovel.awaitUpdateFetchInterval(any(), any(), any()) } returns true
 
             val interactor = SyncNovelChaptersWithSource(
                 novelChapterRepository = repository,
@@ -151,6 +154,7 @@ class SyncNovelChaptersWithSourceTest {
             every { duplicatePref.get() } returns emptySet()
             every { preferences.markDuplicateReadChapterAsRead() } returns duplicatePref
             coEvery { updateNovel.await(any()) } returns true
+            coEvery { updateNovel.awaitUpdateFetchInterval(any(), any(), any()) } returns true
 
             val interactor = SyncNovelChaptersWithSource(
                 novelChapterRepository = repository,
@@ -202,6 +206,7 @@ class SyncNovelChaptersWithSourceTest {
             every { duplicatePref.get() } returns emptySet()
             every { preferences.markDuplicateReadChapterAsRead() } returns duplicatePref
             coEvery { updateNovel.await(any()) } returns true
+            coEvery { updateNovel.awaitUpdateFetchInterval(any(), any(), any()) } returns true
 
             val interactor = SyncNovelChaptersWithSource(
                 novelChapterRepository = repository,
@@ -272,7 +277,7 @@ class SyncNovelChaptersWithSourceTest {
 
         override suspend fun getChapterById(id: Long): NovelChapter? = null
 
-        override suspend fun getChapterByNovelIdAsFlow(
+        override fun getChapterByNovelIdAsFlow(
             novelId: Long,
             applyScanlatorFilter: Boolean,
         ) = throw UnsupportedOperationException()

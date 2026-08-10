@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="nebulatide_primary">#2E2BC7</color>
+    <color name="nebulatide_onPrimary">#FFFFFF</color>
+    <color name="nebulatide_primaryContainer">#DEDDFF</color>
+    <color name="nebulatide_onPrimaryContainer">#070069</color>
+    <color name="nebulatide_secondary">#D44AA0</color>
+    <color name="nebulatide_onSecondary">#FFFFFF</color>
+    <color name="nebulatide_secondaryContainer">#FFD8EC</color>
+    <color name="nebulatide_onSecondaryContainer">#460026</color>
+    <color name="nebulatide_tertiary">#0066B3</color>
+    <color name="nebulatide_onTertiary">#FFFFFF</color>
+    <color name="nebulatide_tertiaryContainer">#CCE5FF</color>
+    <color name="nebulatide_onTertiaryContainer">#001E36</color>
+    <color name="nebulatide_background">#FBF9FF</color>
+    <color name="nebulatide_onBackground">#1D1B2C</color>
+    <color name="nebulatide_surface">#FBF9FF</color>
+    <color name="nebulatide_onSurface">#1D1B2C</color>
+    <color name="nebulatide_surfaceVariant">#E5E1F8</color>
+    <color name="nebulatide_onSurfaceVariant">#474558</color>
+    <color name="nebulatide_outline">#76748C</color>
+    <color name="nebulatide_inverseOnSurface">#F5EFFF</color>
+    <color name="nebulatide_inverseSurface">#323046</color>
+    <color name="nebulatide_primaryInverse">#5C4BFF</color>
+    <color name="nebulatide_elevationOverlay">@color/nebulatide_primary</color>
+</resources>

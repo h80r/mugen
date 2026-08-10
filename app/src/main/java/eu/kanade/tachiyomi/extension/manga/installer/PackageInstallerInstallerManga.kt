@@ -15,8 +15,10 @@ import androidx.core.content.ContextCompat
 import eu.kanade.tachiyomi.extension.InstallStep
 import eu.kanade.tachiyomi.extension.installer.ApkExtensionKind
 import eu.kanade.tachiyomi.extension.installer.ApkInstallBackend
+import eu.kanade.tachiyomi.extension.installer.ApkInstallFailure
 import eu.kanade.tachiyomi.extension.installer.ApkInstallFallbackNotifier
 import eu.kanade.tachiyomi.extension.installer.ApkInstallFallbackSuggestion
+import eu.kanade.tachiyomi.extension.installer.classifyInstallError
 import eu.kanade.tachiyomi.util.lang.use
 import eu.kanade.tachiyomi.util.system.getParcelableExtraCompat
 import eu.kanade.tachiyomi.util.system.getUriSize
@@ -60,8 +62,21 @@ class PackageInstallerInstallerManga(private val service: Service) : InstallerMa
                     logcat(LogPriority.ERROR) {
                         "Package install failed: status=$status legacy=$legacyStatus message=$statusMessage"
                     }
-                    activeSession?.first?.let { entry ->
-                        notifyFallbackSuggestion(entry, "status=$status legacy=$legacyStatus message=$statusMessage")
+                    val failure = classifyInstallError(statusMessage)
+                    if (failure == ApkInstallFailure.SignatureMismatch) {
+                        // The APK is signed with a different key — a fallback backend cannot fix
+                        // this; the caller will offer reinstall-with-uninstall instead.
+                        logcat(LogPriority.WARN) {
+                            "Signature mismatch for extension install; reinstall-with-uninstall required"
+                        }
+                        activeSession?.first?.pkgName?.let { extensionManager.reportSignatureMismatch(it) }
+                    } else {
+                        activeSession?.first?.let { entry ->
+                            notifyFallbackSuggestion(
+                                entry,
+                                "status=$status legacy=$legacyStatus message=$statusMessage",
+                            )
+                        }
                     }
                     completeSession(InstallStep.Error)
                 }
@@ -167,8 +182,8 @@ class PackageInstallerInstallerManga(private val service: Service) : InstallerMa
     private fun notifyFallbackSuggestion(entry: Entry, reason: String) {
         fallbackNotifier.show(
             ApkInstallFallbackSuggestion(
-                packageName = "download-${entry.downloadId}",
-                displayName = "Extension ${entry.downloadId}",
+                packageName = entry.pkgName ?: "download-${entry.downloadId}",
+                displayName = entry.pkgName ?: "download-${entry.downloadId}",
                 kind = ApkExtensionKind.MANGA,
                 failedBackend = ApkInstallBackend.PACKAGE_INSTALLER,
                 reason = reason,

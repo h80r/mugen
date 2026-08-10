@@ -29,9 +29,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import eu.kanade.presentation.browse.components.LanguageFilterChip
 import eu.kanade.presentation.browse.components.shouldWrapGlobalSearchToolbarFilters
 import eu.kanade.presentation.components.SearchToolbar
 import eu.kanade.tachiyomi.ui.browse.anime.source.globalsearch.AnimeSourceFilter
+import kotlinx.collections.immutable.ImmutableSet
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
@@ -47,6 +49,9 @@ fun GlobalAnimeSearchToolbar(
     onSearch: (String) -> Unit,
     sourceFilter: AnimeSourceFilter,
     onChangeSearchFilter: (AnimeSourceFilter) -> Unit,
+    languageFilter: ImmutableSet<String>,
+    availableLanguages: ImmutableSet<String>,
+    onChangeLanguageFilter: (Set<String>) -> Unit,
     onlyShowHasResults: Boolean,
     onToggleResults: () -> Unit,
     scrollBehavior: TopAppBarScrollBehavior,
@@ -81,6 +86,9 @@ fun GlobalAnimeSearchToolbar(
                 GlobalAnimeSearchToolbarFilterChips(
                     sourceFilter = sourceFilter,
                     onChangeSearchFilter = onChangeSearchFilter,
+                    languageFilter = languageFilter,
+                    availableLanguages = availableLanguages,
+                    onChangeLanguageFilter = onChangeLanguageFilter,
                     onlyShowHasResults = onlyShowHasResults,
                     onToggleResults = onToggleResults,
                 )
@@ -95,6 +103,9 @@ fun GlobalAnimeSearchToolbar(
                 GlobalAnimeSearchToolbarFilterChips(
                     sourceFilter = sourceFilter,
                     onChangeSearchFilter = onChangeSearchFilter,
+                    languageFilter = languageFilter,
+                    availableLanguages = availableLanguages,
+                    onChangeLanguageFilter = onChangeLanguageFilter,
                     onlyShowHasResults = onlyShowHasResults,
                     onToggleResults = onToggleResults,
                 )
@@ -109,6 +120,9 @@ fun GlobalAnimeSearchToolbar(
 private fun GlobalAnimeSearchToolbarFilterChips(
     sourceFilter: AnimeSourceFilter,
     onChangeSearchFilter: (AnimeSourceFilter) -> Unit,
+    languageFilter: ImmutableSet<String>,
+    availableLanguages: ImmutableSet<String>,
+    onChangeLanguageFilter: (Set<String>) -> Unit,
     onlyShowHasResults: Boolean,
     onToggleResults: () -> Unit,
 ) {
@@ -145,6 +159,12 @@ private fun GlobalAnimeSearchToolbarFilterChips(
     )
 
     VerticalDivider()
+
+    LanguageFilterChip(
+        languageFilter = languageFilter,
+        availableLanguages = availableLanguages,
+        onChangeLanguageFilter = onChangeLanguageFilter,
+    )
 
     FilterChip(
         selected = onlyShowHasResults,

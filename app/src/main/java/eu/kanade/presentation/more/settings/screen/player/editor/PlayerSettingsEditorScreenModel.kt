@@ -2,19 +2,24 @@ package eu.kanade.presentation.more.settings.screen.player.editor
 
 import android.content.Context
 import androidx.compose.runtime.Immutable
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.util.size
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.toSize
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import tachiyomi.core.common.i18n.stringResource
-import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.storage.service.SCRIPTS_PATH
 import tachiyomi.domain.storage.service.SCRIPT_OPTS_PATH
 import tachiyomi.domain.storage.service.StorageManager
@@ -28,27 +33,29 @@ import java.util.Locale
 class PlayerSettingsEditorScreenModel(
     private val context: Context,
     private val storageManager: StorageManager = Injekt.get(),
-) : StateScreenModel<EditorScreenState>(EditorScreenState.Loading) {
+) : ScreenModel {
     private val _selectedType = MutableStateFlow(EditorListType.SCRIPTS)
     val selectedType = _selectedType.asStateFlow()
 
     private val _dialogShown = MutableStateFlow<EditorFileDialog?>(null)
     val dialogShown = _dialogShown.asStateFlow()
 
-    init {
-        screenModelScope.launchIO {
-            _selectedType.collectLatest { type ->
-                updateItems(type)
-            }
-        }
-    }
+    private val refreshTrigger = MutableStateFlow(0)
 
-    private fun updateItems(type: EditorListType) {
-        mutableState.update {
+    val state: StateFlow<EditorScreenState> = combine(
+        _selectedType,
+        refreshTrigger,
+    ) { type, _ -> type }
+        .map { type ->
             EditorScreenState.Success(
                 editorListItems = getEditorListItems(type),
             )
         }
+        .flowOn(Dispatchers.IO)
+        .stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), EditorScreenState.Loading)
+
+    private fun updateItems(type: EditorListType) {
+        refreshTrigger.update { it + 1 }
     }
 
     fun createFile(fileName: String) {
@@ -88,7 +95,7 @@ class PlayerSettingsEditorScreenModel(
     }
 
     fun isValidName(name: String, initialName: String? = null): FileCreationResult {
-        val names = (mutableState.value as? EditorScreenState.Success)
+        val names = (state.value as? EditorScreenState.Success)
             ?.editorListItems
             ?.map { it.name }
             ?.filterNot { it == initialName }

@@ -337,9 +337,10 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
             logcat { "Request preload destination chapter because we're on the transition" }
             activity.requestPreloadChapter(toChapter)
         } else if (transition is ChapterTransition.Next) {
-            // No more chapters, show menu because the user is probably going to close the reader
+            // No more chapters, show menu because the user is probably going to close the reader.
+            // The meltdown easter egg starts only on an explicit swipe into the void (see
+            // onPageScrollStateChanged), not when merely landing on this page.
             activity.showMenu()
-            activity.onMeltdownTransitionActivated()
         }
     }
 

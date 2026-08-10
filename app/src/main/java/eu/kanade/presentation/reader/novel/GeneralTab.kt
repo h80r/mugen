@@ -21,12 +21,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.more.settings.widget.ListPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.reader.settings.AuroraFieldLabel
 import eu.kanade.presentation.reader.settings.AuroraGlassSection
 import eu.kanade.presentation.reader.settings.AuroraMiniOption
+import eu.kanade.presentation.reader.settings.AuroraNavRow
 import eu.kanade.presentation.reader.settings.AuroraToggleRow
+import eu.kanade.tachiyomi.ui.reader.novel.replace.NovelTextReplaceRulesScreen
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderOverride
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
@@ -413,6 +417,14 @@ fun GeneralTab(
                         dismissFamily = NovelReaderSettingsFamily.RENDERER_TUNING,
                     )
                 },
+            )
+        }
+
+        AuroraGlassSection {
+            val navigator = LocalNavigator.currentOrThrow
+            AuroraNavRow(
+                label = stringResource(AYMR.strings.novel_reader_text_replace),
+                onClick = { navigator.push(NovelTextReplaceRulesScreen()) },
             )
         }
     }

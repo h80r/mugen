@@ -97,7 +97,9 @@ class NovelBookEngineDocumentTest {
         // Restoring by fraction is what makes reopening a chapter that was never measured land on
         // the position the reader actually left.
         html shouldContain "goToFraction = function(fraction"
-        html shouldContain "charOffset: charOffsetAtViewportStart()"
+        // The ready payload uses the cheap geometry-based offset: the exact caret resolution would
+        // force a full layout at open time, which made page mode appear to load forever.
+        html shouldContain "charOffset: cheapCharOffsetAtViewportStart()"
         html shouldContain "goTo: goToCharOffset"
         html shouldContain "goToFraction: goToFraction"
         html shouldContain "relocate: relocate"

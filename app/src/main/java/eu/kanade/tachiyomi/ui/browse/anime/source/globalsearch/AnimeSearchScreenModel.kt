@@ -10,9 +10,12 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.extension.anime.AnimeExtensionManager
+import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.persistentSetOf
+import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -72,6 +75,16 @@ abstract class AnimeSearchScreenModel(
                 mutableState.update { it.copy(onlyShowHasResults = state) }
             }
         }
+        screenModelScope.launch {
+            preferences.searchFilterAnimeLanguages().changes().collectLatest { languages ->
+                mutableState.update { it.copy(languageFilter = languages.toImmutableSet()) }
+            }
+        }
+        screenModelScope.launch {
+            preferences.enabledLanguages().changes().collectLatest { languages ->
+                mutableState.update { it.copy(availableLanguages = languages.toImmutableSet()) }
+            }
+        }
     }
 
     @Composable
@@ -118,6 +131,10 @@ abstract class AnimeSearchScreenModel(
     fun setSourceFilter(filter: AnimeSourceFilter) {
         mutableState.update { it.copy(sourceFilter = filter) }
         search()
+    }
+
+    fun setLanguageFilter(languages: Set<String>) {
+        preferences.searchFilterAnimeLanguages().set(languages)
     }
 
     fun toggleFilterResults() {
@@ -214,11 +231,16 @@ abstract class AnimeSearchScreenModel(
         val searchQuery: String? = null,
         val sourceFilter: AnimeSourceFilter = AnimeSourceFilter.All,
         val onlyShowHasResults: Boolean = false,
+        val languageFilter: ImmutableSet<String> = persistentSetOf(),
+        val availableLanguages: ImmutableSet<String> = persistentSetOf(),
         val items: PersistentMap<AnimeCatalogueSource, AnimeSearchItemResult> = persistentMapOf(),
     ) {
         val progress: Int = items.count { it.value !is AnimeSearchItemResult.Loading }
         val total: Int = items.size
-        val filteredItems = items.filter { (_, result) -> result.isVisible(onlyShowHasResults) }
+        val filteredItems = items.filter { (source, result) ->
+            result.isVisible(onlyShowHasResults) &&
+                (languageFilter.isEmpty() || source.lang in languageFilter)
+        }
     }
 }
 

@@ -168,7 +168,7 @@ class NovelChapterRepositoryImpl(
         return handler.awaitOneOrNull { db -> db.novel_chaptersQueries.getChapterById(id, ::mapChapter) }
     }
 
-    override suspend fun getChapterByNovelIdAsFlow(
+    override fun getChapterByNovelIdAsFlow(
         novelId: Long,
         applyScanlatorFilter: Boolean,
     ): Flow<List<NovelChapter>> {

@@ -1,6 +1,9 @@
 package eu.kanade.tachiyomi.data.book.novel
 
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
@@ -46,6 +49,69 @@ object NovelBookChapterNormalizer {
     private val REMOVED_SELECTOR = "script, style, iframe, svg, canvas, object, embed, form, " +
         "input, button, select, textarea, noscript, meta, link"
 
+    private val IMAGE_URL_ATTRIBUTES = listOf(
+        "src",
+        "srcset",
+        "data-src",
+        "data-srcset",
+        "data-original",
+        "data-lazy-src",
+        "data-url",
+    )
+
+    /**
+     * Rewrites every image URL attribute to an absolute URL resolved against [chapterWebUrl].
+     *
+     * Absolute `http(s)://`, `data:` and `file:` values are left untouched; `//host/...` and
+     * relative paths are resolved the same way a browser would resolve them against the chapter
+     * page. The native compiler reads the very same attributes, so both the WebView document and
+     * the pre-compiled blocks end up with absolute URLs.
+     */
+    private fun absolutizeImageUrls(document: Document, chapterWebUrl: String) {
+        val base = chapterWebUrl.trim().toHttpUrlOrNull() ?: return
+        document.select("img, picture source").forEach { element ->
+            IMAGE_URL_ATTRIBUTES.forEach { attribute ->
+                if (!element.hasAttr(attribute)) return@forEach
+                val raw = element.attr(attribute)
+                val resolved = if (attribute == "srcset") {
+                    rewriteSrcSet(base, raw)
+                } else {
+                    resolveImageUrl(base, raw)
+                }
+                if (resolved != null) {
+                    element.attr(attribute, resolved)
+                }
+            }
+        }
+    }
+
+    private fun rewriteSrcSet(base: HttpUrl, raw: String): String? {
+        val candidates = raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        if (candidates.isEmpty()) return null
+        val rewritten = candidates.map { candidate ->
+            val url = candidate.substringBefore(' ')
+            val descriptor = candidate.substring(url.length).trim()
+            val absolute = resolveImageUrl(base, url) ?: return null
+            if (descriptor.isEmpty()) absolute else "$absolute $descriptor"
+        }
+        return rewritten.joinToString(", ")
+    }
+
+    private fun resolveImageUrl(base: HttpUrl, raw: String): String? {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return null
+        if (
+            trimmed.startsWith("http://") ||
+            trimmed.startsWith("https://") ||
+            trimmed.startsWith("data:") ||
+            trimmed.startsWith("file:") ||
+            trimmed.startsWith("blob:")
+        ) {
+            return trimmed
+        }
+        return base.resolve(trimmed)?.toString()
+    }
+
     private val BLOCK_TAGS = setOf(
         "p",
         "h1",
@@ -90,10 +156,18 @@ object NovelBookChapterNormalizer {
         chapterId: Long,
         chapterName: String,
         startOffset: Int,
+        chapterWebUrl: String? = null,
     ): NovelBookNormalizedSection {
         val document = Jsoup.parseBodyFragment(rawHtml)
         document.outputSettings().prettyPrint(false)
         document.select(REMOVED_SELECTOR).remove()
+        // Sources that reference images by relative paths would break the merged book: a section can
+        // span chapters (no single base URL for the WebView) and the native blocks are compiled
+        // without any base at all. Resolve them against the chapter URL so the artifact always
+        // carries absolute image URLs.
+        if (chapterWebUrl != null) {
+            absolutizeImageUrls(document, chapterWebUrl)
+        }
 
         val title = chapterName.trim()
         val blocks = dropDuplicatedTitle(collectBlocks(document.body(), depth = 0), title)
@@ -171,6 +245,9 @@ object NovelBookChapterNormalizer {
 
     private fun isBlankBlock(element: Element): Boolean {
         if (element.tagName().equals("hr", ignoreCase = true)) return false
+        // A bare <img> is a block of its own: `select("img")` below only finds descendants, so an
+        // image at the top level of a chapter would otherwise be dropped as "blank".
+        if (element.tagName().equals("img", ignoreCase = true)) return false
         if (element.select("img").isNotEmpty()) return false
         return element.text().isBlank()
     }

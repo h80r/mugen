@@ -59,6 +59,38 @@ import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.LocalAppHaptics
 import kotlin.math.roundToInt
 
+/**
+ * Maps a touch position inside a vertical slider to a value in [valueRange]. The bar runs
+ * top-to-bottom: the top edge is [valueRange.start] (first page) and the bottom edge is
+ * [valueRange.endInclusive] (last page).
+ */
+internal fun verticalSliderValueFromPosition(
+    positionY: Float,
+    height: Float,
+    valueRange: ClosedRange<Float>,
+): Float {
+    if (height <= 0f) return valueRange.start
+    val percentage = (positionY / height).coerceIn(0f, 1f)
+    return valueRange.start + percentage * (valueRange.endInclusive - valueRange.start)
+}
+
+/**
+ * Offset of the slider thumb center from the top for [value], so that the start value sits at
+ * the top of the bar and the end value at the bottom.
+ */
+internal fun verticalSliderThumbOffset(
+    value: Int,
+    height: Float,
+    valueRange: ClosedRange<Float>,
+): Float {
+    val percentage = if (valueRange.endInclusive > valueRange.start) {
+        ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    return height * percentage
+}
+
 @Composable
 fun VerticalSlider(
     value: Int,
@@ -75,16 +107,14 @@ fun VerticalSlider(
             .width(36.dp)
             .pointerInput(valueRange) {
                 detectTapGestures { offset ->
-                    val percentage = (1f - (offset.y / size.height)).coerceIn(0f, 1f)
-                    val newValue = valueRange.start + percentage * (valueRange.endInclusive - valueRange.start)
+                    val newValue = verticalSliderValueFromPosition(offset.y, size.height.toFloat(), valueRange)
                     onValueChange(newValue.roundToInt())
                 }
             }
             .pointerInput(valueRange) {
                 detectVerticalDragGestures { change, _ ->
                     change.consume()
-                    val percentage = (1f - (change.position.y / size.height)).coerceIn(0f, 1f)
-                    val newValue = valueRange.start + percentage * (valueRange.endInclusive - valueRange.start)
+                    val newValue = verticalSliderValueFromPosition(change.position.y, size.height.toFloat(), valueRange)
                     onValueChange(newValue.roundToInt())
                 }
             },
@@ -109,10 +139,10 @@ fun VerticalSlider(
                 .background(inactiveColor, shape = RoundedCornerShape(2.dp)),
         )
 
-        // Active Track
+        // Active Track (grows from the top, matching the top-to-bottom value mapping)
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
+                .align(Alignment.TopCenter)
                 .width(trackWidth)
                 .fillMaxHeight(valuePercentage)
                 .background(activeColor, shape = RoundedCornerShape(2.dp)),
@@ -121,7 +151,7 @@ fun VerticalSlider(
         // Thumb
         val thumbOffsetDp = with(density) {
             val thumbRadiusPx = thumbSize.toPx() / 2
-            val rawOffset = height * (1f - valuePercentage)
+            val rawOffset = verticalSliderThumbOffset(value, height, valueRange)
             (rawOffset - thumbRadiusPx).toDp()
         }
 
@@ -229,7 +259,7 @@ fun ChapterNavigator(
                     ) {
                         if (showPageNumbers) {
                             Text(
-                                text = totalPages.toString(),
+                                text = currentPage.toString(),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             Spacer(Modifier.height(8.dp))
@@ -252,7 +282,7 @@ fun ChapterNavigator(
                         if (showPageNumbers) {
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                text = currentPage.toString(),
+                                text = totalPages.toString(),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }

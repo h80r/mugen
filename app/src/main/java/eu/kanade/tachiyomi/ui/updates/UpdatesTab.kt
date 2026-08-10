@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -91,6 +92,9 @@ import eu.kanade.tachiyomi.util.system.workManager
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
+import mihon.feature.upcoming.anime.UpcomingAnimeScreen
+import mihon.feature.upcoming.manga.UpcomingMangaScreen
+import mihon.feature.upcoming.novel.UpcomingNovelScreen
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.i18n.MR
@@ -375,6 +379,19 @@ data object UpdatesTab : Tab {
                     val isAnyUpdating = isAnimeUpdating || isMangaUpdating || isNovelUpdating
                     val isSyncSpinning = isAnyUpdating && refreshingTabId != currentTabId
                     val isRefreshSpinning = isCurrentTabUpdating && refreshingTabId == currentTabId
+                    // Upcoming calendar exists for anime, manga and novels.
+                    val onOpenUpcoming: (() -> Unit)? = when (currentTabId) {
+                        TAB_ANIME -> {
+                            { navigator.push(UpcomingAnimeScreen()) }
+                        }
+                        TAB_MANGA -> {
+                            { navigator.push(UpcomingMangaScreen()) }
+                        }
+                        TAB_NOVEL -> {
+                            { navigator.push(UpcomingNovelScreen()) }
+                        }
+                        else -> null
+                    }
 
                     AuroraUpdatesPinnedHeader(
                         tabs = tabs,
@@ -398,6 +415,7 @@ data object UpdatesTab : Tab {
                         },
                         onRefreshCurrent = ::refreshCurrentTab,
                         onRefreshAll = ::refreshAllTabs,
+                        onOpenUpcoming = onOpenUpcoming,
                         onOpenPacingSettings = {
                             navigator.push(LibraryUpdatePacingScreen)
                         },
@@ -468,6 +486,7 @@ private fun AuroraUpdatesPinnedHeader(
     onTabSelected: (Int) -> Unit,
     onRefreshCurrent: () -> Unit,
     onRefreshAll: () -> Unit,
+    onOpenUpcoming: (() -> Unit)?,
     onOpenPacingSettings: () -> Unit,
 ) {
     val colors = AuroraTheme.colors
@@ -560,6 +579,16 @@ private fun AuroraUpdatesPinnedHeader(
                         expanded = pacingMenuExpanded,
                         onDismissRequest = { pacingMenuExpanded = false },
                     ) {
+                        if (onOpenUpcoming != null) {
+                            AuroraEntryDropdownMenuItem(
+                                text = stringResource(MR.strings.action_view_upcoming),
+                                leadingIcon = Icons.Outlined.CalendarMonth,
+                                onClick = {
+                                    pacingMenuExpanded = false
+                                    onOpenUpcoming()
+                                },
+                            )
+                        }
                         AuroraEntryDropdownMenuItem(
                             text = stringResource(MR.strings.action_timeout_settings),
                             leadingIcon = Icons.Filled.Tune,

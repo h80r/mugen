@@ -17,6 +17,12 @@ internal fun buildNovelBookEngineDocumentHtml(
               inset: 0;
               overflow: hidden;
               touch-action: none;
+              /* Depth styles turn the column box in 3D, so the viewport carries the perspective.
+                 It lives in the paged stylesheet only: the scrolled flow never transforms its
+                 content, and promoting the whole stitched document to a 3D composited layer there
+                 made every scroll frame repaint one giant texture. */
+              perspective: 1400px !important;
+              perspective-origin: 50% 50% !important;
             }
             #an-book-content {
               /* Only the parts of the paged geometry that cannot be fought over live here: the
@@ -29,6 +35,11 @@ internal fun buildNovelBookEngineDocumentHtml(
               /* Texture, background image and OLED gradient are painted on html/body, so every
                  layer above them has to stay see-through or the reader shows a flat colour. */
               background: transparent !important;
+              /* The page turn animates the column box (depth scales it, book rotates it, curl
+                 tilts it), so the paged flow keeps the transform promotion that makes those turns
+                 smooth. The scrolled flow must not have it: see the viewport rule above. */
+              transform-style: preserve-3d !important;
+              will-change: transform, opacity, filter !important;
             }
             #an-book-content img,
             #an-book-content svg,
@@ -130,6 +141,10 @@ internal fun buildNovelBookEngineDocumentHtml(
             // chapter is asked for. Two columns is roughly the scrolled flow's "one viewport ahead".
             const PAGE_STITCH_MARGIN = 2;
             let pageIndex = 0;
+            // Text length of each resident section, computed once per mount. The cheap scroll
+            // report derives the reading offset from geometry and these cached counts instead of
+            // walking the section's text nodes on every frame.
+            let sectionCharCounts = {};
             // Paged geometry is measured as a delta between rects of the column box. A page turn
             // animates that box (depth scales it, book rotates it, curl tilts it), so anything
             // measured mid-turn came back distorted: the page count collapsed, a turn could report a
@@ -374,17 +389,27 @@ internal fun buildNovelBookEngineDocumentHtml(
               }
               return candidate;
             };
-            const fallbackOffsetIn = function(sectionNode) {
-              const total = totalCharCount(textNodesIn(sectionNode));
+            // Offset of [page] inside its section from the column geometry: how far the page sits in
+            // the section's column span, scaled by the section's text length. This is the cheap
+            // paged position: the previous implementation binary-searched the text with a range rect
+            // per step, each of which forced a layout of the whole column box - too slow to run at
+            // document ready or on a page turn.
+            const pageFractionOffsetIn = function(sectionNode, page, cachedTotal) {
+              const total = cachedTotal !== undefined ? cachedTotal : totalCharCount(textNodesIn(sectionNode));
+              if (total <= 0) return 0;
+              const start = sectionStartPage(sectionNode);
+              const span = Math.max(1, sectionPageSpan(sectionNode));
+              const within = Math.max(0, Math.min(page - start, span - 1));
+              const fraction = span <= 1 ? 0 : within / (span - 1);
+              return Math.round(fraction * Math.max(0, total - 1));
+            };
+            const fallbackOffsetIn = function(sectionNode, cachedTotal) {
+              const total = cachedTotal !== undefined ? cachedTotal : totalCharCount(textNodesIn(sectionNode));
               if (total <= 0) return 0;
               if (isPaginated) {
                 // Pages are shared by every resident section, so the fraction has to be taken
                 // inside this section's own column range instead of across the whole document.
-                const start = sectionStartPage(sectionNode);
-                const span = Math.max(1, sectionPageSpan(sectionNode));
-                const within = Math.max(0, Math.min(currentPage() - start, span - 1));
-                const fraction = span <= 1 ? 0 : within / (span - 1);
-                return Math.round(fraction * Math.max(0, total - 1));
+                return pageFractionOffsetIn(sectionNode, currentPage(), total);
               }
               const rect = sectionNode.getBoundingClientRect();
               const top = viewport.getBoundingClientRect().top;
@@ -464,32 +489,15 @@ internal fun buildNovelBookEngineDocumentHtml(
               const end = Math.floor((rect.right - contentRect.left - 1) / pagePitch);
               return Math.max(1, end - start + 1);
             };
-            // The paged flow always knows which page it is on, so its text offset is derived from the
-            // page with a binary search over the column geometry instead of hit-testing a point.
-            // The search runs over one section's text: with several chapters resident, an offset is
-            // only meaningful relative to the section reporting it.
-            const measurePageOffsetIn = function(nodes, page) {
-              const total = totalCharCount(nodes);
-              if (total <= 0) return 0;
-              const target = Math.max(0, page);
-              const contentRect = content.getBoundingClientRect();
-              if (pageOfOffset(nodes, 0, contentRect) >= target) return 0;
-              let low = 0;
-              let high = total - 1;
-              let best = total - 1;
-              while (low <= high) {
-                const middle = (low + high) >> 1;
-                if (pageOfOffset(nodes, middle, contentRect) >= target) {
-                  best = middle;
-                  high = middle - 1;
-                } else {
-                  low = middle + 1;
-                }
-              }
-              return best;
-            };
             const measurePageOffset = function(page) {
-              return measurePageOffsetIn(textNodesIn(sectionNodeAtPage(page)), page);
+              const node = sectionNodeAtPage(page);
+              const index = sectionIndexOf(node);
+              let total = sectionCharCounts[index];
+              if (total === undefined) {
+                total = totalCharCount(textNodesIn(node));
+                if (total > 0) sectionCharCounts[index] = total;
+              }
+              return pageFractionOffsetIn(node, page, total);
             };
             const charOffsetAtPage = function(page) {
               const section = sectionIndexOf(sectionNodeAtPage(page));
@@ -545,16 +553,107 @@ internal fun buildNovelBookEngineDocumentHtml(
               });
             };
             let relocateFrame = 0;
+            const reportRelocated = function() {
+              const startedAt = Date.now();
+              try {
+                if (window.AnBookNative && typeof window.AnBookNative.onRelocated === 'function') {
+                  window.AnBookNative.onRelocated($documentGeneration, relocate());
+                }
+              } catch (_) {
+                // The native renderer may have been detached while this frame was pending.
+              }
+              // Mirrored into logcat by the renderer's WebChromeClient, so a slow exact relocation
+              // can be measured with: adb logcat -s NovelBookWebView
+              const duration = Date.now() - startedAt;
+              if (duration >= RELOCATE_SLOW_THRESHOLD_MILLIS) {
+                console.log('an-book-relocate-slow ' + duration + 'ms');
+              }
+            };
             const pushRelocated = function() {
               if (relocateFrame !== 0) return;
               relocateFrame = requestAnimationFrame(function() {
                 relocateFrame = 0;
-                try {
-                  if (window.AnBookNative && typeof window.AnBookNative.onRelocated === 'function') {
-                    window.AnBookNative.onRelocated($documentGeneration, relocate());
-                  }
-                } catch (_) {
-                  // The native renderer may have been detached while this frame was pending.
+                reportRelocated();
+              });
+            };
+            let lastReportedSectionIndex = -1;
+            let lastReportedCharOffset = -1;
+            // Reports the reading position from geometry instead of a caret hit-test: the section
+            // under the viewport top plus how far into it the viewport is, over the cached text
+            // length. Walking the whole section's text nodes per frame is what made the scroll
+            // path expensive; the exact caret resolution now only runs when the scroll settles.
+            const cheapCharOffsetAtViewportStart = function() {
+              const sectionNode = currentSectionNode();
+              if (!sectionNode) return 0;
+              const sectionIndex = sectionIndexOf(sectionNode);
+              let total = sectionCharCounts[sectionIndex];
+              if (total === undefined) {
+                total = totalCharCount(textNodesIn(sectionNode));
+                if (total > 0) sectionCharCounts[sectionIndex] = total;
+              }
+              return fallbackOffsetIn(sectionNode, total);
+            };
+            const reportCheapRelocated = function() {
+              const sectionNode = currentSectionNode();
+              if (!sectionNode) return;
+              const sectionIndex = sectionIndexOf(sectionNode);
+              const charOffset = cheapCharOffsetAtViewportStart();
+              if (sectionIndex === lastReportedSectionIndex && charOffset === lastReportedCharOffset) {
+                return;
+              }
+              lastReportedSectionIndex = sectionIndex;
+              lastReportedCharOffset = charOffset;
+              try {
+                if (window.AnBookNative && typeof window.AnBookNative.onRelocated === 'function') {
+                  window.AnBookNative.onRelocated($documentGeneration, JSON.stringify({
+                    kind: 'moved',
+                    sectionIndex: sectionIndex,
+                    charOffset: charOffset
+                  }));
+                }
+              } catch (_) {
+                // The native renderer may have been detached while this frame was pending.
+              }
+            };
+            // How often the document reports its position while the reader is scrolling. The exact
+            // caret-based resolution is expensive (it walks the whole section's text), so the scroll
+            // path reports a cheap geometry-based offset at this cadence and resolves exactly once
+            // the scroll settles.
+            const RELOCATE_REPORT_INTERVAL_MILLIS = 120;
+            // How long the viewport has to stay still before the exact position is resolved.
+            const SCROLL_END_SETTLE_MILLIS = 160;
+            // Exact relocations above this duration are logged (an-book-relocate-slow), so the
+            // settle cost stays measurable on device after the scroll path was made cheap.
+            const RELOCATE_SLOW_THRESHOLD_MILLIS = 8;
+            // The stitch check reads scrollHeight, which forces a layout of the whole stitched
+            // document; the check is gated on both time and travel so it cannot run every frame.
+            const STITCH_CHECK_INTERVAL_MILLIS = 300;
+            let bookFrame = 0;
+            let lastReportTime = 0;
+            let scrollEndTimer = 0;
+            let lastStitchCheckTime = 0;
+            let lastStitchScrollTop = -1;
+            // One rAF per frame for everything scroll-driven: the neighbouring-chapter requests and
+            // the throttled position report. Scroll events can fire several times per frame; without
+            // this coalescing each one forced a layout (scrollHeight reads) and scheduled its own
+            // expensive report, which is what made finger scrolling stutter.
+            const pushBookFrameWork = function() {
+              if (bookFrame !== 0) return;
+              bookFrame = requestAnimationFrame(function() {
+                bookFrame = 0;
+                const now = Date.now();
+                // scrollTop is a cheap read; the layout-forcing stitch check runs at most once per
+                // half viewport of travel, far inside the 1.25-viewport stitch margin.
+                const travelled = lastStitchScrollTop < 0 ||
+                  Math.abs(viewport.scrollTop - lastStitchScrollTop) >= viewport.clientHeight * 0.5;
+                if (travelled && now - lastStitchCheckTime >= STITCH_CHECK_INTERVAL_MILLIS) {
+                  lastStitchCheckTime = now;
+                  lastStitchScrollTop = viewport.scrollTop;
+                  pushStitchRequests();
+                }
+                if (now - lastReportTime >= RELOCATE_REPORT_INTERVAL_MILLIS) {
+                  lastReportTime = now;
+                  reportCheapRelocated();
                 }
               });
             };
@@ -570,13 +669,15 @@ internal fun buildNovelBookEngineDocumentHtml(
             const reportSectionMeasured = function(sectionNode) {
               const index = sectionIndexOf(sectionNode);
               if (index < 0) return;
+              const count = totalCharCount(textNodesIn(sectionNode));
+              if (count > 0) sectionCharCounts[index] = count;
               try {
                 if (window.AnBookNative && typeof window.AnBookNative.onSectionMeasured === 'function') {
                   window.AnBookNative.onSectionMeasured(
                     $documentGeneration,
                     index,
                     sectionChapterOf(sectionNode),
-                    totalCharCount(textNodesIn(sectionNode)));
+                    count);
                 }
               } catch (_) {
                 // The native renderer may have been detached while this frame was pending.
@@ -623,8 +724,18 @@ internal fun buildNovelBookEngineDocumentHtml(
               }
             };
             viewport.addEventListener('scroll', function() {
-              pushRelocated();
-              pushStitchRequests();
+              pushBookFrameWork();
+              // While the finger is moving, only the cheap throttled report runs. Once the
+              // viewport stays still for a moment, the exact caret-based position is resolved and
+              // reported once, so the stored reading position stays exact.
+              if (scrollEndTimer !== 0) {
+                window.clearTimeout(scrollEndTimer);
+                scrollEndTimer = 0;
+              }
+              scrollEndTimer = window.setTimeout(function() {
+                scrollEndTimer = 0;
+                reportRelocated();
+              }, SCROLL_END_SETTLE_MILLIS);
             }, { passive: true });
             // The geometry has to survive orientation changes, reader-chrome padding changes and
             // font reflows, so it is reapplied and the current page re-clamped on every resize.
@@ -775,6 +886,7 @@ internal fun buildNovelBookEngineDocumentHtml(
             const removeSection = function(sectionIndex) {
               const node = sectionNodeAt(sectionIndex);
               if (!node) return true;
+              delete sectionCharCounts[sectionIndex];
               const anchor = isPaginated ? locationAtViewportStart() : null;
               // Never drop the section the reader is looking at: it is the anchor everything else
               // is measured against.
@@ -863,11 +975,25 @@ internal fun buildNovelBookEngineDocumentHtml(
                 } catch (_) {
                   // Diagnostics must never break the document.
                 }
+                // Cache the resident sections' text lengths once, so the cheap scroll reports never
+                // have to walk the text nodes again.
+                const residentNodes = sectionNodes();
+                for (let index = 0; index < residentNodes.length; index += 1) {
+                  const residentNode = residentNodes[index];
+                  const residentIndex = sectionIndexOf(residentNode);
+                  if (residentIndex >= 0) {
+                    const residentCount = totalCharCount(textNodesIn(residentNode));
+                    if (residentCount > 0) sectionCharCounts[residentIndex] = residentCount;
+                  }
+                }
                 const payload = JSON.stringify({
                   kind: 'ready',
                   pageCount: pageCount(),
                   currentPage: currentPage(),
-                  charOffset: charOffsetAtViewportStart(),
+                  // The ready payload only feeds progress bookkeeping, so the cheap geometry-based
+                  // offset is enough here: the exact caret resolution would force a full layout at
+                  // open time, which is what made page mode appear to load forever on long sections.
+                  charOffset: cheapCharOffsetAtViewportStart(),
                   charCount: totalCharCount(textNodes())
                 });
                 try {
@@ -879,6 +1005,45 @@ internal fun buildNovelBookEngineDocumentHtml(
                 }
                 return payload;
               });
+            // Auto-scroll runs as a requestAnimationFrame loop inside the document instead of an
+            // evaluateJavascript round trip per frame from Kotlin. setAutoScroll only updates the
+            // per-frame speed; the loop advances the viewport itself, stops at the document end,
+            // and gives up if no sync arrives for a while (the Kotlin loop pauses while the reader
+            // UI is visible, and cancelled coroutines have no chance to say goodbye).
+            const AUTO_SCROLL_KEEPALIVE_MILLIS = 1000;
+            let autoScrollFrame = 0;
+            let autoScrollPxPerFrame = 0;
+            let autoScrollLastSync = 0;
+            const autoScrollStep = function() {
+              autoScrollFrame = 0;
+              if (autoScrollPxPerFrame <= 0 || isPaginated) return;
+              if (Date.now() - autoScrollLastSync > AUTO_SCROLL_KEEPALIVE_MILLIS) {
+                autoScrollPxPerFrame = 0;
+                return;
+              }
+              const maximum = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+              if (viewport.scrollTop >= maximum - 1) {
+                autoScrollPxPerFrame = 0;
+                return;
+              }
+              viewport.scrollTop = Math.min(maximum, viewport.scrollTop + autoScrollPxPerFrame);
+              autoScrollFrame = requestAnimationFrame(autoScrollStep);
+            };
+            const setAutoScroll = function(pxPerFrame) {
+              const speed = Math.max(0, Math.round(Number(pxPerFrame) || 0));
+              autoScrollPxPerFrame = speed;
+              autoScrollLastSync = Date.now();
+              if (speed <= 0) {
+                if (autoScrollFrame !== 0) {
+                  window.cancelAnimationFrame(autoScrollFrame);
+                  autoScrollFrame = 0;
+                }
+                return;
+              }
+              if (autoScrollFrame === 0) {
+                autoScrollFrame = requestAnimationFrame(autoScrollStep);
+              }
+            };
             window.__anBookEngine = Object.freeze({
               ready: ready,
               goTo: goToCharOffset,
@@ -931,10 +1096,13 @@ internal fun buildNovelBookEngineDocumentHtml(
                 const before = viewport.scrollTop;
                 const maximum = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
                 viewport.scrollTop = Math.max(0, Math.min(maximum, before + px));
-                pushRelocated();
-                pushStitchRequests();
+                // The scroll event listener coalesces the stitch check and the position report
+                // into one rAF, so this stays cheap even when called every frame.
+                pushBookFrameWork();
                 return Math.round(viewport.scrollTop - before);
               },
+              setAutoScroll: setAutoScroll,
+              autoScrollActive: function() { return autoScrollPxPerFrame > 0; },
               // Applies reader styles to the open document.
               //
               // Changing a setting used to rebuild the whole document, which threw away the
@@ -989,14 +1157,6 @@ internal fun buildNovelBookEngineDocumentHtml(
             }
             #an-book-atmosphere {
               display: none !important;
-            }
-            #an-book-viewport {
-              perspective: 1400px !important;
-              perspective-origin: 50% 50% !important;
-            }
-            #an-book-content {
-              transform-style: preserve-3d !important;
-              will-change: transform, opacity, filter !important;
             }
           </style>
         </head>

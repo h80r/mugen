@@ -4,7 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.material3.SnackbarHostState
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import coil3.asDrawable
 import coil3.imageLoader
@@ -20,7 +20,9 @@ import eu.kanade.tachiyomi.util.editBackground
 import eu.kanade.tachiyomi.util.editCover
 import eu.kanade.tachiyomi.util.system.getBitmapOrNull
 import eu.kanade.tachiyomi.util.system.toShareIntent
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
@@ -44,17 +46,13 @@ class AnimeImageScreenModel(
     private val updateAnime: UpdateAnime = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
     val pagerState: PagerState = PagerState(pageCount = { 2 }),
-) : StateScreenModel<Anime?>(null) {
+) : ScreenModel {
+
+    val state: StateFlow<Anime?> = getAnime.subscribe(animeId)
+        .stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private val isCover: Boolean
         get() = pagerState.currentPage != 1
-
-    init {
-        screenModelScope.launchIO {
-            getAnime.subscribe(animeId)
-                .collect { newAnime -> mutableState.update { newAnime } }
-        }
-    }
 
     fun saveImage(context: Context) {
         val savedStringResource = if (isCover) {

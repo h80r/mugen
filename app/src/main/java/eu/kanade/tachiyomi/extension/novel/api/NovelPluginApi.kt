@@ -2,6 +2,10 @@ package eu.kanade.tachiyomi.extension.novel.api
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import mihon.domain.extensionrepo.model.ExtensionRepo
@@ -26,6 +30,9 @@ class NovelPluginApi(
         }
     }
 
+    private val _repoFetchErrors = MutableStateFlow<Map<String, String>>(emptyMap())
+    override val repoFetchErrors: Flow<Map<String, String>> = _repoFetchErrors.asStateFlow()
+
     private suspend fun fetchPluginsFromRepo(repo: ExtensionRepo): List<NovelPlugin.Available> {
         return try {
             val payload = fetcher.fetch(repo.baseUrl)
@@ -34,6 +41,7 @@ class NovelPluginApi(
             throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to fetch novel plugins from ${repo.baseUrl}" }
+            _repoFetchErrors.update { it + (repo.baseUrl to (e.message ?: e.javaClass.simpleName)) }
             emptyList()
         }
     }
@@ -45,6 +53,9 @@ interface NovelPluginRepoProvider {
 
 interface NovelPluginApiFacade {
     suspend fun fetchAvailablePlugins(): List<NovelPlugin.Available>
+
+    /** Repo base URLs whose index failed to load, with the error message, since the last refresh. */
+    val repoFetchErrors: Flow<Map<String, String>>
 }
 
 interface NovelPluginIndexFetcher {

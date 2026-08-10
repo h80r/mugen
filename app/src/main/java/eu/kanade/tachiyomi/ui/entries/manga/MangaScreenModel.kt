@@ -40,7 +40,8 @@ import eu.kanade.domain.track.model.AutoTrackState
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.presentation.entries.DownloadAction
 import eu.kanade.presentation.entries.manga.components.ChapterDownloadAction
-import eu.kanade.presentation.series.manga.resolveMangaResumeChapter
+import eu.kanade.presentation.series.manga.mangaChapterResumeComparator
+import eu.kanade.presentation.series.manga.resolveMangaResumeChapterFromSorted
 import eu.kanade.presentation.util.TargetChapterCalculator
 import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadCache
@@ -67,6 +68,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import eu.kanade.tachiyomi.ui.entries.mergeNewItemIds
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.util.TtlCache
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.manga.MangaMemoRepairHelper
 import eu.kanade.tachiyomi.util.removeCovers
@@ -83,11 +85,13 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import mihon.domain.items.chapter.interactor.FilterChaptersForDownload
 import tachiyomi.core.common.i18n.stringResource
@@ -686,6 +690,12 @@ class MangaScreenModel(
     /** Serializes source update calls: 1.6 sources reject concurrent getMangaUpdate per entry. */
     private val sourceUpdateMutex = Mutex()
 
+    // Lightweight in-memory TTL cache for recent combined manga update responses from source.
+    // Bypasses the network for re-opens within the TTL; manual refresh always bypasses the read
+    // but overwrites the entry with the fresh response. Never persists to disk.
+    private val recentMangaUpdateCache =
+        TtlCache<Long, eu.kanade.tachiyomi.source.model.SMangaUpdate>(ttlMs = 90_000L)
+
     /**
      * Fetches details and chapters in a single source call.
      *
@@ -695,20 +705,36 @@ class MangaScreenModel(
      */
     private suspend fun fetchMangaAndChaptersFromSource(manualFetch: Boolean = false) {
         val state = successState ?: return
-        val update = try {
-            withIOContext {
-                sourceUpdateMutex.withLock {
-                    state.source.getMangaUpdate(
-                        manga = MangaMemoRepairHelper.getOrRepairMangaRequest(state.manga, state.source, updateManga),
-                        chapters = emptyList(),
-                        fetchDetails = true,
-                        fetchChapters = true,
-                    )
+        val cacheKey = state.manga.id
+        val cached = if (!manualFetch) recentMangaUpdateCache[cacheKey] else null
+        val update = if (cached != null) {
+            cached
+        } else {
+            val fresh = try {
+                withIOContext {
+                    sourceUpdateMutex.withLock {
+                        state.source.getMangaUpdate(
+                            manga = MangaMemoRepairHelper.getOrRepairMangaRequest(
+                                state.manga,
+                                state.source,
+                                updateManga,
+                            ),
+                            chapters = emptyList(),
+                            fetchDetails = true,
+                            fetchChapters = true,
+                        )
+                    }
                 }
+            } catch (e: Throwable) {
+                handleSourceFetchError(state, e)
+                return
             }
-        } catch (e: Throwable) {
-            handleSourceFetchError(state, e)
-            return
+            // Only cache responses that actually carried details; failed/empty parses must
+            // not poison the cache.
+            if (fresh.manga.initialized) {
+                recentMangaUpdateCache.put(cacheKey, fresh)
+            }
+            fresh
         }
         fetchMangaFromSource(manualFetch, prefetched = update)
         fetchChaptersFromSource(manualFetch, prefetched = update)
@@ -1322,15 +1348,19 @@ class MangaScreenModel(
      */
     suspend fun resolveChapterForOpen(previewOrReal: Chapter): Chapter {
         if (previewOrReal.id > 0) return previewOrReal
-        // Wait briefly for the sync to populate the real persisted chapter (by url)
-        val start = System.currentTimeMillis()
-        while (System.currentTimeMillis() - start < 8000) {
-            val current = state.value as? State.Success
-            val real = current?.chapters?.firstOrNull { it.chapter.url == previewOrReal.url }?.chapter
-            if (real != null && real.id > 0) return real
-            delay(30)
+        // Wait for the sync to populate the real persisted chapter (by url) without
+        // busy-polling: the state flow emits on sync progress, so a first{} with a short
+        // timeout resolves as soon as the chapter lands in state.
+        val resolved = withTimeoutOrNull(3_000L) {
+            state.first { current ->
+                val success = current as? State.Success
+                val real = success?.chapters?.firstOrNull { it.chapter.url == previewOrReal.url }
+                real != null && real.chapter.id > 0
+            }
         }
-        return previewOrReal // fallback (may cause issues in reader, but rare)
+        val success = resolved as? State.Success
+        return success?.chapters?.firstOrNull { it.chapter.url == previewOrReal.url }?.chapter
+            ?: previewOrReal // fallback (may cause issues in reader, but rare)
     }
 
     private fun executeChapterSwipeAction(
@@ -1380,7 +1410,26 @@ class MangaScreenModel(
         val historyChapterId = mangaHistoryRepository.getHistoryByMangaId(mangaId)
             .maxByOrNull { it.readAt?.time ?: Long.MIN_VALUE }
             ?.chapterId
-        resolveMangaResumeChapter(successState.chapters.map { it.chapter }, historyChapterId)
+        resolveMangaResumeChapterFromSorted(
+            sortedChapters = sortedResumeChapters(successState.chapters),
+            fromChapterId = historyChapterId,
+        )
+    }
+
+    // PERF: cache the resume-order sorted chapter list across CTA taps; invalidated by the
+    // reference of the state list (a new list instance is created on every state update).
+    private var sortedResumeChaptersOwner: Any? = null
+    private var sortedResumeChaptersCache: List<Chapter> = emptyList()
+
+    private fun sortedResumeChapters(chapters: List<ChapterList.Item>): List<Chapter> {
+        val owner: Any = chapters
+        if (sortedResumeChaptersOwner !== owner) {
+            sortedResumeChaptersCache = chapters
+                .map { it.chapter }
+                .sortedWith(mangaChapterResumeComparator)
+            sortedResumeChaptersOwner = owner
+        }
+        return sortedResumeChaptersCache
     }
 
     fun saveScrollPosition(index: Int, offset: Int) {

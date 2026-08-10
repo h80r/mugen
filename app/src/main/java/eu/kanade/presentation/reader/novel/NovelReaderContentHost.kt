@@ -810,7 +810,10 @@ internal fun NovelReaderContentHost(
             itemCount = state.contentBlocks.size,
         )
     }
-    val textListState = key(state.chapter.id) {
+    // Keyed by the novel while book mode is active: over a book the chapter anchor follows the
+    // text, so keying the list state on it would recreate the list — and reset the scroll to the
+    // book start — every time the reader crosses into another chapter and updateContent re-runs.
+    val textListState = key(if (isBookMode) state.novel.id else state.chapter.id) {
         rememberLazyListState(
             initialFirstVisibleItemIndex = initialNativeReaderIndex
                 .coerceIn(0, (state.contentBlocks.lastIndex).coerceAtLeast(0)),
@@ -1260,6 +1263,12 @@ internal fun NovelReaderContentHost(
         webViewTtsNavigationAdapter.hashCode()
         bookTtsNavigationAdapter?.hashCode()
     }
+    // The initial page of a paged chapter is applied exactly once. Re-running this effect whenever
+    // one of its keys changes (content re-measure after a settings change, boundary-page flags
+    // flipping, or the book navigation updating while crossing a chapter boundary) would yank the
+    // reader back to the saved position mid-reading: sometimes a few pages, sometimes to the
+    // chapter start, and in book mode into the previous chapter's boundary pages.
+    val appliedPagerRestoreChapterId = remember { longArrayOf(state.chapter.id) }
     LaunchedEffect(
         state.chapter.id,
         pageReaderRendererRoute,
@@ -1268,6 +1277,17 @@ internal fun NovelReaderContentHost(
         composePagerHasNextChapter,
         initialPagerPage,
     ) {
+        if (appliedPagerRestoreChapterId[0] == state.chapter.id) return@LaunchedEffect
+        // Book mode is one continuous document: the current chapter changes while reading and the
+        // pager position must never be reset under the reader.
+        if (isBookMode) {
+            appliedPagerRestoreChapterId[0] = state.chapter.id
+            return@LaunchedEffect
+        }
+        // Retry while the content has not been measured yet instead of marking the restore done:
+        // the pager may have mounted before the page list arrived.
+        if (pageReaderItemsCount <= 0) return@LaunchedEffect
+        appliedPagerRestoreChapterId[0] = state.chapter.id
         if (pagerState.currentPage != initialPagerPage) {
             pagerState.scrollToPage(initialPagerPage)
         }
@@ -1763,7 +1783,18 @@ internal fun NovelReaderContentHost(
                 pageReaderRendererRoute == NovelPageReaderRendererRoute.PAGE_TURN_RENDERER &&
                 activePageTransitionStyle == NovelPageTransitionStyle.CURL
             ) {
-                requestPageTurnChapterNavigation(PageTurnChapterNavigationDirection.PREVIOUS)
+                // With the seamless transition there is no boundary "previous chapter" page, so on
+                // the first page the curl has nowhere to go: open the adjacent chapter directly.
+                if (
+                    seamlessChapterTransitionEnabled &&
+                    pageReaderItemsCount > 0 &&
+                    pageReaderProgressPageIndex <= 0 &&
+                    state.previousChapterId != null
+                ) {
+                    openPreviousChapterFromReader()
+                } else {
+                    requestPageTurnChapterNavigation(PageTurnChapterNavigationDirection.PREVIOUS)
+                }
             } else {
                 val currentPage = pageReaderProgressPageIndex
                 val currentVirtualPage = resolveComposePagerVirtualPageIndex(
@@ -1818,7 +1849,18 @@ internal fun NovelReaderContentHost(
                 pageReaderRendererRoute == NovelPageReaderRendererRoute.PAGE_TURN_RENDERER &&
                 activePageTransitionStyle == NovelPageTransitionStyle.CURL
             ) {
-                requestPageTurnChapterNavigation(PageTurnChapterNavigationDirection.NEXT)
+                // With the seamless transition there is no boundary "next chapter" page, so on the
+                // last page the curl has nowhere to go: open the adjacent chapter directly.
+                if (
+                    seamlessChapterTransitionEnabled &&
+                    pageReaderItemsCount > 0 &&
+                    pageReaderProgressPageIndex >= pageReaderItemsCount - 1 &&
+                    state.nextChapterId != null
+                ) {
+                    openNextChapterFromReader()
+                } else {
+                    requestPageTurnChapterNavigation(PageTurnChapterNavigationDirection.NEXT)
+                }
             } else {
                 val currentPage = pageReaderProgressPageIndex
                 val currentVirtualPage = resolveComposePagerVirtualPageIndex(
@@ -1954,6 +1996,9 @@ internal fun NovelReaderContentHost(
     ) {
         if (!autoScrollEnabled) {
             autoScrollController.stop()
+            // The WebView book runs auto-scroll as a rAF loop inside its document; the loop has no
+            // other way to learn that the chrome stopped asking for frames.
+            bookContentHandle.surface?.stopAutoScroll()
             return@LaunchedEffect
         }
         autoScrollController.start()
@@ -2004,6 +2049,9 @@ internal fun NovelReaderContentHost(
         while (isActive && autoScrollEnabled) {
             if (showReaderUi) {
                 autoScrollController.pause()
+                // Pausing must stop the in-document loop too: it would otherwise keep advancing the
+                // viewport while the reader UI is visible and the chrome is not asking for frames.
+                bookContentHandle.surface?.stopAutoScroll()
                 delay(120)
                 continue
             }
@@ -2459,6 +2507,13 @@ internal fun NovelReaderContentHost(
                         )
                     } else {
                         // Scroll mode.
+                        // Shared across the two chapter-swipe detectors below: a diagonal swipe can
+                        // satisfy both the horizontal and the vertical one. The horizontal detector
+                        // fires first, mid-drag; once it has handled the gesture the vertical one has
+                        // to stay silent, otherwise one gesture opens two chapters and — because the
+                        // seamless in-place switch has already advanced the chapter — skips one.
+                        // Mirrors the `horizontalSwipeHandled` guard the WebView touch listener uses.
+                        var horizontalChapterSwipeHandled by remember { mutableStateOf(false) }
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -2496,6 +2551,7 @@ internal fun NovelReaderContentHost(
                                                 onDragStart = {
                                                     totalDrag = 0f
                                                     handled = false
+                                                    horizontalChapterSwipeHandled = false
                                                 },
                                                 onHorizontalDrag = { change, dragAmount ->
                                                     change.consume()
@@ -2506,12 +2562,14 @@ internal fun NovelReaderContentHost(
                                                         state.previousChapterId != null
                                                     ) {
                                                         handled = true
+                                                        horizontalChapterSwipeHandled = true
                                                         openPreviousChapterFromReader()
                                                     } else if (
                                                         totalDrag < -160f &&
                                                         state.nextChapterId != null
                                                     ) {
                                                         handled = true
+                                                        horizontalChapterSwipeHandled = true
                                                         openNextChapterFromReader()
                                                     }
                                                 },
@@ -2537,6 +2595,9 @@ internal fun NovelReaderContentHost(
                                         ) {
                                             awaitEachGesture {
                                                 val down = awaitFirstDown(requireUnconsumed = false)
+                                                // A new gesture starts: clear the marker the horizontal
+                                                // detector may have set on the previous one.
+                                                horizontalChapterSwipeHandled = false
                                                 var currentPosition = down.position
                                                 var gestureEndUptime = down.uptimeMillis
                                                 val wasNearChapterEndAtDown =
@@ -2555,6 +2616,15 @@ internal fun NovelReaderContentHost(
                                                 }
 
                                                 if (showReaderUi || showWebView || usePageReader) {
+                                                    return@awaitEachGesture
+                                                }
+
+                                                // The horizontal detector already handled this gesture
+                                                // (a diagonal swipe at the chapter edge): firing the
+                                                // chapter switch again here would skip one, because the
+                                                // seamless in-place switch has already advanced
+                                                // `nextChapterId` past the target.
+                                                if (horizontalChapterSwipeHandled) {
                                                     return@awaitEachGesture
                                                 }
 

@@ -282,7 +282,7 @@ private fun AnimeLibraryAuroraList(
                     .fillMaxWidth()
                     .auroraCenteredMaxWidth(listMaxWidthDp)
                     .aspectRatio(2.2f),
-                title = anime.title,
+                title = anime.displayTitle,
                 coverData = coverData,
                 subtitle = subtitle,
                 badge = if (hasBadge) {
@@ -442,7 +442,7 @@ private fun AnimeLibraryAuroraCardGrid(
             if (useGlowContourCards) {
                 GlowContourLibraryGridItem(
                     modifier = Modifier,
-                    title = anime.title,
+                    title = anime.displayTitle,
                     subtitle = subtitle,
                     coverData = coverData,
                     progressPercent = progressPercent,
@@ -487,7 +487,7 @@ private fun AnimeLibraryAuroraCardGrid(
             } else {
                 AuroraCard(
                     modifier = Modifier.aspectRatio(if (showMetadata) 0.66f else 0.6f),
-                    title = anime.title,
+                    title = anime.displayTitle,
                     coverData = coverData,
 
                     subtitle = subtitle,

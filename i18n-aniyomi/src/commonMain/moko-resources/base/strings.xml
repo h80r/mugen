@@ -865,6 +865,34 @@
     <string name="novel_reader_dictionary_quick_access_summary">Show a dictionary history button in the novel reader bottom bar</string>
     <string name="novel_reader_dictionary_history">Dictionary history</string>
     <string name="novel_reader_dictionary_history_summary">Your looked-up words: search, favorites, review</string>
+    <string name="novel_reader_text_replace">Text replacement</string>
+    <string name="novel_reader_text_replace_summary">Apply your own find-and-replace rules to chapter text</string>
+    <string name="novel_reader_text_replace_empty">No rules yet. Add a rule to replace text in chapters.</string>
+    <string name="novel_reader_text_replace_add">Add rule</string>
+    <string name="novel_reader_text_replace_edit">Edit rule</string>
+    <string name="novel_reader_text_replace_delete">Delete rule</string>
+    <string name="novel_reader_text_replace_name">Name</string>
+    <string name="novel_reader_text_replace_pattern">Find</string>
+    <string name="novel_reader_text_replace_pattern_hint">Text or regular expression</string>
+    <string name="novel_reader_text_replace_replacement">Replace with</string>
+    <string name="novel_reader_text_replace_regex">Regular expression</string>
+    <string name="novel_reader_text_replace_scope">Apply to</string>
+    <string name="novel_reader_text_replace_scope_title">Chapter titles</string>
+    <string name="novel_reader_text_replace_scope_content">Chapter content</string>
+    <string name="novel_reader_text_replace_scope_both">Titles and content</string>
+    <string name="novel_reader_text_replace_enabled">Enabled</string>
+    <string name="novel_reader_text_replace_import">Import rules</string>
+    <string name="novel_reader_text_replace_import_prompt">Paste rule JSON (Legado format)</string>
+    <string name="novel_reader_text_replace_import_done">%1$d rules imported</string>
+    <string name="novel_reader_text_replace_import_failed">Could not parse rules JSON</string>
+    <string name="novel_reader_text_replace_export">Export rules</string>
+    <string name="novel_reader_text_replace_export_copied">Rules copied to clipboard</string>
+    <string name="novel_reader_text_replace_test">Test rules</string>
+    <string name="novel_reader_text_replace_test_sample">Sample text</string>
+    <string name="novel_reader_text_replace_test_result">Result</string>
+    <string name="novel_reader_text_replace_invalid_pattern">Invalid regular expression</string>
+    <string name="novel_reader_text_replace_save">Save</string>
+    <string name="novel_reader_text_replace_cancel">Cancel</string>
     <string name="novel_reader_dictionary_history_search_hint">Search words</string>
     <string name="novel_reader_dictionary_history_stats">%1$s words &#8226; %2$s today</string>
     <string name="novel_reader_dictionary_history_top_language">top %1$s</string>
@@ -1326,6 +1354,7 @@
     <string name="pref_hide_in_manga_library_items">Hide manga entries already in library</string>
     <string name="pref_hide_in_anime_library_items">Hide anime entries already in library</string>
     <string name="pref_hide_in_novel_library_items">Hide novel entries already in library</string>
+    <string name="pref_title_carousel_enabled">Swipe between titles in source browser</string>
     <string name="action_order_by_episode_number">By episode number</string>
     <string name="action_start_download_externally">Use external downloader</string>
     <string name="action_start_download_internally">Use internal downloader</string>
@@ -2008,6 +2037,8 @@
     <string name="aurora_progress">PROGRESS</string>
     <string name="aurora_select_dubbing">Select Dubbing</string>
     <string name="aurora_no_description">No description</string>
+    <string name="aurora_show_more">Show more</string>
+    <string name="aurora_collapse">Collapse</string>
 
     <!-- Metadata Integration -->
     <string name="pref_category_metadata">Anime and Manga Metadata</string>
@@ -2120,10 +2151,10 @@
     <string name="treasury_exclusive_rarity_transcendent">Transcendent</string>
     <string name="treasury_exclusive_active">Active exclusive</string>
     <string name="treasury_exclusive_unlocked">Unlocked exclusive</string>
-    <string name="treasury_tagline_onyx_gold">Black-diamond surfaces with royal gold and a ruby trophy accent</string>
+    <string name="treasury_tagline_onyx_gold">Black-diamond surfaces with royal gold and a bronze trophy accent</string>
     <string name="treasury_tagline_sakura_noir">Midnight sakura neon, plum noir cards, and jade hidden-hall glow</string>
-    <string name="treasury_tagline_nebula_tide">Abyssal space blue with plasma cyan, violet gravity, and alien-lime sparks</string>
-    <string name="treasury_tagline_event_horizon">X-ray white controls, infrared event bands, cold lensing green, and cut-glass void surfaces</string>
+    <string name="treasury_tagline_nebula_tide">Deep-indigo abyss with rose-nebula drift and plasma-cyan sparks</string>
+    <string name="treasury_tagline_event_horizon">Deep-blue accretion bands, violet plasma, X-ray white controls, and cut-glass void surfaces</string>
     <!-- Treasury Vault hero -->
     <string name="treasury_vault_group_title">Aurora Vault</string>
     <string name="treasury_vault_header">AURORA TREASURY</string>

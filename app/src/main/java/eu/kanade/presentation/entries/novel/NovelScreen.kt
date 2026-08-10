@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Bookmark
@@ -71,12 +72,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.request.crossfade
+import eu.kanade.domain.description.DescriptionEngine
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AuroraCoverPlaceholderVariant
 import eu.kanade.presentation.components.relativeDateTimeText
 import eu.kanade.presentation.components.rememberThemeAwareCoverErrorPainter
+import eu.kanade.presentation.entries.components.DescriptionBlocks
 import eu.kanade.presentation.entries.components.EntryBottomActionMenu
 import eu.kanade.presentation.entries.components.EntryToolbar
 import eu.kanade.presentation.entries.components.ItemCover
@@ -441,6 +444,7 @@ fun NovelScreen(
             val isBookBuilding = state.bookBuildProgress != null
             val appendableChapterCount = (state.chapters.size - (state.bookState?.chapterCount ?: 0)).coerceAtLeast(0)
             val readAsBook = state.bookState?.enabled == true
+            val bookModeMenu = resolveNovelBookModeMenu(readAsBook)
 
             val bookTitle = stringResource(
                 when {
@@ -451,7 +455,11 @@ fun NovelScreen(
             )
             val appendTitle = stringResource(AYMR.strings.novel_book_append_available, appendableChapterCount)
             val toggleTitle = stringResource(
-                if (readAsBook) AYMR.strings.novel_book_read_as_chapters else AYMR.strings.novel_book_read_as_book,
+                if (bookModeMenu.current == NovelBookReadingMode.BOOK) {
+                    AYMR.strings.novel_book_read_as_book
+                } else {
+                    AYMR.strings.novel_book_read_as_chapters
+                },
             )
             val deleteTitle = stringResource(AYMR.strings.novel_book_delete)
             val deleteSourceChaptersTitle = stringResource(AYMR.strings.novel_book_cleanup_source_chapters)
@@ -507,7 +515,9 @@ fun NovelScreen(
                         add(
                             AppBar.OverflowAction(
                                 title = toggleTitle,
-                                onClick = { onToggleReadAsBook(!readAsBook) },
+                                onClick = {
+                                    onToggleReadAsBook(bookModeMenu.target == NovelBookReadingMode.BOOK)
+                                },
                             ),
                         )
                     }
@@ -750,20 +760,19 @@ fun NovelScreen(
                             }
 
                             state.novel.displayDescription?.takeIf { it.isNotBlank() }?.let {
-                                Text(
-                                    text = it,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 6,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(
-                                            start = MaterialTheme.padding.medium,
-                                            end = MaterialTheme.padding.medium,
-                                            bottom = MaterialTheme.padding.medium,
-                                        ),
-                                )
+                                SelectionContainer {
+                                    val blocks = remember(it) { DescriptionEngine.beautify(it) }
+                                    DescriptionBlocks(
+                                        blocks = blocks,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(
+                                                start = MaterialTheme.padding.medium,
+                                                end = MaterialTheme.padding.medium,
+                                                bottom = MaterialTheme.padding.medium,
+                                            ),
+                                    )
+                                }
                             }
                         }
                     }

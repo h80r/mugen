@@ -60,7 +60,7 @@ class SetMangaDefaultChapterFlagsTest {
         var receivedUpdates: List<MangaUpdate> = emptyList()
 
         override suspend fun getMangaById(id: Long): Manga = error("not used")
-        override suspend fun getMangaByIdAsFlow(id: Long): Flow<Manga> = error("not used")
+        override fun getMangaByIdAsFlow(id: Long): Flow<Manga> = error("not used")
         override suspend fun getMangaByUrlAndSourceId(url: String, sourceId: Long): Manga? = error("not used")
         override fun getMangaByUrlAndSourceIdAsFlow(url: String, sourceId: Long): Flow<Manga?> = error("not used")
         override suspend fun getMangaFavorites(): List<Manga> = favorites
@@ -69,7 +69,7 @@ class SetMangaDefaultChapterFlagsTest {
         override fun getLibraryMangaAsFlow(): Flow<List<LibraryManga>> = error("not used")
         override fun getMangaFavoritesBySourceId(sourceId: Long): Flow<List<Manga>> = error("not used")
         override suspend fun getDuplicateLibraryManga(id: Long, title: String): List<Manga> = error("not used")
-        override suspend fun getUpcomingManga(statuses: Set<Long>): Flow<List<Manga>> = error("not used")
+        override fun getUpcomingManga(statuses: Set<Long>): Flow<List<Manga>> = error("not used")
         override suspend fun resetMangaViewerFlags(): Boolean = error("not used")
         override suspend fun setMangaCategories(mangaId: Long, categoryIds: List<Long>) = error("not used")
         override suspend fun insertManga(manga: Manga): Long? = error("not used")

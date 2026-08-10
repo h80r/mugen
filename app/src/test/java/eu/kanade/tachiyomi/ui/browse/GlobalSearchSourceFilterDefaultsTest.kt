@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.ui.browse.manga.source.globalsearch.MangaSourceFilter
 import eu.kanade.tachiyomi.ui.browse.novel.source.globalsearch.NovelSearchScreenModel
 import eu.kanade.tachiyomi.ui.browse.novel.source.globalsearch.NovelSourceFilter
 import io.kotest.matchers.shouldBe
+import kotlinx.collections.immutable.persistentSetOf
 import org.junit.jupiter.api.Test
 
 class GlobalSearchSourceFilterDefaultsTest {
@@ -24,5 +25,20 @@ class GlobalSearchSourceFilterDefaultsTest {
     @Test
     fun `novel global search defaults to all sources`() {
         NovelSearchScreenModel.State().sourceFilter shouldBe NovelSourceFilter.All
+    }
+
+    @Test
+    fun `manga global search defaults to no language filter`() {
+        MangaSearchScreenModel.State().languageFilter shouldBe persistentSetOf<String>()
+    }
+
+    @Test
+    fun `novel global search defaults to no language filter`() {
+        NovelSearchScreenModel.State().languageFilter shouldBe persistentSetOf<String>()
+    }
+
+    @Test
+    fun `anime global search defaults to no language filter`() {
+        AnimeSearchScreenModel.State().languageFilter shouldBe persistentSetOf<String>()
     }
 }

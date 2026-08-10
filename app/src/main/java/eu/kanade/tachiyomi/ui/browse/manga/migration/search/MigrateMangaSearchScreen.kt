@@ -40,6 +40,7 @@ class MigrateMangaSearchScreen(private val mangaId: Long) : Screen() {
             },
             getManga = { screenModel.getManga(it) },
             onChangeSearchFilter = screenModel::setSourceFilter,
+            onChangeLanguageFilter = screenModel::setLanguageFilter,
             onToggleResults = screenModel::toggleFilterResults,
             onClickSource = {
                 navigator.push(

@@ -114,6 +114,15 @@ class SourcePreferences(
         false,
     )
 
+    fun searchFilterMangaLanguages() =
+        preferenceStore.getStringSet("pref_global_search_manga_languages", emptySet())
+
+    fun searchFilterNovelLanguages() =
+        preferenceStore.getStringSet("pref_global_search_novel_languages", emptySet())
+
+    fun searchFilterAnimeLanguages() =
+        preferenceStore.getStringSet("pref_global_search_anime_languages", emptySet())
+
     // Mixture Sources
 
     fun disabledAnimeSources() = preferenceStore.getStringSet("hidden_anime_catalogues", emptySet())
@@ -183,6 +192,12 @@ class SourcePreferences(
     fun hideInNovelLibraryItems() = preferenceStore.getBoolean(
         "browse_hide_in_novel_library_items",
         false,
+    )
+
+    /** Swipe-left/right title carousel when opening a title from a source browser. */
+    fun titleCarouselEnabled() = preferenceStore.getBoolean(
+        "browse_title_carousel_enabled",
+        true,
     )
 
     // SY -->

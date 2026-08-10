@@ -37,10 +37,16 @@ import eu.kanade.tachiyomi.util.removeCovers
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.collections.immutable.PersistentList
+import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.collections.immutable.toPersistentList
+import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -49,10 +55,12 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.common.util.lang.compareToWithCollator
@@ -87,7 +95,7 @@ import kotlin.random.Random
 /**
  * Typealias for the library anime, using the category as keys, and list of anime as values.
  */
-typealias AnimeLibraryMap = Map<Category, List<AnimeLibraryItem>>
+typealias AnimeLibraryMap = PersistentMap<Category, PersistentList<AnimeLibraryItem>>
 
 class AnimeLibraryScreenModel(
     private val getLibraryAnime: GetLibraryAnime = Injekt.get(),
@@ -106,6 +114,7 @@ class AnimeLibraryScreenModel(
     private val downloadManager: AnimeDownloadManager = Injekt.get(),
     private val downloadCache: AnimeDownloadCache = Injekt.get(),
     private val trackerManager: TrackerManager = Injekt.get(),
+    private val libraryDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : StateScreenModel<AnimeLibraryScreenModel.State>(
     State(
         groupType = if (libraryPreferences.globalGroupLibrary().get()) {
@@ -121,7 +130,7 @@ class AnimeLibraryScreenModel(
     )
 
     init {
-        screenModelScope.launchIO {
+        screenModelScope.launch {
             val baseLibraryFlow = combine(
                 getLibraryFlow(),
                 getTracksPerAnime.subscribe(),
@@ -143,9 +152,20 @@ class AnimeLibraryScreenModel(
                 val hasActiveFilters = itemPreferences.hasActiveFilters(trackingFilter)
                 val sourceCategories = library.keys.toList()
 
+                val languageCache = HashMap<Long, String>()
+                val libraryLanguages = library.values.flatten()
+                    .map { item ->
+                        languageCache.getOrPut(item.libraryAnime.anime.source) {
+                            sourceManager.getOrStub(item.libraryAnime.anime.source).lang
+                        }
+                    }
+                    .distinct()
+                    .sorted()
+
                 AnimeBaseLibraryResult(
                     groupType = groupType,
                     hasActiveFilters = hasActiveFilters,
+                    libraryLanguages = libraryLanguages,
                     library = library
                         .applyFilters(itemPreferences, tracks, trackingFilter)
                         .applySort(tracks, trackingFilter.keys)
@@ -159,14 +179,15 @@ class AnimeLibraryScreenModel(
                 state.map { it.searchQuery }.distinctUntilChanged().debounce(SEARCH_DEBOUNCE_MILLIS),
             ) { baseLibrary, searchQuery ->
                 val librarySearchQuery = searchQuery?.let(::LibrarySearchQuery)
-                baseLibrary.library
+                val filteredMap = baseLibrary.library
                     .mapValues { (_, value) ->
                         if (librarySearchQuery != null) {
-                            value.filter { it.matches(librarySearchQuery) }
+                            value.filter { it.matches(librarySearchQuery, sourceManager) }.toPersistentList()
                         } else {
                             value
                         }
                     }
+                    .toPersistentMap()
                     .let { map ->
                         if (
                             baseLibrary.groupType == LibraryGroup.BY_DEFAULT ||
@@ -177,15 +198,18 @@ class AnimeLibraryScreenModel(
                             // still show the global search action.
                             map
                         } else {
-                            map.filterValues { it.isNotEmpty() }
+                            map.filterValues { it.isNotEmpty() }.toPersistentMap()
                         }
                     }
+                filteredMap to baseLibrary.libraryLanguages
             }
-                .collectLatest {
+                .flowOn(libraryDispatcher)
+                .collectLatest { (libraryMap, libraryLanguages) ->
                     mutableState.update { state ->
                         state.copy(
                             isLoading = false,
-                            library = it,
+                            library = libraryMap,
+                            libraryLanguages = libraryLanguages,
                         )
                     }
                 }
@@ -211,21 +235,20 @@ class AnimeLibraryScreenModel(
             getAnimelibItemPreferencesFlow(),
             getTrackingFilterFlow(),
         ) { prefs, trackFilter ->
-            (
-                listOf(
-                    prefs.filterDownloaded,
-                    prefs.filterUnseen,
-                    prefs.filterStarted,
-                    prefs.filterBookmarked,
-                    prefs.filterCompleted,
-                    prefs.filterIntervalCustom,
-                ) + trackFilter.values
-                ).any { it != TriState.DISABLED }
+            prefs.hasActiveFilters(trackFilter)
         }
             .distinctUntilChanged()
             .onEach {
                 mutableState.update { state ->
                     state.copy(hasActiveFilters = it)
+                }
+            }
+            .launchIn(screenModelScope)
+
+        getAnimelibItemPreferencesFlow()
+            .onEach { prefs ->
+                mutableState.update { state ->
+                    state.copy(languageFilter = prefs.filterLanguages)
                 }
             }
             .launchIn(screenModelScope)
@@ -279,6 +302,16 @@ class AnimeLibraryScreenModel(
         val filterBookmarked = prefs.filterBookmarked
         val filterCompleted = prefs.filterCompleted
         val filterIntervalCustom = prefs.filterIntervalCustom
+        val filterLanguages = prefs.filterLanguages
+
+        val languageBySourceId = HashMap<Long, String>()
+        fun AnimeLibraryItem.sourceLang(): String {
+            val sourceId = libraryAnime.anime.source
+            return languageBySourceId.getOrPut(sourceId) { sourceManager.getOrStub(sourceId).lang }
+        }
+        val filterFnLanguage: (AnimeLibraryItem) -> Boolean = { item ->
+            filterLanguages.isEmpty() || item.sourceLang() in filterLanguages
+        }
 
         val isNotLoggedInAnyTrack = trackingFilter.isEmpty()
 
@@ -357,10 +390,12 @@ class AnimeLibraryScreenModel(
                 filterFnBookmarked(it) &&
                 filterFnCompleted(it) &&
                 filterFnIntervalCustom(it) &&
+                filterFnLanguage(it) &&
                 filterFnTracking(it)
         }
 
-        return mapValues { (_, value) -> value.fastFilter(filterFn) }
+        return mapValues { (_, value) -> value.fastFilter(filterFn).toPersistentList() }
+            .toPersistentMap()
     }
 
     private fun AnimeLibraryMap.applySort(
@@ -370,7 +405,7 @@ class AnimeLibraryScreenModel(
         val alphabeticSortKeys = HashMap<Long, String>()
         fun AnimeLibraryItem.alphabeticSortKey(): String {
             return alphabeticSortKeys.getOrPut(libraryAnime.id) {
-                libraryAnime.anime.title.lowercase()
+                libraryAnime.anime.displayTitle.lowercase()
             }
         }
         val sortAlphabetically: (AnimeLibraryItem, AnimeLibraryItem) -> Int = { i1, i2 ->
@@ -449,7 +484,7 @@ class AnimeLibraryScreenModel(
                     isPinned = isPinned,
                     comparator = sortAlphabetically,
                     randomSeed = libraryPreferences.randomAnimeSortSeed().get(),
-                )
+                ).toPersistentList()
             }
 
             val comparator = key.sort.comparator()
@@ -459,8 +494,8 @@ class AnimeLibraryScreenModel(
             value.sortPinnedFirst(
                 isPinned = isPinned,
                 comparator = comparator,
-            )
-        }
+            ).toPersistentList()
+        }.toPersistentMap()
     }
 
     private fun AnimeLibraryMap.applyGrouping(
@@ -482,10 +517,10 @@ class AnimeLibraryScreenModel(
                     hidden = false,
                     hiddenFromHomeHub = false,
                 )
-                mapOf(ungroupedCategory to items)
+                mapOf(ungroupedCategory to items.toPersistentList())
             }
             LibraryGroup.BY_STATUS -> {
-                val statusCategories = mutableMapOf<Category, MutableList<AnimeLibraryItem>>()
+                val statusCategories = LinkedHashMap<Long, Pair<Category, MutableList<AnimeLibraryItem>>>()
                 items.forEach { item ->
                     val status = item.libraryAnime.anime.status
                     val statusInt = status.toInt()
@@ -498,52 +533,62 @@ class AnimeLibraryScreenModel(
                         SAnime.ON_HIATUS -> "On Hiatus" to -26L
                         else -> "Unknown" to -20L
                     }
-                    val category = statusCategories.keys.find { it.id == statusId } ?: Category(
-                        id = statusId,
-                        name = statusName,
-                        order = statusId,
-                        flags = sortFlags,
-                        hidden = false,
-                        hiddenFromHomeHub = false,
-                    )
-                    statusCategories.getOrPut(category) { mutableListOf() }.add(item)
+                    val (_, list) = statusCategories.getOrPut(statusId) {
+                        Category(
+                            id = statusId,
+                            name = statusName,
+                            order = statusId,
+                            flags = sortFlags,
+                            hidden = false,
+                            hiddenFromHomeHub = false,
+                        ) to mutableListOf()
+                    }
+                    list.add(item)
                 }
-                statusCategories
+                statusCategories.entries.associate { (_, pair) ->
+                    pair.first to pair.second.toPersistentList()
+                }.toPersistentMap()
             }
             LibraryGroup.BY_SOURCE -> {
-                val sourceCategories = mutableMapOf<Category, MutableList<AnimeLibraryItem>>()
+                val sourceCategories = LinkedHashMap<Long, Pair<Category, MutableList<AnimeLibraryItem>>>()
                 items.forEach { item ->
                     val sourceId = item.libraryAnime.anime.source
                     val sourceName = sourceManager.getOrStub(sourceId).name
                     val categoryId = -sourceId - 1000L
-                    val category = sourceCategories.keys.find { it.id == categoryId } ?: Category(
-                        id = categoryId,
-                        name = sourceName,
-                        order = categoryId,
-                        flags = sortFlags,
-                        hidden = false,
-                        hiddenFromHomeHub = false,
-                    )
-                    sourceCategories.getOrPut(category) { mutableListOf() }.add(item)
-                }
-                sourceCategories
-            }
-            LibraryGroup.BY_TRACK_STATUS -> {
-                val trackMapper = MapAnimeTrackStatusToLibrary(trackerManager)
-                val trackCategories = mutableMapOf<Category, MutableList<AnimeLibraryItem>>()
-                items.forEach { item ->
-                    val itemTracks = tracks[item.libraryAnime.anime.id].orEmpty()
-                    if (itemTracks.isEmpty()) {
-                        val categoryId = -2L
-                        val category = trackCategories.keys.find { it.id == categoryId } ?: Category(
+                    val (_, list) = sourceCategories.getOrPut(categoryId) {
+                        Category(
                             id = categoryId,
-                            name = "Untracked",
+                            name = sourceName,
                             order = categoryId,
                             flags = sortFlags,
                             hidden = false,
                             hiddenFromHomeHub = false,
-                        )
-                        trackCategories.getOrPut(category) { mutableListOf() }.add(item)
+                        ) to mutableListOf()
+                    }
+                    list.add(item)
+                }
+                sourceCategories.entries.associate { (_, pair) ->
+                    pair.first to pair.second.toPersistentList()
+                }.toPersistentMap()
+            }
+            LibraryGroup.BY_TRACK_STATUS -> {
+                val trackMapper = MapAnimeTrackStatusToLibrary(trackerManager)
+                val trackCategories = LinkedHashMap<Long, Pair<Category, MutableList<AnimeLibraryItem>>>()
+                items.forEach { item ->
+                    val itemTracks = tracks[item.libraryAnime.anime.id].orEmpty()
+                    if (itemTracks.isEmpty()) {
+                        val categoryId = -2L
+                        val (_, list) = trackCategories.getOrPut(categoryId) {
+                            Category(
+                                id = categoryId,
+                                name = "Untracked",
+                                order = categoryId,
+                                flags = sortFlags,
+                                hidden = false,
+                                hiddenFromHomeHub = false,
+                            ) to mutableListOf()
+                        }
+                        list.add(item)
                     } else {
                         val statuses = itemTracks.map { track ->
                             trackMapper.map(track.trackerId, track.status)
@@ -559,19 +604,23 @@ class AnimeLibraryScreenModel(
                                 LibraryTrackStatus.OTHER -> "Other"
                             }
                             val statusId = -(status.int + 10L)
-                            val category = trackCategories.keys.find { it.id == statusId } ?: Category(
-                                id = statusId,
-                                name = statusName,
-                                order = statusId,
-                                flags = sortFlags,
-                                hidden = false,
-                                hiddenFromHomeHub = false,
-                            )
-                            trackCategories.getOrPut(category) { mutableListOf() }.add(item)
+                            val (_, list) = trackCategories.getOrPut(statusId) {
+                                Category(
+                                    id = statusId,
+                                    name = statusName,
+                                    order = statusId,
+                                    flags = sortFlags,
+                                    hidden = false,
+                                    hiddenFromHomeHub = false,
+                                ) to mutableListOf()
+                            }
+                            list.add(item)
                         }
                     }
                 }
-                trackCategories
+                trackCategories.entries.associate { (_, pair) ->
+                    pair.first to pair.second.toPersistentList()
+                }.toPersistentMap()
             }
             else -> this
         }
@@ -579,6 +628,7 @@ class AnimeLibraryScreenModel(
         return grouped.entries
             .sortedBy { entry -> entry.key.id }
             .associate { entry -> entry.key to entry.value }
+            .toPersistentMap()
     }
 
     private fun AnimeLibraryMap.withFilteredEmptyPlaceholder(
@@ -587,7 +637,7 @@ class AnimeLibraryScreenModel(
     ): AnimeLibraryMap {
         if (isNotEmpty() || !hasActiveFilters) return this
         val fallbackCategory = sourceCategories.firstOrNull() ?: return this
-        return mapOf(fallbackCategory to emptyList())
+        return persistentMapOf(fallbackCategory to persistentListOf())
     }
 
     private fun ItemPreferences.hasActiveFilters(trackingFilter: Map<Long, TriState>): Boolean {
@@ -599,6 +649,7 @@ class AnimeLibraryScreenModel(
             filterCompleted,
             filterIntervalCustom,
         ).any { it != TriState.DISABLED } ||
+            filterLanguages.isNotEmpty() ||
             trackingFilter.values.any { it != TriState.DISABLED }
     }
 
@@ -617,7 +668,10 @@ class AnimeLibraryScreenModel(
             libraryPreferences.filterBookmarkedAnime().changes(),
             libraryPreferences.filterCompletedAnime().changes(),
             libraryPreferences.filterIntervalCustom().changes(),
+            libraryPreferences.filterAnimeLanguages().changes(),
             transform = {
+                @Suppress("UNCHECKED_CAST")
+                val filterLanguages = it[12] as Set<String>
                 ItemPreferences(
                     downloadBadge = it[0] as Boolean,
                     unseenBadge = it[1] as Boolean,
@@ -631,6 +685,7 @@ class AnimeLibraryScreenModel(
                     filterBookmarked = it[9] as TriState,
                     filterCompleted = it[10] as TriState,
                     filterIntervalCustom = it[11] as TriState,
+                    filterLanguages = filterLanguages,
                 )
             },
         )
@@ -674,7 +729,9 @@ class AnimeLibraryScreenModel(
                 categories
             }
 
-            displayCategories.associateWith { animelibAnime[it.id].orEmpty() }
+            displayCategories
+                .associateWith { animelibAnime[it.id].orEmpty().toPersistentList() }
+                .toPersistentMap()
         }
     }
 
@@ -968,6 +1025,21 @@ class AnimeLibraryScreenModel(
         mutableState.update { it.copy(searchQuery = query) }
     }
 
+    fun toggleLanguage(language: String) {
+        val current = libraryPreferences.filterAnimeLanguages().get()
+        libraryPreferences.filterAnimeLanguages().set(
+            if (language in current) current - language else current + language,
+        )
+    }
+
+    fun setAllLanguages(languages: Set<String>) {
+        libraryPreferences.filterAnimeLanguages().set(languages)
+    }
+
+    fun clearLanguageFilter() {
+        libraryPreferences.filterAnimeLanguages().set(emptySet())
+    }
+
     fun openChangeCategoryDialog() {
         screenModelScope.launchIO {
             // Create a copy of selected anime
@@ -1014,6 +1086,7 @@ class AnimeLibraryScreenModel(
     private data class AnimeBaseLibraryResult(
         val groupType: Int,
         val hasActiveFilters: Boolean,
+        val libraryLanguages: List<String>,
         val library: AnimeLibraryMap,
     )
 
@@ -1032,15 +1105,18 @@ class AnimeLibraryScreenModel(
         val filterBookmarked: TriState,
         val filterCompleted: TriState,
         val filterIntervalCustom: TriState,
+        val filterLanguages: Set<String> = emptySet(),
     )
 
     @Immutable
     data class State(
         val isLoading: Boolean = true,
-        val library: AnimeLibraryMap = emptyMap(),
+        val library: AnimeLibraryMap = persistentMapOf(),
         val searchQuery: String? = null,
         val selection: PersistentList<LibraryAnime> = persistentListOf(),
         val hasActiveFilters: Boolean = false,
+        val languageFilter: Set<String> = emptySet(),
+        val libraryLanguages: List<String> = emptyList(),
         val showCategoryTabs: Boolean = false,
         val showAnimeCount: Boolean = false,
         val showAnimeContinueButton: Boolean = false,

@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.data.book.novel.NovelBookChapterEntry
 import eu.kanade.tachiyomi.data.book.novel.NovelBookIndex
 import eu.kanade.tachiyomi.data.book.novel.NovelBookMeta
 import eu.kanade.tachiyomi.data.book.novel.NovelBookNativeBlock
+import eu.kanade.tachiyomi.ui.reader.novel.replace.applyReplaceRulesToHtml
 import java.io.File
 
 /**
@@ -24,6 +25,8 @@ class NovelBookArtifactSource(
     val index: NovelBookIndex,
     val meta: NovelBookMeta,
     val blocks: List<NovelBookBlock>,
+    /** Applies user text-replacement rules to block markup at render time. */
+    private val replaceTextHtml: (String) -> String = { it },
 ) {
 
     /**
@@ -68,7 +71,7 @@ class NovelBookArtifactSource(
         return NovelBookDocument(
             sectionIndex = block.index,
             chapterId = block.firstChapterId,
-            html = html,
+            html = replaceTextHtml(html),
         )
     }
 
@@ -258,6 +261,7 @@ class NovelBookArtifactSource(
         fun open(
             directory: File,
             targetChars: Int = NovelBookBlockPlanner.DEFAULT_TARGET_CHARS,
+            replaceTextHtml: (String) -> String = { it },
         ): NovelBookArtifactSource? {
             if (!NovelBookArtifact.exists(directory)) return null
             val index = NovelBookArtifact.readIndex(directory) ?: return null
@@ -270,6 +274,7 @@ class NovelBookArtifactSource(
                 index = index,
                 meta = meta,
                 blocks = blocks,
+                replaceTextHtml = replaceTextHtml,
             )
         }
     }

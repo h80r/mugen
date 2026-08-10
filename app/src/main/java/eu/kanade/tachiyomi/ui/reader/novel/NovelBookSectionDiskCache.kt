@@ -159,13 +159,13 @@ internal class NovelBookSectionDiskCache(
     }
 
     fun stats(): NovelBookSectionDiskCacheStats {
-        synchronized(lock) {
-            val files = sectionFilesLocked()
-            return NovelBookSectionDiskCacheStats(
-                entryCount = files.size,
-                totalBytes = files.sumOf { it.length().coerceAtLeast(0L) },
-            )
-        }
+        // The directory walk is the expensive part; the byte sum runs after the lock is released
+        // so a background budget walk cannot stall a main-thread read for its whole duration.
+        val files = synchronized(lock) { sectionFilesLocked() }
+        return NovelBookSectionDiskCacheStats(
+            entryCount = files.size,
+            totalBytes = files.sumOf { it.length().coerceAtLeast(0L) },
+        )
     }
 
     fun trimToLimits(config: NovelBookSectionDiskCacheConfig = configProvider()) {

@@ -20,7 +20,10 @@ getAllMangaIdsInAnySeries:
 SELECT manga_id FROM manga_series_entries;
 
 insert:
-INSERT INTO manga_series_entries(series_id, manga_id, position)
+-- OR REPLACE: a manga can only belong to one series (UNIQUE manga_id), so adding a selection
+-- again (or moving a title into another series) must replace the existing entry instead of
+-- crashing the whole add-selection flow on a constraint violation.
+INSERT OR REPLACE INTO manga_series_entries(series_id, manga_id, position)
 VALUES (:seriesId, :mangaId, :position);
 
 deleteByMangaId:

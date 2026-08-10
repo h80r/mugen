@@ -93,24 +93,52 @@ class NovelBookNativeWindowTest {
         next.first { it.sectionIndex == 4 }.revision shouldBe 2L
     }
 
+    private fun blockOf(
+        sectionIndex: Int,
+        blockIndex: Int,
+        block: NovelRichContentBlock,
+        charOffsetBefore: Int,
+        sectionCharCount: Int,
+        sectionBlockCount: Int,
+    ) = NovelBookNativeEntry.Block(
+        sectionIndex = sectionIndex,
+        blockIndex = blockIndex,
+        block = block,
+        charOffsetBefore = charOffsetBefore,
+        blockCharCount = novelBookBlockTextLength(block),
+        sectionCharCount = sectionCharCount,
+        sectionBlockCount = sectionBlockCount,
+    )
+
+    /** Text length used by the entry builder; mirrors the production char-weight rule. */
+    private fun novelBookBlockTextLength(block: NovelRichContentBlock): Int = when (block) {
+        is NovelRichContentBlock.Paragraph -> block.segments.sumOf { it.text.length }.coerceAtLeast(1)
+        is NovelRichContentBlock.Heading -> block.segments.sumOf { it.text.length }.coerceAtLeast(1)
+        is NovelRichContentBlock.BlockQuote -> block.segments.sumOf { it.text.length }.coerceAtLeast(1)
+        else -> 1
+    }
+
+    private fun paragraphOf(text: String) = NovelRichContentBlock.Paragraph(
+        segments = listOf(NovelRichTextSegment(text)),
+    )
+
     private fun entriesOf(vararg sectionIndices: Int): List<NovelBookNativeEntry> =
         sectionIndices.map { index ->
-            NovelBookNativeEntry.Section(
-                NovelBookNativeSection(
-                    sectionIndex = index,
-                    blocks = listOf(
-                        NovelRichContentBlock.Paragraph(
-                            segments = listOf(NovelRichTextSegment("section-$index")),
-                        ),
-                    ),
-                ),
+            val text = "section-$index"
+            blockOf(
+                sectionIndex = index,
+                blockIndex = 0,
+                block = paragraphOf(text),
+                charOffsetBefore = 0,
+                sectionCharCount = text.length,
+                sectionBlockCount = 1,
             )
         }
 
-    private fun seekRequestOf(id: Long, sectionIndex: Int) = BookSeekRequest(
+    private fun seekRequestOf(id: Long, sectionIndex: Int, charOffset: Int = 0) = BookSeekRequest(
         id = id,
         locator = BookLocator(chapterId = sectionIndex.toLong(), blockIndex = 0, charOffset = 0),
-        location = NovelBookLocation(sectionIndex = sectionIndex, charOffset = 0),
+        location = NovelBookLocation(sectionIndex = sectionIndex, charOffset = charOffset),
         reason = BookSeekReason.Resume,
     )
 
@@ -118,12 +146,58 @@ class NovelBookNativeWindowTest {
     fun `a seek resolves to the list item holding that section`() {
         val target = resolveNovelBookNativeSeekTarget(
             entries = entriesOf(3, 4, 5),
-            request = seekRequestOf(id = 7L, sectionIndex = 5),
+            request = seekRequestOf(id = 7L, sectionIndex = 5, charOffset = 3),
             lastAppliedSeekId = 0L,
-            sectionFraction = 0.25f,
+            sectionFraction = 0f,
         )
 
-        target shouldBe NovelBookNativeSeekTarget(seekRequestId = 7L, itemIndex = 2, fraction = 0.25f)
+        target shouldBe NovelBookNativeSeekTarget(seekRequestId = 7L, itemIndex = 2, fraction = 3f / 9f)
+    }
+
+    @Test
+    fun `a seek lands inside the block that owns the requested char offset`() {
+        // Section 5 holds two blocks: "aaaa" (4 chars) then "bbbbbb" (6 chars).
+        val entries = listOf(
+            blockOf(
+                sectionIndex = 5,
+                blockIndex = 0,
+                block = paragraphOf("aaaa"),
+                charOffsetBefore = 0,
+                sectionCharCount = 10,
+                sectionBlockCount = 2,
+            ),
+            blockOf(
+                sectionIndex = 5,
+                blockIndex = 1,
+                block = paragraphOf("bbbbbb"),
+                charOffsetBefore = 4,
+                sectionCharCount = 10,
+                sectionBlockCount = 2,
+            ),
+        )
+
+        val target = resolveNovelBookNativeSeekTarget(
+            entries = entries,
+            request = seekRequestOf(id = 7L, sectionIndex = 5, charOffset = 7),
+            lastAppliedSeekId = 0L,
+            sectionFraction = 0f,
+        )
+
+        // Char 7 lives in the second block (range 4..10), halfway through it.
+        target shouldBe NovelBookNativeSeekTarget(seekRequestId = 7L, itemIndex = 1, fraction = 0.5f)
+    }
+
+    @Test
+    fun `a seek without a char offset falls back to the section fraction`() {
+        val target = resolveNovelBookNativeSeekTarget(
+            entries = entriesOf(3, 4, 5),
+            request = seekRequestOf(id = 7L, sectionIndex = 5),
+            lastAppliedSeekId = 0L,
+            sectionFraction = 0.5f,
+        )
+
+        // Half of the section's 9 chars is char 4, inside its only block.
+        target shouldBe NovelBookNativeSeekTarget(seekRequestId = 7L, itemIndex = 2, fraction = 4f / 9f)
     }
 
     @Test
@@ -154,13 +228,56 @@ class NovelBookNativeWindowTest {
     fun `a failed section keeps its place in the book`() {
         val entries = buildNovelBookNativeEntries(
             sections = listOf(
-                NovelBookNativeSection(sectionIndex = 3, blocks = emptyList()),
-                NovelBookNativeSection(sectionIndex = 5, blocks = emptyList()),
+                NovelBookNativeSection(
+                    sectionIndex = 3,
+                    blocks = listOf(paragraphOf("section-3")),
+                ),
+                NovelBookNativeSection(
+                    sectionIndex = 5,
+                    blocks = listOf(paragraphOf("section-5")),
+                ),
             ),
             failedSectionIndices = listOf(4),
         )
 
         entries.map { it.sectionIndex } shouldBe listOf(3, 4, 5)
         (entries[1] is NovelBookNativeEntry.Failed) shouldBe true
+    }
+
+    @Test
+    fun `every block of a section becomes its own row`() {
+        val entries = buildNovelBookNativeEntries(
+            sections = listOf(
+                NovelBookNativeSection(
+                    sectionIndex = 3,
+                    blocks = listOf(paragraphOf("aaaa"), paragraphOf("bbbb"), paragraphOf("cc")),
+                ),
+            ),
+            failedSectionIndices = emptyList(),
+        )
+
+        entries.size shouldBe 3
+        entries.map { (it as NovelBookNativeEntry.Block).blockIndex } shouldBe listOf(0, 1, 2)
+        entries.map { (it as NovelBookNativeEntry.Block).charOffsetBefore } shouldBe listOf(0, 4, 8)
+        entries.map { (it as NovelBookNativeEntry.Block).sectionCharCount } shouldBe listOf(10, 10, 10)
+    }
+
+    @Test
+    fun `the reading position is weighted by the block's share of the section text`() {
+        val items = listOf(
+            NovelBookNativeViewportItem(
+                sectionIndex = 5,
+                charOffsetBefore = 4,
+                blockCharCount = 6,
+                sectionCharCount = 10,
+                offsetPx = -50,
+                heightPx = 100,
+            ),
+        )
+
+        val location = resolveNovelBookNativeRelocate(items)
+
+        // Halfway through the 6-char second block = char 7 of 10.
+        location shouldBe NovelBookViewLocation(sectionIndex = 5, sectionFraction = 0.7f)
     }
 }

@@ -108,13 +108,7 @@ class SyncNovelChaptersWithSource(
         // Return if there's nothing to add, delete, or update to avoid unnecessary db transactions.
         if (newChapters.isEmpty() && removedChapters.isEmpty() && updatedChapters.isEmpty()) {
             if (manualFetch || novel.fetchInterval == 0 || novel.nextUpdate < fetchWindow.first) {
-                updateNovel.await(
-                    NovelUpdate(
-                        id = novel.id,
-                        nextUpdate = novel.nextUpdate,
-                        fetchInterval = novel.fetchInterval,
-                    ),
-                )
+                updateNovel.awaitUpdateFetchInterval(novel, now, fetchWindow)
             }
             return emptyList()
         }
@@ -191,6 +185,9 @@ class SyncNovelChaptersWithSource(
                 updatedToAdd = syncResult
             }
         }
+
+        // Recompute the expected next release date from the fresh chapter rhythm.
+        updateNovel.awaitUpdateFetchInterval(novel, now, fetchWindow)
 
         // Set this novel as updated since chapters were changed
         // Note that last_update actually represents last time the chapter list changed at all

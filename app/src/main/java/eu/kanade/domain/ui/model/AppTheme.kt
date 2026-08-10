@@ -27,6 +27,7 @@ enum class AppTheme(
     TIDAL_WAVE(MR.strings.theme_tidalwave),
     YINYANG(MR.strings.theme_yinyang),
     YOTSUBA(MR.strings.theme_yotsuba),
+    TOKYONIGHT(MR.strings.theme_tokyonight),
     MONOCHROME(MR.strings.theme_monochrome),
     AURORA(AYMR.strings.theme_aurora),
     ONYX_GOLD(AYMR.strings.theme_onyx_gold, isHidden = true),

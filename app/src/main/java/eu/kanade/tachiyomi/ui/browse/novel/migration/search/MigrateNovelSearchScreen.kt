@@ -40,6 +40,7 @@ class MigrateNovelSearchScreen(private val novelId: Long) : Screen() {
             },
             getNovel = { screenModel.getNovel(it) },
             onChangeSearchFilter = screenModel::setSourceFilter,
+            onChangeLanguageFilter = screenModel::setLanguageFilter,
             onToggleResults = screenModel::toggleFilterResults,
             onClickSource = {
                 navigator.push(BrowseNovelSourceScreen(it.id, state.searchQuery))

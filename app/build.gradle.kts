@@ -18,9 +18,9 @@ android {
 
     defaultConfig {
         applicationId = "com.tadami.aurora"
-        versionCode = 196
+        versionCode = 199
 
-        versionName = "0.59"
+        versionName = "0.59.5"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
@@ -315,6 +315,7 @@ dependencies {
     }
     implementation(libs.insetter)
     implementation(libs.bundles.richtext)
+    implementation(libs.markdown.core)
     implementation(libs.aboutLibraries.compose)
     implementation(libs.bundles.voyager)
     implementation(libs.compose.materialmotion)

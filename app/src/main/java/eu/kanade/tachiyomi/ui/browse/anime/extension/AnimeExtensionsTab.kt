@@ -118,6 +118,8 @@ fun animeExtensionsTab(
                 onReinstallExtension = { extensionToReinstall = it },
                 onRefresh = extensionsScreenModel::findAvailableExtensions,
                 onToggleSection = extensionsScreenModel::toggleSection,
+                onReinstallAfterSignatureMismatch = extensionsScreenModel::reinstallAfterSignatureMismatch,
+                onDismissSignatureMismatch = extensionsScreenModel::dismissSignatureMismatch,
             )
 
             privateExtensionToUninstall?.let { extension ->

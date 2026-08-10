@@ -42,6 +42,7 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifMangaSourcesLoaded
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.browse.RemoveEntryDialog
 import eu.kanade.presentation.browse.manga.BrowseSourceContent
 import eu.kanade.presentation.browse.manga.MissingSourceScreen
@@ -53,6 +54,8 @@ import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.core.common.Constants
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.ui.browse.TitleCarouselScreen
+import eu.kanade.tachiyomi.ui.browse.TitleCarouselType
 import eu.kanade.tachiyomi.ui.browse.manga.extension.details.MangaSourcePreferencesScreen
 import eu.kanade.tachiyomi.ui.browse.manga.migration.search.MigrateMangaDialog
 import eu.kanade.tachiyomi.ui.browse.manga.migration.search.MigrateMangaDialogScreenModel
@@ -75,6 +78,8 @@ import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.source.local.entries.manga.LocalMangaSource
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 data class BrowseMangaSourceScreen(
     val sourceId: Long,
@@ -244,9 +249,10 @@ data class BrowseMangaSourceScreen(
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         ) { paddingValues ->
+            val pagingManga = screenModel.mangaPagerFlowFlow.collectAsLazyPagingItems()
             BrowseSourceContent(
                 source = screenModel.source,
-                mangaList = screenModel.mangaPagerFlowFlow.collectAsLazyPagingItems(),
+                mangaList = pagingManga,
                 favoriteMangaUrls = favoriteMangaUrls,
                 columns = screenModel.getColumnsPreference(LocalConfiguration.current.orientation),
                 entries = screenModel.getColumnsPreferenceForCurrentOrientation(LocalConfiguration.current.orientation),
@@ -257,7 +263,26 @@ data class BrowseMangaSourceScreen(
                 onWebViewClick = onWebViewClick,
                 onHelpClick = { uriHandler.openUri(Constants.URL_HELP) },
                 onLocalSourceHelpClick = onHelpClick,
-                onMangaClick = { navigator.push((MangaScreen(it.id, true))) },
+                onMangaClick = { manga ->
+                    if (Injekt.get<SourcePreferences>().titleCarouselEnabled().get()) {
+                        val snapshot = (0 until pagingManga.itemCount).mapNotNull { index -> pagingManga[index]?.id }
+                        val index = snapshot.indexOf(manga.id).coerceAtLeast(0)
+                        navigator.push(
+                            TitleCarouselScreen(
+                                type = TitleCarouselType.Manga,
+                                sourceId = screenModel.source.id,
+                                initialTitleIds = snapshot,
+                                initialIndex = index,
+                                listingQuery = state.listing.query,
+                                filtersJson = state.filters
+                                    .takeIf { it.isNotEmpty() }
+                                    ?.let { screenModel.serializeFilters(it) },
+                            ),
+                        )
+                    } else {
+                        navigator.push(MangaScreen(manga.id, true))
+                    }
+                },
                 onMangaLongClick = { manga ->
                     scope.launchIO {
                         val duplicateManga = screenModel.getDuplicateLibraryManga(manga)

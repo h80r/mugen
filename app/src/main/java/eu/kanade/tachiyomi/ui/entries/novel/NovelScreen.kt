@@ -159,6 +159,7 @@ import tachiyomi.domain.items.novelchapter.model.NovelChapter as DomainNovelChap
 class NovelScreen(
     private val novelId: Long,
     val fromSource: Boolean = false,
+    private val externalScreenModel: NovelScreenModel? = null,
 ) : eu.kanade.presentation.util.Screen() {
 
     @Composable
@@ -167,9 +168,12 @@ class NovelScreen(
         val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
         val updateNovel = remember { Injekt.get<UpdateNovel>() }
-        val screenModel = rememberScreenModel {
-            NovelScreenModel(lifecycleOwner.lifecycle, novelId)
-        }
+        // The title carousel passes its own model so the chapter state survives page flips; the
+        // classic navigation path keeps creating the model scoped to this screen as before.
+        val screenModel = externalScreenModel
+            ?: rememberScreenModel {
+                NovelScreenModel(lifecycleOwner.lifecycle, novelId)
+            }
         val state by screenModel.state.collectAsStateWithLifecycle()
         val novelReaderPreferences = remember { Injekt.get<NovelReaderPreferences>() }
         val isTranslatorEnabled by novelReaderPreferences.geminiEnabled().collectAsState()

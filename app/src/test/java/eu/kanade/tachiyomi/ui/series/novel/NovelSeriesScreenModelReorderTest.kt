@@ -7,8 +7,11 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -103,6 +106,11 @@ class NovelSeriesScreenModelReorderTest {
             setNovelCategories = setNovelCategories,
             seriesCoverCache = seriesCoverCache,
         ).also(activeScreenModels::add)
+
+        // WhileSubscribed stateIn needs an active collector to drive the upstream flow
+        val collectJob = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            screenModel.state.collect()
+        }
 
         testDispatcher.scheduler.advanceUntilIdle()
 

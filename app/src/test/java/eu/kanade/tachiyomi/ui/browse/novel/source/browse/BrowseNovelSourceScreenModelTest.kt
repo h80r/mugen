@@ -43,8 +43,10 @@ import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.data.achievement.handler.AchievementHandler
 import tachiyomi.domain.entries.novel.interactor.GetNovelByUrlAndSourceId
 import tachiyomi.domain.entries.novel.interactor.NetworkToLocalNovel
+import tachiyomi.domain.entries.novel.interactor.NovelFetchInterval
 import tachiyomi.domain.entries.novel.model.Novel
 import tachiyomi.domain.entries.novel.model.NovelUpdate
+import tachiyomi.domain.items.novelchapter.interactor.GetNovelChapters
 import tachiyomi.domain.source.model.SavedSearch
 import tachiyomi.domain.source.model.SourceType
 import tachiyomi.domain.source.novel.interactor.GetRemoteNovel
@@ -137,7 +139,10 @@ class BrowseNovelSourceScreenModelTest {
                     sourcePreferences = prefs,
                     getNovelByUrlAndSourceId = GetNovelByUrlAndSourceId(novelRepository),
                     networkToLocalNovel = networkToLocal,
-                    updateNovel = UpdateNovel(novelRepository),
+                    updateNovel = UpdateNovel(
+                        novelRepository,
+                        NovelFetchInterval(GetNovelChapters(mockk())),
+                    ),
                 ),
             )
 
@@ -472,12 +477,15 @@ class BrowseNovelSourceScreenModelTest {
         private val favorites: List<Novel>
         var lastNovelUpdate: NovelUpdate? = null
         override suspend fun getNovelById(id: Long): Novel = Novel.create()
-        override suspend fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(Novel.create())
+        override fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(Novel.create())
         override suspend fun getNovelByUrlAndSourceId(url: String, sourceId: Long): Novel? = null
         override fun getNovelByUrlAndSourceIdAsFlow(url: String, sourceId: Long) =
             MutableStateFlow<Novel?>(null)
         override suspend fun getNovelFavorites(): List<Novel> = favorites
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
+
+        override fun getUpcomingNovels(statuses: Set<Long>): kotlinx.coroutines.flow.Flow<List<Novel>> =
+            kotlinx.coroutines.flow.flowOf(emptyList())
         override suspend fun getLibraryNovel() = emptyList<tachiyomi.domain.library.novel.LibraryNovel>()
         override fun getLibraryNovelAsFlow() = MutableStateFlow(
             emptyList<tachiyomi.domain.library.novel.LibraryNovel>(),

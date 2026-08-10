@@ -58,7 +58,11 @@ class AndroidNovelPluginKeyValueStore(
     }
 
     private fun preferences(pluginId: String): SharedPreferences {
-        return context.getSharedPreferences(PREFS_PREFIX + pluginId, Context.MODE_PRIVATE)
+        // The plugin id comes from a remote index and can contain path separators or other
+        // characters that are invalid in a SharedPreferences file name — a malicious index would
+        // otherwise crash getSharedPreferences. Keep only safe characters.
+        val safeId = pluginId.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+        return context.getSharedPreferences(PREFS_PREFIX + safeId, Context.MODE_PRIVATE)
     }
 
     private companion object {

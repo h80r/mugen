@@ -38,15 +38,29 @@ fun resolveMangaSeriesReadingTarget(
     return fallbackTarget
 }
 
+internal val mangaChapterResumeComparator: Comparator<Chapter> =
+    compareBy<Chapter> { it.chapterNumber }
+        .thenBy { it.sourceOrder }
+        .thenBy { it.id }
+
 internal fun resolveMangaResumeChapter(
     chapters: List<Chapter>,
     fromChapterId: Long? = null,
 ): Chapter? {
-    val sortedChapters = chapters.sortedWith(
-        compareBy<Chapter> { it.chapterNumber }
-            .thenBy { it.sourceOrder }
-            .thenBy { it.id },
+    return resolveMangaResumeChapterFromSorted(
+        sortedChapters = chapters.sortedWith(mangaChapterResumeComparator),
+        fromChapterId = fromChapterId,
     )
+}
+
+/**
+ * Resume resolution over an already-sorted chapter list; skips the sort so hot paths
+ * (e.g. the "Continue" CTA) can cache the ordering themselves.
+ */
+internal fun resolveMangaResumeChapterFromSorted(
+    sortedChapters: List<Chapter>,
+    fromChapterId: Long? = null,
+): Chapter? {
     if (sortedChapters.isEmpty()) return null
 
     if (fromChapterId != null) {

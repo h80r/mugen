@@ -10,9 +10,12 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import eu.kanade.tachiyomi.source.CatalogueSource
+import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.persistentSetOf
+import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -72,6 +75,16 @@ abstract class MangaSearchScreenModel(
                 mutableState.update { it.copy(onlyShowHasResults = state) }
             }
         }
+        screenModelScope.launch {
+            preferences.searchFilterMangaLanguages().changes().collectLatest { languages ->
+                mutableState.update { it.copy(languageFilter = languages.toImmutableSet()) }
+            }
+        }
+        screenModelScope.launch {
+            preferences.enabledLanguages().changes().collectLatest { languages ->
+                mutableState.update { it.copy(availableLanguages = languages.toImmutableSet()) }
+            }
+        }
     }
 
     @Composable
@@ -118,6 +131,10 @@ abstract class MangaSearchScreenModel(
     fun setSourceFilter(filter: MangaSourceFilter) {
         mutableState.update { it.copy(sourceFilter = filter) }
         search()
+    }
+
+    fun setLanguageFilter(languages: Set<String>) {
+        preferences.searchFilterMangaLanguages().set(languages)
     }
 
     fun toggleFilterResults() {
@@ -214,11 +231,16 @@ abstract class MangaSearchScreenModel(
         val searchQuery: String? = null,
         val sourceFilter: MangaSourceFilter = MangaSourceFilter.All,
         val onlyShowHasResults: Boolean = false,
+        val languageFilter: ImmutableSet<String> = persistentSetOf(),
+        val availableLanguages: ImmutableSet<String> = persistentSetOf(),
         val items: PersistentMap<CatalogueSource, MangaSearchItemResult> = persistentMapOf(),
     ) {
         val progress: Int = items.count { it.value !is MangaSearchItemResult.Loading }
         val total: Int = items.size
-        val filteredItems = items.filter { (_, result) -> result.isVisible(onlyShowHasResults) }
+        val filteredItems = items.filter { (source, result) ->
+            result.isVisible(onlyShowHasResults) &&
+                (languageFilter.isEmpty() || source.lang in languageFilter)
+        }
     }
 }
 

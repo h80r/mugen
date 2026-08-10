@@ -70,6 +70,7 @@ fun FullscreenPosterBackground(
     posterScrimAlpha: Float? = null,
     modifier: Modifier = Modifier,
     resolvedCoverUrl: String? = null,
+    sourceHeaders: Map<String, String>? = null,
     onPosterLongPress: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -82,14 +83,16 @@ fun FullscreenPosterBackground(
     val customCoverFile = remember(novel.id, novel.coverLastModified) {
         coverCache.getCustomCoverFile(novel.id).takeIf { it.exists() }
     }
-    val posterRequest = remember(resolvedCoverUrl, novel.thumbnailUrl, customCoverFile, novel.coverLastModified) {
-        AuroraPosterRequest(
-            primaryUrl = resolvedCoverUrl?.takeIf { it.isNotBlank() },
-            fallbackUrl = novel.thumbnailUrl,
-            customCoverFile = customCoverFile,
-            coverLastModified = novel.coverLastModified,
-        )
-    }
+    val posterRequest =
+        remember(resolvedCoverUrl, novel.thumbnailUrl, sourceHeaders, customCoverFile, novel.coverLastModified) {
+            AuroraPosterRequest(
+                primaryUrl = resolvedCoverUrl?.takeIf { it.isNotBlank() },
+                fallbackUrl = novel.thumbnailUrl,
+                headers = sourceHeaders,
+                customCoverFile = customCoverFile,
+                coverLastModified = novel.coverLastModified,
+            )
+        }
     val placeholderCover = remember(
         novel.id,
         novel.source,

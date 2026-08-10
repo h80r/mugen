@@ -117,7 +117,7 @@ class ChapterRepositoryImpl(
         return handler.awaitOneOrNull { db -> db.chaptersQueries.getChapterById(id, ::mapChapter) }
     }
 
-    override suspend fun getChapterByMangaIdAsFlow(mangaId: Long, applyScanlatorFilter: Boolean): Flow<List<Chapter>> {
+    override fun getChapterByMangaIdAsFlow(mangaId: Long, applyScanlatorFilter: Boolean): Flow<List<Chapter>> {
         return handler.subscribeToList { db ->
             db.chaptersQueries.getChaptersByMangaId(mangaId, applyScanlatorFilter.toLong(), ::mapChapter)
         }

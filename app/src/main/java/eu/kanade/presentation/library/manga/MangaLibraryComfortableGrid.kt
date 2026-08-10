@@ -2,7 +2,9 @@ package eu.kanade.presentation.library.manga
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import eu.kanade.presentation.library.components.DownloadsBadge
@@ -33,8 +35,10 @@ internal fun MangaLibraryComfortableGrid(
     onClickContinueReading: ((LibraryManga) -> Unit)?,
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
+    state: LazyGridState = rememberLazyGridState(),
 ) {
     LazyLibraryGrid(
+        state = state,
         modifier = Modifier.fillMaxSize(),
         columns = columns,
         contentPadding = contentPadding,
@@ -49,7 +53,7 @@ internal fun MangaLibraryComfortableGrid(
             val manga = libraryItem.coverManga ?: libraryItem.libraryManga.manga
             val isSeries = libraryItem is MangaLibraryItem.Series
             val notSelectionMode = selection.isEmpty()
-            val title = if (isSeries) libraryItem.title else manga.title
+            val title = if (isSeries) libraryItem.title else manga.displayTitle
             val isSelected = selectedIds.contains(libraryItem.id)
             val targetManga = if (isSeries) {
                 libraryItem.librarySeries.entries.firstOrNull {

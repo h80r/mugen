@@ -693,7 +693,7 @@ class NovelSelectedTextTranslationScreenModelTest {
             MutableStateFlow(emptyList())
         override suspend fun getBookmarkedChaptersByNovelId(novelId: Long): List<NovelChapter> = emptyList()
         override suspend fun getChapterById(id: Long): NovelChapter? = chapter?.takeIf { it.id == id }
-        override suspend fun getChapterByNovelIdAsFlow(
+        override fun getChapterByNovelIdAsFlow(
             novelId: Long,
             applyScanlatorFilter: Boolean,
         ): Flow<List<NovelChapter>> = MutableStateFlow(listOfNotNull(chapter))
@@ -709,11 +709,14 @@ class NovelSelectedTextTranslationScreenModelTest {
         private val novel: Novel,
     ) : NovelRepository {
         override suspend fun getNovelById(id: Long): Novel = novel
-        override suspend fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(novel)
+        override fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(novel)
         override suspend fun getNovelByUrlAndSourceId(url: String, sourceId: Long): Novel? = null
         override fun getNovelByUrlAndSourceIdAsFlow(url: String, sourceId: Long) = MutableStateFlow<Novel?>(null)
         override suspend fun getNovelFavorites(): List<Novel> = emptyList()
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
+
+        override fun getUpcomingNovels(statuses: Set<Long>): kotlinx.coroutines.flow.Flow<List<Novel>> =
+            kotlinx.coroutines.flow.flowOf(emptyList())
         override suspend fun getLibraryNovel(): List<LibraryNovel> = emptyList()
         override fun getLibraryNovelAsFlow() = MutableStateFlow(emptyList<LibraryNovel>())
         override fun getNovelFavoritesBySourceId(sourceId: Long) = MutableStateFlow(emptyList<Novel>())

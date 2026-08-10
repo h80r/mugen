@@ -314,6 +314,7 @@ data object MangaLibraryTab : Tab {
                 MangaLibrarySettingsDialog(
                     onDismissRequest = onDismissRequest,
                     screenModel = settingsScreenModel,
+                    libraryScreenModel = screenModel,
                     category = category,
                 )
             }

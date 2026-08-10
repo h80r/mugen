@@ -1,5 +1,5 @@
 {
-  "version": 24,
+  "version": 25,
   "achievements": [
     {
       "id": "first_chapter",
@@ -625,7 +625,6 @@
       "title": "Genre master",
       "description": "Read or watch titles from 10 different genres",
       "badge_icon": "ic_badge_genre_master",
-      "unlockable_id": "theme_achievement_sapphire",
       "is_hidden": false,
       "is_secret": false,
       "rarity": "rare",
@@ -838,7 +837,6 @@
       "title": "Content master",
       "description": "Read or watch 1,000 content units",
       "badge_icon": "ic_badge_master",
-      "unlockable_id": "theme_achievement_gold",
       "is_hidden": false,
       "is_secret": false,
       "rarity": "epic",
@@ -1623,7 +1621,7 @@
           "type": "THEME",
           "id": "theme_ONYX_GOLD",
           "title": "Onyx Regalia",
-          "description": "Mythic black-diamond theme with royal gold hierarchy and a restrained ruby trophy accent"
+          "description": "Mythic black-diamond theme with royal gold hierarchy and a restrained bronze accent"
         },
         {
           "type": "SPECIAL",
@@ -1663,7 +1661,7 @@
           "type": "THEME",
           "id": "theme_NEBULA_TIDE",
           "title": "Astral Tide",
-          "description": "Transcendent cosmic theme with plasma cyan, violet gravity wells, and alien-lime highlights"
+          "description": "Transcendent cosmic theme with deep-indigo gravity wells, rose-nebula drift, and plasma-cyan highlights"
         }
       ],
       "rarity": "epic",
@@ -1853,7 +1851,7 @@
           "type": "THEME",
           "id": "theme_EVENT_HORIZON",
           "title": "Event Horizon",
-          "description": "Obsidian-violet Aurora theme with accretion-disk contrast and singularity glow"
+          "description": "Blueshifted accretion theme with deep-blue gravity, violet plasma, and singularity glow"
         },
         {
           "type": "SPECIAL",

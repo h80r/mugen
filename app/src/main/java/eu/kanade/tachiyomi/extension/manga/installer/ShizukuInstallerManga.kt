@@ -3,7 +3,9 @@ package eu.kanade.tachiyomi.extension.manga.installer
 import android.app.Service
 import android.content.pm.PackageManager
 import eu.kanade.tachiyomi.extension.InstallStep
+import eu.kanade.tachiyomi.extension.installer.ApkInstallFailure
 import eu.kanade.tachiyomi.extension.installer.ShizukuShellRunner
+import eu.kanade.tachiyomi.extension.installer.classifyInstallError
 import eu.kanade.tachiyomi.util.system.getUriSize
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CoroutineScope
@@ -64,7 +66,15 @@ class ShizukuInstallerManga(private val service: Service) : InstallerManga(servi
                     continueQueue(InstallStep.Installed)
                 }
             } catch (e: Exception) {
-                logcat(LogPriority.ERROR, e) { "Failed to install extension ${entry.downloadId} ${entry.uri}" }
+                if (classifyInstallError(e.message) == ApkInstallFailure.SignatureMismatch) {
+                    logcat(LogPriority.WARN, e) {
+                        "Signature mismatch for extension ${entry.pkgName}; " +
+                            "reinstall-with-uninstall required"
+                    }
+                    entry.pkgName?.let { extensionManager.reportSignatureMismatch(it) }
+                } else {
+                    logcat(LogPriority.ERROR, e) { "Failed to install extension ${entry.downloadId} ${entry.uri}" }
+                }
                 sessionId?.let {
                     ShizukuShellRunner.exec(arrayOf("pm", "install-abandon", it))
                 }

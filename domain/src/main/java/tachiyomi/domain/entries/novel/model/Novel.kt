@@ -43,7 +43,7 @@ data class Novel(
     val memo: JsonObject = JsonObject.EMPTY,
 ) : Serializable {
 
-    val displayTitle: String get() = customTitle ?: title
+    val displayTitle: String get() = customTitle?.takeIf { it.isNotBlank() } ?: title
     val displayAuthor: String? get() = customAuthor ?: author
     val displayDescription: String? get() = customDescription ?: description
     val displayGenre: List<String>? get() = customGenre ?: genre

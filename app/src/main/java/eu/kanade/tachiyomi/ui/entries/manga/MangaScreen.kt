@@ -86,6 +86,7 @@ import tachiyomi.presentation.core.util.collectAsStateWithLifecycle as collectPr
 class MangaScreen(
     private val mangaId: Long,
     val fromSource: Boolean = false,
+    private val externalScreenModel: MangaScreenModel? = null,
 ) : Screen(), AssistContentScreen {
 
     private var assistUrl: String? = null
@@ -107,7 +108,8 @@ class MangaScreen(
         val uiPreferences = remember { Injekt.get<UiPreferences>() }
         val updateManga = remember { Injekt.get<UpdateManga>() }
         val screenModel =
-            rememberScreenModel { MangaScreenModel(context, lifecycleOwner.lifecycle, mangaId, fromSource) }
+            externalScreenModel
+                ?: rememberScreenModel { MangaScreenModel(context, lifecycleOwner.lifecycle, mangaId, fromSource) }
 
         val state by screenModel.state.collectAsStateWithLifecycle()
         val showMangaScanlatorBranches by uiPreferences.showMangaScanlatorBranches().collectPreferenceAsState()

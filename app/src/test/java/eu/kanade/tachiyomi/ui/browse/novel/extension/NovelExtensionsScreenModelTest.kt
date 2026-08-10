@@ -20,7 +20,10 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -532,6 +535,10 @@ class NovelExtensionsScreenModelTest {
             MutableStateFlow(untrusted)
         override val updatesFlow: Flow<List<NovelPlugin.Installed>> =
             MutableStateFlow(updates)
+        override val signatureMismatchEvents: SharedFlow<NovelExtensionManager.SignatureMismatchEvent> =
+            MutableSharedFlow()
+        override fun reportSignatureMismatch(pluginId: String) = Unit
+        override val repoFetchErrors: Flow<Map<String, String>> = flowOf(emptyMap())
 
         override suspend fun refreshAvailablePlugins() = Unit
 

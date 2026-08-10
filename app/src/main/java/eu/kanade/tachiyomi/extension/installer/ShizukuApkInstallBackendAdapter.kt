@@ -68,7 +68,15 @@ class ShizukuApkInstallBackendAdapter(
             }
             emit(InstallStep.Installed)
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed Shizuku APK install for ${request.packageName}" }
+            val failure = classifyInstallError(e.message)
+            if (failure == ApkInstallFailure.SignatureMismatch) {
+                logcat(LogPriority.WARN, e) {
+                    "Signature mismatch for Shizuku APK install ${request.packageName}; " +
+                        "reinstall-with-uninstall required"
+                }
+            } else {
+                logcat(LogPriority.ERROR, e) { "Failed Shizuku APK install for ${request.packageName}" }
+            }
             sessionId?.let { runCatching { ShizukuShellRunner.exec(arrayOf("pm", "install-abandon", it)) } }
             emit(InstallStep.Error)
         }

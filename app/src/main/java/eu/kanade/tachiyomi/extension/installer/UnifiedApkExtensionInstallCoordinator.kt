@@ -54,7 +54,11 @@ class UnifiedApkExtensionInstallCoordinator(
     }
 
     override suspend fun uninstall(request: ApkUninstallRequest): ApkInstallResult {
-        val adapter = backendAdapters.firstOrNull { it.supports(request.kind) }
+        val adapter = request.backend
+            ?.let { backend ->
+                backendAdapters.firstOrNull { it.supports(request.kind) && it.backend == backend }
+            }
+            ?: backendAdapters.firstOrNull { it.supports(request.kind) }
             ?: return ApkInstallResult.Error("Unsupported uninstall kind ${request.kind}")
         return adapter.uninstall(request)
     }

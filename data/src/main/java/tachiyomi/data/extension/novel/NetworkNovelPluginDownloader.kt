@@ -24,6 +24,12 @@ class NetworkNovelPluginDownloader(
                     if (bytes.isEmpty()) {
                         throw NovelPluginInstallException.DownloadFailed(url, "empty body")
                     }
+                    if (bytes.size > MAX_PLUGIN_SIZE_BYTES) {
+                        throw NovelPluginInstallException.DownloadFailed(
+                            url,
+                            "too large: ${bytes.size} bytes (limit $MAX_PLUGIN_SIZE_BYTES)",
+                        )
+                    }
                     bytes
                 }
             } catch (e: NovelPluginInstallException.DownloadFailed) {
@@ -51,5 +57,10 @@ class NetworkNovelPluginDownloader(
                 throw failure
             }
         }
+    }
+
+    private companion object {
+        /** Upper bound for a single plugin artifact (script or APK), ~64 MiB. */
+        private const val MAX_PLUGIN_SIZE_BYTES = 64 * 1024 * 1024
     }
 }

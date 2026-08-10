@@ -22,24 +22,41 @@ class NovelPluginStorage(
     ) {
         pluginDir()
         val scriptFile = pluginScriptFile(pluginId)
-        scriptFile.writeBytes(script)
+        writeAtomically(scriptFile, script)
         logcat(LogPriority.INFO) {
             "Novel plugin script saved id=$pluginId file=${scriptFile.absolutePath} bytes=${script.size}"
         }
 
         customJs?.let {
             val file = customJsFile(pluginId)
-            file.writeBytes(it)
+            writeAtomically(file, it)
             logcat(LogPriority.INFO) {
                 "Novel plugin custom JS saved id=$pluginId file=${file.absolutePath} bytes=${it.size}"
             }
         }
         customCss?.let {
             val file = customCssFile(pluginId)
-            file.writeBytes(it)
+            writeAtomically(file, it)
             logcat(LogPriority.INFO) {
                 "Novel plugin custom CSS saved id=$pluginId file=${file.absolutePath} bytes=${it.size}"
             }
+        }
+    }
+
+    /**
+     * Writes via a temp file + rename so a crash mid-write cannot leave a truncated plugin that a
+     * later load would silently accept.
+     */
+    private fun writeAtomically(file: File, bytes: ByteArray) {
+        val tmp = File(file.parentFile, "${file.name}.tmp")
+        tmp.writeBytes(bytes)
+        if (file.exists() && !file.delete()) {
+            tmp.delete()
+            throw IllegalStateException("Failed to replace ${file.absolutePath}")
+        }
+        if (!tmp.renameTo(file)) {
+            tmp.copyTo(file, overwrite = true)
+            tmp.delete()
         }
     }
 

@@ -57,7 +57,7 @@ sealed interface MangaLibraryItem {
         override val hasStarted = libraryMangaValue.hasStarted
         override val hasBookmarks = libraryMangaValue.hasBookmarks
         override val dateAdded = libraryMangaValue.manga.dateAdded
-        override val title = libraryMangaValue.manga.title
+        override val title = libraryMangaValue.manga.displayTitle
         override val coverManga = libraryMangaValue.manga
         override val libraryManga = libraryMangaValue
 
@@ -69,6 +69,7 @@ sealed interface MangaLibraryItem {
             val sourceName by lazy { sourceManager.getOrStub(libraryMangaValue.manga.source).getNameForMangaInfo() }
             query.id?.let { id -> return libraryMangaValue.id == id }
             return libraryMangaValue.manga.title.contains(query.raw, true) ||
+                title.contains(query.raw, true) ||
                 (libraryMangaValue.manga.author?.contains(query.raw, true) ?: false) ||
                 (libraryMangaValue.manga.artist?.contains(query.raw, true) ?: false) ||
                 (libraryMangaValue.manga.description?.contains(query.raw, true) ?: false) ||
@@ -120,6 +121,7 @@ sealed interface MangaLibraryItem {
             return librarySeries.entries.any { libraryManga ->
                 val sourceName by lazy { sourceManager.getOrStub(libraryManga.manga.source).getNameForMangaInfo() }
                 libraryManga.manga.title.contains(query.raw, true) ||
+                    libraryManga.manga.displayTitle.contains(query.raw, true) ||
                     (libraryManga.manga.author?.contains(query.raw, true) ?: false) ||
                     (libraryManga.manga.artist?.contains(query.raw, true) ?: false) ||
                     (libraryManga.manga.description?.contains(query.raw, true) ?: false) ||

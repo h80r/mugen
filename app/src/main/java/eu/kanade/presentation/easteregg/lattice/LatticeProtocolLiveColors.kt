@@ -17,9 +17,19 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 /**
- * Living Lattice Protocol accents: slow cyan breath + amber tertiary glint.
+ * Living Lattice Protocol accents: slow deep-cyan breath + amber tertiary glint.
  * Frequencies &lt; 0.4 Hz — safe for epilepsy guidelines.
+ *
+ * Endpoints mirror [eu.kanade.presentation.theme.colorscheme.LatticeProtocolColorScheme]
+ * so the animated palette stays inside the unique theme identity.
  */
+object LatticeProtocolLivePalette {
+    val cyanCore = Color(0xFF0095AE)
+    val cyanDeep = Color(0xFF00718A)
+    val amber = Color(0xFFFFA726)
+    val amberSoft = Color(0xFFE09A30)
+}
+
 data class LatticeProtocolLiveColors(
     val primary: Color,
     val secondary: Color,
@@ -45,10 +55,10 @@ fun rememberLatticeProtocolLiveColors(animated: Boolean = true): LatticeProtocol
     }
     val t by phase
     val breath = (sin(t * 2f * PI.toFloat()) + 1f) / 2f
-    val cyanCore = Color(0xFF5FE9FF)
-    val cyanDeep = Color(0xFF2BB8D0)
-    val amber = Color(0xFFFFB84D)
-    val amberSoft = Color(0xFFE09A30)
+    val cyanCore = LatticeProtocolLivePalette.cyanCore
+    val cyanDeep = LatticeProtocolLivePalette.cyanDeep
+    val amber = LatticeProtocolLivePalette.amber
+    val amberSoft = LatticeProtocolLivePalette.amberSoft
     return LatticeProtocolLiveColors(
         primary = lerp(cyanDeep, cyanCore, 0.45f + 0.55f * breath),
         secondary = lerp(cyanDeep, cyanCore, 0.25f + 0.4f * (1f - breath)),

@@ -47,6 +47,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.setMain
@@ -69,6 +70,7 @@ import tachiyomi.domain.category.novel.interactor.SetNovelCategories
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.entries.novel.interactor.GetNovelFavorites
 import tachiyomi.domain.entries.novel.interactor.GetNovelWithChapters
+import tachiyomi.domain.entries.novel.interactor.NovelFetchInterval
 import tachiyomi.domain.entries.novel.interactor.SetNovelChapterFlags
 import tachiyomi.domain.entries.novel.model.Novel
 import tachiyomi.domain.entries.novel.model.NovelUpdate
@@ -76,6 +78,7 @@ import tachiyomi.domain.history.novel.model.NovelHistory
 import tachiyomi.domain.history.novel.model.NovelHistoryUpdate
 import tachiyomi.domain.history.novel.model.NovelHistoryWithRelations
 import tachiyomi.domain.history.novel.repository.NovelHistoryRepository
+import tachiyomi.domain.items.novelchapter.interactor.GetNovelChapters
 import tachiyomi.domain.items.novelchapter.interactor.SetNovelDefaultChapterFlags
 import tachiyomi.domain.items.novelchapter.interactor.ShouldUpdateDbNovelChapter
 import tachiyomi.domain.items.novelchapter.model.NovelChapter
@@ -234,7 +237,7 @@ class NovelScreenModelTest {
                         MutableStateFlow(emptyList())
                     override suspend fun getBookmarkedChaptersByNovelId(novelId: Long): List<NovelChapter> = emptyList()
                     override suspend fun getChapterById(id: Long): NovelChapter? = null
-                    override suspend fun getChapterByNovelIdAsFlow(
+                    override fun getChapterByNovelIdAsFlow(
                         novelId: Long,
                         applyScanlatorFilter: Boolean,
                     ): Flow<List<NovelChapter>> = MutableStateFlow(emptyList())
@@ -246,7 +249,10 @@ class NovelScreenModelTest {
                     ): List<NovelChapter> = emptyList()
                 },
             )
-            val updateNovel = UpdateNovel(novelRepository)
+            val updateNovel = UpdateNovel(
+                novelRepository,
+                NovelFetchInterval(GetNovelChapters(mockk())),
+            )
             val sourceManager = FakeNovelSourceManager()
             val preferenceStore = object : tachiyomi.core.common.preference.PreferenceStore {
                 override fun getString(key: String, defaultValue: String) = FakePreference(defaultValue)
@@ -285,7 +291,7 @@ class NovelScreenModelTest {
                     MutableStateFlow(emptyList())
                 override suspend fun getBookmarkedChaptersByNovelId(novelId: Long): List<NovelChapter> = emptyList()
                 override suspend fun getChapterById(id: Long): NovelChapter? = null
-                override suspend fun getChapterByNovelIdAsFlow(
+                override fun getChapterByNovelIdAsFlow(
                     novelId: Long,
                     applyScanlatorFilter: Boolean,
                 ): Flow<List<NovelChapter>> = MutableStateFlow(emptyList())
@@ -318,7 +324,7 @@ class NovelScreenModelTest {
                         MutableStateFlow(emptyList())
                     override suspend fun getBookmarkedChaptersByNovelId(novelId: Long): List<NovelChapter> = emptyList()
                     override suspend fun getChapterById(id: Long): NovelChapter? = null
-                    override suspend fun getChapterByNovelIdAsFlow(
+                    override fun getChapterByNovelIdAsFlow(
                         novelId: Long,
                         applyScanlatorFilter: Boolean,
                     ): Flow<List<NovelChapter>> = MutableStateFlow(emptyList())
@@ -334,12 +340,16 @@ class NovelScreenModelTest {
                 updateNovel = UpdateNovel(
                     novelRepository = object : tachiyomi.domain.entries.novel.repository.NovelRepository {
                         override suspend fun getNovelById(id: Long): Novel = Novel.create()
-                        override suspend fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(Novel.create())
+                        override fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(Novel.create())
                         override suspend fun getNovelByUrlAndSourceId(url: String, sourceId: Long): Novel? = null
                         override fun getNovelByUrlAndSourceIdAsFlow(url: String, sourceId: Long) =
                             MutableStateFlow<Novel?>(null)
                         override suspend fun getNovelFavorites(): List<Novel> = emptyList()
                         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
+                        override fun getUpcomingNovels(
+                            statuses: Set<Long>,
+                        ): kotlinx.coroutines.flow.Flow<List<Novel>> =
+                            kotlinx.coroutines.flow.flowOf(emptyList())
                         override suspend fun getLibraryNovel() =
                             emptyList<tachiyomi.domain.library.novel.LibraryNovel>()
                         override fun getLibraryNovelAsFlow() =
@@ -524,6 +534,37 @@ class NovelScreenModelTest {
             try {
                 awaitResumeScreenModel(screenModel)
                 screenModel.getResumeOrNextChapter()?.id shouldBe chapter2.id
+            } finally {
+                screenModel.onDispose()
+            }
+        }
+    }
+
+    @Test
+    fun `initial state hydrates compiled book state before book menu is rendered`() {
+        runBlocking {
+            val novel = novelForResumeTests(1099L)
+            val chapter = novelChapter(
+                id = 1L,
+                novelId = novel.id,
+                chapterNumber = 1.0,
+                read = false,
+            )
+            val bookState = NovelBookState.create(novel.id, novel.source).copy(
+                enabled = true,
+                bookVersion = 1L,
+                chapterCount = 1,
+                complete = true,
+            )
+            val screenModel = createResumeScreenModel(
+                novel = novel,
+                chapters = listOf(chapter),
+                initialBookState = bookState,
+            )
+
+            try {
+                awaitResumeScreenModel(screenModel)
+                (screenModel.state.value as NovelScreenModel.State.Success).bookState shouldBe bookState
             } finally {
                 screenModel.onDispose()
             }
@@ -1554,6 +1595,7 @@ class NovelScreenModelTest {
         snackbarHostState: SnackbarHostState = SnackbarHostState(),
         source: NovelSource? = null,
         activityDataRepository: tachiyomi.domain.achievement.repository.ActivityDataRepository = mockk(relaxed = true),
+        initialBookState: NovelBookState? = null,
     ): NovelScreenModel {
         val novelRepository = FakeNovelRepository(novel)
         val preferenceStore = FakePreferenceStore()
@@ -1601,7 +1643,10 @@ class NovelScreenModelTest {
         }
         val getNovelWithChapters = getNovelWithChaptersOverride
             ?: GetNovelWithChapters(novelRepository, chapterRepository)
-        val updateNovel = UpdateNovel(novelRepository)
+        val updateNovel = UpdateNovel(
+            novelRepository,
+            NovelFetchInterval(GetNovelChapters(chapterRepository)),
+        )
         val syncNovelChaptersWithSource = SyncNovelChaptersWithSource(
             novelChapterRepository = chapterRepository,
             shouldUpdateDbNovelChapter = ShouldUpdateDbNovelChapter(),
@@ -1625,7 +1670,12 @@ class NovelScreenModelTest {
             repository = bookStateRepository,
         )
         val getNovelBookState = mockk<GetNovelBookState>().also { getter ->
-            every { getter.subscribe(any()) } returns MutableStateFlow<NovelBookState?>(null)
+            coEvery { getter.await(any()) } returns initialBookState
+            every { getter.subscribe(any()) } returns if (initialBookState == null) {
+                MutableStateFlow<NovelBookState?>(null)
+            } else {
+                emptyFlow<NovelBookState?>()
+            }
         }
 
         return NovelScreenModel(
@@ -1766,7 +1816,7 @@ class NovelScreenModelTest {
             chapterFlow.value.filter { it.bookmark }
         override suspend fun getChapterById(id: Long): NovelChapter? =
             chapterFlow.value.firstOrNull { it.id == id }
-        override suspend fun getChapterByNovelIdAsFlow(
+        override fun getChapterByNovelIdAsFlow(
             novelId: Long,
             applyScanlatorFilter: Boolean,
         ): Flow<List<NovelChapter>> = chapterFlow
@@ -1826,11 +1876,15 @@ class NovelScreenModelTest {
         val allUpdates = mutableListOf<NovelUpdate>()
 
         override suspend fun getNovelById(id: Long): Novel = novel
-        override suspend fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(novel)
+        override fun getNovelByIdAsFlow(id: Long) = MutableStateFlow(novel)
         override suspend fun getNovelByUrlAndSourceId(url: String, sourceId: Long): Novel? = null
         override fun getNovelByUrlAndSourceIdAsFlow(url: String, sourceId: Long) = MutableStateFlow<Novel?>(null)
         override suspend fun getNovelFavorites(): List<Novel> = emptyList()
         override suspend fun getReadNovelNotInLibrary(): List<Novel> = emptyList()
+        override fun getUpcomingNovels(
+            statuses: Set<Long>,
+        ): kotlinx.coroutines.flow.Flow<List<Novel>> =
+            kotlinx.coroutines.flow.flowOf(emptyList())
         override suspend fun getLibraryNovel() = emptyList<tachiyomi.domain.library.novel.LibraryNovel>()
         override fun getLibraryNovelAsFlow() =
             MutableStateFlow(emptyList<tachiyomi.domain.library.novel.LibraryNovel>())

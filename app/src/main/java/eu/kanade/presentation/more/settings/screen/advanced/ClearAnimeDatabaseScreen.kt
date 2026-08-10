@@ -30,7 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastMap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -45,9 +45,15 @@ import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.animesource.model.FetchType
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchUI
 import tachiyomi.core.common.util.lang.withNonCancellableContext
 import tachiyomi.data.source.anime.mapSourceToDomainSource
@@ -218,49 +224,50 @@ class ClearAnimeDatabaseScreen : Screen() {
     }
 }
 
-private class ClearAnimeDatabaseScreenModel : StateScreenModel<ClearAnimeDatabaseScreenModel.State>(
-    State.Loading,
-) {
+private class ClearAnimeDatabaseScreenModel : ScreenModel {
     private val getSourcesWithNonLibraryAnime: GetAnimeSourcesWithNonLibraryAnime = Injekt.get()
     private val database: AnimeDatabase = Injekt.get()
     private val sourceManager: AnimeSourceManager = Injekt.get()
 
-    init {
-        screenModelScope.launchIO {
-            getSourcesWithNonLibraryAnime.subscribe()
-                .collectLatest { list ->
-                    val items = list.groupBy { it.sourceId }
-                        .map { (sourceId, deletableAnime) ->
-                            val source = sourceManager.getOrStub(sourceId)
-                            val domainSource = mapSourceToDomainSource(source).copy(
-                                isStub = source is StubAnimeSource,
-                            )
+    private val selectionState = MutableStateFlow<List<Long>>(emptyList())
+    private val showConfirmationState = MutableStateFlow(false)
 
-                            val ids = mutableListOf<Long>()
-                            val orphaned = mutableListOf<Long>()
+    val state: StateFlow<State> = combine(
+        getSourcesWithNonLibraryAnime.subscribe()
+            .map { list ->
+                list.groupBy { it.sourceId }
+                    .map { (sourceId, deletableAnime) ->
+                        val source = sourceManager.getOrStub(sourceId)
+                        val domainSource = mapSourceToDomainSource(source).copy(
+                            isStub = source is StubAnimeSource,
+                        )
 
-                            deletableAnime.forEach {
-                                ids.add(it.animeId)
-                                if (it.fetchType == FetchType.Seasons) {
-                                    val (childrenIds, orphanedIds) = getDeletableChildren(it.animeId)
-                                    ids.addAll(childrenIds)
-                                    orphaned.addAll(orphanedIds)
-                                }
+                        val ids = mutableListOf<Long>()
+                        val orphaned = mutableListOf<Long>()
+
+                        deletableAnime.forEach {
+                            ids.add(it.animeId)
+                            if (it.fetchType == FetchType.Seasons) {
+                                val (childrenIds, orphanedIds) = getDeletableChildren(it.animeId)
+                                ids.addAll(childrenIds)
+                                orphaned.addAll(orphanedIds)
                             }
-
-                            AnimeSourceWithIds(domainSource, ids, orphaned)
                         }
 
-                    mutableState.update { old ->
-                        val items = items.sortedBy { it.name }
-                        when (old) {
-                            State.Loading -> State.Ready(items)
-                            is State.Ready -> old.copy(items = items)
-                        }
+                        AnimeSourceWithIds(domainSource, ids, orphaned)
                     }
-                }
-        }
-    }
+                    .sortedBy { it.name }
+            },
+        selectionState,
+        showConfirmationState,
+    ) { items, selection, showConfirmation ->
+        State.Ready(
+            items = items,
+            selection = selection,
+            showConfirmation = showConfirmation,
+        )
+    }.flowOn(Dispatchers.IO)
+        .stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), State.Loading)
 
     /**
      * Get all children of an anime that can be deleted, as well as any orphans.
@@ -299,44 +306,35 @@ private class ClearAnimeDatabaseScreenModel : StateScreenModel<ClearAnimeDatabas
         database.animehistoryQueries.removeResettedHistory()
     }
 
-    fun toggleSelection(source: AnimeSource) = mutableState.update { state ->
-        if (state !is State.Ready) return@update state
-        val mutableList = state.selection.toMutableList()
-        if (mutableList.contains(source.id)) {
-            mutableList.remove(source.id)
-        } else {
-            mutableList.add(source.id)
+    fun toggleSelection(source: AnimeSource) {
+        selectionState.update { selection ->
+            if (source.id in selection) selection - source.id else selection + source.id
         }
-        state.copy(selection = mutableList)
     }
 
-    fun clearSelection() = mutableState.update { state ->
-        if (state !is State.Ready) return@update state
-        state.copy(selection = emptyList())
+    fun clearSelection() {
+        selectionState.update { emptyList() }
     }
 
-    fun selectAll() = mutableState.update { state ->
-        if (state !is State.Ready) return@update state
-        state.copy(selection = state.items.fastMap { it.id })
+    fun selectAll() {
+        selectionState.update {
+            (state.value as? State.Ready)?.items?.fastMap { it.id } ?: it
+        }
     }
 
-    fun invertSelection() = mutableState.update { state ->
-        if (state !is State.Ready) return@update state
-        state.copy(
-            selection = state.items
-                .fastMap { it.id }
-                .filterNot { it in state.selection },
-        )
+    fun invertSelection() {
+        selectionState.update {
+            val ready = state.value as? State.Ready ?: return@update it
+            ready.items.fastMap { it.id }.filterNot { id -> id in ready.selection }
+        }
     }
 
-    fun showConfirmation() = mutableState.update { state ->
-        if (state !is State.Ready) return@update state
-        state.copy(showConfirmation = true)
+    fun showConfirmation() {
+        showConfirmationState.update { true }
     }
 
-    fun hideConfirmation() = mutableState.update { state ->
-        if (state !is State.Ready) return@update state
-        state.copy(showConfirmation = false)
+    fun hideConfirmation() {
+        showConfirmationState.update { false }
     }
 
     sealed interface State {

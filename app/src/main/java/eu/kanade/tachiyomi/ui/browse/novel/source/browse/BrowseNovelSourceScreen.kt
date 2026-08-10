@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.browse.RemoveEntryDialog
 import eu.kanade.presentation.browse.novel.BrowseNovelSourceContent
 import eu.kanade.presentation.browse.novel.MissingNovelSourceScreen
@@ -49,9 +50,12 @@ import eu.kanade.tachiyomi.novelsource.NovelSource
 import eu.kanade.tachiyomi.novelsource.model.NovelFilter
 import eu.kanade.tachiyomi.novelsource.model.NovelFilterList
 import eu.kanade.tachiyomi.source.novel.NovelSiteSource
+import eu.kanade.tachiyomi.ui.browse.TitleCarouselScreen
+import eu.kanade.tachiyomi.ui.browse.TitleCarouselType
 import eu.kanade.tachiyomi.ui.browse.novel.extension.details.NovelSourcePreferencesScreen
 import eu.kanade.tachiyomi.ui.browse.novel.migration.search.MigrateNovelDialog
 import eu.kanade.tachiyomi.ui.browse.novel.migration.search.MigrateNovelDialogScreenModel
+import eu.kanade.tachiyomi.ui.browse.search.SavedSearchFilterSerializer
 import eu.kanade.tachiyomi.ui.category.CategoriesTab
 import eu.kanade.tachiyomi.ui.entries.novel.NovelScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
@@ -68,6 +72,8 @@ import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 data class BrowseNovelSourceScreen(
     val sourceId: Long,
     private val listingQuery: String?,
@@ -225,14 +231,34 @@ data class BrowseNovelSourceScreen(
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         ) { paddingValues ->
+            val pagingNovels = screenModel.novelPagerFlowFlow.collectAsLazyPagingItems()
             BrowseNovelSourceContent(
                 source = screenModel.source,
-                novels = screenModel.novelPagerFlowFlow.collectAsLazyPagingItems(),
+                novels = pagingNovels,
                 favoriteNovelUrls = favoriteNovelUrls,
                 displayMode = screenModel.displayMode,
                 snackbarHostState = snackbarHostState,
                 contentPadding = paddingValues,
-                onNovelClick = { novel -> navigator.push(NovelScreen(novel.id, true)) },
+                onNovelClick = { novel ->
+                    if (Injekt.get<SourcePreferences>().titleCarouselEnabled().get()) {
+                        val snapshot = (0 until pagingNovels.itemCount).mapNotNull { index -> pagingNovels[index]?.id }
+                        val index = snapshot.indexOf(novel.id).coerceAtLeast(0)
+                        navigator.push(
+                            TitleCarouselScreen(
+                                type = TitleCarouselType.Novel,
+                                sourceId = screenModel.source.id,
+                                initialTitleIds = snapshot,
+                                initialIndex = index,
+                                listingQuery = state.listing.query,
+                                filtersJson = state.filters
+                                    .takeIf { it.isNotEmpty() }
+                                    ?.let { SavedSearchFilterSerializer.serialize(it) },
+                            ),
+                        )
+                    } else {
+                        navigator.push(NovelScreen(novel.id, true))
+                    }
+                },
                 onNovelLongClick = { novel ->
                     scope.launchIO {
                         val duplicateNovel = screenModel.getDuplicateLibraryNovel(novel)

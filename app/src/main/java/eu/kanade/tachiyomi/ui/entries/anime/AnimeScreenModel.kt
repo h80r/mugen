@@ -73,6 +73,7 @@ import eu.kanade.tachiyomi.ui.player.PlaybackSelectionPreferences
 import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import eu.kanade.tachiyomi.util.AniChartApi
+import eu.kanade.tachiyomi.util.TtlCache
 import eu.kanade.tachiyomi.util.episode.getNextUnseen
 import eu.kanade.tachiyomi.util.removeCovers
 import eu.kanade.tachiyomi.util.system.toast
@@ -90,9 +91,11 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import mihon.domain.items.episode.interactor.FilterEpisodesForDownload
 import tachiyomi.core.common.i18n.stringResource
@@ -600,13 +603,19 @@ class AnimeScreenModel(
         observeDownloads()
 
         screenModelScope.launchIO {
-            val anime = getAnimeAndEpisodesAndSeasons.awaitAnime(animeId)
+            // PERF: first frame. All critical-path DB reads run in parallel so the initial
+            // State.Success is published as early as possible; default flags and metadata
+            // loading are deferred below.
+            val animeDeferred = async { getAnimeAndEpisodesAndSeasons.awaitAnime(animeId) }
+            val rawEpisodesDeferred = async { getAnimeAndEpisodesAndSeasons.awaitEpisodes(animeId) }
+            val seasonsDeferred = async { getAnimeAndEpisodesAndSeasons.awaitSeasons(animeId) }
+            val anime = animeDeferred.await()
             val source = sourceManager.getOrStub(anime.source)
 
             val rawEpisodes = if (anime.fetchType == FetchType.Seasons) {
                 emptyList()
             } else {
-                getAnimeAndEpisodesAndSeasons.awaitEpisodes(animeId)
+                rawEpisodesDeferred.await()
             }
             // Cheap path: list visible immediately, expensive FS "is downloaded" checks deferred.
             // Real download states arrive via async hydrate below + observeDownloads().
@@ -619,15 +628,8 @@ class AnimeScreenModel(
             val seasons = if (anime.fetchType == FetchType.Episodes) {
                 emptyList()
             } else {
-                getAnimeAndEpisodesAndSeasons.awaitSeasons(animeId)
+                seasonsDeferred.await()
                     .toAnimeSeasonItems()
-            }
-
-            if (shouldApplyDefaultEpisodeFlags(anime)) {
-                setAnimeDefaultEpisodeFlags.await(anime)
-            }
-            if (shouldApplyDefaultSeasonFlags(anime)) {
-                setAnimeDefaultSeasonFlags.await(anime)
             }
 
             val needRefreshInfo = !anime.initialized || isFromSource
@@ -660,6 +662,17 @@ class AnimeScreenModel(
                         SuggestionState.Disabled
                     },
                 )
+            }
+
+            // PERF: apply default episode/season flags off the critical path; the UI already
+            // rendered with the parallel snapshot above.
+            screenModelScope.launchIO {
+                if (shouldApplyDefaultEpisodeFlags(anime)) {
+                    setAnimeDefaultEpisodeFlags.await(anime)
+                }
+                if (shouldApplyDefaultSeasonFlags(anime)) {
+                    setAnimeDefaultSeasonFlags.await(anime)
+                }
             }
 
             // Hydrate real download states asynchronously so the episode list appears immediately (cheap path).
@@ -706,8 +719,13 @@ class AnimeScreenModel(
                 restoreAnimeSourceRating()
             }
 
-            // Load metadata after fetching fresh data from source
-            loadAnimeMetadata(animeId)
+            // Load metadata after fetching fresh data from source, off the critical path:
+            // the refresh spinner must not wait for a network metadata call.
+            if (screenModelScope.isActive) {
+                screenModelScope.launchIO {
+                    loadAnimeMetadata(animeId)
+                }
+            }
 
             // Initial loading finished
             updateSuccessState { it.copy(isRefreshingData = false) }
@@ -802,12 +820,30 @@ class AnimeScreenModel(
     /**
      * Fetch anime information from source.
      */
+    // Lightweight in-memory TTL cache for recent anime details responses from source.
+    // Bypasses the network for re-opens within the TTL; manual refresh always bypasses the read
+    // but overwrites the entry with the fresh response. Never persists to disk.
+    private val recentAnimeDetailsCache =
+        TtlCache<Long, eu.kanade.tachiyomi.animesource.model.SAnime>(ttlMs = 90_000L)
+
     private suspend fun fetchAnimeFromSource(manualFetch: Boolean = false) {
         val state = successState ?: return
         try {
             withIOContext {
                 startTorrentServerIfNeeded(state.source)
-                val networkAnime = state.source.getAnimeDetails(state.anime.toSAnime())
+                val cacheKey = state.anime.id
+                val cached = if (!manualFetch) recentAnimeDetailsCache[cacheKey] else null
+                val networkAnime = if (cached != null) {
+                    cached
+                } else {
+                    val fresh = state.source.getAnimeDetails(state.anime.toSAnime())
+                    // Only cache responses that actually carried details; failed/empty parses
+                    // must not poison the cache.
+                    if (fresh.initialized) {
+                        recentAnimeDetailsCache.put(cacheKey, fresh)
+                    }
+                    fresh
+                }
                 updateAnime.awaitUpdateFromSource(state.anime, networkAnime, manualFetch)
                 refreshAnimeSourceRating(
                     state = state,
@@ -1413,6 +1449,25 @@ class AnimeScreenModel(
             downloadManager = downloadManager,
             downloadedOnly = basePreferences.downloadedOnly().get(),
         )
+    }
+
+    /**
+     * Resolves a preview (dummy-id) episode tapped before the source sync persisted the real
+     * rows. Waits event-driven on the state flow (no busy-polling) with a short timeout, then
+     * falls back to the preview item so the tap never dead-ends.
+     */
+    suspend fun resolveEpisodeForOpen(previewOrReal: Episode): Episode {
+        if (previewOrReal.id > 0) return previewOrReal
+        val resolved = withTimeoutOrNull(3_000L) {
+            state.first { current ->
+                val success = current as? State.Success
+                val real = success?.episodes?.firstOrNull { it.episode.url == previewOrReal.url }
+                real != null && real.episode.id > 0
+            }
+        }
+        val success = resolved as? State.Success
+        return success?.episodes?.firstOrNull { it.episode.url == previewOrReal.url }?.episode
+            ?: previewOrReal
     }
 
     /**

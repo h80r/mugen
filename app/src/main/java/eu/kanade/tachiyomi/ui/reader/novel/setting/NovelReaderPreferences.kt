@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.novel.setting
 
 import eu.kanade.tachiyomi.data.download.novel.NovelTranslatedDownloadFormat
+import eu.kanade.tachiyomi.ui.reader.novel.replace.ReplaceRule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -1361,6 +1362,55 @@ class NovelReaderPreferences(
     }
 
     @Suppress("UNCHECKED_CAST")
+    // Text replacement (Legado-compatible rules)
+    private val replaceRulesJson: Json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        encodeDefaults = true
+    }
+
+    fun replaceRules(): List<ReplaceRule> {
+        val raw = preferenceStore.getString("novel_reader_replace_rules", "").get()
+        if (raw.isBlank()) return emptyList()
+        return runCatching { replaceRulesJson.decodeFromString<List<ReplaceRule>>(raw) }
+            .getOrDefault(emptyList())
+            .withUniqueIds()
+    }
+
+    /** Reassigns ids of duplicated rules so list keys stay unique (hand-edited JSON safety). */
+    private fun List<ReplaceRule>.withUniqueIds(): List<ReplaceRule> {
+        val seen = mutableSetOf<Long>()
+        var nextId = (maxOfOrNull { it.id } ?: 0L) + 1
+        return map { rule ->
+            if (seen.add(rule.id)) rule else rule.copy(id = nextId++)
+        }
+    }
+
+    fun setReplaceRules(rules: List<ReplaceRule>) {
+        preferenceStore.getString("novel_reader_replace_rules", "").set(
+            if (rules.isEmpty()) "" else replaceRulesJson.encodeToString(rules),
+        )
+    }
+
+    /** Enabled, syntactically valid rules ready to apply at render time. */
+    fun enabledReplaceRules(): List<ReplaceRule> =
+        replaceRules().filter { it.isEnabled && it.isValid() }
+
+    /**
+     * Parses a Legado-style JSON rule list and merges it into the stored rules by [ReplaceRule.id]
+     * (imported rules overwrite existing ids, new ids are appended). Returns the merged list.
+     */
+    fun importReplaceRules(rawJson: String): Result<List<ReplaceRule>> = runCatching {
+        val imported = replaceRulesJson.decodeFromString<List<ReplaceRule>>(rawJson)
+        val merged = replaceRules().associateBy { it.id }.toMutableMap()
+        imported.forEach { merged[it.id] = it }
+        val result = merged.values.sortedBy { it.order }
+        setReplaceRules(result)
+        result
+    }
+
+    fun exportReplaceRules(): String = replaceRulesJson.encodeToString(replaceRules())
+
     fun settingsFlow(sourceId: Long): Flow<NovelReaderSettings> {
         // Группируем настройки для избежания лимита combine()
         val displayFlow = combine(
@@ -1419,6 +1469,8 @@ class NovelReaderPreferences(
             oledEdgeGradient().changes(),
             customThemes().changes(),
         ) { values: Array<Any?> ->
+            @Suppress("UNCHECKED_CAST")
+            val colorThemes = values[11] as List<NovelReaderColorTheme>
             ThemeSettings(
                 (values[0] as? NovelReaderTheme) ?: NovelReaderTheme.SYSTEM,
                 values[1] as String,
@@ -1431,7 +1483,7 @@ class NovelReaderPreferences(
                 values[8] as String,
                 values[9] as String,
                 values[10] as Boolean,
-                values[11] as List<NovelReaderColorTheme>,
+                colorThemes,
             )
         }.distinctUntilChanged()
 
@@ -1582,6 +1634,8 @@ class NovelReaderPreferences(
             googleTranslationTargetLang().changes(),
             googleTranslationAutoStart().changes(),
         ) { values: Array<Any?> ->
+            @Suppress("UNCHECKED_CAST")
+            val enabledPromptModifiers = values[15] as List<String>
             GeminiSettings(
                 enabled = values[0] as Boolean,
                 apiKey = values[1] as String,
@@ -1598,7 +1652,7 @@ class NovelReaderPreferences(
                 sourceLang = values[12] as String,
                 targetLang = values[13] as String,
                 promptMode = (values[14] as? GeminiPromptMode) ?: GeminiPromptMode.ADULT_18,
-                enabledPromptModifiers = values[15] as List<String>,
+                enabledPromptModifiers = enabledPromptModifiers,
                 customPromptModifier = values[16] as String,
                 stylePreset = (values[17] as? NovelTranslationStylePreset) ?: NovelTranslationStylePreset.PROFESSIONAL,
                 promptModifiers = values[18] as String,
@@ -1680,6 +1734,8 @@ class NovelReaderPreferences(
             val advanced = values[4] as AdvancedSettings
             val gemini = values[5] as GeminiSettings
             val tts = values[6] as TtsSettings
+
+            @Suppress("UNCHECKED_CAST")
             val overrides = values[7] as Map<Long, NovelReaderOverride>
 
             val override = overrides[sourceId]

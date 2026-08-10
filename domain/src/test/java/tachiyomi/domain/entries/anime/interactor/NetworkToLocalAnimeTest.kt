@@ -116,7 +116,7 @@ class NetworkToLocalAnimeTest {
         var inserted: Anime? = null
 
         override suspend fun getAnimeById(id: Long): Anime = error("not used")
-        override suspend fun getAnimeByIdAsFlow(id: Long): Flow<Anime> = error("not used")
+        override fun getAnimeByIdAsFlow(id: Long): Flow<Anime> = error("not used")
         override suspend fun getAnimeByUrlAndSourceId(url: String, sourceId: Long): Anime? {
             if (lookupResults.isNotEmpty()) {
                 return lookupResults.removeAt(0)
@@ -132,7 +132,7 @@ class NetworkToLocalAnimeTest {
         override fun getRecentFavorites(limit: Long): Flow<List<Anime>> = error("not used")
         override fun getAnimeFavoritesBySourceId(sourceId: Long): Flow<List<Anime>> = error("not used")
         override suspend fun getDuplicateLibraryAnime(id: Long, title: String): List<Anime> = error("not used")
-        override suspend fun getUpcomingAnime(statuses: Set<Long>): Flow<List<Anime>> = error("not used")
+        override fun getUpcomingAnime(statuses: Set<Long>): Flow<List<Anime>> = error("not used")
         override suspend fun resetAnimeViewerFlags(): Boolean = error("not used")
         override suspend fun setAnimeCategories(animeId: Long, categoryIds: List<Long>) = error("not used")
         override suspend fun insertAnime(anime: Anime): Long? {
