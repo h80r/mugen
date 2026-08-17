@@ -2,7 +2,7 @@ package eu.kanade.tachiyomi.data.track.novelupdates
 
 import android.app.Application
 import android.graphics.Color
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.track.novel.model.toNovelTrack
 import eu.kanade.tachiyomi.data.database.models.manga.MangaTrack

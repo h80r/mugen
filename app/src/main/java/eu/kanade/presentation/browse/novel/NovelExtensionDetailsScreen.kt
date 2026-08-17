@@ -28,7 +28,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.kanade.domain.extension.novel.interactor.NovelExtensionSourceItem
 import eu.kanade.presentation.browse.components.ExtensionAuroraButton
 import eu.kanade.presentation.browse.components.ExtensionDetailsGlassCard

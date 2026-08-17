@@ -2,7 +2,7 @@ package eu.kanade.tachiyomi.ui.download.anime
 
 import android.view.View
 import androidx.recyclerview.widget.RecyclerView
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.davidea.flexibleadapter.FlexibleAdapter
 import eu.davidea.flexibleadapter.items.AbstractSectionableItem
 import eu.davidea.flexibleadapter.items.IFlexible

@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.data.track.mangaupdates
 
 import android.graphics.Color
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.data.database.models.manga.MangaTrack
 import eu.kanade.tachiyomi.data.track.BaseTracker

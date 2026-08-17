@@ -5,7 +5,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.painter.Painter
 import coil3.request.ImageRequest
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.kanade.presentation.theme.LocalIsAuroraTheme
 import eu.kanade.presentation.util.rememberResourceBitmapPainter
 import tachiyomi.domain.entries.anime.model.Anime

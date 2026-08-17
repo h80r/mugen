@@ -1,5 +1,5 @@
 name: 🐞 Issue report
-description: Report an issue in Tadami
+description: Report an issue in mugen
 labels: [Bug]
 body:
   - type: textarea
@@ -47,10 +47,10 @@ body:
         You can upload the crash log file as an attachment, or paste the crash logs in plain text if needed.
 
   - type: input
-    id: tadami-version
+    id: mugen-version
     attributes:
-      label: Tadami version
-      description: You can find your Tadami version in **More → About**.
+      label: mugen version
+      description: You can find your mugen version in **More → About**.
       placeholder: |
         Example: "0.36"
     validations:
@@ -97,9 +97,9 @@ body:
           required: true
         - label: I have checked the repository for similar issues.
           required: true
-        - label: I have updated the app to the **[latest version](https://github.com/andarcanum/Tadami-Aniyomi-fork/releases/latest)**.
+        - label: I have updated the app to the **[latest version](https://github.com/h80r/mugen/releases/latest)**.
           required: true
         - label: I have filled out all of the requested information in this form, including specific version numbers.
           required: true
-        - label: I understand that **Tadami does not have or fix any extensions**, and I **will not receive help** for any issues related to sources or extensions.
+        - label: I understand that **mugen does not have or fix any extensions**, and I **will not receive help** for any issues related to sources or extensions.
           required: true

@@ -1,6 +1,6 @@
 package eu.kanade.tachiyomi.data.track.kitsu
 
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import eu.kanade.tachiyomi.data.track.kitsu.dto.KitsuOAuth
 import eu.kanade.tachiyomi.data.track.kitsu.dto.isExpired
 import kotlinx.serialization.json.Json
@@ -37,7 +37,7 @@ class KitsuInterceptor(private val kitsu: Kitsu) : Interceptor {
         // Add the authorization header to the original request.
         val authRequest = originalRequest.newBuilder()
             .addHeader("Authorization", "Bearer ${oauth!!.accessToken}")
-            .header("User-Agent", "Tadami v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+            .header("User-Agent", "mugen v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
             .header("Accept", "application/vnd.api+json")
             .header("Content-Type", "application/vnd.api+json")
             .build()

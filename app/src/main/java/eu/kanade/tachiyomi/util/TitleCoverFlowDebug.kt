@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.util
 
 import android.util.Log
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 
 private const val TITLE_COVER_FLOW_TAG = "TitleCoverFlow"
 

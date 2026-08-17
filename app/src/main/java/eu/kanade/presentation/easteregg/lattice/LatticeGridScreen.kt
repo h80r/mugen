@@ -76,7 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.kanade.domain.easteregg.lattice.LatticeBoard
 import eu.kanade.domain.easteregg.lattice.LatticeCircuit
 import eu.kanade.domain.easteregg.lattice.LatticePort

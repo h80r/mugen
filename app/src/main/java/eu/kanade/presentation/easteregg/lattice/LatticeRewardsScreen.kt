@@ -55,7 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.kanade.presentation.components.latticeCircuitBar
 import kotlinx.coroutines.delay
 import tachiyomi.i18n.aniyomi.AYMR

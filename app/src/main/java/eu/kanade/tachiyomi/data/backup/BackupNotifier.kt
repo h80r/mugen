@@ -5,7 +5,7 @@ import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
 import androidx.core.net.toUri
 import com.hippo.unifile.UniFile
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications

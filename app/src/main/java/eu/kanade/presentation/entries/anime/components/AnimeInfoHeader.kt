@@ -84,7 +84,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.kanade.domain.description.DescriptionEngine
 import eu.kanade.presentation.components.AuroraCoverPlaceholderVariant
 import eu.kanade.presentation.components.DropdownMenu

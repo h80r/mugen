@@ -58,7 +58,7 @@ import androidx.media.AudioAttributesCompat
 import androidx.media.AudioFocusRequestCompat
 import androidx.media.AudioManagerCompat
 import com.hippo.unifile.UniFile
-import com.tadami.aurora.databinding.PlayerLayoutBinding
+import dev.h80r.mugen.databinding.PlayerLayoutBinding
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.tachiyomi.animesource.model.ChapterType
 import eu.kanade.tachiyomi.animesource.model.Hoster

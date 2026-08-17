@@ -2,7 +2,7 @@ package eu.kanade.tachiyomi.extension.installer
 
 import android.content.Context
 import android.os.Build
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.hasMiuiPackageInstaller

@@ -58,7 +58,7 @@ import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.kanade.presentation.theme.AuroraTheme
 import kotlinx.coroutines.delay
 import tachiyomi.domain.achievement.model.Achievement

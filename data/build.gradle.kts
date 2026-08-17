@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.tadami.aurora.data"
+    namespace = "dev.h80r.mugen.data"
 
     defaultConfig {
         consumerProguardFiles("consumer-rules.pro")

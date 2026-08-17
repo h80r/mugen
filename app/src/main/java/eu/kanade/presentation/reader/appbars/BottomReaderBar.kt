@@ -18,7 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.kanade.domain.easteregg.lattice.LatticeCarrier
 import eu.kanade.presentation.easteregg.lattice.LatticeCarrierSlot
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation

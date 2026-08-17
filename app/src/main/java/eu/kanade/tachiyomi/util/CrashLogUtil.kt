@@ -2,7 +2,7 @@ package eu.kanade.tachiyomi.util
 
 import android.content.Context
 import android.os.Build
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import eu.kanade.tachiyomi.data.backup.BackupDiagnosticLog
 import eu.kanade.tachiyomi.extension.anime.AnimeExtensionManager
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager

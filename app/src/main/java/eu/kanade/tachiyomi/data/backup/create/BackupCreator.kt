@@ -3,7 +3,7 @@ package eu.kanade.tachiyomi.data.backup.create
 import android.content.Context
 import android.net.Uri
 import com.hippo.unifile.UniFile
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import eu.kanade.tachiyomi.data.backup.BackupDiagnosticLog
 import eu.kanade.tachiyomi.data.backup.BackupOrigin
 import eu.kanade.tachiyomi.data.backup.contentSummary

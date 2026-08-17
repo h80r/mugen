@@ -1,6 +1,6 @@
 package eu.kanade.tachiyomi.data.track.mangaupdates
 
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.io.IOException

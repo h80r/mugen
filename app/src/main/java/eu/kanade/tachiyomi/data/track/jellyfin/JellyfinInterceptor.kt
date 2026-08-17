@@ -1,6 +1,6 @@
 package eu.kanade.tachiyomi.data.track.jellyfin
 
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.sourcePreferences
 import okhttp3.Interceptor
@@ -21,7 +21,7 @@ class JellyfinInterceptor : Interceptor {
 
         // Add the User-Agent header to the original request.
         val uaRequest = originalRequest.newBuilder()
-            .header("User-Agent", "Tadami v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+            .header("User-Agent", "mugen v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
             .build()
 
         // Check api keys

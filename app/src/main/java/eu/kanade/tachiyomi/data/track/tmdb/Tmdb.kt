@@ -9,7 +9,7 @@
 package eu.kanade.tachiyomi.data.track.tmdb
 
 import android.graphics.Color
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.data.database.models.anime.AnimeTrack
 import eu.kanade.tachiyomi.data.track.AnimeTracker

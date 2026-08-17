@@ -23,7 +23,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Icon
 import androidx.annotation.DrawableRes
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import dev.icerock.moko.resources.StringResource
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR

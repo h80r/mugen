@@ -14,7 +14,7 @@ import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.kanade.domain.source.novel.model.iconUrl
 import tachiyomi.domain.source.novel.model.Source
 

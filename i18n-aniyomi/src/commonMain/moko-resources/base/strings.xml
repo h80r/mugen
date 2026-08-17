@@ -1484,7 +1484,7 @@
     <string name="season_settings">Season settings</string>
     <string name="pref_backup_flags">Backup options</string>
     <!-- Cloud Sync / Google Drive -->
-    <string name="app_name_snake" translatable="false">tadami</string>
+    <string name="app_name_snake" translatable="false">mugen</string>
     <string name="cloud_sync">Cloud Sync</string>
     <string name="google_drive">Google Drive</string>
     <string name="pref_google_drive_sign_in">Sign in</string>

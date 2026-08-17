@@ -3,8 +3,8 @@ package eu.kanade.tachiyomi.ui.download.manga
 import android.view.MenuItem
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
-import com.tadami.aurora.R
-import com.tadami.aurora.databinding.DownloadListBinding
+import dev.h80r.mugen.R
+import dev.h80r.mugen.databinding.DownloadListBinding
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
 import eu.kanade.tachiyomi.data.download.manga.model.MangaDownload
 import eu.kanade.tachiyomi.source.model.Page

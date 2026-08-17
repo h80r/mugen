@@ -4,9 +4,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Chat
-import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
@@ -54,31 +51,11 @@ object HelpScreen : Screen() {
                     item {
                         TextPreferenceWidget(
                             modifier = itemModifier,
-                            title = "Telegram Channel",
-                            subtitle = "https://t.me/TadamiApp",
-                            icon = Icons.AutoMirrored.Outlined.Send,
-                            onPreferenceClick = { uriHandler.openUri("https://t.me/TadamiApp") },
-                        )
-                    }
-
-                    item {
-                        TextPreferenceWidget(
-                            modifier = itemModifier,
-                            title = "Telegram Group",
-                            subtitle = "https://t.me/TadamiSupport",
-                            icon = Icons.AutoMirrored.Outlined.Chat,
-                            onPreferenceClick = { uriHandler.openUri("https://t.me/TadamiSupport") },
-                        )
-                    }
-
-                    item {
-                        TextPreferenceWidget(
-                            modifier = itemModifier,
                             title = "GitHub Issues",
-                            subtitle = "https://github.com/andarcanum/Tadami-Aniyomi-fork/issues",
+                            subtitle = "https://github.com/h80r/mugen/issues",
                             icon = CustomIcons.Github,
                             onPreferenceClick = {
-                                uriHandler.openUri("https://github.com/andarcanum/Tadami-Aniyomi-fork/issues")
+                                uriHandler.openUri("https://github.com/h80r/mugen/issues")
                             },
                         )
                     }

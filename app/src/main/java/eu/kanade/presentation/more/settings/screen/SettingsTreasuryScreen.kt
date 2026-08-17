@@ -80,7 +80,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.domain.ui.UserProfilePreferences
@@ -2971,10 +2971,10 @@ private fun getRewardIconResourceId(rewardId: String, context: android.content.C
         if (resourceId != 0) {
             resourceId
         } else {
-            com.tadami.aurora.R.drawable.ic_badge_default
+            dev.h80r.mugen.R.drawable.ic_badge_default
         }
     } catch (e: Exception) {
-        com.tadami.aurora.R.drawable.ic_badge_default
+        dev.h80r.mugen.R.drawable.ic_badge_default
     }
 }
 

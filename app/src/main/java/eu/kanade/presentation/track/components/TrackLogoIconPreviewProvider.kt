@@ -2,7 +2,7 @@ package eu.kanade.presentation.track.components
 
 import android.graphics.Color
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.kanade.tachiyomi.data.track.Tracker
 import eu.kanade.test.DummyTracker
 

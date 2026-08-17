@@ -6,7 +6,7 @@
 package eu.kanade.tachiyomi.data.track.trakt
 
 import androidx.core.net.toUri
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import eu.kanade.tachiyomi.data.track.trakt.dto.TraktLibraryItem
 import eu.kanade.tachiyomi.data.track.trakt.dto.TraktOAuth
 import eu.kanade.tachiyomi.data.track.trakt.dto.TraktSearchResult
@@ -30,7 +30,7 @@ class TraktApi(private val client: OkHttpClient, private val interceptor: TraktI
 
     private val baseUrl = "https://api.trakt.tv"
     private val json = Json { ignoreUnknownKeys = true }
-    private val userAgent = "Tadami v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})"
+    private val userAgent = "mugen v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})"
 
     private val publicClient by lazy {
         client.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()

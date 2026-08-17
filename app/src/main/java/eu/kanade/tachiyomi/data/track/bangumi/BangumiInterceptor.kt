@@ -1,6 +1,6 @@
 package eu.kanade.tachiyomi.data.track.bangumi
 
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import eu.kanade.tachiyomi.data.track.bangumi.dto.BGMOAuth
 import eu.kanade.tachiyomi.data.track.bangumi.dto.isExpired
 import kotlinx.serialization.json.Json
@@ -35,7 +35,7 @@ class BangumiInterceptor(private val bangumi: Bangumi) : Interceptor {
         return originalRequest.newBuilder()
             .header(
                 "User-Agent",
-                "jmir1/Tadami/v${BuildConfig.VERSION_NAME} (Android) (https://github.com/Tadami-app/Tadami)",
+                "h80r/mugen/v${BuildConfig.VERSION_NAME} (Android) (https://github.com/h80r/mugen)",
             )
             .apply {
                 addHeader("Authorization", "Bearer ${currAuth.accessToken}")

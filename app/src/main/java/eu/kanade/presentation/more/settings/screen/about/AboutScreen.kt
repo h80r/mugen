@@ -16,10 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Chat
-import androidx.compose.material.icons.automirrored.outlined.Send
-import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -41,7 +37,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.more.LogoHeader
 import eu.kanade.presentation.more.settings.AURORA_SETTINGS_CARD_HORIZONTAL_INSET
@@ -85,7 +81,6 @@ import tachiyomi.presentation.core.components.ScrollbarLazyColumn
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.icons.CustomIcons
-import tachiyomi.presentation.core.icons.Discord
 import tachiyomi.presentation.core.icons.Github
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
@@ -633,44 +628,15 @@ private fun AboutFooterLinkSectionContent(section: AboutFooterLinkSection) {
 
 @Composable
 private fun aboutFooterLinkLabel(label: AboutFooterLinkLabel): String = when (label) {
-    AboutFooterLinkLabel.Website -> stringResource(MR.strings.website)
-    AboutFooterLinkLabel.Discord -> "Discord"
-    AboutFooterLinkLabel.GitHub -> "GitHub"
     AboutFooterLinkLabel.Tadami -> "Tadami"
-    AboutFooterLinkLabel.TelegramChannel -> "Telegram Channel"
-    AboutFooterLinkLabel.TelegramGroup -> "Telegram Group"
 }
 
 private fun aboutFooterLinkIcon(icon: AboutFooterLinkIcon) = when (icon) {
-    AboutFooterLinkIcon.Website -> Icons.Outlined.Public
-    AboutFooterLinkIcon.Discord -> CustomIcons.Discord
     AboutFooterLinkIcon.Github -> CustomIcons.Github
-    AboutFooterLinkIcon.TelegramChannel -> Icons.AutoMirrored.Outlined.Send
-    AboutFooterLinkIcon.TelegramGroup -> Icons.AutoMirrored.Outlined.Chat
 }
 
 internal fun buildAboutFooterSections(): List<AboutFooterLinkSection> {
     return listOf(
-        AboutFooterLinkSection(
-            title = "Aniyomi",
-            links = listOf(
-                AboutFooterLink(
-                    label = AboutFooterLinkLabel.Website,
-                    icon = AboutFooterLinkIcon.Website,
-                    url = "https://aniyomi.org",
-                ),
-                AboutFooterLink(
-                    label = AboutFooterLinkLabel.Discord,
-                    icon = AboutFooterLinkIcon.Discord,
-                    url = "https://discord.gg/F32UjdJZrR",
-                ),
-                AboutFooterLink(
-                    label = AboutFooterLinkLabel.GitHub,
-                    icon = AboutFooterLinkIcon.Github,
-                    url = "https://github.com/aniyomiorg/aniyomi",
-                ),
-            ),
-        ),
         AboutFooterLinkSection(
             title = "Tadami",
             links = listOf(
@@ -679,15 +645,15 @@ internal fun buildAboutFooterSections(): List<AboutFooterLinkSection> {
                     icon = AboutFooterLinkIcon.Github,
                     url = "https://github.com/andarcanum/Tadami-Aniyomi-fork",
                 ),
+            ),
+        ),
+        AboutFooterLinkSection(
+            title = "mugen",
+            links = listOf(
                 AboutFooterLink(
-                    label = AboutFooterLinkLabel.TelegramChannel,
-                    icon = AboutFooterLinkIcon.TelegramChannel,
-                    url = "https://t.me/TadamiApp",
-                ),
-                AboutFooterLink(
-                    label = AboutFooterLinkLabel.TelegramGroup,
-                    icon = AboutFooterLinkIcon.TelegramGroup,
-                    url = "https://t.me/TadamiSupport",
+                    label = AboutFooterLinkLabel.Tadami,
+                    icon = AboutFooterLinkIcon.Github,
+                    url = "https://github.com/h80r/mugen",
                 ),
             ),
         ),
@@ -706,20 +672,11 @@ internal data class AboutFooterLink(
 )
 
 internal enum class AboutFooterLinkLabel {
-    Website,
-    Discord,
-    GitHub,
     Tadami,
-    TelegramChannel,
-    TelegramGroup,
 }
 
 internal enum class AboutFooterLinkIcon {
-    Website,
-    Discord,
     Github,
-    TelegramChannel,
-    TelegramGroup,
 }
 
 internal fun buildAboutVersionSubtitle(normalVersionName: String, isPrimed: Boolean): String {

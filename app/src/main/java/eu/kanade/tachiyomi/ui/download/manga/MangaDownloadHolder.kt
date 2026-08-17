@@ -2,8 +2,8 @@ package eu.kanade.tachiyomi.ui.download.manga
 
 import android.view.View
 import androidx.recyclerview.widget.ItemTouchHelper
-import com.tadami.aurora.R
-import com.tadami.aurora.databinding.DownloadItemBinding
+import dev.h80r.mugen.R
+import dev.h80r.mugen.databinding.DownloadItemBinding
 import eu.davidea.viewholders.FlexibleViewHolder
 import eu.kanade.tachiyomi.data.download.manga.model.MangaDownload
 import eu.kanade.tachiyomi.util.view.popupMenu

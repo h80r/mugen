@@ -60,7 +60,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.kanade.domain.ui.model.HomeHeroCtaMode
 import eu.kanade.presentation.components.AuroraCard
 import eu.kanade.presentation.components.AuroraCoverPlaceholderVariant

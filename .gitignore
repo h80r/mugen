@@ -1,0 +1,12 @@
+# Build files
+.gradle/
+build/
+**/build/
+*.apk
+kls_database.db
+
+# Local IDE
+.idea/*
+!.idea/icon.png
+*.iml
+local.properties

@@ -8,7 +8,7 @@ import android.widget.EditText
 import android.widget.NumberPicker
 import androidx.core.view.descendants
 import androidx.core.view.doOnLayout
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 
 class MinMaxNumberPicker @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
     NumberPicker(context, attrs) {

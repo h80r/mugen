@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.data.track.anilist
 
 import android.graphics.Color
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.track.anime.model.toDbTrack
 import eu.kanade.domain.track.manga.model.toDbTrack

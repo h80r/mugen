@@ -1,6 +1,6 @@
 package eu.kanade.tachiyomi.data.track.anilist
 
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import eu.kanade.tachiyomi.data.track.anilist.dto.ALOAuth
 import eu.kanade.tachiyomi.data.track.anilist.dto.isExpired
 import logcat.LogPriority
@@ -45,7 +45,7 @@ class AnilistInterceptor(val anilist: Anilist, private var token: String?) : Int
         // Add the authorization header to the original request.
         val authRequest = originalRequest.newBuilder()
             .addHeader("Authorization", "Bearer ${oauth!!.accessToken}")
-            .header("User-Agent", "Tadami v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+            .header("User-Agent", "mugen v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
             .build()
 
         var response = chain.proceed(authRequest)

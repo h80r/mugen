@@ -1,6 +1,6 @@
 package eu.kanade.tachiyomi.data.track.kavita
 
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import okhttp3.Interceptor
 import okhttp3.Response
 
@@ -18,7 +18,7 @@ class KavitaInterceptor(private val kavita: Kavita) : Interceptor {
         // Add the authorization header to the original request.
         val authRequest = originalRequest.newBuilder()
             .addHeader("Authorization", "Bearer $jwtToken")
-            .header("User-Agent", "Tadami v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+            .header("User-Agent", "mugen v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
             .build()
 
         return chain.proceed(authRequest)

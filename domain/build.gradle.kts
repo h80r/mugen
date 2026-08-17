@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.tadami.aurora.domain"
+    namespace = "dev.h80r.mugen.domain"
 
     defaultConfig {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

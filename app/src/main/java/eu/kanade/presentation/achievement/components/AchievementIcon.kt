@@ -23,7 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.kanade.presentation.theme.AuroraTheme
 import tachiyomi.domain.achievement.model.Achievement
 import kotlin.math.cos

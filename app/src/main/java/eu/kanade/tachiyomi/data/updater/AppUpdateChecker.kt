@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.data.updater
 
 import android.content.Context
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import eu.kanade.tachiyomi.util.system.isPreviewBuildType
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.domain.release.interactor.GetApplicationRelease
@@ -100,7 +100,7 @@ internal fun resolveUpdatedChangelogPrompt(
     )
 }
 
-val GITHUB_REPO = "andarcanum/Tadami-Aniyomi-fork"
+val GITHUB_REPO = "h80r/mugen"
 
 val RELEASE_TAG: String by lazy {
     if (isPreviewBuildType) {

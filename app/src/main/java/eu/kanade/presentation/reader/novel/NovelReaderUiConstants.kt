@@ -1,6 +1,6 @@
 package eu.kanade.presentation.reader.novel
 
-import com.tadami.aurora.R
+import dev.h80r.mugen.R
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderColorTheme
 
 data class NovelReaderFontOption(

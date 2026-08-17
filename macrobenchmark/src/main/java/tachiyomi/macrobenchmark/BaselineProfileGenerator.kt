@@ -5,7 +5,7 @@ import androidx.test.uiautomator.By
 import org.junit.Rule
 import org.junit.Test
 
-private const val TARGET_PACKAGE = "com.tadami.aurora.benchmark"
+private const val TARGET_PACKAGE = "dev.h80r.mugen.benchmark"
 
 class BaselineProfileGenerator {
 

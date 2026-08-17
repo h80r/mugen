@@ -1,6 +1,6 @@
 package eu.kanade.tachiyomi.data.track.komga
 
-import com.tadami.aurora.BuildConfig
+import dev.h80r.mugen.BuildConfig
 import eu.kanade.tachiyomi.data.database.models.manga.MangaTrack
 import eu.kanade.tachiyomi.data.track.model.MangaTrackSearch
 import eu.kanade.tachiyomi.network.GET
@@ -27,7 +27,7 @@ class KomgaApi(
 
     private val headers: Headers by lazy {
         Headers.Builder()
-            .add("User-Agent", "Tadami v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+            .add("User-Agent", "mugen v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
             .build()
     }
 

@@ -27,8 +27,8 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.allowRgb565
 import coil3.request.crossfade
 import coil3.util.DebugLogger
-import com.tadami.aurora.BuildConfig
-import com.tadami.aurora.R
+import dev.h80r.mugen.BuildConfig
+import dev.h80r.mugen.R
 import dev.mihon.injekt.patchInjekt
 import eu.kanade.domain.DomainModule
 import eu.kanade.domain.SYDomainModule

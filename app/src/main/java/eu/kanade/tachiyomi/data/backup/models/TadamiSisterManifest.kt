@@ -66,7 +66,7 @@ data class TadamiSisterManifest(
     }
 
     companion object {
-        const val SIGNATURE = "TADAMI_SISTER"
+        const val SIGNATURE = "MUGEN_SISTER"
         const val VERSION = 1
 
         /** Top level protobuf field used to carry the manifest inside a Mihon shaped payload. */
