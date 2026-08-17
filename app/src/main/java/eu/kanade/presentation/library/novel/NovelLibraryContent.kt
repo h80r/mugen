@@ -51,10 +51,12 @@ import kotlinx.coroutines.launch
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.components.Badge
 import tachiyomi.presentation.core.components.BadgeGroup
 import tachiyomi.presentation.core.components.material.PullRefresh
 import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.EmptyScreenAction
 import tachiyomi.presentation.core.util.plus
@@ -348,7 +350,7 @@ private fun NovelLibraryGridItem(
                             .padding(6.dp),
                     ) {
                         if (badgeState.showDownloaded) {
-                            Badge(text = "DL")
+                            Badge(text = stringResource(AYMR.strings.novel_library_downloaded_badge))
                         }
                         badgeState.unreadCount?.let {
                             Badge(text = it.toString())
@@ -436,7 +438,7 @@ private fun NovelLibraryListItem(
                             .padding(6.dp),
                     ) {
                         if (badgeState.showDownloaded) {
-                            Badge(text = "DL")
+                            Badge(text = stringResource(AYMR.strings.novel_library_downloaded_badge))
                         }
                         badgeState.unreadCount?.let {
                             Badge(text = it.toString())

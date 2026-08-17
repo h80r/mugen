@@ -94,13 +94,13 @@ class WorkerInfoScreen : Screen() {
                 contentPadding = contentPadding + PaddingValues(horizontal = 16.dp),
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
             ) {
-                item { SectionTitle(title = "Enqueued") }
+                item { SectionTitle(title = stringResource(MR.strings.worker_info_enqueued)) }
                 item { SectionText(text = enqueued) }
 
-                item { SectionTitle(title = "Finished") }
+                item { SectionTitle(title = stringResource(MR.strings.worker_info_finished)) }
                 item { SectionText(text = finished) }
 
-                item { SectionTitle(title = "Running") }
+                item { SectionTitle(title = stringResource(MR.strings.worker_info_running)) }
                 item { SectionText(text = running) }
             }
         }

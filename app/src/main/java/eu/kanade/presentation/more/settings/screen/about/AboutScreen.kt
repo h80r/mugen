@@ -391,7 +391,7 @@ object AboutScreen : Screen() {
                     }
 
                     item {
-                        val footerSections = remember { buildAboutFooterSections() }
+                        val footerSections = buildAboutFooterSections()
                         val dividerColor = settingsAccentColor().copy(alpha = 0.3f)
                         if (uiStyle == SettingsUiStyle.Aurora) {
                             AuroraSettingsCard(
@@ -628,17 +628,18 @@ private fun AboutFooterLinkSectionContent(section: AboutFooterLinkSection) {
 
 @Composable
 private fun aboutFooterLinkLabel(label: AboutFooterLinkLabel): String = when (label) {
-    AboutFooterLinkLabel.Tadami -> "Tadami"
+    AboutFooterLinkLabel.Tadami -> stringResource(MR.strings.about_footer_tadami_name)
 }
 
 private fun aboutFooterLinkIcon(icon: AboutFooterLinkIcon) = when (icon) {
     AboutFooterLinkIcon.Github -> CustomIcons.Github
 }
 
+@Composable
 internal fun buildAboutFooterSections(): List<AboutFooterLinkSection> {
     return listOf(
         AboutFooterLinkSection(
-            title = "Tadami",
+            title = stringResource(MR.strings.about_footer_tadami_name),
             links = listOf(
                 AboutFooterLink(
                     label = AboutFooterLinkLabel.Tadami,
@@ -648,7 +649,7 @@ internal fun buildAboutFooterSections(): List<AboutFooterLinkSection> {
             ),
         ),
         AboutFooterLinkSection(
-            title = "mugen",
+            title = stringResource(MR.strings.app_name),
             links = listOf(
                 AboutFooterLink(
                     label = AboutFooterLinkLabel.Tadami,

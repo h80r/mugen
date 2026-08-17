@@ -135,7 +135,7 @@ fun AchievementDetailDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
+                            contentDescription = stringResource(AYMR.strings.achievement_action_close),
                             tint = colors.textSecondary,
                             modifier = Modifier.size(24.dp),
                         )

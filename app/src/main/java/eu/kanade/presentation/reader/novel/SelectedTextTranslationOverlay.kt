@@ -295,7 +295,7 @@ private fun DictionaryContent(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                            contentDescription = "Speak",
+                            contentDescription = stringResource(AYMR.strings.novel_reader_selected_text_translation_action_speak),
                             tint = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                     }
@@ -436,7 +436,7 @@ private fun TranslationContent(
                 )
                 state.translationResult.detectedSourceLanguage?.takeIf<String> { it.isNotBlank() }?.let { lang ->
                     Text(
-                        text = "Source language: $lang",
+                        text = stringResource(AYMR.strings.novel_reader_selected_text_translation_source_language, lang),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

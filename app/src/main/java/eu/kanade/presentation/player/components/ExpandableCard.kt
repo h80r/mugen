@@ -35,17 +35,12 @@ import androidx.compose.material3.CardElevation
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.tooling.preview.Preview
 import tachiyomi.presentation.core.components.material.padding
 
 @SuppressLint("UnrememberedMutableState")
@@ -88,17 +83,4 @@ fun ExpandableCard(
             if (isExpanded) content()
         }
     }
-}
-
-@Composable
-@Preview
-private fun PreviewExpandableCard() {
-    var isExpanded by remember { mutableStateOf(true) }
-
-    ExpandableCard(
-        isExpanded,
-        title = { Text("Hello World") },
-        content = { Text("SPOjao;sjd") },
-        onExpand = { isExpanded = it },
-    )
 }

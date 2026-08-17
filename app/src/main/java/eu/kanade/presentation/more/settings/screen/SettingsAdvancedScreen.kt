@@ -238,7 +238,7 @@ object SettingsAdvancedScreen : SearchableSettings {
         if (meltdownStage == 1) {
             list.add(
                 Preference.PreferenceItem.CustomPreference(
-                    title = "Glitch Rift",
+                    title = stringResource(MR.strings.settings_advanced_glitch_rift_title),
                     content = {
                         GlitchRiftWidget(
                             onTap = {
@@ -314,7 +314,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                     },
                 ),
                 Preference.PreferenceItem.TextPreference(
-                    title = "Don't kill my app!",
+                    title = stringResource(MR.strings.about_dont_kill_my_app_title),
                     subtitle = stringResource(MR.strings.about_dont_kill_my_app),
                     onClick = { uriHandler.openUri("https://dontkillmyapp.com/") },
                 ),

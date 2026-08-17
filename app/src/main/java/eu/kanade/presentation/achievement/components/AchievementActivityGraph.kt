@@ -348,10 +348,11 @@ private fun ActivityBar(
         state = tooltipState,
         modifier = Modifier.width(24.dp),
     ) {
+        val activityBarDescription = stringResource(MR.strings.achievement_activity_bar_a11y, month.month.name)
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.semantics {
-                contentDescription = "Activity bar for ${month.month.name}"
+                contentDescription = activityBarDescription
             },
         ) {
             // The Bar with long-press gesture (Sleek 8.dp narrow neon pillar)

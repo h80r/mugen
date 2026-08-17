@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">mugen</string>
+    <string name="about_footer_tadami_name" translatable="false">Tadami</string>
 
     <!-- Generic strings -->
     <string name="on">On</string>
@@ -856,10 +857,32 @@
     <string name="battery_optimization_disabled">Battery optimization is already disabled</string>
     <string name="battery_optimization_setting_activity_not_found">Couldn\'t open device settings</string>
     <string name="about_dont_kill_my_app">Some manufacturers have additional app restrictions that kill background services. This website has more info on how to fix it.</string>
+    <string name="about_dont_kill_my_app_title">Don\'t kill my app!</string>
+    <string name="settings_advanced_glitch_rift_title">Glitch Rift</string>
     <string name="pref_tablet_ui_mode">Tablet UI</string>
     <string name="pref_verbose_logging">Verbose logging</string>
     <string name="pref_verbose_logging_summary">Print verbose logs to system log (reduces app performance)</string>
     <string name="pref_debug_info">Debug info</string>
+    <string name="debug_info_app_info_title">App info</string>
+    <string name="debug_info_build_time">Build time</string>
+    <string name="debug_info_webview_version">WebView version</string>
+    <string name="debug_info_profile_status_title">Profile compilation status</string>
+    <string name="debug_info_profile_status_none">No profile installed</string>
+    <string name="debug_info_profile_status_compiled">Compiled</string>
+    <string name="debug_info_profile_status_compiled_non_matching">Compiled non-matching</string>
+    <string name="debug_info_profile_status_error">Error %1$s</string>
+    <string name="debug_info_profile_status_unsupported">Not supported</string>
+    <string name="debug_info_profile_status_pending">Pending compilation</string>
+    <string name="debug_info_profile_status_no_profile_embedded">No profile embedded</string>
+    <string name="debug_info_profile_status_unknown">Unknown code %1$s</string>
+    <string name="debug_info_model">Model</string>
+    <string name="debug_info_oneui_version">OneUI version</string>
+    <string name="debug_info_miui_version">MIUI version</string>
+    <string name="debug_info_android_version">Android version</string>
+    <string name="debug_info_device_info_title">Device info</string>
+    <string name="worker_info_enqueued">Enqueued</string>
+    <string name="worker_info_finished">Finished</string>
+    <string name="worker_info_running">Running</string>
 
       <!-- About section -->
     <string name="website">Website</string>
@@ -895,6 +918,8 @@
 
     <!-- Login dialog -->
     <string name="login_title">Log in to %1$s</string>
+    <string name="tracker_webview_login_complete">Complete Login</string>
+    <string name="tracker_webview_login_instructions">Login in the webview, then tap the check button to finish.</string>
     <string name="username">Username</string>
     <string name="email">Email address</string>
     <string name="password">Password</string>
@@ -1305,6 +1330,7 @@
     <string name="achievement_vs_last_month">vs last month</string>
     <string name="achievement_no_data">No data</string>
     <string name="achievement_year_activity_title">Activity for the year</string>
+    <string name="achievement_activity_bar_a11y">Activity bar for %s</string>
     <string name="achievement_period_jan_jun">Jan–Jun</string>
     <string name="achievement_period_jul_dec">Jul–Dec</string>
     <string name="achievement_stat_total">Total: %d</string>

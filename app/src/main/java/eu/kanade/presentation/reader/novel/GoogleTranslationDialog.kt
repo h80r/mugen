@@ -242,7 +242,7 @@ fun GoogleTranslationDialog(
                             onSetSourceLang(it)
                         },
                         label = stringResource(AYMR.strings.novel_reader_google_translate_source),
-                        placeholder = "auto",
+                        placeholder = stringResource(AYMR.strings.novel_reader_google_translate_source_placeholder),
                         expanded = sourceExpanded,
                         onExpandedChange = { sourceExpanded = it },
                         enabled = !isTranslating,
@@ -255,7 +255,7 @@ fun GoogleTranslationDialog(
                             onSetTargetLang(it)
                         },
                         label = stringResource(AYMR.strings.novel_reader_google_translate_target),
-                        placeholder = "ru",
+                        placeholder = stringResource(AYMR.strings.novel_reader_google_translate_target_placeholder),
                         expanded = targetExpanded,
                         onExpandedChange = { targetExpanded = it },
                         enabled = !isTranslating,

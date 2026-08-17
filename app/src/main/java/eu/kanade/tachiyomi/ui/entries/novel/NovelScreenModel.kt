@@ -142,6 +142,7 @@ import tachiyomi.domain.source.novel.service.NovelSourceManager
 import tachiyomi.domain.track.novel.interactor.GetNovelTracks
 import tachiyomi.domain.track.novel.model.NovelTrack
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.source.local.entries.novel.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -2749,7 +2750,9 @@ class NovelScreenModel(
         val file = novelTranslatedDownloadManager.getTranslatedFile(state.novel, chapter, format)
         if (file == null) {
             screenModelScope.launchIO {
-                snackbarHostState.showSnackbar(message = "File not found")
+                snackbarHostState.showSnackbar(
+                    message = context.stringResource(AYMR.strings.novel_translated_download_file_not_found),
+                )
             }
             return
         }
@@ -2758,7 +2761,9 @@ class NovelScreenModel(
         val parentFile = file.getParentFile()
         if (parentFile == null) {
             screenModelScope.launchIO {
-                snackbarHostState.showSnackbar(message = "Unable to find folder")
+                snackbarHostState.showSnackbar(
+                    message = context.stringResource(AYMR.strings.novel_translated_download_folder_not_found),
+                )
             }
             return
         }
@@ -2775,7 +2780,9 @@ class NovelScreenModel(
 
         novelTranslatedDownloadManager.deleteTranslatedChapter(state.novel, chapter, format)
         screenModelScope.launchIO {
-            snackbarHostState.showSnackbar(message = "Downloaded translation deleted")
+            snackbarHostState.showSnackbar(
+                message = context.stringResource(AYMR.strings.novel_translated_download_deleted),
+            )
         }
         refreshChapterActionStatesAsync(delayMs = 100L)
     }

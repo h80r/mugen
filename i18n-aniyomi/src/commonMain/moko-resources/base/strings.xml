@@ -162,6 +162,13 @@
     <string name="pref_category_player_chrome">Optional chrome</string>
     <string name="pref_show_custom_buttons">Show custom buttons</string>
     <string name="pref_show_custom_buttons_summary">Display custom action buttons in the player</string>
+    <!-- Dubbing selection dialog -->
+    <string name="pref_player_dubbing_dialog_title">Playback Preferences</string>
+    <string name="pref_player_dubbing_dialog_player_section">Player</string>
+    <string name="pref_player_dubbing_dialog_dubbing_section">Dubbing</string>
+    <string name="pref_player_dubbing_dialog_quality_section">Quality</string>
+    <string name="pref_player_dubbing_dialog_player_auto">Auto</string>
+    <string name="pref_player_dubbing_dialog_quality_best">Best Available</string>
     <!-- Player settings - layout -->
     <string name="pref_player_layout">Layout</string>
     <string name="pref_player_layout_summary">Arrange player controls by orientation</string>
@@ -511,6 +518,7 @@
     <string name="general_categories">Categories</string>
     <string name="anime_categories">Anime Categories</string>
     <string name="novel_categories">Novel Categories</string>
+    <string name="novel_library_downloaded_badge">DL</string>
     <string name="entries">Library entries</string>
     <string name="chapters_episodes">Chapters and episodes</string>
     <string name="episodes">Episodes</string>
@@ -838,6 +846,8 @@
     <string name="novel_reader_selected_text_translation_too_long">Selection is too long to translate.</string>
     <string name="novel_reader_selected_text_translation_retry_cooldown">Please wait before retrying this translation.</string>
     <string name="novel_reader_selected_text_translation_action_translate">Translate</string>
+    <string name="novel_reader_selected_text_translation_action_speak">Speak</string>
+    <string name="novel_reader_selected_text_translation_source_language">Source language: %s</string>
     <string name="novel_reader_text_selection_action_dictionary">Dictionary</string>
     <string name="novel_reader_text_selection_action_translate">Translate</string>
     <string name="novel_reader_selected_text_translation_action_retry">Retry</string>
@@ -1313,6 +1323,8 @@
     <string name="novel_translated_download_redownload">Re-download</string>
     <string name="novel_translated_download_delete">Delete</string>
     <string name="novel_translated_download_deleted">Downloaded translation deleted</string>
+    <string name="novel_translated_download_file_not_found">File not found</string>
+    <string name="novel_translated_download_folder_not_found">Unable to find folder</string>
     <string name="novel_download_queue_started_count">Queued chapters: %d</string>
     <string name="novel_download_queue_waiting">Waiting to start</string>
     <string name="novel_download_queue_progress">Downloading... Pending: %1$d, Active: %2$d</string>
@@ -1423,6 +1435,7 @@
     <string name="pref_clear_novel_plugin_cache">Clear novel plugin cache</string>
     <string name="pref_clear_novel_plugin_cache_summary">Clear cached storage used by novel plugins</string>
     <string name="novel_plugin_cache_cleared">Novel plugin cache cleared</string>
+    <string name="novel_extension_diagnostic_clipboard_label">Novel extension diagnostic</string>
     <string name="anime_from_library">Anime from library</string>
     <string name="downloaded_episodes">Downloaded episodes</string>
     <string name="local_manga_source">Local manga source</string>
@@ -1988,6 +2001,7 @@
     <string name="aurora_downloads">Downloads</string>
     <string name="aurora_about">About</string>
     <string name="aurora_help">Help</string>
+    <string name="help_github_issues_title">GitHub Issues</string>
     <string name="aurora_statistics">Statistics</string>
     <string name="aurora_achievements">Achievements</string>
     <string name="aurora_more">More</string>
@@ -2565,6 +2579,8 @@
     <string name="novel_reader_google_translate">Google Translate</string>
     <string name="novel_reader_google_translate_source">Source language</string>
     <string name="novel_reader_google_translate_target">Target language</string>
+    <string name="novel_reader_google_translate_source_placeholder" translatable="false">auto</string>
+    <string name="novel_reader_google_translate_target_placeholder" translatable="false">ru</string>
     <string name="novel_reader_google_translate_send_mode">Send mode</string>
     <string name="novel_reader_google_translate_send_mode_current">As is</string>
     <string name="novel_reader_google_translate_send_mode_whole_text">Whole text</string>

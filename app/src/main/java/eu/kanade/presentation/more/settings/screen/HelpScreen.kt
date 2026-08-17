@@ -51,7 +51,7 @@ object HelpScreen : Screen() {
                     item {
                         TextPreferenceWidget(
                             modifier = itemModifier,
-                            title = "GitHub Issues",
+                            title = stringResource(AYMR.strings.help_github_issues_title),
                             subtitle = "https://github.com/h80r/mugen/issues",
                             icon = CustomIcons.Github,
                             onPreferenceClick = {

@@ -50,6 +50,7 @@ fun novelExtensionsTab(
     var pluginToUninstall by remember { mutableStateOf<NovelPlugin.Installed?>(null) }
     var pluginToReinstall by remember { mutableStateOf<NovelPlugin.Installed?>(null) }
     var showInstallerDiagnostics by remember { mutableStateOf(false) }
+    val diagnosticClipboardLabel = stringResource(AYMR.strings.novel_extension_diagnostic_clipboard_label)
 
     return TabContent(
         titleRes = AYMR.strings.label_novel_extensions,
@@ -90,7 +91,7 @@ fun novelExtensionsTab(
                 onToggleSection = extensionsScreenModel::toggleSection,
                 onCopyDiagnostic = { plugin ->
                     context.copyToClipboard(
-                        label = "Novel extension diagnostic",
+                        label = diagnosticClipboardLabel,
                         content = extensionsScreenModel.diagnosticFor(plugin),
                     )
                 },

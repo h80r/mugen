@@ -48,6 +48,7 @@ import eu.kanade.tachiyomi.util.system.WebViewUtil
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.injectLazy
 
 class TrackerWebViewLoginActivity : BaseActivity() {
@@ -176,12 +177,12 @@ private fun TrackerWebViewLoginScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Login to $trackerName") },
+                title = { Text(stringResource(MR.strings.login_title, trackerName)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateUp) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = stringResource(MR.strings.action_webview_back),
                         )
                     }
                 },
@@ -189,13 +190,13 @@ private fun TrackerWebViewLoginScreen(
                     IconButton(onClick = { webView?.reload() }) {
                         Icon(
                             imageVector = Icons.Outlined.Refresh,
-                            contentDescription = "Refresh",
+                            contentDescription = stringResource(MR.strings.action_webview_refresh),
                         )
                     }
                     IconButton(onClick = { scope.launch { onLoginComplete() } }) {
                         Icon(
                             imageVector = Icons.Outlined.Check,
-                            contentDescription = "Complete Login",
+                            contentDescription = stringResource(MR.strings.tracker_webview_login_complete),
                         )
                     }
                 },
@@ -255,7 +256,7 @@ private fun TrackerWebViewLoginScreen(
                 ),
             ) {
                 Text(
-                    text = "Login in the webview, then tap the check button to finish.",
+                    text = stringResource(MR.strings.tracker_webview_login_instructions),
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
