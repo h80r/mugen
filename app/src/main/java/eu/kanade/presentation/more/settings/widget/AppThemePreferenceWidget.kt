@@ -106,21 +106,13 @@ private fun AppThemesList(
     val context = LocalContext.current
     val isAurora = LocalSettingsUiStyle.current == SettingsUiStyle.Aurora
 
-    val uiPreferences = remember { Injekt.get<UiPreferences>() }
-    val debugBypassLocks by uiPreferences.debugBypassTreasuryLocks().collectAsStateWithLifecycle()
-
     val unlockableManager = remember { Injekt.get<tachiyomi.data.achievement.UnlockableManager>() }
 
-    val rawUnlockedUnlockables by remember {
+    val unlockedUnlockables by remember {
         unlockableManager.observeUnlockedUnlockables()
     }.collectAsStateWithLifecycle(initialValue = unlockableManager.getUnlockedUnlockables())
 
-    val appThemes = remember(debugBypassLocks, rawUnlockedUnlockables) {
-        val unlockedUnlockables = visibleUnlockablesForTreasuryPreview(
-            debugBypassLocks = debugBypassLocks,
-            unlockedUnlockables = rawUnlockedUnlockables,
-        )
-
+    val appThemes = remember(unlockedUnlockables) {
         AppTheme.entries
             .filterNot {
                 it.titleRes == null ||

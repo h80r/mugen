@@ -75,7 +75,6 @@ import eu.kanade.presentation.components.DownloadedOnlyBannerBackgroundColor
 import eu.kanade.presentation.components.IncognitoModeBannerBackgroundColor
 import eu.kanade.presentation.components.IndexingBannerBackgroundColor
 import eu.kanade.presentation.more.UpdatedChangelogScreen
-import eu.kanade.presentation.more.settings.screen.SettingsTreasuryScreen
 import eu.kanade.presentation.more.settings.screen.browse.AnimeExtensionStoreScreen
 import eu.kanade.presentation.more.settings.screen.browse.MangaExtensionStoreScreen
 import eu.kanade.presentation.more.settings.screen.browse.NovelExtensionStoreScreen
@@ -878,11 +877,6 @@ class MainActivity : BaseActivity() {
                 }
                 null
             }
-            INTENT_OPEN_TREASURY -> {
-                navigator.popUntilRoot()
-                navigator.push(SettingsTreasuryScreen)
-                null
-            }
             else -> {
                 ready = true
                 return false
@@ -913,7 +907,6 @@ class MainActivity : BaseActivity() {
         const val INTENT_ANIMESEARCH = "eu.kanade.tachiyomi.ANIMESEARCH"
         const val INTENT_NOVELSEARCH = "eu.kanade.tachiyomi.NOVELSEARCH"
         const val INTENT_OPEN_NOVEL_CHAPTER = "eu.kanade.tachiyomi.OPEN_NOVEL_CHAPTER"
-        const val INTENT_OPEN_TREASURY = "eu.kanade.tachiyomi.OPEN_TREASURY"
         const val INTENT_NOVEL_CHAPTER_ID = "novel_chapter_id"
         const val INTENT_SEARCH_QUERY = "query"
         const val INTENT_SEARCH_FILTER = "filter"

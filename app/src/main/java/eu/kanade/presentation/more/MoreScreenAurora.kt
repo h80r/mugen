@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.ReportProblem
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -78,7 +77,6 @@ fun MoreScreenAurora(
     onDebugUpdatedChangelogPreviewClick: () -> Unit,
     onStatsClick: () -> Unit,
     onLibraryUpdateErrorsClick: () -> Unit,
-    onTreasuryClick: () -> Unit,
     onHelpClick: () -> Unit,
 ) {
     val colors = AuroraTheme.colors
@@ -131,13 +129,6 @@ fun MoreScreenAurora(
                     title = stringResource(AYMR.strings.aurora_statistics),
                     icon = Icons.Filled.QueryStats,
                     onClick = onStatsClick,
-                    darkRimLightEnabled = darkRimLightEnabled,
-                )
-
-                AuroraSettingItem(
-                    title = stringResource(AYMR.strings.label_treasury),
-                    icon = Icons.Outlined.Inventory2,
-                    onClick = onTreasuryClick,
                     darkRimLightEnabled = darkRimLightEnabled,
                 )
 

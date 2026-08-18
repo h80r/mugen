@@ -2,26 +2,9 @@ package eu.kanade.presentation.more.settings.screen
 
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldContainExactly
-import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
 class DebugUnlockablePreviewTest {
-
-    @Test
-    fun `debug build shows treasury even without unlocked rewards`() {
-        shouldShowTreasury(
-            isDebugBuild = true,
-            unlockedUnlockables = emptySet(),
-        ) shouldBe true
-    }
-
-    @Test
-    fun `release build hides treasury when nothing is unlocked`() {
-        shouldShowTreasury(
-            isDebugBuild = false,
-            unlockedUnlockables = emptySet(),
-        ) shouldBe false
-    }
 
     @Test
     fun `debug build exposes preview themes and auras`() {

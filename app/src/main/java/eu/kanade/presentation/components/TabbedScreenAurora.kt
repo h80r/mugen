@@ -722,10 +722,8 @@ internal fun AuroraTabRow(
 
     val uiPreferences = remember { Injekt.get<UiPreferences>() }
     val showTabGlowPref by uiPreferences.showTabGlow().collectAsState()
-    val debugBypassLocks by uiPreferences.debugBypassTreasuryLocks().collectAsState()
     val unlockableManager = remember { Injekt.get<UnlockableManager>() }
-    val showTabGlow =
-        showTabGlowPref && (debugBypassLocks || unlockableManager.isUnlockableAvailable("special_tab_glow"))
+    val showTabGlow = showTabGlowPref && unlockableManager.isUnlockableAvailable("special_tab_glow")
 
     Card(
         modifier = Modifier

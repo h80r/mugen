@@ -59,13 +59,6 @@ private val previewThemeUnlockables by lazy {
     hiddenThemes
 }
 
-internal fun shouldShowTreasury(
-    isDebugBuild: Boolean,
-    unlockedUnlockables: Set<String>,
-): Boolean {
-    return isDebugBuild || unlockedUnlockables.isNotEmpty()
-}
-
 internal fun visibleUnlockablesForTreasuryPreview(
     debugBypassLocks: Boolean,
     unlockedUnlockables: Set<String>,

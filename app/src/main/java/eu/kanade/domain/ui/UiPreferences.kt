@@ -157,8 +157,6 @@ class UiPreferences(
 
     fun enabledAuras() = preferenceStore.getStringSet("enabled_auras", emptySet())
 
-    fun debugBypassTreasuryLocks() = preferenceStore.getBoolean("debug_bypass_treasury_locks", false)
-
     fun showSeasonTabs() = preferenceStore.getBoolean("show_season_tabs", true)
 
     fun alwaysShowFullEpisodeList() = preferenceStore.getBoolean("always_show_full_episode_list", false)

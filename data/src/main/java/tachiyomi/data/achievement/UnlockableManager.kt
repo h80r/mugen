@@ -216,7 +216,6 @@ class UnlockableManager(
         val unlockableId = "theme_$normalizedThemeId"
 
         if (isDefaultUnlockable(unlockableId)) return true
-        if (preferences.getBoolean("debug_bypass_treasury_locks", false)) return true
 
         return isUnlockableUnlocked(unlockableId) ||
             isUnlockableUnlocked("theme_$canonicalThemeId") ||
@@ -230,7 +229,6 @@ class UnlockableManager(
      */
     fun isUnlockableAvailable(unlockableId: String): Boolean {
         if (isDefaultUnlockable(unlockableId)) return true
-        if (preferences.getBoolean("debug_bypass_treasury_locks", false)) return true
         return isUnlockableUnlocked(unlockableId)
     }
 

@@ -19,7 +19,6 @@ import dev.h80r.mugen.R
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.presentation.more.MoreScreenAurora
 import eu.kanade.presentation.more.settings.screen.HelpScreen
-import eu.kanade.presentation.more.settings.screen.SettingsTreasuryScreen
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
@@ -89,7 +88,6 @@ data object MoreTab : Tab {
             onDebugUpdatedChangelogPreviewClick = { navigator.push(DebugUpdatedChangelogPreviewScreen()) },
             onStatsClick = { navigator.push(StatsTab) },
             onLibraryUpdateErrorsClick = { navigator.push(LibraryUpdateErrorScreen()) },
-            onTreasuryClick = { navigator.push(SettingsTreasuryScreen) },
         )
     }
 }
