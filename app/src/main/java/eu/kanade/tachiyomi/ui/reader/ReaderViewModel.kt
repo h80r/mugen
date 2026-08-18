@@ -16,7 +16,6 @@ import eu.kanade.domain.source.interactor.ForegroundIncognitoState
 import eu.kanade.domain.source.manga.interactor.GetMangaIncognitoState
 import eu.kanade.domain.track.manga.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
-import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.reader.manga.MangaSeriesInterstitialState
 import eu.kanade.presentation.reader.manga.resolveMangaSeriesInterstitialState
 import eu.kanade.tachiyomi.data.database.models.manga.isRecognizedNumber
@@ -108,7 +107,6 @@ class ReaderViewModel @JvmOverloads constructor(
     private val downloadProvider: MangaDownloadProvider = Injekt.get(),
     private val imageSaver: ImageSaver = Injekt.get(),
     val readerPreferences: ReaderPreferences = Injekt.get(),
-    private val uiPreferences: UiPreferences = Injekt.get(),
     private val basePreferences: BasePreferences = Injekt.get(),
     private val downloadPreferences: DownloadPreferences = Injekt.get(),
     private val trackPreferences: TrackPreferences = Injekt.get(),
@@ -194,8 +192,6 @@ class ReaderViewModel @JvmOverloads constructor(
             .map(::ReaderChapter)
     }
 
-    private val isAuroraTheme by lazy { uiPreferences.appTheme().get().isAuroraStyle }
-
     /**
      * Chapter list for the active manga. It's retrieved lazily and should be accessed for the first
      * time in a background thread to avoid blocking the UI.
@@ -260,13 +256,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     this
                 }
             }
-            .run {
-                if (readerPreferences.skipDupe().get() || isAuroraTheme) {
-                    removeDuplicates(selectedChapter)
-                } else {
-                    this
-                }
-            }
+            .removeDuplicates(selectedChapter)
             .map { it.toDbChapter() }
             .map(::ReaderChapter)
     }
@@ -662,13 +652,7 @@ class ReaderViewModel @JvmOverloads constructor(
             if (!isNextChapterDownloaded) return@launchIO
 
             val chaptersToDownload = getNextChapters.await(manga.id, nextChapter.id!!)
-                .run {
-                    if (readerPreferences.skipDupe().get() || isAuroraTheme) {
-                        removeDuplicates(nextChapter.toDomainChapter()!!)
-                    } else {
-                        this
-                    }
-                }
+                .removeDuplicates(nextChapter.toDomainChapter()!!)
                 .take(downloadAheadAmount)
             downloadManager.downloadChapters(
                 manga,

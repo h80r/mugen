@@ -62,7 +62,6 @@ import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.domain.ui.model.NavStyle
 import eu.kanade.presentation.components.AuroraTabRow
 import eu.kanade.presentation.components.TabContent
-import eu.kanade.presentation.components.TabbedScreen
 import eu.kanade.presentation.components.TabbedScreenAurora
 import eu.kanade.presentation.entries.components.AuroraEntryDropdownMenu
 import eu.kanade.presentation.entries.components.AuroraEntryDropdownMenuItem
@@ -82,15 +81,11 @@ import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.novel.NovelReaderScreen
 import eu.kanade.tachiyomi.ui.updates.anime.AnimeUpdatesScreenModel
-import eu.kanade.tachiyomi.ui.updates.anime.animeUpdatesTab
 import eu.kanade.tachiyomi.ui.updates.manga.MangaUpdatesScreenModel
-import eu.kanade.tachiyomi.ui.updates.manga.mangaUpdatesTab
 import eu.kanade.tachiyomi.ui.updates.novel.NovelUpdatesScreenModel
-import eu.kanade.tachiyomi.ui.updates.novel.novelUpdatesTab
 import eu.kanade.tachiyomi.util.system.isRunningFlow
 import eu.kanade.tachiyomi.util.system.workManager
 import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import mihon.feature.upcoming.anime.UpcomingAnimeScreen
 import mihon.feature.upcoming.manga.UpcomingMangaScreen
@@ -131,307 +126,294 @@ data object UpdatesTab : Tab {
     override fun Content() {
         val context = LocalContext.current
         val uiPreferences = Injekt.get<UiPreferences>()
-        val theme by uiPreferences.appTheme().collectAsStateWithLifecycle()
         val showAnimeSection by uiPreferences.showAnimeSection().collectAsStateWithLifecycle()
         val showMangaSection by uiPreferences.showMangaSection().collectAsStateWithLifecycle()
         val showNovelSection by uiPreferences.showNovelSection().collectAsStateWithLifecycle()
-        val fromMore = currentNavigationStyle() == NavStyle.MOVE_UPDATES_TO_MORE
         val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
 
         LaunchedEffect(Unit) {
             clearUpdatesBadgeCounts(libraryPreferences)
         }
 
-        if (theme.isAuroraStyle) {
-            val navigator = LocalNavigator.currentOrThrow
-            val internalErrorMessage = stringResource(MR.strings.internal_error)
-            val updatingAnimeMessage = stringResource(AYMR.strings.aurora_updating_anime)
-            val updatingMangaMessage = stringResource(AYMR.strings.aurora_updating_manga)
-            val updatingNovelMessage = stringResource(MR.strings.updating_library)
-            val updatingAllLibraryMessage = stringResource(AYMR.strings.aurora_updating_library)
-            val updateAlreadyRunningMessage = stringResource(MR.strings.update_already_running)
-            val scope = rememberCoroutineScope()
-            val playerPreferences = remember { Injekt.get<PlayerPreferences>() }
+        val navigator = LocalNavigator.currentOrThrow
+        val internalErrorMessage = stringResource(MR.strings.internal_error)
+        val updatingAnimeMessage = stringResource(AYMR.strings.aurora_updating_anime)
+        val updatingMangaMessage = stringResource(AYMR.strings.aurora_updating_manga)
+        val updatingNovelMessage = stringResource(MR.strings.updating_library)
+        val updatingAllLibraryMessage = stringResource(AYMR.strings.aurora_updating_library)
+        val updateAlreadyRunningMessage = stringResource(MR.strings.update_already_running)
+        val scope = rememberCoroutineScope()
+        val playerPreferences = remember { Injekt.get<PlayerPreferences>() }
 
-            val isAnimeUpdating by remember(context) {
-                context.workManager.isRunningFlow("AnimeLibraryUpdate")
-            }.collectAsStateWithLifecycle(initialValue = false)
-            val isMangaUpdating by remember(context) {
-                context.workManager.isRunningFlow("LibraryUpdate")
-            }.collectAsStateWithLifecycle(initialValue = false)
-            val isNovelUpdating by remember(context) {
-                context.workManager.isRunningFlow("NovelLibraryUpdate")
-            }.collectAsStateWithLifecycle(initialValue = false)
+        val isAnimeUpdating by remember(context) {
+            context.workManager.isRunningFlow("AnimeLibraryUpdate")
+        }.collectAsStateWithLifecycle(initialValue = false)
+        val isMangaUpdating by remember(context) {
+            context.workManager.isRunningFlow("LibraryUpdate")
+        }.collectAsStateWithLifecycle(initialValue = false)
+        val isNovelUpdating by remember(context) {
+            context.workManager.isRunningFlow("NovelLibraryUpdate")
+        }.collectAsStateWithLifecycle(initialValue = false)
 
-            val animeScreenModel = rememberScreenModel { AnimeUpdatesScreenModel() }
-            val animeState by animeScreenModel.state.collectAsStateWithLifecycle()
-            val mangaScreenModel = rememberScreenModel { MangaUpdatesScreenModel() }
-            val mangaState by mangaScreenModel.state.collectAsStateWithLifecycle()
-            val novelScreenModel = rememberScreenModel { NovelUpdatesScreenModel() }
-            val novelState by novelScreenModel.state.collectAsStateWithLifecycle()
+        val animeScreenModel = rememberScreenModel { AnimeUpdatesScreenModel() }
+        val animeState by animeScreenModel.state.collectAsStateWithLifecycle()
+        val mangaScreenModel = rememberScreenModel { MangaUpdatesScreenModel() }
+        val mangaState by mangaScreenModel.state.collectAsStateWithLifecycle()
+        val novelScreenModel = rememberScreenModel { NovelUpdatesScreenModel() }
+        val novelState by novelScreenModel.state.collectAsStateWithLifecycle()
 
-            var selectedTab by rememberSaveable { mutableIntStateOf(TAB_ANIME) }
-            var refreshingTabId by rememberSaveable { mutableStateOf<Int?>(null) }
+        var selectedTab by rememberSaveable { mutableIntStateOf(TAB_ANIME) }
+        var refreshingTabId by rememberSaveable { mutableStateOf<Int?>(null) }
 
-            LaunchedEffect(isAnimeUpdating, isMangaUpdating, isNovelUpdating) {
-                if (refreshingTabId == TAB_ANIME && !isAnimeUpdating) refreshingTabId = null
-                if (refreshingTabId == TAB_MANGA && !isMangaUpdating) refreshingTabId = null
-                if (refreshingTabId == TAB_NOVEL && !isNovelUpdating) refreshingTabId = null
-            }
+        LaunchedEffect(isAnimeUpdating, isMangaUpdating, isNovelUpdating) {
+            if (refreshingTabId == TAB_ANIME && !isAnimeUpdating) refreshingTabId = null
+            if (refreshingTabId == TAB_MANGA && !isMangaUpdating) refreshingTabId = null
+            if (refreshingTabId == TAB_NOVEL && !isNovelUpdating) refreshingTabId = null
+        }
 
-            fun showUpdateToast(started: Boolean, startedMessage: String) {
-                val message = resolveUpdateToastMessage(
-                    started = started,
-                    startedMessage = startedMessage,
-                    alreadyRunningMessage = updateAlreadyRunningMessage,
-                )
-                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-            }
+        fun showUpdateToast(started: Boolean, startedMessage: String) {
+            val message = resolveUpdateToastMessage(
+                started = started,
+                startedMessage = startedMessage,
+                alreadyRunningMessage = updateAlreadyRunningMessage,
+            )
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
 
-            val tabIds = remember(showAnimeSection, showMangaSection, showNovelSection) {
-                buildList {
-                    if (showAnimeSection) {
-                        add(TAB_ANIME)
-                    }
-                    if (showMangaSection) {
-                        add(TAB_MANGA)
-                    }
-                    if (showNovelSection) {
-                        add(TAB_NOVEL)
-                    }
-                }
-            }
-
-            val tabs = persistentListOf<TabContent>().builder().apply {
+        val tabIds = remember(showAnimeSection, showMangaSection, showNovelSection) {
+            buildList {
                 if (showAnimeSection) {
-                    add(
-                        TabContent(
-                            titleRes = AYMR.strings.label_anime,
-                            content = { contentPadding, _ ->
-                                AnimeUpdatesAuroraContent(
-                                    items = animeState.items,
-                                    onAnimeClicked = {
-                                        navigator.push(eu.kanade.tachiyomi.ui.entries.anime.AnimeScreen(it))
-                                    },
-                                    onEpisodeClicked = { animeId, episodeId ->
-                                        scope.launchIO {
-                                            MainActivity.startPlayerActivity(
-                                                context = context,
-                                                animeId = animeId,
-                                                episodeId = episodeId,
-                                                extPlayer = playerPreferences.alwaysUseExternalPlayer().get(),
-                                            )
-                                        }
-                                    },
-                                    onRefresh = animeScreenModel::updateLibrary,
-                                    contentPadding = PaddingValues(
-                                        bottom = contentPadding.calculateBottomPadding(),
-                                    ),
-                                )
-                            },
-                        ),
-                    )
+                    add(TAB_ANIME)
                 }
                 if (showMangaSection) {
-                    add(
-                        TabContent(
-                            titleRes = AYMR.strings.label_manga,
-                            content = { contentPadding, _ ->
-                                MangaUpdatesAuroraContent(
-                                    items = mangaState.items,
-                                    onMangaClicked = {
-                                        navigator.push(eu.kanade.tachiyomi.ui.entries.manga.MangaScreen(it))
-                                    },
-                                    onChapterClicked = { mangaId, chapterId ->
-                                        val intent = ReaderActivity.newIntent(context, mangaId, chapterId)
-                                        context.startActivity(intent)
-                                    },
-                                    onRefresh = mangaScreenModel::updateLibrary,
-                                    contentPadding = PaddingValues(
-                                        bottom = contentPadding.calculateBottomPadding(),
-                                    ),
-                                )
-                            },
-                        ),
-                    )
+                    add(TAB_MANGA)
                 }
                 if (showNovelSection) {
-                    add(
-                        TabContent(
-                            titleRes = AYMR.strings.label_novel,
-                            content = { contentPadding, _ ->
-                                NovelUpdatesAuroraContent(
-                                    items = novelState.items,
-                                    onNovelClicked = { navigator.push(NovelScreen(it)) },
-                                    onChapterClicked = { navigator.push(NovelReaderScreen(it)) },
-                                    onRefresh = {
-                                        val started = NovelLibraryUpdateJob.startNow(context)
-                                        showUpdateToast(
-                                            started = started,
-                                            startedMessage = updatingNovelMessage,
+                    add(TAB_NOVEL)
+                }
+            }
+        }
+
+        val tabs = persistentListOf<TabContent>().builder().apply {
+            if (showAnimeSection) {
+                add(
+                    TabContent(
+                        titleRes = AYMR.strings.label_anime,
+                        content = { contentPadding, _ ->
+                            AnimeUpdatesAuroraContent(
+                                items = animeState.items,
+                                onAnimeClicked = {
+                                    navigator.push(eu.kanade.tachiyomi.ui.entries.anime.AnimeScreen(it))
+                                },
+                                onEpisodeClicked = { animeId, episodeId ->
+                                    scope.launchIO {
+                                        MainActivity.startPlayerActivity(
+                                            context = context,
+                                            animeId = animeId,
+                                            episodeId = episodeId,
+                                            extPlayer = playerPreferences.alwaysUseExternalPlayer().get(),
                                         )
-                                    },
-                                    contentPadding = PaddingValues(
-                                        bottom = contentPadding.calculateBottomPadding(),
-                                    ),
-                                )
-                            },
+                                    }
+                                },
+                                onRefresh = animeScreenModel::updateLibrary,
+                                contentPadding = PaddingValues(
+                                    bottom = contentPadding.calculateBottomPadding(),
+                                ),
+                            )
+                        },
+                    ),
+                )
+            }
+            if (showMangaSection) {
+                add(
+                    TabContent(
+                        titleRes = AYMR.strings.label_manga,
+                        content = { contentPadding, _ ->
+                            MangaUpdatesAuroraContent(
+                                items = mangaState.items,
+                                onMangaClicked = {
+                                    navigator.push(eu.kanade.tachiyomi.ui.entries.manga.MangaScreen(it))
+                                },
+                                onChapterClicked = { mangaId, chapterId ->
+                                    val intent = ReaderActivity.newIntent(context, mangaId, chapterId)
+                                    context.startActivity(intent)
+                                },
+                                onRefresh = mangaScreenModel::updateLibrary,
+                                contentPadding = PaddingValues(
+                                    bottom = contentPadding.calculateBottomPadding(),
+                                ),
+                            )
+                        },
+                    ),
+                )
+            }
+            if (showNovelSection) {
+                add(
+                    TabContent(
+                        titleRes = AYMR.strings.label_novel,
+                        content = { contentPadding, _ ->
+                            NovelUpdatesAuroraContent(
+                                items = novelState.items,
+                                onNovelClicked = { navigator.push(NovelScreen(it)) },
+                                onChapterClicked = { navigator.push(NovelReaderScreen(it)) },
+                                onRefresh = {
+                                    val started = NovelLibraryUpdateJob.startNow(context)
+                                    showUpdateToast(
+                                        started = started,
+                                        startedMessage = updatingNovelMessage,
+                                    )
+                                },
+                                contentPadding = PaddingValues(
+                                    bottom = contentPadding.calculateBottomPadding(),
+                                ),
+                            )
+                        },
+                    ),
+                )
+            }
+        }.build()
+
+        val initialPage = tabIds.indexOf(selectedTab).coerceAtLeast(0)
+        val state = rememberPagerState(initialPage) { tabs.size }
+
+        fun refreshCurrentTab() {
+            refreshingTabId = selectedTab
+            when (selectedTab) {
+                TAB_ANIME -> animeScreenModel.updateLibrary()
+                TAB_MANGA -> mangaScreenModel.updateLibrary()
+                TAB_NOVEL -> {
+                    val started = NovelLibraryUpdateJob.startNow(context)
+                    showUpdateToast(
+                        started = started,
+                        startedMessage = currentTabUpdatingMessage(
+                            tabId = selectedTab,
+                            animeMessage = updatingAnimeMessage,
+                            mangaMessage = updatingMangaMessage,
+                            novelMessage = updatingNovelMessage,
                         ),
                     )
                 }
-            }.build()
+            }
+        }
 
-            val initialPage = tabIds.indexOf(selectedTab).coerceAtLeast(0)
-            val state = rememberPagerState(initialPage) { tabs.size }
+        LaunchedEffect(state.currentPage, tabIds) {
+            selectedTab = tabIds.getOrElse(state.currentPage) { TAB_ANIME }
+        }
 
-            fun refreshCurrentTab() {
-                refreshingTabId = selectedTab
-                when (selectedTab) {
-                    TAB_ANIME -> animeScreenModel.updateLibrary()
-                    TAB_MANGA -> mangaScreenModel.updateLibrary()
-                    TAB_NOVEL -> {
-                        val started = NovelLibraryUpdateJob.startNow(context)
+        LaunchedEffect(tabIds, selectedTab) {
+            val targetIndex = tabIds.indexOf(selectedTab).takeIf { it >= 0 } ?: 0
+            if (state.currentPage != targetIndex) {
+                state.scrollToPage(targetIndex)
+            }
+        }
+
+        fun refreshAllTabs() {
+            refreshingTabId = null
+            val started = LibraryUpdateCoordinator.startAll(
+                context = context,
+                updateAnime = showAnimeSection,
+                updateManga = showMangaSection,
+                updateNovel = showNovelSection,
+            )
+            showUpdateToast(
+                started = started,
+                startedMessage = updatingAllLibraryMessage,
+            )
+        }
+
+        LaunchedEffect(animeScreenModel) {
+            animeScreenModel.events.collect { event ->
+                when (event) {
+                    AnimeUpdatesScreenModel.Event.InternalError -> {
+                        Toast.makeText(context, internalErrorMessage, Toast.LENGTH_SHORT).show()
+                    }
+                    is AnimeUpdatesScreenModel.Event.LibraryUpdateTriggered -> {
                         showUpdateToast(
-                            started = started,
-                            startedMessage = currentTabUpdatingMessage(
-                                tabId = selectedTab,
-                                animeMessage = updatingAnimeMessage,
-                                mangaMessage = updatingMangaMessage,
-                                novelMessage = updatingNovelMessage,
-                            ),
+                            started = event.started,
+                            startedMessage = updatingAnimeMessage,
                         )
                     }
                 }
             }
-
-            LaunchedEffect(state.currentPage, tabIds) {
-                selectedTab = tabIds.getOrElse(state.currentPage) { TAB_ANIME }
-            }
-
-            LaunchedEffect(tabIds, selectedTab) {
-                val targetIndex = tabIds.indexOf(selectedTab).takeIf { it >= 0 } ?: 0
-                if (state.currentPage != targetIndex) {
-                    state.scrollToPage(targetIndex)
-                }
-            }
-
-            fun refreshAllTabs() {
-                refreshingTabId = null
-                val started = LibraryUpdateCoordinator.startAll(
-                    context = context,
-                    updateAnime = showAnimeSection,
-                    updateManga = showMangaSection,
-                    updateNovel = showNovelSection,
-                )
-                showUpdateToast(
-                    started = started,
-                    startedMessage = updatingAllLibraryMessage,
-                )
-            }
-
-            LaunchedEffect(animeScreenModel) {
-                animeScreenModel.events.collect { event ->
-                    when (event) {
-                        AnimeUpdatesScreenModel.Event.InternalError -> {
-                            Toast.makeText(context, internalErrorMessage, Toast.LENGTH_SHORT).show()
-                        }
-                        is AnimeUpdatesScreenModel.Event.LibraryUpdateTriggered -> {
-                            showUpdateToast(
-                                started = event.started,
-                                startedMessage = updatingAnimeMessage,
-                            )
-                        }
-                    }
-                }
-            }
-
-            LaunchedEffect(mangaScreenModel) {
-                mangaScreenModel.events.collect { event ->
-                    when (event) {
-                        MangaUpdatesScreenModel.Event.InternalError -> {
-                            Toast.makeText(context, internalErrorMessage, Toast.LENGTH_SHORT).show()
-                        }
-                        is MangaUpdatesScreenModel.Event.LibraryUpdateTriggered -> {
-                            showUpdateToast(
-                                started = event.started,
-                                startedMessage = updatingMangaMessage,
-                            )
-                        }
-                    }
-                }
-            }
-
-            TabbedScreenAurora(
-                titleRes = null,
-                tabs = tabs,
-                state = state,
-                isMangaTab = { tabIds.getOrNull(it) == TAB_MANGA },
-                showTabs = false,
-                extraHeaderContent = {
-                    val currentPage = state.currentPage.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
-                    val currentTabId = tabIds.getOrElse(currentPage) { TAB_ANIME }
-                    val isCurrentTabUpdating = when (currentTabId) {
-                        TAB_ANIME -> isAnimeUpdating
-                        TAB_MANGA -> isMangaUpdating
-                        TAB_NOVEL -> isNovelUpdating
-                        else -> false
-                    }
-                    val isAnyUpdating = isAnimeUpdating || isMangaUpdating || isNovelUpdating
-                    val isSyncSpinning = isAnyUpdating && refreshingTabId != currentTabId
-                    val isRefreshSpinning = isCurrentTabUpdating && refreshingTabId == currentTabId
-                    // Upcoming calendar exists for anime, manga and novels.
-                    val onOpenUpcoming: (() -> Unit)? = when (currentTabId) {
-                        TAB_ANIME -> {
-                            { navigator.push(UpcomingAnimeScreen()) }
-                        }
-                        TAB_MANGA -> {
-                            { navigator.push(UpcomingMangaScreen()) }
-                        }
-                        TAB_NOVEL -> {
-                            { navigator.push(UpcomingNovelScreen()) }
-                        }
-                        else -> null
-                    }
-
-                    AuroraUpdatesPinnedHeader(
-                        tabs = tabs,
-                        selectedIndex = currentPage,
-                        subtitle = if (shouldShowAuroraUpdatesSubtitle(currentTabId)) {
-                            stringResource(AYMR.strings.aurora_new_episodes_subtitle)
-                        } else {
-                            null
-                        },
-                        isRefreshSpinning = isRefreshSpinning,
-                        isSyncSpinning = isSyncSpinning,
-                        onTabSelected = { page ->
-                            if (page in tabs.indices && state.currentPage != page) {
-                                scope.launch {
-                                    switchAuroraUpdatesPage(
-                                        state = state,
-                                        page = page,
-                                    )
-                                }
-                            }
-                        },
-                        onRefreshCurrent = ::refreshCurrentTab,
-                        onRefreshAll = ::refreshAllTabs,
-                        onOpenUpcoming = onOpenUpcoming,
-                        onOpenPacingSettings = {
-                            navigator.push(LibraryUpdatePacingScreen)
-                        },
-                    )
-                },
-            )
-        } else {
-            TabbedScreen(
-                titleRes = MR.strings.label_recent_updates,
-                tabs = listOfNotNull(
-                    animeUpdatesTab(context, fromMore).takeIf { showAnimeSection },
-                    mangaUpdatesTab(context, fromMore).takeIf { showMangaSection },
-                    novelUpdatesTab(context, fromMore).takeIf { showNovelSection },
-                ).toPersistentList(),
-            )
         }
+
+        LaunchedEffect(mangaScreenModel) {
+            mangaScreenModel.events.collect { event ->
+                when (event) {
+                    MangaUpdatesScreenModel.Event.InternalError -> {
+                        Toast.makeText(context, internalErrorMessage, Toast.LENGTH_SHORT).show()
+                    }
+                    is MangaUpdatesScreenModel.Event.LibraryUpdateTriggered -> {
+                        showUpdateToast(
+                            started = event.started,
+                            startedMessage = updatingMangaMessage,
+                        )
+                    }
+                }
+            }
+        }
+
+        TabbedScreenAurora(
+            titleRes = null,
+            tabs = tabs,
+            state = state,
+            isMangaTab = { tabIds.getOrNull(it) == TAB_MANGA },
+            showTabs = false,
+            extraHeaderContent = {
+                val currentPage = state.currentPage.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
+                val currentTabId = tabIds.getOrElse(currentPage) { TAB_ANIME }
+                val isCurrentTabUpdating = when (currentTabId) {
+                    TAB_ANIME -> isAnimeUpdating
+                    TAB_MANGA -> isMangaUpdating
+                    TAB_NOVEL -> isNovelUpdating
+                    else -> false
+                }
+                val isAnyUpdating = isAnimeUpdating || isMangaUpdating || isNovelUpdating
+                val isSyncSpinning = isAnyUpdating && refreshingTabId != currentTabId
+                val isRefreshSpinning = isCurrentTabUpdating && refreshingTabId == currentTabId
+                // Upcoming calendar exists for anime, manga and novels.
+                val onOpenUpcoming: (() -> Unit)? = when (currentTabId) {
+                    TAB_ANIME -> {
+                        { navigator.push(UpcomingAnimeScreen()) }
+                    }
+                    TAB_MANGA -> {
+                        { navigator.push(UpcomingMangaScreen()) }
+                    }
+                    TAB_NOVEL -> {
+                        { navigator.push(UpcomingNovelScreen()) }
+                    }
+                    else -> null
+                }
+
+                AuroraUpdatesPinnedHeader(
+                    tabs = tabs,
+                    selectedIndex = currentPage,
+                    subtitle = if (shouldShowAuroraUpdatesSubtitle(currentTabId)) {
+                        stringResource(AYMR.strings.aurora_new_episodes_subtitle)
+                    } else {
+                        null
+                    },
+                    isRefreshSpinning = isRefreshSpinning,
+                    isSyncSpinning = isSyncSpinning,
+                    onTabSelected = { page ->
+                        if (page in tabs.indices && state.currentPage != page) {
+                            scope.launch {
+                                switchAuroraUpdatesPage(
+                                    state = state,
+                                    page = page,
+                                )
+                            }
+                        }
+                    },
+                    onRefreshCurrent = ::refreshCurrentTab,
+                    onRefreshAll = ::refreshAllTabs,
+                    onOpenUpcoming = onOpenUpcoming,
+                    onOpenPacingSettings = {
+                        navigator.push(LibraryUpdatePacingScreen)
+                    },
+                )
+            },
+        )
 
         LaunchedEffect(Unit) {
             (context as? MainActivity)?.ready = true

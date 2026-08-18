@@ -28,7 +28,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,16 +38,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.auroraMenuRimLightBrush
 import eu.kanade.presentation.components.resolveAuroraTabContainerColor
 import eu.kanade.presentation.theme.AuroraTheme
 import eu.kanade.tachiyomi.data.download.engine.DownloadEngineSnapshot
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.i18n.stringResource
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
-import tachiyomi.presentation.core.util.collectAsStateWithLifecycle as preferenceCollectAsState
 
 @Composable
 fun DownloadEngineCard(
@@ -59,36 +54,19 @@ fun DownloadEngineCard(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val uiPreferences = Injekt.get<UiPreferences>()
-    val theme = uiPreferences.appTheme().preferenceCollectAsState()
-    val isAurora = theme.value.isAuroraStyle
     val auroraColors = AuroraTheme.colors
 
     // Bento-inspired design constants
     val cardShape = RoundedCornerShape(20.dp)
-    val cardBorder = if (isAurora) {
-        BorderStroke(1.dp, auroraMenuRimLightBrush(auroraColors))
-    } else {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-    }
-    val cardContainerColor = if (isAurora) {
-        resolveAuroraTabContainerColor(auroraColors)
-    } else {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-    }
-    val textPrimary = if (isAurora) auroraColors.textPrimary else MaterialTheme.colorScheme.onSurface
-    val textSecondary = if (isAurora) auroraColors.textSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+    val cardBorder = BorderStroke(1.dp, auroraMenuRimLightBrush(auroraColors))
+    val cardContainerColor = resolveAuroraTabContainerColor(auroraColors)
+    val textPrimary = auroraColors.textPrimary
+    val textSecondary = auroraColors.textSecondary
     val engineState = snapshot.engineState()
 
     // Sleek Calibrated Palette (Theme primary accent, slate/zinc neutrals)
-    val accentColor = if (isAurora) auroraColors.textPrimary else MaterialTheme.colorScheme.primary
-    val textMuted = if (isAurora) {
-        auroraColors.textSecondary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant.copy(
-            alpha = 0.6f,
-        )
-    }
+    val accentColor = auroraColors.textPrimary
+    val textMuted = auroraColors.textSecondary
 
     // Distinct status colors to provide intuitive feedback (Emerald active, Amber waiting, Red stopped)
     val engineStateColor = when (engineState) {

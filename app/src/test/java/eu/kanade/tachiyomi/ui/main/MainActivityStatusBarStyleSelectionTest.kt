@@ -11,7 +11,6 @@ class MainActivityStatusBarStyleSelectionTest {
     fun `uses transparent light style on light background`() {
         resolveMainStatusBarStyleMode(
             isHomeScreen = true,
-            isAurora = true,
             isLightStatusBarBackground = true,
         ) shouldBe MainStatusBarStyleMode.TRANSPARENT_LIGHT
     }
@@ -20,7 +19,6 @@ class MainActivityStatusBarStyleSelectionTest {
     fun `uses dark style on dark background`() {
         resolveMainStatusBarStyleMode(
             isHomeScreen = true,
-            isAurora = true,
             isLightStatusBarBackground = false,
         ) shouldBe MainStatusBarStyleMode.DARK
     }

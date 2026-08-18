@@ -11,12 +11,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.category.components.CategoryFloatingActionButton
 import eu.kanade.presentation.category.components.CategoryListItem
 import eu.kanade.presentation.theme.aurora.adaptive.auroraCenteredMaxWidth
@@ -29,9 +27,6 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.screens.EmptyScreen
-import tachiyomi.presentation.core.util.collectAsState
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 @Composable
 fun MangaCategoryScreen(
@@ -43,12 +38,9 @@ fun MangaCategoryScreen(
     onClickDelete: (Category) -> Unit,
     onChangeOrder: (Category, Int) -> Unit,
 ) {
-    val uiPreferences = Injekt.get<UiPreferences>()
-    val theme by uiPreferences.appTheme().collectAsState()
-    val isAurora = theme.isAuroraStyle
     val lazyListState = rememberLazyListState()
     Scaffold(
-        containerColor = if (isAurora) Color.Transparent else MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
         floatingActionButton = {
             CategoryFloatingActionButton(
                 lazyListState = lazyListState,
@@ -73,7 +65,6 @@ fun MangaCategoryScreen(
             onClickToggleHomeHub = onClickToggleHomeHub,
             onClickDelete = onClickDelete,
             onChangeOrder = onChangeOrder,
-            isAurora = isAurora,
         )
     }
 }
@@ -88,7 +79,6 @@ private fun CategoryContent(
     onClickToggleHomeHub: (Category) -> Unit,
     onClickDelete: (Category) -> Unit,
     onChangeOrder: (Category, Int) -> Unit,
-    isAurora: Boolean,
 ) {
     val auroraAdaptiveSpec = rememberAuroraAdaptiveSpec()
     val categoriesState = remember { categories.toMutableStateList() }
@@ -112,13 +102,11 @@ private fun CategoryContent(
         state = lazyListState,
         contentPadding = PaddingValues(
             start = MaterialTheme.padding.medium,
-            top = if (isAurora) MaterialTheme.padding.large else MaterialTheme.padding.medium,
+            top = MaterialTheme.padding.large,
             end = MaterialTheme.padding.medium,
             bottom = MaterialTheme.padding.medium + paddingValues.calculateBottomPadding(),
         ),
-        verticalArrangement = Arrangement.spacedBy(
-            if (isAurora) MaterialTheme.padding.medium else MaterialTheme.padding.small,
-        ),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.medium),
     ) {
         items(
             items = categoriesState,

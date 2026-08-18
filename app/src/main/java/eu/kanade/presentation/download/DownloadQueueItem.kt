@@ -55,7 +55,6 @@ import androidx.compose.ui.unit.sp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.AuroraCoverPlaceholderVariant
 import eu.kanade.presentation.components.auroraMenuRimLightBrush
 import eu.kanade.presentation.components.buildAuroraCoverImageRequest
@@ -66,9 +65,6 @@ import eu.kanade.tachiyomi.ui.download.DownloadQueueUiItem
 import eu.kanade.tachiyomi.ui.download.DownloadQueueUiModel
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.i18n.stringResource
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
-import tachiyomi.presentation.core.util.collectAsStateWithLifecycle as preferenceCollectAsState
 
 /**
  * Feature flag for the themed Naruto runner used in queue progress bars.
@@ -86,27 +82,15 @@ fun DownloadQueueItem(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val sectionColor = Color(android.graphics.Color.parseColor(item.section.accentHex))
-    val uiPreferences = Injekt.get<UiPreferences>()
-    val theme = uiPreferences.appTheme().preferenceCollectAsState()
-    val isAurora = theme.value.isAuroraStyle
     val auroraColors = AuroraTheme.colors
     val cardShape = RoundedCornerShape(22.dp)
-    val cardContainerColor = if (isAurora) {
-        resolveAuroraTabContainerColor(auroraColors)
-    } else {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-    }
-    val cardBorder = if (isAurora) {
-        BorderStroke(0.75.dp, auroraMenuRimLightBrush(auroraColors))
-    } else {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-    }
+    val cardContainerColor = resolveAuroraTabContainerColor(auroraColors)
+    val cardBorder = BorderStroke(0.75.dp, auroraMenuRimLightBrush(auroraColors))
     val coverRequest = remember(item.coverData) {
         buildAuroraCoverImageRequest(context, item.coverData)
     }
     val coverPlaceholder = rememberAuroraCoverPlaceholderPainter(AuroraCoverPlaceholderVariant.Portrait)
-    val actionColor = if (isAurora) auroraColors.accent else sectionColor
+    val actionColor = auroraColors.accent
     val statusColor = when (item.status) {
         DownloadQueueUiModel.QueueStatus.QUEUED -> actionColor
         DownloadQueueUiModel.QueueStatus.DOWNLOADING -> actionColor
@@ -191,7 +175,7 @@ fun DownloadQueueItem(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.02).sp,
                     ),
-                    color = if (isAurora) auroraColors.textPrimary else MaterialTheme.colorScheme.onSurface,
+                    color = auroraColors.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -200,13 +184,7 @@ fun DownloadQueueItem(
                     Text(
                         text = item.subtitle,
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-                        color = (
-                            if (isAurora) {
-                                auroraColors.textSecondary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                            ).copy(alpha = 0.7f),
+                        color = auroraColors.textSecondary.copy(alpha = 0.7f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 1.dp),
@@ -235,13 +213,7 @@ fun DownloadQueueItem(
                             fontFamily = FontFamily.Monospace,
                             lineHeight = 14.sp,
                         ),
-                        color = (
-                            if (isAurora) {
-                                auroraColors.textSecondary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                            ).copy(alpha = 0.82f),
+                        color = auroraColors.textSecondary.copy(alpha = 0.82f),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 3.dp),

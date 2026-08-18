@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -14,7 +13,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.download.DownloadQueueItem
 import eu.kanade.presentation.download.DownloadQueueSectionHeader
 import eu.kanade.tachiyomi.ui.download.DownloadQueueUiMapper
@@ -22,9 +20,6 @@ import kotlinx.coroutines.CoroutineScope
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.screens.EmptyScreen
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
-import tachiyomi.presentation.core.util.collectAsStateWithLifecycle as preferenceCollectAsState
 
 @Composable
 fun AnimeDownloadQueueScreen(
@@ -34,12 +29,8 @@ fun AnimeDownloadQueueScreen(
     downloadList: List<AnimeDownloadHeaderItem>,
     nestedScrollConnection: NestedScrollConnection,
 ) {
-    val uiPreferences = Injekt.get<UiPreferences>()
-    val theme = uiPreferences.appTheme().preferenceCollectAsState()
-    val isAurora = theme.value.isAuroraStyle
-
     Scaffold(
-        containerColor = if (isAurora) Color.Transparent else MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
     ) {
         if (downloadList.isEmpty()) {
             EmptyScreen(

@@ -18,9 +18,7 @@ import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import dev.h80r.mugen.R
 import eu.kanade.domain.base.BasePreferences
-import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.achievement.screen.AchievementScreenVoyager
-import eu.kanade.presentation.more.MoreScreen
 import eu.kanade.presentation.more.MoreScreenAurora
 import eu.kanade.presentation.more.settings.screen.HelpScreen
 import eu.kanade.presentation.more.settings.screen.SettingsNovelReaderScreen
@@ -38,7 +36,6 @@ import eu.kanade.tachiyomi.ui.more.DebugUpdatedChangelogPreviewScreen
 import eu.kanade.tachiyomi.ui.setting.PlayerSettingsScreen
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.stats.StatsTab
-import eu.kanade.tachiyomi.ui.storage.StorageTab
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -51,7 +48,6 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import tachiyomi.presentation.core.util.collectAsStateWithLifecycle as preferenceCollectAsState
 
 data object MoreTab : Tab {
 
@@ -78,8 +74,6 @@ data object MoreTab : Tab {
         val screenModel = rememberScreenModel { MoreScreenModel() }
         val downloadQueueState by screenModel.downloadQueueState.collectAsStateWithLifecycle(DownloadQueueState.Stopped)
 
-        val uiPreferences = Injekt.get<UiPreferences>()
-        val theme by uiPreferences.appTheme().preferenceCollectAsState()
         val navStyle = currentNavigationStyle()
 
         // Manual entry point for the Frame resonance Grid (read on every recomposition so
@@ -92,121 +86,64 @@ data object MoreTab : Tab {
         // from the Achievements screen instead.
         val latticeGridAvailable = latticeManager.shouldShowMoreEntry()
 
-        if (theme.isAuroraStyle) {
-            val downloadedOnly by screenModel.downloadedOnlyFlow.collectAsStateWithLifecycle()
-            val incognitoMode by screenModel.incognitoModeFlow.collectAsStateWithLifecycle()
+        val downloadedOnly by screenModel.downloadedOnlyFlow.collectAsStateWithLifecycle()
+        val incognitoMode by screenModel.incognitoModeFlow.collectAsStateWithLifecycle()
 
-            MoreScreenAurora(
-                navStyle = navStyle,
-                onClickAlt = { navigator.push(navStyle.moreTab) },
-                downloadQueueStateProvider = { downloadQueueState },
-                downloadedOnly = downloadedOnly,
-                onDownloadedOnlyChange = { screenModel.toggleDownloadedOnly() },
-                incognitoMode = incognitoMode,
-                onIncognitoModeChange = { screenModel.toggleIncognitoMode() },
-                onDownloadClick = { navigator.push(DownloadsTab) },
-                onCategoriesClick = { navigator.push(CategoriesTab) },
-                onDataStorageClick = { navigator.push(SettingsScreen(SettingsScreen.Destination.DataAndStorage)) },
-                onPlayerSettingsClick = { navigator.push(PlayerSettingsScreen(mainSettings = false)) },
-                onMangaReaderSettingsClick = { navigator.push(SettingsReaderScreen) },
-                onNovelReaderSettingsClick = { navigator.push(SettingsNovelReaderScreen) },
-                onSettingsClick = { navigator.push(SettingsScreen()) },
-                onAboutClick = { navigator.push(AboutScreen) },
-                onHelpClick = { navigator.push(HelpScreen) },
-                onDebugAppUpdatePreviewClick = { navigator.push(DebugAppUpdatePreviewScreen()) },
-                onDebugUpdatedChangelogPreviewClick = { navigator.push(DebugUpdatedChangelogPreviewScreen()) },
-                onDebugResetAuroraHeartClick = {
-                    screenModel.screenModelScope.launchIO {
-                        val manager = Injekt.get<eu.kanade.domain.easteregg.aurora.AuroraHeartManager>()
-                        manager.debugReset()
+        MoreScreenAurora(
+            navStyle = navStyle,
+            onClickAlt = { navigator.push(navStyle.moreTab) },
+            downloadQueueStateProvider = { downloadQueueState },
+            downloadedOnly = downloadedOnly,
+            onDownloadedOnlyChange = { screenModel.toggleDownloadedOnly() },
+            incognitoMode = incognitoMode,
+            onIncognitoModeChange = { screenModel.toggleIncognitoMode() },
+            onDownloadClick = { navigator.push(DownloadsTab) },
+            onCategoriesClick = { navigator.push(CategoriesTab) },
+            onDataStorageClick = { navigator.push(SettingsScreen(SettingsScreen.Destination.DataAndStorage)) },
+            onPlayerSettingsClick = { navigator.push(PlayerSettingsScreen(mainSettings = false)) },
+            onMangaReaderSettingsClick = { navigator.push(SettingsReaderScreen) },
+            onNovelReaderSettingsClick = { navigator.push(SettingsNovelReaderScreen) },
+            onSettingsClick = { navigator.push(SettingsScreen()) },
+            onAboutClick = { navigator.push(AboutScreen) },
+            onHelpClick = { navigator.push(HelpScreen) },
+            onDebugAppUpdatePreviewClick = { navigator.push(DebugAppUpdatePreviewScreen()) },
+            onDebugUpdatedChangelogPreviewClick = { navigator.push(DebugUpdatedChangelogPreviewScreen()) },
+            onDebugResetAuroraHeartClick = {
+                screenModel.screenModelScope.launchIO {
+                    val manager = Injekt.get<eu.kanade.domain.easteregg.aurora.AuroraHeartManager>()
+                    manager.debugReset()
 
-                        runCatching {
-                            val repo = Injekt.get<tachiyomi.domain.achievement.repository.AchievementRepository>()
-                            repo.deleteAchievement("aurora_heart")
-                        }
+                    runCatching {
+                        val repo = Injekt.get<tachiyomi.domain.achievement.repository.AchievementRepository>()
+                        repo.deleteAchievement("aurora_heart")
                     }
-                },
-                onDebugResetLatticeResonanceClick = {
-                    screenModel.screenModelScope.launchIO {
-                        val app = Injekt.get<android.app.Application>()
-                        eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app).debugReset()
-                        runCatching {
-                            val repo = Injekt.get<tachiyomi.domain.achievement.repository.AchievementRepository>()
-                            repo.deleteAchievement("lattice_resonance")
-                        }
+                }
+            },
+            onDebugResetLatticeResonanceClick = {
+                screenModel.screenModelScope.launchIO {
+                    val app = Injekt.get<android.app.Application>()
+                    eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app).debugReset()
+                    runCatching {
+                        val repo = Injekt.get<tachiyomi.domain.achievement.repository.AchievementRepository>()
+                        repo.deleteAchievement("lattice_resonance")
                     }
-                },
-                onDebugForceLatticeBreachClick = {
-                    screenModel.screenModelScope.launchIO {
-                        val app = Injekt.get<android.app.Application>()
-                        eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app).debugForceBreach()
-                    }
-                },
-                onStatsClick = { navigator.push(StatsTab) },
-                onLibraryUpdateErrorsClick = { navigator.push(LibraryUpdateErrorScreen()) },
-                onAchievementsClick = { navigator.push(AchievementScreenVoyager) },
-                onTreasuryClick = { navigator.push(SettingsTreasuryScreen) },
-                latticeGridAvailable = latticeGridAvailable,
-                onOpenLatticeGridClick = {
-                    screenModel.screenModelScope.launchIO { latticeManager.requestBreach() }
-                },
-            )
-        } else {
-            MoreScreen(
-                downloadQueueStateProvider = { downloadQueueState },
-                downloadedOnly = screenModel.getDownloadedOnly(),
-                onDownloadedOnlyChange = { screenModel.toggleDownloadedOnly() },
-                incognitoMode = screenModel.getIncognitoMode(),
-                onIncognitoModeChange = { screenModel.toggleIncognitoMode() },
-                navStyle = navStyle,
-                onClickAlt = { navigator.push(navStyle.moreTab) },
-                onClickDownloadQueue = { navigator.push(DownloadsTab) },
-                onClickCategories = { navigator.push(CategoriesTab) },
-                onClickStats = { navigator.push(StatsTab) },
-                onClickLibraryUpdateErrors = { navigator.push(LibraryUpdateErrorScreen()) },
-                onClickStorage = { navigator.push(StorageTab) },
-                onClickDataAndStorage = { navigator.push(SettingsScreen(SettingsScreen.Destination.DataAndStorage)) },
-                onClickPlayerSettings = { navigator.push(PlayerSettingsScreen(mainSettings = false)) },
-                onClickMangaReaderSettings = { navigator.push(SettingsReaderScreen) },
-                onClickNovelReaderSettings = { navigator.push(SettingsNovelReaderScreen) },
-                onClickSettings = { navigator.push(SettingsScreen()) },
-                onClickAbout = { navigator.push(AboutScreen) },
-                onClickHelp = { navigator.push(HelpScreen) },
-                onClickDebugAppUpdatePreview = { navigator.push(DebugAppUpdatePreviewScreen()) },
-                onClickDebugUpdatedChangelogPreview = { navigator.push(DebugUpdatedChangelogPreviewScreen()) },
-                onClickDebugResetAuroraHeart = {
-                    screenModel.screenModelScope.launchIO {
-                        val manager = Injekt.get<eu.kanade.domain.easteregg.aurora.AuroraHeartManager>()
-                        manager.debugReset()
-
-                        runCatching {
-                            val repo = Injekt.get<tachiyomi.domain.achievement.repository.AchievementRepository>()
-                            repo.deleteAchievement("aurora_heart")
-                        }
-                    }
-                },
-                onClickDebugResetLatticeResonance = {
-                    screenModel.screenModelScope.launchIO {
-                        val app = Injekt.get<android.app.Application>()
-                        eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app).debugReset()
-                        runCatching {
-                            val repo = Injekt.get<tachiyomi.domain.achievement.repository.AchievementRepository>()
-                            repo.deleteAchievement("lattice_resonance")
-                        }
-                    }
-                },
-                onClickDebugForceLatticeBreach = {
-                    screenModel.screenModelScope.launchIO {
-                        val app = Injekt.get<android.app.Application>()
-                        eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app).debugForceBreach()
-                    }
-                },
-                latticeGridAvailable = latticeGridAvailable,
-                onClickOpenLatticeGrid = {
-                    screenModel.screenModelScope.launchIO { latticeManager.requestBreach() }
-                },
-            )
-        }
+                }
+            },
+            onDebugForceLatticeBreachClick = {
+                screenModel.screenModelScope.launchIO {
+                    val app = Injekt.get<android.app.Application>()
+                    eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app).debugForceBreach()
+                }
+            },
+            onStatsClick = { navigator.push(StatsTab) },
+            onLibraryUpdateErrorsClick = { navigator.push(LibraryUpdateErrorScreen()) },
+            onAchievementsClick = { navigator.push(AchievementScreenVoyager) },
+            onTreasuryClick = { navigator.push(SettingsTreasuryScreen) },
+            latticeGridAvailable = latticeGridAvailable,
+            onOpenLatticeGridClick = {
+                screenModel.screenModelScope.launchIO { latticeManager.requestBreach() }
+            },
+        )
     }
 }
 

@@ -242,11 +242,6 @@ class MainActivity : BaseActivity() {
                 hapticFeedbackMode = hapticFeedbackMode,
                 isEInkMode = eInkProfile.isEnabled,
             ) {
-                // PERF: move theme collect inside to lighten root composition on launch
-                val uiPreferences = remember { Injekt.get<UiPreferences>() }
-                val theme by uiPreferences.appTheme().collectAsStateWithLifecycle()
-                val isAurora = theme.isAuroraStyle
-
                 Navigator(
                     screen = HomeScreen,
                     disposeBehavior = NavigatorDisposeBehavior(
@@ -290,7 +285,7 @@ class MainActivity : BaseActivity() {
                         effectiveIncognito -> IncognitoModeBannerBackgroundColor
                         else -> MaterialTheme.colorScheme.surface
                     }
-                    LaunchedEffect(isSystemInDarkTheme, statusBarBackgroundColor, navigator.lastItem, isAurora) {
+                    LaunchedEffect(isSystemInDarkTheme, statusBarBackgroundColor, navigator.lastItem) {
                         if (!shouldMainActivityApplyEdgeToEdge(navigator.lastItem)) return@LaunchedEffect
                         // Draw edge-to-edge and set system bars color to transparent
                         val lightStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.BLACK)
@@ -300,7 +295,6 @@ class MainActivity : BaseActivity() {
                         val isLightStatusBar = statusBarBackgroundColor.luminance() > 0.5
                         val statusBarStyleMode = resolveMainStatusBarStyleMode(
                             isHomeScreen = isHomeScreen,
-                            isAurora = isAurora,
                             isLightStatusBarBackground = isLightStatusBar,
                         )
                         enableEdgeToEdge(
@@ -1044,7 +1038,6 @@ internal enum class MainStatusBarStyleMode {
 
 internal fun resolveMainStatusBarStyleMode(
     isHomeScreen: Boolean,
-    isAurora: Boolean,
     isLightStatusBarBackground: Boolean,
 ): MainStatusBarStyleMode {
     return if (isLightStatusBarBackground) {

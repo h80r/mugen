@@ -27,10 +27,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
@@ -58,9 +56,6 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import dev.h80r.mugen.R
-import eu.kanade.domain.ui.UiPreferences
-import eu.kanade.presentation.components.AppBar
-import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.components.AuroraBackground
 import eu.kanade.presentation.components.AuroraTabRow
 import eu.kanade.presentation.components.DropdownMenu
@@ -96,12 +91,10 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.components.Pill
 import tachiyomi.presentation.core.components.material.Scaffold
-import tachiyomi.presentation.core.components.material.TabText
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import tachiyomi.core.common.i18n.stringResource as stringResourceCtx
-import tachiyomi.presentation.core.util.collectAsStateWithLifecycle as preferenceCollectAsState
 
 private fun openDownloadFolder(context: android.content.Context, subdirectory: String? = null) {
     val storageManager: StorageManager = Injekt.get()
@@ -173,9 +166,6 @@ data object DownloadsTab : Tab {
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
-        val uiPreferences = Injekt.get<UiPreferences>()
-        val theme by uiPreferences.appTheme().preferenceCollectAsState()
-        val isAurora = theme.isAuroraStyle
         val auroraColors = AuroraTheme.colors
         val animeScreenModel = rememberScreenModel { AnimeDownloadQueueScreenModel() }
         val mangaScreenModel = rememberScreenModel { MangaDownloadQueueScreenModel() }
@@ -241,99 +231,52 @@ data object DownloadsTab : Tab {
 
         val screenContent: @Composable () -> Unit = {
             Scaffold(
-                containerColor = if (isAurora) Color.Transparent else MaterialTheme.colorScheme.background,
+                containerColor = Color.Transparent,
                 snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
                 topBar = {
-                    if (isAurora) {
-                        AuroraTopBarLayout(
-                            title = stringResource(MR.strings.label_download_queue),
-                            titleContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = stringResource(MR.strings.label_download_queue),
-                                        style = MaterialTheme.typography.titleLarge.copy(
-                                            fontSize = 18.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                        ),
-                                        color = auroraColors.textPrimary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, false),
-                                    )
-                                    if (currentDownloadCount > 0) {
-                                        Pill(
-                                            text = "$currentDownloadCount",
-                                            modifier = Modifier.padding(start = 4.dp),
-                                            fontSize = 14.sp,
-                                        )
-                                    }
-                                }
-                            },
-                            onNavigateUp = navigator::pop,
-                            actions = {
-                                when (queueTabs[state.currentPage]) {
-                                    DownloadQueueTab.ANIME -> AnimeActions(
-                                        animeScreenModel = animeScreenModel,
-                                        animeDownloadList = animeDownloadList,
-                                        isAurora = true,
-                                        onOpenFolder = { openDownloadFolder(context) },
-                                    )
-                                    DownloadQueueTab.MANGA -> MangaActions(
-                                        mangaScreenModel = mangaScreenModel,
-                                        mangaDownloadList = mangaDownloadList,
-                                        isAurora = true,
-                                        onOpenFolder = { openDownloadFolder(context) },
-                                    )
-                                    DownloadQueueTab.NOVEL -> NovelActions(
-                                        isAurora = true,
-                                        onOpenFolder = { openDownloadFolder(context, "novels") },
+                    AuroraTopBarLayout(
+                        title = stringResource(MR.strings.label_download_queue),
+                        titleContent = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = stringResource(MR.strings.label_download_queue),
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    ),
+                                    color = auroraColors.textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, false),
+                                )
+                                if (currentDownloadCount > 0) {
+                                    Pill(
+                                        text = "$currentDownloadCount",
+                                        modifier = Modifier.padding(start = 4.dp),
+                                        fontSize = 14.sp,
                                     )
                                 }
-                            },
-                        )
-                    } else {
-                        AppBar(
-                            titleContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = stringResource(MR.strings.label_download_queue),
-                                        maxLines = 1,
-                                        modifier = Modifier.weight(1f, false),
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    if (currentDownloadCount > 0) {
-                                        Pill(
-                                            text = "$currentDownloadCount",
-                                            modifier = Modifier.padding(start = 4.dp),
-                                            fontSize = 14.sp,
-                                        )
-                                    }
-                                }
-                            },
-                            navigateUp = navigator::pop,
-                            actions = {
-                                when (queueTabs[state.currentPage]) {
-                                    DownloadQueueTab.ANIME -> AnimeActions(
-                                        animeScreenModel = animeScreenModel,
-                                        animeDownloadList = animeDownloadList,
-                                        isAurora = false,
-                                        onOpenFolder = { openDownloadFolder(context) },
-                                    )
-                                    DownloadQueueTab.MANGA -> MangaActions(
-                                        mangaScreenModel = mangaScreenModel,
-                                        mangaDownloadList = mangaDownloadList,
-                                        isAurora = false,
-                                        onOpenFolder = { openDownloadFolder(context) },
-                                    )
-                                    DownloadQueueTab.NOVEL -> NovelActions(
-                                        isAurora = false,
-                                        onOpenFolder = { openDownloadFolder(context, "novels") },
-                                    )
-                                }
-                            },
-                            scrollBehavior = scrollBehavior,
-                        )
-                    }
+                            }
+                        },
+                        onNavigateUp = navigator::pop,
+                        actions = {
+                            when (queueTabs[state.currentPage]) {
+                                DownloadQueueTab.ANIME -> AnimeActions(
+                                    animeScreenModel = animeScreenModel,
+                                    animeDownloadList = animeDownloadList,
+                                    onOpenFolder = { openDownloadFolder(context) },
+                                )
+                                DownloadQueueTab.MANGA -> MangaActions(
+                                    mangaScreenModel = mangaScreenModel,
+                                    mangaDownloadList = mangaDownloadList,
+                                    onOpenFolder = { openDownloadFolder(context) },
+                                )
+                                DownloadQueueTab.NOVEL -> NovelActions(
+                                    onOpenFolder = { openDownloadFolder(context, "novels") },
+                                )
+                            }
+                        },
+                    )
                 },
             ) { contentPadding ->
                 Column(
@@ -343,63 +286,37 @@ data object DownloadsTab : Tab {
                         end = contentPadding.calculateEndPadding(LocalLayoutDirection.current),
                     ),
                 ) {
-                    if (isAurora) {
-                        val auroraTabs = remember(animeDownloadCount, mangaDownloadCount, novelDownloadCount) {
-                            persistentListOf(
-                                TabContent(
-                                    titleRes = AYMR.strings.label_anime,
-                                    badgeNumber = animeDownloadCount,
-                                    content = { _, _ -> },
-                                ),
-                                TabContent(
-                                    titleRes = AYMR.strings.label_manga,
-                                    badgeNumber = mangaDownloadCount,
-                                    content = { _, _ -> },
-                                ),
-                                TabContent(
-                                    titleRes = AYMR.strings.label_novel,
-                                    badgeNumber = novelDownloadCount,
-                                    content = { _, _ -> },
-                                ),
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .zIndex(1f),
-                        ) {
-                            AuroraTabRow(
-                                tabs = auroraTabs,
-                                selectedIndex = state.currentPage,
-                                onTabSelected = { index ->
-                                    scope.launch { state.animateScrollToPage(index) }
-                                },
-                                scrollable = false,
-                            )
-                        }
-                    } else {
-                        PrimaryTabRow(
-                            selectedTabIndex = state.currentPage,
-                            modifier = Modifier.zIndex(1f),
-                        ) {
-                            queueTabs.forEachIndexed { index, tab ->
-                                val (label, badgeCount) = when (tab) {
-                                    DownloadQueueTab.ANIME -> AYMR.strings.label_anime to animeDownloadCount
-                                    DownloadQueueTab.MANGA -> AYMR.strings.label_manga to mangaDownloadCount
-                                    DownloadQueueTab.NOVEL -> AYMR.strings.label_novel to novelDownloadCount
-                                }
-                                Tab(
-                                    selected = state.currentPage == index,
-                                    onClick = { scope.launch { state.animateScrollToPage(index) } },
-                                    text = {
-                                        TabText(
-                                            text = stringResource(label),
-                                            badgeCount = badgeCount,
-                                        )
-                                    },
-                                    unselectedContentColor = MaterialTheme.colorScheme.onSurface,
-                                )
-                            }
-                        }
+                    val auroraTabs = remember(animeDownloadCount, mangaDownloadCount, novelDownloadCount) {
+                        persistentListOf(
+                            TabContent(
+                                titleRes = AYMR.strings.label_anime,
+                                badgeNumber = animeDownloadCount,
+                                content = { _, _ -> },
+                            ),
+                            TabContent(
+                                titleRes = AYMR.strings.label_manga,
+                                badgeNumber = mangaDownloadCount,
+                                content = { _, _ -> },
+                            ),
+                            TabContent(
+                                titleRes = AYMR.strings.label_novel,
+                                badgeNumber = novelDownloadCount,
+                                content = { _, _ -> },
+                            ),
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .zIndex(1f),
+                    ) {
+                        AuroraTabRow(
+                            tabs = auroraTabs,
+                            selectedIndex = state.currentPage,
+                            onTabSelected = { index ->
+                                scope.launch { state.animateScrollToPage(index) }
+                            },
+                            scrollable = false,
+                        )
                     }
 
                     // Shared download engine card
@@ -464,16 +381,8 @@ data object DownloadsTab : Tab {
             }
         }
 
-        if (isAurora) {
-            AuroraBackground {
-                screenContent()
-            }
-        } else {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                screenContent()
-            }
+        AuroraBackground {
+            screenContent()
         }
     }
 
@@ -481,7 +390,6 @@ data object DownloadsTab : Tab {
     private fun AnimeActions(
         animeScreenModel: AnimeDownloadQueueScreenModel,
         animeDownloadList: List<AnimeDownloadHeaderItem>,
-        isAurora: Boolean,
         onOpenFolder: () -> Unit,
     ) {
         if (animeDownloadList.isNotEmpty()) {
@@ -549,60 +457,40 @@ data object DownloadsTab : Tab {
                 )
             }
 
-            if (isAurora) {
-                Box {
-                    AuroraTopBarIconButton(
-                        onClick = { sortExpanded = true },
-                        icon = Icons.AutoMirrored.Outlined.Sort,
-                        contentDescription = stringResource(MR.strings.action_sort),
-                    )
-                }
-                Spacer(modifier = Modifier.width(4.dp))
-                Box {
-                    AuroraTopBarIconButton(
-                        onClick = { overflowExpanded = true },
-                        icon = Icons.Filled.MoreVert,
-                        contentDescription = stringResource(MR.strings.action_menu_overflow_description),
-                    )
-                    DropdownMenu(
-                        expanded = overflowExpanded,
-                        onDismissRequest = { overflowExpanded = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(AYMR.strings.action_open_download_folder)) },
-                            leadingIcon = { Icon(Icons.Filled.FolderOpen, contentDescription = null) },
-                            onClick = {
-                                onOpenFolder()
-                                overflowExpanded = false
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(MR.strings.action_cancel_all)) },
-                            onClick = {
-                                animeScreenModel.clearQueue()
-                                overflowExpanded = false
-                            },
-                        )
-                    }
-                }
-            } else {
-                AppBarActions(
-                    persistentListOf(
-                        AppBar.Action(
-                            title = stringResource(MR.strings.action_sort),
-                            icon = Icons.AutoMirrored.Outlined.Sort,
-                            onClick = { sortExpanded = true },
-                        ),
-                        AppBar.OverflowAction(
-                            title = stringResource(AYMR.strings.action_open_download_folder),
-                            onClick = onOpenFolder,
-                        ),
-                        AppBar.OverflowAction(
-                            title = stringResource(MR.strings.action_cancel_all),
-                            onClick = { animeScreenModel.clearQueue() },
-                        ),
-                    ),
+            Box {
+                AuroraTopBarIconButton(
+                    onClick = { sortExpanded = true },
+                    icon = Icons.AutoMirrored.Outlined.Sort,
+                    contentDescription = stringResource(MR.strings.action_sort),
                 )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Box {
+                AuroraTopBarIconButton(
+                    onClick = { overflowExpanded = true },
+                    icon = Icons.Filled.MoreVert,
+                    contentDescription = stringResource(MR.strings.action_menu_overflow_description),
+                )
+                DropdownMenu(
+                    expanded = overflowExpanded,
+                    onDismissRequest = { overflowExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(AYMR.strings.action_open_download_folder)) },
+                        leadingIcon = { Icon(Icons.Filled.FolderOpen, contentDescription = null) },
+                        onClick = {
+                            onOpenFolder()
+                            overflowExpanded = false
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(MR.strings.action_cancel_all)) },
+                        onClick = {
+                            animeScreenModel.clearQueue()
+                            overflowExpanded = false
+                        },
+                    )
+                }
             }
         }
     }
@@ -611,7 +499,6 @@ data object DownloadsTab : Tab {
     private fun MangaActions(
         mangaScreenModel: MangaDownloadQueueScreenModel,
         mangaDownloadList: List<MangaDownloadHeaderItem>,
-        isAurora: Boolean,
         onOpenFolder: () -> Unit,
     ) {
         if (mangaDownloadList.isNotEmpty()) {
@@ -679,79 +566,14 @@ data object DownloadsTab : Tab {
                 )
             }
 
-            if (isAurora) {
-                Box {
-                    AuroraTopBarIconButton(
-                        onClick = { sortExpanded = true },
-                        icon = Icons.AutoMirrored.Outlined.Sort,
-                        contentDescription = stringResource(MR.strings.action_sort),
-                    )
-                }
-                Spacer(modifier = Modifier.width(4.dp))
-                Box {
-                    AuroraTopBarIconButton(
-                        onClick = { overflowExpanded = true },
-                        icon = Icons.Filled.MoreVert,
-                        contentDescription = stringResource(MR.strings.action_menu_overflow_description),
-                    )
-                    DropdownMenu(
-                        expanded = overflowExpanded,
-                        onDismissRequest = { overflowExpanded = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(AYMR.strings.action_open_download_folder)) },
-                            leadingIcon = { Icon(Icons.Filled.FolderOpen, contentDescription = null) },
-                            onClick = {
-                                onOpenFolder()
-                                overflowExpanded = false
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(MR.strings.action_cancel_all)) },
-                            onClick = {
-                                mangaScreenModel.clearQueue()
-                                overflowExpanded = false
-                            },
-                        )
-                    }
-                }
-            } else {
-                AppBarActions(
-                    persistentListOf(
-                        AppBar.Action(
-                            title = stringResource(MR.strings.action_sort),
-                            icon = Icons.AutoMirrored.Outlined.Sort,
-                            onClick = { sortExpanded = true },
-                        ),
-                        AppBar.OverflowAction(
-                            title = stringResource(AYMR.strings.action_open_download_folder),
-                            onClick = onOpenFolder,
-                        ),
-                        AppBar.OverflowAction(
-                            title = stringResource(MR.strings.action_cancel_all),
-                            onClick = { mangaScreenModel.clearQueue() },
-                        ),
-                    ),
+            Box {
+                AuroraTopBarIconButton(
+                    onClick = { sortExpanded = true },
+                    icon = Icons.AutoMirrored.Outlined.Sort,
+                    contentDescription = stringResource(MR.strings.action_sort),
                 )
             }
-        }
-    }
-
-    @Composable
-    private fun NovelActions(
-        isAurora: Boolean,
-        onOpenFolder: () -> Unit,
-    ) {
-        var overflowExpanded by remember { mutableStateOf(false) }
-        var showThrottleSettings by remember { mutableStateOf(false) }
-
-        if (showThrottleSettings) {
-            NovelDownloadThrottleSettingsDialog(
-                onDismissRequest = { showThrottleSettings = false },
-            )
-        }
-
-        if (isAurora) {
+            Spacer(modifier = Modifier.width(4.dp))
             Box {
                 AuroraTopBarIconButton(
                     onClick = { overflowExpanded = true },
@@ -771,28 +593,56 @@ data object DownloadsTab : Tab {
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text(stringResource(AYMR.strings.novel_download_throttle_menu)) },
+                        text = { Text(stringResource(MR.strings.action_cancel_all)) },
                         onClick = {
-                            showThrottleSettings = true
+                            mangaScreenModel.clearQueue()
                             overflowExpanded = false
                         },
                     )
                 }
             }
-        } else {
-            AppBarActions(
-                persistentListOf(
-                    AppBar.Action(
-                        title = stringResource(AYMR.strings.action_open_download_folder),
-                        icon = Icons.Filled.FolderOpen,
-                        onClick = onOpenFolder,
-                    ),
-                    AppBar.OverflowAction(
-                        title = stringResource(AYMR.strings.novel_download_throttle_menu),
-                        onClick = { showThrottleSettings = true },
-                    ),
-                ),
+        }
+    }
+
+    @Composable
+    private fun NovelActions(
+        onOpenFolder: () -> Unit,
+    ) {
+        var overflowExpanded by remember { mutableStateOf(false) }
+        var showThrottleSettings by remember { mutableStateOf(false) }
+
+        if (showThrottleSettings) {
+            NovelDownloadThrottleSettingsDialog(
+                onDismissRequest = { showThrottleSettings = false },
             )
+        }
+
+        Box {
+            AuroraTopBarIconButton(
+                onClick = { overflowExpanded = true },
+                icon = Icons.Filled.MoreVert,
+                contentDescription = stringResource(MR.strings.action_menu_overflow_description),
+            )
+            DropdownMenu(
+                expanded = overflowExpanded,
+                onDismissRequest = { overflowExpanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(AYMR.strings.action_open_download_folder)) },
+                    leadingIcon = { Icon(Icons.Filled.FolderOpen, contentDescription = null) },
+                    onClick = {
+                        onOpenFolder()
+                        overflowExpanded = false
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(AYMR.strings.novel_download_throttle_menu)) },
+                    onClick = {
+                        showThrottleSettings = true
+                        overflowExpanded = false
+                    },
+                )
+            }
         }
     }
 }

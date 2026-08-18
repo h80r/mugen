@@ -5,7 +5,6 @@ import android.content.Intent
 import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,7 +18,6 @@ import cafe.adriel.voyager.navigator.tab.TabOptions
 import dev.h80r.mugen.R
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.domain.ui.model.NavStyle
-import eu.kanade.presentation.components.TabbedScreen
 import eu.kanade.presentation.components.TabbedScreenAurora
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.ui.history.anime.AnimeHistoryScreenModel
@@ -73,7 +71,6 @@ data object HistoriesTab : Tab {
         val context = LocalContext.current
         val fromMore = currentNavigationStyle() == NavStyle.MOVE_HISTORY_TO_MORE
         val uiPreferences = Injekt.get<UiPreferences>()
-        val theme by uiPreferences.appTheme().collectAsStateWithLifecycle()
 
         val showAnimeSection by uiPreferences.showAnimeSection().collectAsStateWithLifecycle()
         val showMangaSection by uiPreferences.showMangaSection().collectAsStateWithLifecycle()
@@ -96,29 +93,16 @@ data object HistoriesTab : Tab {
             }
             .toPersistentList()
 
-        if (theme.isAuroraStyle) {
-            TabbedScreenAurora(
-                titleRes = MR.strings.label_recent_manga,
-                tabs = tabs,
-                mangaSearchQuery = mangaSearchQuery,
-                onChangeMangaSearchQuery = mangaHistoryScreenModel::search,
-                animeSearchQuery = animeSearchQuery,
-                onChangeAnimeSearchQuery = animeHistoryScreenModel::search,
-                highlightSearchAction = false,
-                extraSearchToActionsGap = 4.dp,
-            )
-        } else {
-            TabbedScreen(
-                titleRes = MR.strings.label_recent_manga,
-                tabs = tabs,
-                mangaSearchQuery = mangaSearchQuery,
-                onChangeMangaSearchQuery = mangaHistoryScreenModel::search,
-                animeSearchQuery = animeSearchQuery,
-                onChangeAnimeSearchQuery = animeHistoryScreenModel::search,
-                searchActionIconTint = MaterialTheme.colorScheme.onSurface,
-                extraSearchToActionsGap = 4.dp,
-            )
-        }
+        TabbedScreenAurora(
+            titleRes = MR.strings.label_recent_manga,
+            tabs = tabs,
+            mangaSearchQuery = mangaSearchQuery,
+            onChangeMangaSearchQuery = mangaHistoryScreenModel::search,
+            animeSearchQuery = animeSearchQuery,
+            onChangeAnimeSearchQuery = animeHistoryScreenModel::search,
+            highlightSearchAction = false,
+            extraSearchToActionsGap = 4.dp,
+        )
 
         LaunchedEffect(Unit) {
             (context as? MainActivity)?.ready = true

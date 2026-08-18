@@ -8,32 +8,32 @@ import org.junit.runner.RunWith
 class TtsNotificationLifecycleTest {
 
     @Test
-    fun `notification does not appear when opening chapters with TTS disabled`() {
+    fun notificationDoesNotAppearWhenOpeningChaptersWithTtsDisabled() {
         // TODO: Implement test
     }
 
     @Test
-    fun `notification does not appear when TTS is enabled but not actively playing`() {
+    fun notificationDoesNotAppearWhenTtsIsEnabledButNotActivelyPlaying() {
         // TODO: Implement test
     }
 
     @Test
-    fun `notification appears when TTS is enabled and playing`() {
+    fun notificationAppearsWhenTtsIsEnabledAndPlaying() {
         // TODO: Implement test
     }
 
     @Test
-    fun `notification remains when TTS is disabled while paused`() {
+    fun notificationRemainsWhenTtsIsDisabledWhilePaused() {
         // TODO: Implement test
     }
 
     @Test
-    fun `notification disappears when explicitly stopped while paused`() {
+    fun notificationDisappearsWhenExplicitlyStoppedWhilePaused() {
         // TODO: Implement test
     }
 
     @Test
-    fun `notification does not reappear when swiped away and TTS disabled`() {
+    fun notificationDoesNotReappearWhenSwipedAwayAndTtsDisabled() {
         // TODO: Implement test
     }
 }

@@ -189,8 +189,6 @@ object HomeScreen : Screen() {
         }
 
         val currentMoreTab = navStyle.moreTab
-        val theme by uiPreferences.appTheme().collectAsState()
-        val isAuroraTheme = theme.isAuroraStyle
         val useNavigationRail = isTabletUi()
         val useAuroraBottomNav = bottomNavAppearance == BottomNavAppearance.Aurora
 
@@ -252,7 +250,7 @@ object HomeScreen : Screen() {
                             startBar = {
                                 if (useNavigationRail) {
                                     val circuitRail = !isEInkMode && rememberLatticeCircuitNavbarUnlocked()
-                                    if (isAuroraTheme && useAuroraBottomNav && !isEInkMode) {
+                                    if (useAuroraBottomNav && !isEInkMode) {
                                         AuroraNavigationRail(
                                             tabs = navStyle.tabs,
                                             hazeState = hazeState,
@@ -594,7 +592,7 @@ object HomeScreen : Screen() {
                         openTabEvent.receiveAsFlow().collectLatest {
                             tabNavigator.current = when (it) {
                                 is Tab.AnimeLib -> AnimeLibraryTab
-                                is Tab.Library -> resolveLibraryTabForOpenTab(isAuroraTheme)
+                                is Tab.Library -> resolveLibraryTabForOpenTab()
                                 is Tab.NovelLib -> AnimeLibraryTab
                                 is Tab.Updates -> UpdatesTab
                                 is Tab.History -> HistoriesTab
@@ -614,7 +612,7 @@ object HomeScreen : Screen() {
                             if (it is Tab.NovelLib) {
                                 AnimeLibraryTab.showNovelSection()
                             }
-                            if (it is Tab.Library && isAuroraTheme) {
+                            if (it is Tab.Library) {
                                 AnimeLibraryTab.showMangaSection()
                             }
 
@@ -1019,10 +1017,8 @@ object HomeScreen : Screen() {
         val scope = rememberCoroutineScope()
         val selected = tabNavigator.current::class == tab::class
         val appHaptics = LocalAppHaptics.current
-        val theme by uiPreferences.appTheme().collectAsState()
-        val isAurora = theme.isAuroraStyle
 
-        val colors = if (isAurora) {
+        val colors = run {
             val auroraColors = AuroraTheme.colors
             androidx.compose.material3.NavigationRailItemDefaults.colors(
                 selectedIconColor = auroraColors.accent,
@@ -1031,8 +1027,6 @@ object HomeScreen : Screen() {
                 unselectedIconColor = auroraColors.textSecondary,
                 unselectedTextColor = auroraColors.textSecondary,
             )
-        } else {
-            androidx.compose.material3.NavigationRailItemDefaults.colors()
         }
 
         NavigationRailItem(
@@ -1183,8 +1177,8 @@ internal fun resolveHomeStartTab(
     return if (defaultTab != currentMoreTab) defaultTab else AnimeLibraryTab
 }
 
-internal fun resolveLibraryTabForOpenTab(isAuroraTheme: Boolean): eu.kanade.presentation.util.Tab {
-    return if (isAuroraTheme) AnimeLibraryTab else MangaLibraryTab
+internal fun resolveLibraryTabForOpenTab(): eu.kanade.presentation.util.Tab {
+    return AnimeLibraryTab
 }
 
 internal fun shouldHandleBackInHome(

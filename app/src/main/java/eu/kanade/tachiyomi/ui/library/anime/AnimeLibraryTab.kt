@@ -127,9 +127,7 @@ import eu.kanade.presentation.entries.components.AuroraEntryDropdownMenuItem
 import eu.kanade.presentation.entries.components.LibraryBottomActionMenu
 import eu.kanade.presentation.library.DeleteLibraryEntryDialog
 import eu.kanade.presentation.library.anime.AnimeLibraryAuroraContent
-import eu.kanade.presentation.library.anime.AnimeLibraryContent
 import eu.kanade.presentation.library.anime.AnimeLibrarySettingsDialog
-import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.library.manga.MangaLibraryAuroraContent
 import eu.kanade.presentation.library.manga.MangaLibrarySettingsDialog
 import eu.kanade.presentation.library.novel.NovelLibraryAuroraContent
@@ -259,7 +257,6 @@ data object AnimeLibraryTab : Tab {
         val isNovelTranslatorEnabled by novelReaderPreferences.geminiEnabled().collectAsStateWithLifecycle()
 
         val uiPreferences = remember { Injekt.get<UiPreferences>() }
-        val theme by uiPreferences.appTheme().collectAsStateWithLifecycle()
         val showAnimeSection by uiPreferences.showAnimeSection().collectAsStateWithLifecycle()
         val showMangaSection by uiPreferences.showMangaSection().collectAsStateWithLifecycle()
         val showNovelSection by uiPreferences.showNovelSection().collectAsStateWithLifecycle()
@@ -292,7 +289,6 @@ data object AnimeLibraryTab : Tab {
             .libraryPreferences
             .categoryGroupedNumberOfItems()
             .collectAsStateWithLifecycle()
-        val isAurora = theme.isAuroraStyle
         val configuration = LocalConfiguration.current
         val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val availableSections = listOfNotNull(
@@ -309,11 +305,7 @@ data object AnimeLibraryTab : Tab {
         val sectionAtPage: (Int) -> Section? = { index ->
             resolveAuroraLibrarySection(availableSections, index)
         }
-        val auroraCurrentSection = if (isAurora) {
-            sectionAtPage(auroraPagerState.currentPage.coerceAtMost(auroraPageCount - 1))
-        } else {
-            null
-        }
+        val auroraCurrentSection = sectionAtPage(auroraPagerState.currentPage.coerceAtMost(auroraPageCount - 1))
         val novelScreenModel = if (showNovelSection) {
             rememberScreenModel { NovelLibraryScreenModel(startActive = false) }
         } else {
@@ -322,13 +314,7 @@ data object AnimeLibraryTab : Tab {
         val novelState = novelScreenModel?.state?.collectAsStateWithLifecycle()?.value ?: NovelLibraryScreenModel.State(
             isLoading = false,
         )
-        LaunchedEffect(isAurora, auroraCurrentSection, showMangaSection, showNovelSection, novelScreenModel) {
-            if (!isAurora) {
-                mangaScreenModel.setLibraryPipelineActive(true)
-                novelScreenModel?.setLibraryPipelineActive(true)
-                return@LaunchedEffect
-            }
-
+        LaunchedEffect(auroraCurrentSection, showMangaSection, showNovelSection, novelScreenModel) {
             if (showMangaSection && auroraCurrentSection == Section.Manga) {
                 mangaScreenModel.setLibraryPipelineActive(true)
             }
@@ -438,15 +424,8 @@ data object AnimeLibraryTab : Tab {
         }
 
         fun showLibraryUpdateFeedback(started: Boolean, startedMessage: String) {
-            if (isAurora) {
-                val message = if (started) startedMessage else updateAlreadyRunningMessage
-                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                return
-            }
-            scope.launch {
-                val msgRes = if (started) MR.strings.updating_category else MR.strings.update_already_running
-                snackbarHostState.showSnackbar(context.stringResource(msgRes))
-            }
+            val message = if (started) startedMessage else updateAlreadyRunningMessage
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
 
         val onClickRefresh: (Category?) -> Boolean = { category ->
@@ -472,7 +451,6 @@ data object AnimeLibraryTab : Tab {
             MainActivity.startPlayerActivity(context, episode.animeId, episode.id, extPlayer)
         }
 
-        val defaultTitle = stringResource(AYMR.strings.label_anime_library)
         val animeCategoryIndex = coerceAuroraLibraryCategoryIndex(
             requestedIndex = screenModel.activeCategoryIndex,
             categoryCount = state.categories.size,
@@ -769,11 +747,9 @@ data object AnimeLibraryTab : Tab {
             }
         }
 
-        LaunchedEffect(auroraPagerState.currentPage, auroraPageCount, isAurora) {
-            if (isAurora) {
-                sectionAtPage(auroraPagerState.currentPage.coerceAtMost(auroraPageCount - 1))?.let {
-                    lastAuroraSection = it
-                }
+        LaunchedEffect(auroraPagerState.currentPage, auroraPageCount) {
+            sectionAtPage(auroraPagerState.currentPage.coerceAtMost(auroraPageCount - 1))?.let {
+                lastAuroraSection = it
             }
         }
 
@@ -798,11 +774,7 @@ data object AnimeLibraryTab : Tab {
                 Section.Novel -> isNovelLibraryEmpty
             }
         }
-        val isLibraryEmpty = if (isAurora) {
-            sectionTabs.all { (section, _) -> isSectionEmpty(section) }
-        } else {
-            isAnimeLibraryEmpty
-        }
+        val isLibraryEmpty = sectionTabs.all { (section, _) -> isSectionEmpty(section) }
         val isNovelLoading = novelState.isLoading
         val isSectionLoading: (Section) -> Boolean = { section ->
             when (section) {
@@ -811,12 +783,8 @@ data object AnimeLibraryTab : Tab {
                 Section.Novel -> isNovelLoading
             }
         }
-        val isLoading = if (isAurora) {
-            auroraCurrentSection?.let(isSectionLoading)
-                ?: sectionTabs.all { (section, _) -> isSectionLoading(section) }
-        } else {
-            state.isLoading
-        }
+        val isLoading = auroraCurrentSection?.let(isSectionLoading)
+            ?: sectionTabs.all { (section, _) -> isSectionLoading(section) }
         val auroraSearchQuery = when (auroraCurrentSection) {
             Section.Anime -> state.searchQuery
             Section.Manga -> mangaState.searchQuery
@@ -1003,53 +971,10 @@ data object AnimeLibraryTab : Tab {
         }
 
         Scaffold(
-            topBar = { scrollBehavior ->
-                if (isAurora) return@Scaffold
-
-                val title = state.getToolbarTitle(
-                    defaultTitle = defaultTitle,
-                    defaultCategoryTitle = stringResource(MR.strings.label_default),
-                    page = screenModel.activeCategoryIndex,
-                )
-                val tabVisible = state.showCategoryTabs && state.categories.size > 1
-                LibraryToolbar(
-                    hasActiveFilters = state.hasActiveFilters,
-                    selectedCount = state.selection.size,
-                    title = title,
-                    onClickUnselectAll = screenModel::clearSelection,
-                    onClickSelectAll = { screenModel.selectAll(screenModel.activeCategoryIndex) },
-                    onClickInvertSelection = {
-                        screenModel.invertSelection(
-                            screenModel.activeCategoryIndex,
-                        )
-                    },
-                    onClickFilter = screenModel::showSettingsDialog,
-                    onClickRefresh = {
-                        onClickRefresh(
-                            state.categories[screenModel.activeCategoryIndex],
-                        )
-                    },
-                    onClickGlobalUpdate = { onClickRefresh(null) },
-                    onClickOpenRandomEntry = {
-                        scope.launch {
-                            val randomItem = screenModel.getRandomAnimelibItemForCurrentCategory()
-                            if (randomItem != null) {
-                                navigator.push(AnimeScreen(randomItem.libraryAnime.anime.id))
-                            } else {
-                                snackbarHostState.showSnackbar(
-                                    context.stringResource(MR.strings.information_no_entries_found),
-                                )
-                            }
-                        }
-                    },
-                    searchQuery = state.searchQuery,
-                    onSearchQueryChange = screenModel::search,
-                    scrollBehavior = scrollBehavior.takeIf { !tabVisible }, // For scroll overlay when no tab
-                )
-            },
+            topBar = {},
             bottomBar = {
                 when {
-                    !isAurora || auroraCurrentSection == Section.Anime || auroraCurrentSection == null -> {
+                    auroraCurrentSection == Section.Anime || auroraCurrentSection == null -> {
                         LibraryBottomActionMenu(
                             visible = state.selectionMode,
                             onChangeCategoryClicked = screenModel::openChangeCategoryDialog,
@@ -1160,123 +1085,80 @@ data object AnimeLibraryTab : Tab {
                     )
                 }
                 else -> {
-                    if (isAurora) {
-                        TabbedScreenAurora(
-                            modifier = if (immersiveModeEnabled) {
-                                Modifier.nestedScroll(immersiveScrollConnection)
-                            } else {
-                                Modifier
-                            },
-                            titleRes = null,
-                            tabs = auroraTabs,
-                            state = auroraPagerState,
-                            isMangaTab = isMangaTab,
-                            showCompactHeader = true,
-                            showTabs = false,
-                            instantTabSwitching = false,
-                            extraHeaderContent = {
-                                AuroraLibraryPinnedHeader(
-                                    title = stringResource(AYMR.strings.label_titles),
-                                    tabs = auroraTabs,
-                                    selectedSectionIndex = auroraPagerState.currentPage.coerceIn(
-                                        0,
-                                        (auroraTabs.size - 1).coerceAtLeast(0),
-                                    ),
-                                    onSectionSelected = { index ->
-                                        if (index in auroraTabs.indices && auroraPagerState.currentPage != index) {
-                                            scope.launch { auroraPagerState.animateScrollToPage(index) }
-                                        }
-                                    },
-                                    searchQuery = auroraSearchQuery,
-                                    onSearchQueryChange = onAuroraSearchQueryChange,
-                                    onFilterClick = onAuroraFilterClick,
-                                    topChromeVisible = immersiveChromeState.isVisible,
-                                    onRefreshCurrent = onAuroraRefreshCurrent,
-                                    onRefreshGlobal = onAuroraRefreshGlobal,
-                                    onOpenRandomEntry = onAuroraOpenRandom,
-                                    onImportEpub = if (shouldShowLibraryBookImport(auroraCurrentSection)) {
-                                        {
-                                            epubImportLauncher.launch(
-                                                eu.kanade.domain.entries.novel.LocalNovelBookImport.PICKER_MIME_TYPES,
-                                            )
-                                        }
-                                    } else {
-                                        null
-                                    },
-                                    categories = auroraCategories,
-                                    selectedCategoryIndex = auroraCategoryIndex,
-                                    showCategories = showAuroraCategoryTabs,
-                                    onCategorySelected = onAuroraCategorySelected,
-                                    onCategoryLongSelected = onAuroraCategoryLongSelected,
-                                    getCountForCategory = { category ->
-                                        when (auroraCurrentSection) {
-                                            Section.Anime -> state.getAnimeCountForCategory(category)
-                                            Section.Manga -> mangaState.getMangaCountForCategory(category)
-                                            Section.Novel -> {
-                                                if (showCategoryNumberOfItems ||
-                                                    !novelState.searchQuery.isNullOrEmpty()
-                                                ) {
-                                                    novelState.library[category]?.size ?: 0
-                                                } else {
-                                                    null
-                                                }
-                                            }
-                                            null -> null
-                                        }
-                                    },
-                                    formatCountForCategory = { count ->
-                                        formatAuroraLibraryCategoryBadgeCount(
-                                            count = count,
-                                            showFullCount = showFullCategoryNumberOfItems,
-                                            groupDigits = groupCategoryNumberOfItems,
+                    TabbedScreenAurora(
+                        modifier = if (immersiveModeEnabled) {
+                            Modifier.nestedScroll(immersiveScrollConnection)
+                        } else {
+                            Modifier
+                        },
+                        titleRes = null,
+                        tabs = auroraTabs,
+                        state = auroraPagerState,
+                        isMangaTab = isMangaTab,
+                        showCompactHeader = true,
+                        showTabs = false,
+                        instantTabSwitching = false,
+                        extraHeaderContent = {
+                            AuroraLibraryPinnedHeader(
+                                title = stringResource(AYMR.strings.label_titles),
+                                tabs = auroraTabs,
+                                selectedSectionIndex = auroraPagerState.currentPage.coerceIn(
+                                    0,
+                                    (auroraTabs.size - 1).coerceAtLeast(0),
+                                ),
+                                onSectionSelected = { index ->
+                                    if (index in auroraTabs.indices && auroraPagerState.currentPage != index) {
+                                        scope.launch { auroraPagerState.animateScrollToPage(index) }
+                                    }
+                                },
+                                searchQuery = auroraSearchQuery,
+                                onSearchQueryChange = onAuroraSearchQueryChange,
+                                onFilterClick = onAuroraFilterClick,
+                                topChromeVisible = immersiveChromeState.isVisible,
+                                onRefreshCurrent = onAuroraRefreshCurrent,
+                                onRefreshGlobal = onAuroraRefreshGlobal,
+                                onOpenRandomEntry = onAuroraOpenRandom,
+                                onImportEpub = if (shouldShowLibraryBookImport(auroraCurrentSection)) {
+                                    {
+                                        epubImportLauncher.launch(
+                                            eu.kanade.domain.entries.novel.LocalNovelBookImport.PICKER_MIME_TYPES,
                                         )
-                                    },
-                                )
-                            },
-                            disablePagerScroll = swipeSwitchesCategories,
-                        )
-                    } else {
-                        AnimeLibraryContent(
-                            categories = state.categories,
-                            searchQuery = state.searchQuery,
-                            selection = state.selection,
-                            contentPadding = contentPadding,
-                            currentPage = { screenModel.activeCategoryIndex },
-                            hasActiveFilters = state.hasActiveFilters,
-                            showPageTabs = state.showCategoryTabs || !state.searchQuery.isNullOrEmpty(),
-                            onChangeCurrentPage = { screenModel.activeCategoryIndex = it },
-                            onCategoryLongSelected = screenModel::selectAll,
-                            onAnimeClicked = { navigator.push(AnimeScreen(it)) },
-                            onContinueWatchingClicked = { it: LibraryAnime ->
-                                scope.launchIO {
-                                    val episode = screenModel.getNextUnseenEpisode(it.anime)
-                                    if (episode != null) openEpisode(episode)
-                                }
-                                Unit
-                            }.takeIf { state.showAnimeContinueButton },
-                            onToggleSelection = screenModel::toggleSelection,
-                            onToggleRangeSelection = {
-                                screenModel.toggleRangeSelection(it)
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            },
-                            onTogglePinned = { screenModel.togglePinned(it.libraryAnime) },
-                            onRefresh = onClickRefresh,
-                            onGlobalSearchClicked = {
-                                navigator.push(
-                                    GlobalAnimeSearchScreen(screenModel.state.value.searchQuery ?: ""),
-                                )
-                            },
-                            getNumberOfAnimeForCategory = { state.getAnimeCountForCategory(it) },
-                            getDisplayMode = {
-                                screenModel.getDisplayMode(useSeparateDisplayModePerMedia)
-                            },
-                            getColumnsForOrientation = {
-                                screenModel.getColumnsPreferenceForCurrentOrientation(
-                                    it,
-                                )
-                            },
-                        ) { state.getAnimelibItemsByPage(it) }
-                    }
+                                    }
+                                } else {
+                                    null
+                                },
+                                categories = auroraCategories,
+                                selectedCategoryIndex = auroraCategoryIndex,
+                                showCategories = showAuroraCategoryTabs,
+                                onCategorySelected = onAuroraCategorySelected,
+                                onCategoryLongSelected = onAuroraCategoryLongSelected,
+                                getCountForCategory = { category ->
+                                    when (auroraCurrentSection) {
+                                        Section.Anime -> state.getAnimeCountForCategory(category)
+                                        Section.Manga -> mangaState.getMangaCountForCategory(category)
+                                        Section.Novel -> {
+                                            if (showCategoryNumberOfItems ||
+                                                !novelState.searchQuery.isNullOrEmpty()
+                                            ) {
+                                                novelState.library[category]?.size ?: 0
+                                            } else {
+                                                null
+                                            }
+                                        }
+                                        null -> null
+                                    }
+                                },
+                                formatCountForCategory = { count ->
+                                    formatAuroraLibraryCategoryBadgeCount(
+                                        count = count,
+                                        showFullCount = showFullCategoryNumberOfItems,
+                                        groupDigits = groupCategoryNumberOfItems,
+                                    )
+                                },
+                            )
+                        },
+                        disablePagerScroll = swipeSwitchesCategories,
+                    )
                 }
             }
         }
@@ -1572,9 +1454,8 @@ data object AnimeLibraryTab : Tab {
         val hasAnimeSearchQuery = state.searchQuery != null
         val hasMangaSearchQuery = mangaState.searchQuery != null
         val hasNovelSearchQuery = novelState.searchQuery != null
-        val currentSection = if (isAurora) auroraCurrentSection else Section.Anime
+        val currentSection = auroraCurrentSection
         val currentSelectionMode = resolveAuroraLibrarySelectionMode(
-            isAurora = isAurora,
             section = currentSection,
             animeSelectionMode = state.selectionMode,
             mangaSelectionMode = mangaState.selectionMode,
@@ -1582,12 +1463,7 @@ data object AnimeLibraryTab : Tab {
         )
 
         BackHandler(
-            enabled = currentSelectionMode ||
-                hasAnimeSearchQuery ||
-                (
-                    isAurora &&
-                        (hasMangaSearchQuery || hasNovelSearchQuery)
-                    ),
+            enabled = currentSelectionMode || hasAnimeSearchQuery || hasMangaSearchQuery || hasNovelSearchQuery,
         ) {
             when {
                 currentSelectionMode -> {
@@ -1598,7 +1474,7 @@ data object AnimeLibraryTab : Tab {
                         null -> Unit
                     }
                 }
-                isAurora -> {
+                else -> {
                     when {
                         currentSection == Section.Novel && hasNovelSearchQuery -> novelScreenModel?.search(null)
                         currentSection == Section.Manga && hasMangaSearchQuery -> mangaScreenModel.search(null)
@@ -1608,11 +1484,10 @@ data object AnimeLibraryTab : Tab {
                         hasAnimeSearchQuery -> screenModel.search(null)
                     }
                 }
-                hasAnimeSearchQuery -> screenModel.search(null)
             }
         }
 
-        LaunchedEffect(currentSelectionMode, state.dialog, mangaState.dialog, currentSection, isAurora) {
+        LaunchedEffect(currentSelectionMode, state.dialog, mangaState.dialog, currentSection) {
             HomeScreen.showBottomNav(!currentSelectionMode)
         }
 
@@ -1633,7 +1508,6 @@ data object AnimeLibraryTab : Tab {
             launch { requestSettingsSheetEvent.receiveAsFlow().collectLatest { screenModel.showSettingsDialog() } }
             launch {
                 requestSectionEvent.receiveAsFlow().collectLatest { section ->
-                    if (!isAurora) return@collectLatest
                     val targetPage = when (section) {
                         Section.Anime -> sectionTabs.indexOfFirst { it.first == Section.Anime }
                         Section.Manga -> sectionTabs.indexOfFirst { it.first == Section.Manga }
@@ -2218,13 +2092,11 @@ internal fun resolveAuroraLibrarySection(
 }
 
 internal fun resolveAuroraLibrarySelectionMode(
-    isAurora: Boolean,
     section: AnimeLibraryTab.Section?,
     animeSelectionMode: Boolean,
     mangaSelectionMode: Boolean,
     novelSelectionMode: Boolean,
 ): Boolean {
-    if (!isAurora) return animeSelectionMode
     return when (section) {
         AnimeLibraryTab.Section.Anime -> animeSelectionMode
         AnimeLibraryTab.Section.Manga -> mangaSelectionMode

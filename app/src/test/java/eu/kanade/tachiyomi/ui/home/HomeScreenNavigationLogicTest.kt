@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.ui.home
 
 import eu.kanade.tachiyomi.ui.library.anime.AnimeLibraryTab
-import eu.kanade.tachiyomi.ui.library.manga.MangaLibraryTab
 import eu.kanade.tachiyomi.ui.updates.UpdatesTab
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -43,12 +42,7 @@ class HomeScreenNavigationLogicTest {
     }
 
     @Test
-    fun `library open tab uses aurora library tab when aurora theme is active`() {
-        resolveLibraryTabForOpenTab(isAuroraTheme = true) shouldBe AnimeLibraryTab
-    }
-
-    @Test
-    fun `library open tab uses classic manga library tab when aurora theme is inactive`() {
-        resolveLibraryTabForOpenTab(isAuroraTheme = false) shouldBe MangaLibraryTab
+    fun `library open tab resolves to aurora library tab`() {
+        resolveLibraryTabForOpenTab() shouldBe AnimeLibraryTab
     }
 }

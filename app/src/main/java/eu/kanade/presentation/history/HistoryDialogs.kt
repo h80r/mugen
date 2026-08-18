@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -14,10 +13,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
-import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.theme.AuroraTheme
 import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import tachiyomi.i18n.MR
@@ -25,9 +22,6 @@ import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.components.LabeledCheckbox
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
-import tachiyomi.presentation.core.util.collectAsState
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import kotlin.random.Random
 
 @Composable
@@ -38,25 +32,14 @@ fun HistoryDeleteDialog(
 ) {
     var removeEverything by remember { mutableStateOf(false) }
 
-    val uiPreferences = Injekt.get<UiPreferences>()
-    val theme by uiPreferences.appTheme().collectAsState()
-    val isAurora = theme.isAuroraStyle
     val colors = AuroraTheme.colors
-    val confirmButtonColors = if (isAurora) {
-        ButtonDefaults.textButtonColors(contentColor = colors.accent)
-    } else {
-        ButtonDefaults.textButtonColors()
-    }
-    val dismissButtonColors = if (isAurora) {
-        ButtonDefaults.textButtonColors(contentColor = colors.textSecondary)
-    } else {
-        ButtonDefaults.textButtonColors()
-    }
-    val dialogShape = if (isAurora) RoundedCornerShape(24.dp) else AlertDialogDefaults.shape
-    val descriptionColor = if (isAurora) colors.textSecondary else Color.Unspecified
-    val containerColor = if (isAurora) colors.surface else AlertDialogDefaults.containerColor
-    val titleContentColor = if (isAurora) colors.textPrimary else AlertDialogDefaults.titleContentColor
-    val textContentColor = if (isAurora) colors.textPrimary else AlertDialogDefaults.textContentColor
+    val confirmButtonColors = ButtonDefaults.textButtonColors(contentColor = colors.accent)
+    val dismissButtonColors = ButtonDefaults.textButtonColors(contentColor = colors.textSecondary)
+    val dialogShape = RoundedCornerShape(24.dp)
+    val descriptionColor = colors.textSecondary
+    val containerColor = colors.surface
+    val titleContentColor = colors.textPrimary
+    val textContentColor = colors.textPrimary
 
     AlertDialog(
         title = {
@@ -119,25 +102,14 @@ fun HistoryDeleteAllDialog(
     onDismissRequest: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val uiPreferences = Injekt.get<UiPreferences>()
-    val theme by uiPreferences.appTheme().collectAsState()
-    val isAurora = theme.isAuroraStyle
     val colors = AuroraTheme.colors
-    val confirmButtonColors = if (isAurora) {
-        ButtonDefaults.textButtonColors(contentColor = colors.accent)
-    } else {
-        ButtonDefaults.textButtonColors()
-    }
-    val dismissButtonColors = if (isAurora) {
-        ButtonDefaults.textButtonColors(contentColor = colors.textSecondary)
-    } else {
-        ButtonDefaults.textButtonColors()
-    }
-    val dialogShape = if (isAurora) RoundedCornerShape(24.dp) else AlertDialogDefaults.shape
-    val descriptionColor = if (isAurora) colors.textSecondary else Color.Unspecified
-    val containerColor = if (isAurora) colors.surface else AlertDialogDefaults.containerColor
-    val titleContentColor = if (isAurora) colors.textPrimary else AlertDialogDefaults.titleContentColor
-    val textContentColor = if (isAurora) colors.textPrimary else AlertDialogDefaults.textContentColor
+    val confirmButtonColors = ButtonDefaults.textButtonColors(contentColor = colors.accent)
+    val dismissButtonColors = ButtonDefaults.textButtonColors(contentColor = colors.textSecondary)
+    val dialogShape = RoundedCornerShape(24.dp)
+    val descriptionColor = colors.textSecondary
+    val containerColor = colors.surface
+    val titleContentColor = colors.textPrimary
+    val textContentColor = colors.textPrimary
 
     AlertDialog(
         title = {
