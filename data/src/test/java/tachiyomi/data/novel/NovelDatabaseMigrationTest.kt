@@ -187,6 +187,21 @@ class NovelDatabaseMigrationTest {
         driver.execute(
             identifier = null,
             sql = """
+                CREATE TABLE novels_categories(
+                    _id INTEGER NOT NULL PRIMARY KEY,
+                    novel_id INTEGER NOT NULL,
+                    category_id INTEGER NOT NULL,
+                    FOREIGN KEY(category_id) REFERENCES novel_categories (_id)
+                    ON DELETE CASCADE,
+                    FOREIGN KEY(novel_id) REFERENCES novels (_id)
+                    ON DELETE CASCADE
+                )
+            """.trimIndent(),
+            parameters = 0,
+        )
+        driver.execute(
+            identifier = null,
+            sql = """
                 CREATE TRIGGER update_last_modified_at_novel_chapters
                 AFTER UPDATE ON novel_chapters
                 FOR EACH ROW

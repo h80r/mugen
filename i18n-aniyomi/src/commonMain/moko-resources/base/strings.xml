@@ -115,6 +115,21 @@
     <string name="download_insufficient_space">Couldn\'t download due to low storage space</string>
     <string name="download_queue_size_warning">Warning: large bulk downloads may lead to sources becoming slower and/or blocking Aniyomi. Tap to learn more.</string>
     <string name="pref_invalidate_download_cache_summary">Force app to recheck downloaded chapters and episodes</string>
+    <!-- Settings IA - domain groups -->
+    <string name="pref_category_reading_domain">Reading</string>
+    <string name="pref_reading_domain_summary">Manga, novel, and video reader settings</string>
+    <string name="label_video_reading">Video</string>
+    <string name="label_sources_browse">Sources &amp; Browse</string>
+    <string name="pref_category_library_data">Library &amp; Data</string>
+    <string name="pref_library_data_summary">Library, downloads, storage &amp; backup</string>
+    <string name="pref_category_connections">Connections</string>
+    <string name="pref_connections_summary">Tracking, sources &amp; browsing</string>
+    <string name="pref_category_system">System</string>
+    <string name="pref_system_summary">Security, advanced settings, about</string>
+    <!-- Advanced settings tabs -->
+    <string name="advanced_tab_system">System</string>
+    <string name="advanced_tab_data_cache">Data &amp; cache</string>
+    <string name="advanced_tab_debugging">Debugging</string>
     <!-- Player settings -->
     <string name="label_player_settings">Player settings</string>
     <string name="label_player">Player</string>
@@ -577,6 +592,11 @@
     <!-- Novel Reader Settings Screen -->
     <string name="pref_category_novel_reader">Novel Reader</string>
     <string name="pref_novel_reader_summary">Novel reading settings</string>
+    <string name="novel_reader_tab_text">Text</string>
+    <string name="novel_reader_tab_translation">Translation</string>
+    <string name="novel_reader_tab_navigation">Navigation</string>
+    <string name="novel_reader_tab_accessibility_tts">Accessibility &amp; TTS</string>
+    <string name="novel_reader_tab_advanced">Advanced</string>
     <string name="novel_reader_display">Display</string>
     <string name="novel_reader_theme_settings">Theme</string>
     <string name="novel_reader_navigation">Navigation</string>

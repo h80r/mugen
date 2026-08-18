@@ -35,7 +35,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cafe.adriel.voyager.navigator.Navigator
-import dev.h80r.mugen.BuildConfig
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.AuroraBackground
 import eu.kanade.presentation.more.settings.AURORA_SETTINGS_CARD_HORIZONTAL_INSET
@@ -45,7 +44,6 @@ import eu.kanade.presentation.theme.auroraHeaderIconSurface
 import eu.kanade.presentation.theme.resolveAuroraBorderColor
 import eu.kanade.presentation.theme.resolveAuroraControlContainerColor
 import eu.kanade.presentation.theme.resolveAuroraIconSurfaceColor
-import tachiyomi.data.achievement.UnlockableManager
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
@@ -57,21 +55,9 @@ fun SettingsAuroraContent(
     navigator: Navigator,
     onBackClick: () -> Unit,
 ) {
-    val unlockableManager = remember { Injekt.get<UnlockableManager>() }
     val uiPreferences = remember { Injekt.get<UiPreferences>() }
     val darkRimLightEnabled by uiPreferences.auroraDarkRimLightEnabled().collectAsState()
-    val items = remember {
-        mainSettingsNavigationItems().filter { item ->
-            if (item.key == "treasury") {
-                shouldShowTreasury(
-                    isDebugBuild = BuildConfig.DEBUG,
-                    unlockedUnlockables = unlockableManager.getUnlockedUnlockables(),
-                )
-            } else {
-                true
-            }
-        }
-    }
+    val items = remember { mainSettingsNavigationItems() }
     AuroraBackground {
         LazyColumn(
             modifier = Modifier

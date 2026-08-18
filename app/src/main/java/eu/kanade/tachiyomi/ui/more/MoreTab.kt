@@ -21,10 +21,7 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.presentation.achievement.screen.AchievementScreenVoyager
 import eu.kanade.presentation.more.MoreScreenAurora
 import eu.kanade.presentation.more.settings.screen.HelpScreen
-import eu.kanade.presentation.more.settings.screen.SettingsNovelReaderScreen
-import eu.kanade.presentation.more.settings.screen.SettingsReaderScreen
 import eu.kanade.presentation.more.settings.screen.SettingsTreasuryScreen
-import eu.kanade.presentation.more.settings.screen.about.AboutScreen
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
@@ -33,7 +30,6 @@ import eu.kanade.tachiyomi.ui.download.DownloadsTab
 import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorScreen
 import eu.kanade.tachiyomi.ui.more.DebugAppUpdatePreviewScreen
 import eu.kanade.tachiyomi.ui.more.DebugUpdatedChangelogPreviewScreen
-import eu.kanade.tachiyomi.ui.setting.PlayerSettingsScreen
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.stats.StatsTab
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -99,12 +95,7 @@ data object MoreTab : Tab {
             onIncognitoModeChange = { screenModel.toggleIncognitoMode() },
             onDownloadClick = { navigator.push(DownloadsTab) },
             onCategoriesClick = { navigator.push(CategoriesTab) },
-            onDataStorageClick = { navigator.push(SettingsScreen(SettingsScreen.Destination.DataAndStorage)) },
-            onPlayerSettingsClick = { navigator.push(PlayerSettingsScreen(mainSettings = false)) },
-            onMangaReaderSettingsClick = { navigator.push(SettingsReaderScreen) },
-            onNovelReaderSettingsClick = { navigator.push(SettingsNovelReaderScreen) },
             onSettingsClick = { navigator.push(SettingsScreen()) },
-            onAboutClick = { navigator.push(AboutScreen) },
             onHelpClick = { navigator.push(HelpScreen) },
             onDebugAppUpdatePreviewClick = { navigator.push(DebugAppUpdatePreviewScreen()) },
             onDebugUpdatedChangelogPreviewClick = { navigator.push(DebugUpdatedChangelogPreviewScreen()) },

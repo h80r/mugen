@@ -89,8 +89,14 @@ android {
     sourceSets {
         getByName("debug").res.directories += generatedBuildDir.resolve("android/res").path
         getByName("release").res.directories += generatedBuildDir.resolve("android/res").path
-        getByName("preview").res.directories += "src/debug/res"
-        getByName("benchmark").res.directories += "src/debug/res"
+        getByName("preview").res.directories += listOf(
+            "src/debug/res",
+            generatedBuildDir.resolve("android/res").path,
+        )
+        getByName("benchmark").res.directories += listOf(
+            "src/debug/res",
+            generatedBuildDir.resolve("android/res").path,
+        )
     }
 
     splits {

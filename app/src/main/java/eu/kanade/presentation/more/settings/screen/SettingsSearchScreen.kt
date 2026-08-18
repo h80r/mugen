@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.UpIcon
 import eu.kanade.presentation.more.settings.AURORA_SETTINGS_CARD_HORIZONTAL_INSET
@@ -362,10 +363,10 @@ private fun SearchResult(
                             title = p.title,
                             breadcrumbs = getLocalizedBreadcrumb(
                                 nodes = buildList {
-                                    if (!isPlayer && settingsData.playerSettings) {
-                                        add(AYMR.strings.label_player_settings.getString(context))
+                                    if (!isPlayer) {
+                                        add(MR.strings.label_settings.getString(context))
                                     }
-                                    add(settingsData.title)
+                                    addAll(settingsData.breadcrumbNodes)
                                     if (categoryTitle != null) add(categoryTitle)
                                 },
                                 isLtr = isLtr,
@@ -454,9 +455,10 @@ private fun SearchResult(
 private fun getIndex() = settingScreens
     .map { screen ->
         SettingsData(
-            title = stringResource(screen.getTitleRes()),
-            route = screen,
-            contents = screen.getPreferences(),
+            title = stringResource(screen.titleRes()),
+            route = screen.route,
+            contents = screen.contents(),
+            breadcrumbNodes = screen.breadcrumbRes().map { stringResource(it) },
         )
     }
 
@@ -465,10 +467,10 @@ private fun getIndex() = settingScreens
 private fun getPlayerIndex() = playerSettingScreens
     .map { screen ->
         SettingsData(
-            title = stringResource(screen.getTitleRes()),
-            route = screen,
-            contents = screen.getPreferences(),
-            playerSettings = true,
+            title = stringResource(screen.titleRes()),
+            route = screen.route,
+            contents = screen.contents(),
+            breadcrumbNodes = screen.breadcrumbRes().map { stringResource(it) },
         )
     }
 
@@ -483,44 +485,183 @@ private fun getLocalizedBreadcrumb(nodes: List<String>, isLtr: Boolean): String 
 }
 
 private val playerSettingScreens = listOf(
-    PlayerSettingsPlayerScreen,
-    PlayerSettingsLayoutMainScreen,
-    PlayerSettingsLayoutScreen(PlayerLayoutOrientation.Portrait),
-    PlayerSettingsLayoutScreen(PlayerLayoutOrientation.Landscape),
-    PlayerSettingsGesturesScreen,
-    PlayerSettingsDecoderScreen,
-    PlayerSettingsSubtitleScreen,
-    PlayerSettingsAudioScreen,
-    PlayerSettingsTorrentScreen,
-    PlayerSettingsAdvancedScreen,
+    playerSearchableScreen(PlayerSettingsPlayerScreen),
+    playerSearchableScreen(PlayerSettingsLayoutMainScreen),
+    playerSearchableScreen(PlayerSettingsLayoutScreen(PlayerLayoutOrientation.Portrait)),
+    playerSearchableScreen(PlayerSettingsLayoutScreen(PlayerLayoutOrientation.Landscape)),
+    playerSearchableScreen(PlayerSettingsGesturesScreen),
+    playerSearchableScreen(PlayerSettingsDecoderScreen),
+    playerSearchableScreen(PlayerSettingsSubtitleScreen),
+    playerSearchableScreen(PlayerSettingsAudioScreen),
+    playerSearchableScreen(PlayerSettingsTorrentScreen),
+    playerSearchableScreen(PlayerSettingsAdvancedScreen),
 )
 
 private val settingScreens = listOf(
-    SettingsAppearanceScreen,
-    SettingsLibraryScreen,
-    SettingsReaderScreen,
-    SettingsNovelReaderScreen,
-    SettingsDownloadScreen,
-    SettingsTrackingScreen,
-    SettingsBrowseScreen,
-    SettingsDataScreen,
-    SettingsSecurityScreen,
-    SettingsAdvancedScreen,
+    searchableScreen(SettingsAppearanceScreen),
+    searchableScreen(SettingsLibraryScreen) {
+        listOf(AYMR.strings.pref_category_library_data, MR.strings.pref_category_library)
+    },
+    searchableScreen(SettingsReaderScreen) {
+        listOf(AYMR.strings.pref_category_reading_domain, AYMR.strings.label_manga)
+    },
+    searchableScreen(SettingsDownloadScreen) {
+        listOf(AYMR.strings.pref_category_library_data, MR.strings.pref_category_downloads)
+    },
+    searchableScreen(SettingsTrackingScreen) {
+        listOf(AYMR.strings.pref_category_connections, MR.strings.pref_category_tracking)
+    },
+    searchableScreen(SettingsBrowseScreen) {
+        listOf(AYMR.strings.pref_category_connections, AYMR.strings.label_sources_browse)
+    },
+    searchableScreen(SettingsDataScreen) {
+        listOf(AYMR.strings.pref_category_library_data, MR.strings.label_data_storage)
+    },
+    searchableScreen(SettingsSecurityScreen) {
+        listOf(AYMR.strings.pref_category_system, MR.strings.pref_category_security)
+    },
+    SettingsSearchScreenEntry(
+        titleRes = { AYMR.strings.novel_reader_tab_text },
+        route = SettingsNovelReaderTabScreen(NovelReaderSettingsTab.Text),
+        contents = { SettingsNovelReaderScreen.searchablePreferences(NovelReaderSettingsTab.Text) },
+        breadcrumbRes = {
+            listOf(
+                AYMR.strings.pref_category_reading_domain,
+                AYMR.strings.label_novel,
+                AYMR.strings.novel_reader_tab_text,
+            )
+        },
+    ),
+    SettingsSearchScreenEntry(
+        titleRes = { AYMR.strings.novel_reader_tab_translation },
+        route = SettingsNovelReaderTabScreen(NovelReaderSettingsTab.Translation),
+        contents = { SettingsNovelReaderScreen.searchablePreferences(NovelReaderSettingsTab.Translation) },
+        breadcrumbRes = {
+            listOf(
+                AYMR.strings.pref_category_reading_domain,
+                AYMR.strings.label_novel,
+                AYMR.strings.novel_reader_tab_translation,
+            )
+        },
+    ),
+    SettingsSearchScreenEntry(
+        titleRes = { AYMR.strings.novel_reader_tab_navigation },
+        route = SettingsNovelReaderTabScreen(NovelReaderSettingsTab.Navigation),
+        contents = { SettingsNovelReaderScreen.searchablePreferences(NovelReaderSettingsTab.Navigation) },
+        breadcrumbRes = {
+            listOf(
+                AYMR.strings.pref_category_reading_domain,
+                AYMR.strings.label_novel,
+                AYMR.strings.novel_reader_tab_navigation,
+            )
+        },
+    ),
+    SettingsSearchScreenEntry(
+        titleRes = { AYMR.strings.novel_reader_tab_accessibility_tts },
+        route = SettingsNovelReaderTabScreen(NovelReaderSettingsTab.AccessibilityTts),
+        contents = { SettingsNovelReaderScreen.searchablePreferences(NovelReaderSettingsTab.AccessibilityTts) },
+        breadcrumbRes = {
+            listOf(
+                AYMR.strings.pref_category_reading_domain,
+                AYMR.strings.label_novel,
+                AYMR.strings.novel_reader_tab_accessibility_tts,
+            )
+        },
+    ),
+    SettingsSearchScreenEntry(
+        titleRes = { AYMR.strings.novel_reader_tab_advanced },
+        route = SettingsNovelReaderTabScreen(NovelReaderSettingsTab.Advanced),
+        contents = { SettingsNovelReaderScreen.searchablePreferences(NovelReaderSettingsTab.Advanced) },
+        breadcrumbRes = {
+            listOf(
+                AYMR.strings.pref_category_reading_domain,
+                AYMR.strings.label_novel,
+                AYMR.strings.novel_reader_tab_advanced,
+            )
+        },
+    ),
+    SettingsSearchScreenEntry(
+        titleRes = { AYMR.strings.advanced_tab_system },
+        route = SettingsAdvancedTabScreen(AdvancedSettingsTab.System),
+        contents = { SettingsAdvancedScreen.searchablePreferences(AdvancedSettingsTab.System) },
+        breadcrumbRes = {
+            listOf(
+                AYMR.strings.pref_category_system,
+                MR.strings.pref_category_advanced,
+                AYMR.strings.advanced_tab_system,
+            )
+        },
+    ),
+    SettingsSearchScreenEntry(
+        titleRes = { AYMR.strings.advanced_tab_data_cache },
+        route = SettingsAdvancedTabScreen(AdvancedSettingsTab.DataCache),
+        contents = { SettingsAdvancedScreen.searchablePreferences(AdvancedSettingsTab.DataCache) },
+        breadcrumbRes = {
+            listOf(
+                AYMR.strings.pref_category_system,
+                MR.strings.pref_category_advanced,
+                AYMR.strings.advanced_tab_data_cache,
+            )
+        },
+    ),
+    SettingsSearchScreenEntry(
+        titleRes = { AYMR.strings.advanced_tab_debugging },
+        route = SettingsAdvancedTabScreen(AdvancedSettingsTab.Debugging),
+        contents = { SettingsAdvancedScreen.searchablePreferences(AdvancedSettingsTab.Debugging) },
+        breadcrumbRes = {
+            listOf(
+                AYMR.strings.pref_category_system,
+                MR.strings.pref_category_advanced,
+                AYMR.strings.advanced_tab_debugging,
+            )
+        },
+    ),
 )
+
+private fun searchableScreen(
+    screen: SearchableSettings,
+    breadcrumbRes: @Composable () -> List<StringResource> = { listOf(screen.getTitleRes()) },
+): SettingsSearchScreenEntry {
+    return SettingsSearchScreenEntry(
+        titleRes = screen::getTitleRes,
+        route = screen,
+        contents = screen::getPreferences,
+        breadcrumbRes = breadcrumbRes,
+    )
+}
+
+private fun playerSearchableScreen(screen: SearchableSettings): SettingsSearchScreenEntry {
+    return searchableScreen(screen).copy(
+        breadcrumbRes = {
+            listOf(
+                AYMR.strings.pref_category_reading_domain,
+                AYMR.strings.label_video_reading,
+                screen.getTitleRes(),
+            )
+        },
+    )
+}
 
 internal fun settingsSearchRouteScreens(includePlayerSettings: Boolean): List<VoyagerScreen> {
     return if (includePlayerSettings) {
-        settingScreens + playerSettingScreens
+        (settingScreens + playerSettingScreens).map { it.route }
     } else {
-        settingScreens
+        settingScreens.map { it.route }
     }
 }
+
+private data class SettingsSearchScreenEntry(
+    val titleRes: @Composable () -> StringResource,
+    val route: VoyagerScreen,
+    val contents: @Composable () -> List<Preference>,
+    val breadcrumbRes: @Composable () -> List<StringResource>,
+)
 
 private data class SettingsData(
     val title: String,
     val route: VoyagerScreen,
     val contents: List<Preference>,
-    val playerSettings: Boolean = false,
+    val breadcrumbNodes: List<String>,
 )
 
 private data class SearchResultItem(

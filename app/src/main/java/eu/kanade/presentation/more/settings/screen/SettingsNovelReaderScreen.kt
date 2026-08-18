@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,7 +33,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -53,7 +53,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.presentation.components.TabContent
+import eu.kanade.presentation.components.TabbedScreen
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.presentation.more.settings.PreferenceScreen
 import eu.kanade.presentation.more.settings.widget.BasePreferenceWidget
 import eu.kanade.presentation.more.settings.widget.PrefsHorizontalPadding
 import eu.kanade.presentation.reader.novel.NOVEL_READER_BACKGROUND_PRESET_AGED_PAGE_ID
@@ -106,6 +109,8 @@ import eu.kanade.presentation.reader.novel.resolveNovelPageTurnSpeedSliderValue
 import eu.kanade.presentation.reader.novel.resolveNovelReaderSettingsSurfaceStrategy
 import eu.kanade.presentation.reader.novel.resolveRendererSettingsAvailability
 import eu.kanade.presentation.reader.novel.shouldShowPageTurnTuningControls
+import eu.kanade.presentation.util.LocalBackPress
+import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.reader.novel.NovelReaderChapterDiskCache
 import eu.kanade.tachiyomi.ui.reader.novel.NovelReaderChapterDiskCacheStore
 import eu.kanade.tachiyomi.ui.reader.novel.dictionary.NovelDictionaryHistory
@@ -186,28 +191,114 @@ internal fun novelReaderDisplayTopSettingSpecs(
     ),
 )
 
-object SettingsNovelReaderScreen : SearchableSettings {
+internal enum class NovelReaderSettingsTab {
+    Text,
+    Translation,
+    Navigation,
+    AccessibilityTts,
+    Advanced,
+}
 
-    @ReadOnlyComposable
+internal data class SettingsNovelReaderTabScreen(
+    internal val tab: NovelReaderSettingsTab,
+) : Screen() {
     @Composable
-    override fun getTitleRes() = AYMR.strings.pref_category_novel_reader
+    override fun Content() {
+        SettingsNovelReaderScreen.Content(initialTab = tab.ordinal)
+    }
+}
+
+object SettingsNovelReaderScreen : Screen() {
 
     @Composable
-    override fun getPreferences(): List<Preference> {
+    override fun Content() {
+        Content(initialTab = 0)
+    }
+
+    @Composable
+    internal fun Content(initialTab: Int) {
+        val handleBack = LocalBackPress.current
+        val navigator = LocalNavigator.currentOrThrow
+
+        val tabs = persistentListOf(
+            TabContent(
+                titleRes = AYMR.strings.novel_reader_tab_text,
+                content = { contentPadding, _ ->
+                    PreferenceScreen(
+                        items = searchablePreferences(NovelReaderSettingsTab.Text),
+                        contentPadding = contentPadding,
+                    )
+                },
+                navigateUp = handleBack ?: { navigator.pop(); Unit },
+            ),
+            TabContent(
+                titleRes = AYMR.strings.novel_reader_tab_translation,
+                content = { contentPadding, _ ->
+                    PreferenceScreen(
+                        items = searchablePreferences(NovelReaderSettingsTab.Translation),
+                        contentPadding = contentPadding,
+                    )
+                },
+                navigateUp = handleBack ?: { navigator.pop(); Unit },
+            ),
+            TabContent(
+                titleRes = AYMR.strings.novel_reader_tab_navigation,
+                content = { contentPadding, _ ->
+                    PreferenceScreen(
+                        items = searchablePreferences(NovelReaderSettingsTab.Navigation),
+                        contentPadding = contentPadding,
+                    )
+                },
+                navigateUp = handleBack ?: { navigator.pop(); Unit },
+            ),
+            TabContent(
+                titleRes = AYMR.strings.novel_reader_tab_accessibility_tts,
+                content = { contentPadding, _ ->
+                    PreferenceScreen(
+                        items = searchablePreferences(NovelReaderSettingsTab.AccessibilityTts),
+                        contentPadding = contentPadding,
+                    )
+                },
+                navigateUp = handleBack ?: { navigator.pop(); Unit },
+            ),
+            TabContent(
+                titleRes = AYMR.strings.novel_reader_tab_advanced,
+                content = { contentPadding, _ ->
+                    PreferenceScreen(
+                        items = searchablePreferences(NovelReaderSettingsTab.Advanced),
+                        contentPadding = contentPadding,
+                    )
+                },
+                navigateUp = handleBack ?: { navigator.pop(); Unit },
+            ),
+        )
+        val state = rememberPagerState(initialPage = initialTab) { tabs.size }
+
+        TabbedScreen(
+            titleRes = AYMR.strings.pref_category_novel_reader,
+            tabs = tabs,
+            state = state,
+        )
+    }
+
+    @Composable
+    internal fun searchablePreferences(tab: NovelReaderSettingsTab): List<Preference> {
         val prefs = remember { Injekt.get<NovelReaderPreferences>() }
         val eInkPrefs = remember { Injekt.get<ReaderPreferences>() }
-        return listOf(
-            getAiTranslationGroup(prefs),
-            getGoogleTranslationGroup(prefs),
-            getDisplayGroup(prefs),
-            getEInkRefreshGroup(eInkPrefs),
-            getThemeGroup(prefs),
-            getNavigationGroup(prefs),
-            getAccessibilityGroup(prefs),
-            getTtsGroup(prefs),
-            getDictionaryGroup(prefs),
-            getAdvancedGroup(prefs),
-        )
+        return when (tab) {
+            NovelReaderSettingsTab.Text -> listOf(getDisplayGroup(prefs), getThemeGroup(prefs))
+            NovelReaderSettingsTab.Translation -> listOf(
+                getAiTranslationGroup(prefs),
+                getGoogleTranslationGroup(prefs),
+                getDictionaryGroup(prefs),
+            )
+            NovelReaderSettingsTab.Navigation -> listOf(getNavigationGroup(prefs))
+            NovelReaderSettingsTab.AccessibilityTts -> listOf(
+                getAccessibilityGroup(prefs),
+                getTtsGroup(prefs),
+            )
+            NovelReaderSettingsTab.Advanced -> listOf(getAdvancedGroup(prefs), getEInkRefreshGroup(eInkPrefs))
+        }
     }
 
     @Composable

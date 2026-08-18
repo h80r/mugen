@@ -8,12 +8,10 @@ import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material.icons.outlined.EditNote
-import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Gesture
 import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PlayCircleOutline
@@ -26,7 +24,6 @@ import androidx.compose.material.icons.outlined.VideoSettings
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 import dev.icerock.moko.resources.StringResource
-import eu.kanade.presentation.achievement.screen.AchievementScreenVoyager
 import eu.kanade.presentation.more.settings.screen.about.AboutScreen
 import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsAdvancedScreen
 import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsAudioScreen
@@ -70,12 +67,63 @@ internal fun SettingsNavigationItem.subtitleText(): String? {
 
 internal fun mainSettingsNavigationItems(): List<SettingsNavigationItem> = listOf(
     SettingsNavigationItem(
+        key = "reading",
+        titleRes = AYMR.strings.pref_category_reading_domain,
+        icon = Icons.AutoMirrored.Outlined.ChromeReaderMode,
+        screen = SettingsReadingScreen,
+    ),
+    SettingsNavigationItem(
+        key = "library_data",
+        titleRes = AYMR.strings.pref_category_library_data,
+        icon = Icons.Outlined.Storage,
+        screen = SettingsLibraryDataScreen,
+    ),
+    SettingsNavigationItem(
         key = "appearance",
         titleRes = MR.strings.pref_category_appearance,
         subtitleRes = MR.strings.pref_appearance_summary,
         icon = Icons.Outlined.Palette,
         screen = SettingsAppearanceScreen,
     ),
+    SettingsNavigationItem(
+        key = "connections",
+        titleRes = AYMR.strings.pref_category_connections,
+        icon = Icons.Outlined.Explore,
+        screen = SettingsConnectionsScreen,
+    ),
+    SettingsNavigationItem(
+        key = "system",
+        titleRes = AYMR.strings.pref_category_system,
+        icon = Icons.Outlined.Code,
+        screen = SettingsSystemScreen,
+    ),
+)
+
+internal fun readingSettingsNavigationItems(): List<SettingsNavigationItem> = listOf(
+    SettingsNavigationItem(
+        key = "reading_manga",
+        titleRes = AYMR.strings.label_manga,
+        subtitleRes = MR.strings.pref_reader_summary,
+        icon = Icons.AutoMirrored.Outlined.ChromeReaderMode,
+        screen = SettingsReaderScreen,
+    ),
+    SettingsNavigationItem(
+        key = "reading_novel",
+        titleRes = AYMR.strings.label_novel,
+        subtitleRes = AYMR.strings.pref_novel_reader_summary,
+        icon = Icons.Outlined.Book,
+        screen = SettingsNovelReaderScreen,
+    ),
+    SettingsNavigationItem(
+        key = "reading_video",
+        titleRes = AYMR.strings.label_video_reading,
+        subtitleRes = AYMR.strings.pref_player_settings_summary,
+        icon = Icons.Outlined.VideoSettings,
+        screen = PlayerSettingsScreen(mainSettings = true),
+    ),
+)
+
+internal fun libraryDataSettingsNavigationItems(): List<SettingsNavigationItem> = listOf(
     SettingsNavigationItem(
         key = "library",
         titleRes = MR.strings.pref_category_library,
@@ -84,48 +132,22 @@ internal fun mainSettingsNavigationItems(): List<SettingsNavigationItem> = listO
         screen = SettingsLibraryScreen,
     ),
     SettingsNavigationItem(
-        key = "reader",
-        titleRes = MR.strings.pref_category_reader,
-        subtitleRes = MR.strings.pref_reader_summary,
-        icon = Icons.AutoMirrored.Outlined.ChromeReaderMode,
-        screen = SettingsReaderScreen,
-    ),
-    SettingsNavigationItem(
-        key = "novel_reader",
-        titleRes = AYMR.strings.pref_category_novel_reader,
-        subtitleRes = AYMR.strings.pref_novel_reader_summary,
-        icon = Icons.Outlined.Book,
-        screen = SettingsNovelReaderScreen,
-    ),
-    SettingsNavigationItem(
-        key = "player",
-        titleRes = AYMR.strings.label_player,
-        subtitleRes = AYMR.strings.pref_player_settings_summary,
-        icon = Icons.Outlined.VideoSettings,
-        screen = PlayerSettingsScreen(mainSettings = true),
-    ),
-    SettingsNavigationItem(
-        key = "achievements",
-        titleRes = AYMR.strings.label_achievements,
-        subtitleRes = AYMR.strings.pref_achievements_summary,
-        icon = Icons.Outlined.EmojiEvents,
-        screen = AchievementScreenVoyager,
-    ),
-    SettingsNavigationItem(
-        key = "treasury",
-        titleRes = AYMR.strings.label_treasury,
-        subtitleRes = AYMR.strings.pref_treasury_summary,
-        icon = Icons.Outlined.Inventory2,
-        screen = SettingsTreasuryScreen,
-    ),
-    SettingsNavigationItem(
         key = "downloads",
-
         titleRes = MR.strings.pref_category_downloads,
         subtitleRes = MR.strings.pref_downloads_summary,
         icon = Icons.Outlined.GetApp,
         screen = SettingsDownloadScreen,
     ),
+    SettingsNavigationItem(
+        key = "data_storage",
+        titleRes = MR.strings.label_data_storage,
+        subtitleRes = MR.strings.pref_backup_summary,
+        icon = Icons.Outlined.Storage,
+        screen = SettingsDataScreen,
+    ),
+)
+
+internal fun connectionsSettingsNavigationItems(): List<SettingsNavigationItem> = listOf(
     SettingsNavigationItem(
         key = "tracking",
         titleRes = MR.strings.pref_category_tracking,
@@ -135,18 +157,14 @@ internal fun mainSettingsNavigationItems(): List<SettingsNavigationItem> = listO
     ),
     SettingsNavigationItem(
         key = "browse",
-        titleRes = MR.strings.browse,
+        titleRes = AYMR.strings.label_sources_browse,
         subtitleRes = MR.strings.pref_browse_summary,
         icon = Icons.Outlined.Explore,
         screen = SettingsBrowseScreen,
     ),
-    SettingsNavigationItem(
-        key = "data_storage",
-        titleRes = MR.strings.label_data_storage,
-        subtitleRes = MR.strings.pref_backup_summary,
-        icon = Icons.Outlined.Storage,
-        screen = SettingsDataScreen,
-    ),
+)
+
+internal fun systemSettingsNavigationItems(): List<SettingsNavigationItem> = listOf(
     SettingsNavigationItem(
         key = "security",
         titleRes = MR.strings.pref_category_security,

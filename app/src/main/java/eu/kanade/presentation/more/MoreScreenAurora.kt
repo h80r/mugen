@@ -18,21 +18,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Help
-import androidx.compose.material.icons.automirrored.outlined.ChromeReaderMode
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.ReportProblem
-import androidx.compose.material.icons.outlined.Storage
-import androidx.compose.material.icons.outlined.VideoSettings
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -80,12 +75,7 @@ fun MoreScreenAurora(
     onIncognitoModeChange: (Boolean) -> Unit,
     onDownloadClick: () -> Unit,
     onCategoriesClick: () -> Unit,
-    onDataStorageClick: () -> Unit,
-    onPlayerSettingsClick: () -> Unit,
-    onMangaReaderSettingsClick: () -> Unit,
-    onNovelReaderSettingsClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    onAboutClick: () -> Unit,
     onDebugAppUpdatePreviewClick: () -> Unit,
     onDebugUpdatedChangelogPreviewClick: () -> Unit,
     onDebugResetAuroraHeartClick: () -> Unit,
@@ -146,27 +136,6 @@ fun MoreScreenAurora(
                 )
 
                 AuroraSettingItem(
-                    title = stringResource(AYMR.strings.aurora_player_settings),
-                    icon = Icons.Outlined.VideoSettings,
-                    onClick = onPlayerSettingsClick,
-                    darkRimLightEnabled = darkRimLightEnabled,
-                )
-
-                AuroraSettingItem(
-                    title = stringResource(MR.strings.pref_category_reader),
-                    icon = Icons.AutoMirrored.Outlined.ChromeReaderMode,
-                    onClick = onMangaReaderSettingsClick,
-                    darkRimLightEnabled = darkRimLightEnabled,
-                )
-
-                AuroraSettingItem(
-                    title = stringResource(AYMR.strings.pref_category_novel_reader),
-                    icon = Icons.Outlined.Book,
-                    onClick = onNovelReaderSettingsClick,
-                    darkRimLightEnabled = darkRimLightEnabled,
-                )
-
-                AuroraSettingItem(
                     title = stringResource(AYMR.strings.aurora_statistics),
                     icon = Icons.Filled.QueryStats,
                     onClick = onStatsClick,
@@ -184,13 +153,6 @@ fun MoreScreenAurora(
                     title = stringResource(AYMR.strings.label_treasury),
                     icon = Icons.Outlined.Inventory2,
                     onClick = onTreasuryClick,
-                    darkRimLightEnabled = darkRimLightEnabled,
-                )
-
-                AuroraSettingItem(
-                    title = stringResource(AYMR.strings.aurora_data_storage),
-                    icon = Icons.Outlined.Storage,
-                    onClick = onDataStorageClick,
                     darkRimLightEnabled = darkRimLightEnabled,
                 )
 
@@ -246,13 +208,6 @@ fun MoreScreenAurora(
                     icon = Icons.Outlined.VisibilityOff,
                     checked = incognitoMode,
                     onCheckedChange = onIncognitoModeChange,
-                    darkRimLightEnabled = darkRimLightEnabled,
-                )
-
-                AuroraSettingItem(
-                    title = stringResource(AYMR.strings.aurora_about),
-                    icon = Icons.Filled.Info,
-                    onClick = onAboutClick,
                     darkRimLightEnabled = darkRimLightEnabled,
                 )
 

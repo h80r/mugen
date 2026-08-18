@@ -52,13 +52,15 @@ multiplatformResources {
 }
 
 tasks {
+    val localesConfigTask = project.getLocalesConfigTask(generatedAndroidResourceDir)
+
     withType<GenerateMultiplatformResourcesTask>().configureEach {
         if (name.contains("android", ignoreCase = true)) {
             androidSourceSetName.set("androidMain")
+            dependsOn(localesConfigTask)
         }
     }
 
-    val localesConfigTask = project.getLocalesConfigTask(generatedAndroidResourceDir)
     matching {
         it.name == "preBuild" || it.name == "preDebugBuild" || it.name == "preReleaseBuild"
     }.configureEach {

@@ -17,6 +17,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +32,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,11 +68,16 @@ import eu.kanade.presentation.components.RiftCorruptTerminal
 import eu.kanade.presentation.components.heartbeat
 import eu.kanade.presentation.components.quakeOffset
 import eu.kanade.presentation.components.rememberGlitchTime
+import eu.kanade.presentation.components.TabContent
+import eu.kanade.presentation.components.TabbedScreen
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.presentation.more.settings.PreferenceScreen
 import eu.kanade.presentation.more.settings.screen.advanced.ClearAnimeDatabaseScreen
 import eu.kanade.presentation.more.settings.screen.advanced.ClearDatabaseScreen
 import eu.kanade.presentation.more.settings.screen.advanced.ClearNovelDatabaseScreen
 import eu.kanade.presentation.more.settings.screen.debug.DebugInfoScreen
+import eu.kanade.presentation.util.LocalBackPress
+import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadCache
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadCache
 import eu.kanade.tachiyomi.data.download.novel.NovelDownloadCache
@@ -129,21 +134,132 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 import kotlin.math.roundToInt
 
-object SettingsAdvancedScreen : SearchableSettings {
+internal enum class AdvancedSettingsTab {
+    System,
+    DataCache,
+    Debugging,
+}
 
-    @ReadOnlyComposable
+internal data class SettingsAdvancedTabScreen(
+    internal val tab: AdvancedSettingsTab,
+) : Screen() {
     @Composable
-    override fun getTitleRes() = MR.strings.pref_category_advanced
+    override fun Content() {
+        SettingsAdvancedScreen.Content(initialTab = tab.ordinal)
+    }
+}
+
+object SettingsAdvancedScreen : Screen() {
 
     @Composable
-    override fun getPreferences(): List<Preference> {
+    override fun Content() {
+        Content(initialTab = 0)
+    }
+
+    @Composable
+    internal fun Content(initialTab: Int) {
+        val handleBack = LocalBackPress.current
+        val navigator = LocalNavigator.currentOrThrow
+
+        val tabs = persistentListOf(
+            TabContent(
+                titleRes = AYMR.strings.advanced_tab_system,
+                content = { contentPadding, _ ->
+                    PreferenceScreen(
+                        items = searchablePreferences(AdvancedSettingsTab.System),
+                        contentPadding = contentPadding,
+                    )
+                },
+                navigateUp = handleBack ?: { navigator.pop(); Unit },
+            ),
+            TabContent(
+                titleRes = AYMR.strings.advanced_tab_data_cache,
+                content = { contentPadding, _ ->
+                    PreferenceScreen(
+                        items = searchablePreferences(AdvancedSettingsTab.DataCache),
+                        contentPadding = contentPadding,
+                    )
+                },
+                navigateUp = handleBack ?: { navigator.pop(); Unit },
+            ),
+            TabContent(
+                titleRes = AYMR.strings.advanced_tab_debugging,
+                content = { contentPadding, _ ->
+                    PreferenceScreen(
+                        items = searchablePreferences(AdvancedSettingsTab.Debugging),
+                        contentPadding = contentPadding,
+                    )
+                },
+                navigateUp = handleBack ?: { navigator.pop(); Unit },
+            ),
+        )
+        val state = rememberPagerState(initialPage = initialTab) { tabs.size }
+
+        TabbedScreen(
+            titleRes = MR.strings.pref_category_advanced,
+            tabs = tabs,
+            state = state,
+        )
+    }
+
+    @Composable
+    internal fun searchablePreferences(tab: AdvancedSettingsTab): List<Preference> {
+        return when (tab) {
+            AdvancedSettingsTab.System -> getSystemTabPreferences()
+            AdvancedSettingsTab.DataCache -> getDataCacheTabPreferences()
+            AdvancedSettingsTab.Debugging -> getDebuggingTabPreferences()
+        }
+    }
+
+    @Composable
+    private fun getSystemTabPreferences(): List<Preference> {
+        val context = LocalContext.current
+        val navigator = LocalNavigator.currentOrThrow
+        val sourcePreferences = remember { Injekt.get<SourcePreferences>() }
+        val uiPreferences = remember { Injekt.get<UiPreferences>() }
+
+        return listOf(
+            Preference.PreferenceItem.TextPreference(
+                title = stringResource(MR.strings.pref_onboarding_guide),
+                onClick = { navigator.push(OnboardingScreen()) },
+            ),
+            Preference.PreferenceItem.TextPreference(
+                title = stringResource(MR.strings.pref_manage_notifications),
+                onClick = {
+                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    }
+                    context.startActivity(intent)
+                },
+            ),
+            getBackgroundActivityGroup(),
+            getIncognitoPolicyGroup(sourcePreferences),
+            getHapticFeedbackGroup(uiPreferences),
+            getNetworkGroup(networkPreferences = remember { Injekt.get<NetworkPreferences>() }),
+        )
+    }
+
+    @Composable
+    private fun getDataCacheTabPreferences(): List<Preference> {
+        val basePreferences = remember { Injekt.get<BasePreferences>() }
+
+        return listOf(
+            getDataGroup(),
+            getReaderGroup(basePreferences = basePreferences),
+            getLibraryGroup(),
+            // SY -->
+            getDataSaverGroup(),
+            // SY <--
+        )
+    }
+
+    @Composable
+    private fun getDebuggingTabPreferences(): List<Preference> {
         val scope = rememberCoroutineScope()
         val context = LocalContext.current
         val navigator = LocalNavigator.currentOrThrow
-
-        val basePreferences = remember { Injekt.get<BasePreferences>() }
-        val sourcePreferences = remember { Injekt.get<SourcePreferences>() }
         val networkPreferences = remember { Injekt.get<NetworkPreferences>() }
+        val basePreferences = remember { Injekt.get<BasePreferences>() }
         val uiPreferences = remember { Injekt.get<UiPreferences>() }
 
         val meltdownStage by uiPreferences.meltdownStage().collectAsState()
@@ -171,68 +287,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                 title = stringResource(MR.strings.pref_debug_info),
                 onClick = { navigator.push(DebugInfoScreen()) },
             ),
-            Preference.PreferenceItem.TextPreference(
-                title = stringResource(MR.strings.pref_onboarding_guide),
-                onClick = { navigator.push(OnboardingScreen()) },
-            ),
-            Preference.PreferenceItem.TextPreference(
-                title = stringResource(MR.strings.pref_manage_notifications),
-                onClick = {
-                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                    }
-                    context.startActivity(intent)
-                },
-            ),
-            getBackgroundActivityGroup(),
-            Preference.PreferenceGroup(
-                title = stringResource(MR.strings.pref_incognito_policy_section),
-                preferenceItems = persistentListOf(
-                    Preference.PreferenceItem.TextPreference(
-                        title = "",
-                        subtitle = stringResource(MR.strings.pref_incognito_policy_summary),
-                    ),
-                    Preference.PreferenceItem.ListPreference(
-                        preference = sourcePreferences.incognitoPolicy(),
-                        entries = persistentMapOf(
-                            IncognitoPolicy.MANUAL_ONLY to stringResource(MR.strings.pref_incognito_policy_manual_only),
-                            IncognitoPolicy.NSFW_AUTO to stringResource(MR.strings.pref_incognito_policy_nsfw_auto),
-                        ),
-                        title = stringResource(MR.strings.pref_incognito_policy),
-                        subtitleProvider = { value, _ ->
-                            when (value) {
-                                IncognitoPolicy.MANUAL_ONLY -> stringResource(
-                                    MR.strings.pref_incognito_policy_manual_only_summary,
-                                )
-                                IncognitoPolicy.NSFW_AUTO -> stringResource(
-                                    MR.strings.pref_incognito_policy_nsfw_auto_summary,
-                                )
-                            }
-                        },
-                    ),
-                ),
-            ),
-            Preference.PreferenceGroup(
-                title = stringResource(MR.strings.label_haptic_feedback),
-                preferenceItems = persistentListOf(
-                    Preference.PreferenceItem.ListPreference(
-                        preference = uiPreferences.hapticFeedbackMode(),
-                        entries = HapticFeedbackMode.entries
-                            .associateWith { stringResource(it.titleRes) }
-                            .toImmutableMap(),
-                        title = stringResource(MR.strings.pref_haptic_feedback),
-                        subtitle = stringResource(MR.strings.pref_haptic_feedback_summary),
-                    ),
-                ),
-            ),
-            getDataGroup(),
-            getNetworkGroup(networkPreferences = networkPreferences),
-            getLibraryGroup(),
-            getReaderGroup(basePreferences = basePreferences),
             getExtensionsGroup(basePreferences = basePreferences),
-            // SY -->
-            getDataSaverGroup(),
-            // SY <--
         )
 
         if (meltdownStage == 1) {
@@ -281,6 +336,54 @@ object SettingsAdvancedScreen : SearchableSettings {
         }
 
         return list
+    }
+
+    @Composable
+    private fun getIncognitoPolicyGroup(sourcePreferences: SourcePreferences): Preference.PreferenceGroup {
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.pref_incognito_policy_section),
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.TextPreference(
+                    title = "",
+                    subtitle = stringResource(MR.strings.pref_incognito_policy_summary),
+                ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = sourcePreferences.incognitoPolicy(),
+                    entries = persistentMapOf(
+                        IncognitoPolicy.MANUAL_ONLY to stringResource(MR.strings.pref_incognito_policy_manual_only),
+                        IncognitoPolicy.NSFW_AUTO to stringResource(MR.strings.pref_incognito_policy_nsfw_auto),
+                    ),
+                    title = stringResource(MR.strings.pref_incognito_policy),
+                    subtitleProvider = { value, _ ->
+                        when (value) {
+                            IncognitoPolicy.MANUAL_ONLY -> stringResource(
+                                MR.strings.pref_incognito_policy_manual_only_summary,
+                            )
+                            IncognitoPolicy.NSFW_AUTO -> stringResource(
+                                MR.strings.pref_incognito_policy_nsfw_auto_summary,
+                            )
+                        }
+                    },
+                ),
+            ),
+        )
+    }
+
+    @Composable
+    private fun getHapticFeedbackGroup(uiPreferences: UiPreferences): Preference.PreferenceGroup {
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.label_haptic_feedback),
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.ListPreference(
+                    preference = uiPreferences.hapticFeedbackMode(),
+                    entries = HapticFeedbackMode.entries
+                        .associateWith { stringResource(it.titleRes) }
+                        .toImmutableMap(),
+                    title = stringResource(MR.strings.pref_haptic_feedback),
+                    subtitle = stringResource(MR.strings.pref_haptic_feedback_summary),
+                ),
+            ),
+        )
     }
 
     @Composable
