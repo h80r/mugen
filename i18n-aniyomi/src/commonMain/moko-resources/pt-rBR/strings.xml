@@ -2108,7 +2108,7 @@
     <string name="novel_export_select_folder">Selecionar pasta</string>
     <string name="novel_export_start_chapter">Capítulo inicial (opcional)</string>
     <string name="novel_export_start_chapter_short">Capítulo inicial</string>
-    <string name="achievements">Conquistas</string>
+    <string name="achievements">Histórico de atividade</string>
     <string name="action_add_to_series">Adicionar à série</string>
     <string name="action_clear_update_errors">Limpar erros</string>
     <string name="action_create_series">Criar série</string>

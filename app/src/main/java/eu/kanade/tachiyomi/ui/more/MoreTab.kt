@@ -17,7 +17,6 @@ import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import dev.h80r.mugen.R
 import eu.kanade.domain.base.BasePreferences
-import eu.kanade.presentation.achievement.screen.AchievementScreenVoyager
 import eu.kanade.presentation.more.MoreScreenAurora
 import eu.kanade.presentation.more.settings.screen.HelpScreen
 import eu.kanade.presentation.more.settings.screen.SettingsTreasuryScreen
@@ -90,7 +89,6 @@ data object MoreTab : Tab {
             onDebugUpdatedChangelogPreviewClick = { navigator.push(DebugUpdatedChangelogPreviewScreen()) },
             onStatsClick = { navigator.push(StatsTab) },
             onLibraryUpdateErrorsClick = { navigator.push(LibraryUpdateErrorScreen()) },
-            onAchievementsClick = { navigator.push(AchievementScreenVoyager) },
             onTreasuryClick = { navigator.push(SettingsTreasuryScreen) },
         )
     }

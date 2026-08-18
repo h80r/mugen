@@ -41,7 +41,7 @@ data class BackupInspection(
     val hasAppSettings: Boolean,
     val hasSourceSettings: Boolean,
     val hasExtensions: Boolean,
-    val hasAchievements: Boolean,
+    val hasActivityStats: Boolean,
     val hasExtensionRepos: Boolean,
     val ambiguousSourceIds: Int = 0,
 ) {
@@ -54,7 +54,7 @@ data class BackupInspection(
             !hasAppSettings &&
             !hasSourceSettings &&
             !hasExtensions &&
-            !hasAchievements &&
+            !hasActivityStats &&
             !hasExtensionRepos
 
     /**
@@ -83,7 +83,7 @@ data class BackupInspection(
                 hasAppSettings = backup.backupPreferences.isNotEmpty(),
                 hasSourceSettings = backup.backupSourcePreferences.isNotEmpty(),
                 hasExtensions = backup.backupExtensions.isNotEmpty(),
-                hasAchievements = backup.backupAchievements.isNotEmpty() || backup.backupStats != null,
+                hasActivityStats = backup.backupActivityLog.isNotEmpty() || backup.backupStats != null,
                 hasExtensionRepos = backup.backupMangaExtensionRepo.isNotEmpty() ||
                     backup.backupAnimeExtensionRepo.isNotEmpty() ||
                     backup.backupNovelExtensionRepo.isNotEmpty() ||

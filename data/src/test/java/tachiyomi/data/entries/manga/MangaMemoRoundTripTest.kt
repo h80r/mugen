@@ -15,7 +15,6 @@ import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.MangaUpdateStrategyColumnAdapter
 import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
-import tachiyomi.data.achievement.handler.AchievementEventBus
 import tachiyomi.data.handlers.manga.AndroidMangaDatabaseHandler
 import tachiyomi.domain.entries.manga.model.Manga
 import tachiyomi.domain.entries.manga.model.MangaUpdate
@@ -51,7 +50,7 @@ class MangaMemoRoundTripTest {
             queryDispatcher = Dispatchers.Default,
             transactionDispatcher = Dispatchers.Default,
         )
-        repository = MangaRepositoryImpl(handler, AchievementEventBus())
+        repository = MangaRepositoryImpl(handler)
     }
 
     @AfterEach

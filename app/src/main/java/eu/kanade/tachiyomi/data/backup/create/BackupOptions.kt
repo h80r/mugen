@@ -21,7 +21,7 @@ data class BackupOptions(
     val sourceSettings: Boolean = true,
     val privateSettings: Boolean = false,
     val extensions: Boolean = false,
-    val achievements: Boolean = true,
+    val activityLog: Boolean = true,
     val stats: Boolean = true,
     val sisterAppCompatible: Boolean = false,
 ) {
@@ -43,7 +43,7 @@ data class BackupOptions(
         sourceSettings,
         privateSettings,
         extensions,
-        achievements,
+        activityLog,
         stats,
         backupManga,
         backupAnime,
@@ -59,7 +59,7 @@ data class BackupOptions(
             extensionRepoSettings ||
             customButton ||
             sourceSettings ||
-            achievements ||
+            activityLog ||
             stats
     }
 
@@ -159,8 +159,8 @@ data class BackupOptions(
         val achievementsOptions = persistentListOf(
             Entry(
                 label = AYMR.strings.achievements,
-                getter = BackupOptions::achievements,
-                setter = { options, enabled -> options.copy(achievements = enabled) },
+                getter = BackupOptions::activityLog,
+                setter = { options, enabled -> options.copy(activityLog = enabled) },
             ),
             Entry(
                 label = AYMR.strings.stats,
@@ -190,7 +190,7 @@ data class BackupOptions(
             sourceSettings = array.getOrNull(9) ?: true,
             privateSettings = array.getOrNull(10) ?: false,
             extensions = array.getOrNull(11) ?: false,
-            achievements = array.getOrNull(12) ?: true,
+            activityLog = array.getOrNull(12) ?: true,
             stats = array.getOrNull(13) ?: true,
             backupManga = array.getOrNull(14) ?: true,
             backupAnime = array.getOrNull(15) ?: true,

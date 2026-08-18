@@ -20,7 +20,7 @@ class BackupOptionsTest {
             true, // sourceSettings
             false, // privateSettings
             true, // extensions
-            false, // achievements
+            false, // activityLog
             true, // stats
         )
 
@@ -38,7 +38,7 @@ class BackupOptionsTest {
         options.sourceSettings shouldBe true
         options.privateSettings shouldBe false
         options.extensions shouldBe true
-        options.achievements shouldBe false
+        options.activityLog shouldBe false
         options.stats shouldBe true
         options.backupManga shouldBe true
         options.backupAnime shouldBe true
@@ -75,7 +75,7 @@ class BackupOptionsTest {
             extensionRepoSettings = false,
             customButton = false,
             sourceSettings = false,
-            achievements = false,
+            activityLog = false,
             stats = false,
         )
 
@@ -94,7 +94,7 @@ class BackupOptionsTest {
             extensionRepoSettings = false,
             customButton = false,
             sourceSettings = false,
-            achievements = false,
+            activityLog = false,
             stats = false,
         )
 

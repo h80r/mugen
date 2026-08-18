@@ -13,8 +13,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.achievement.handler.AchievementEventBus
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.achievement.repository.ActivityDataRepository
 import tachiyomi.domain.entries.novel.model.Novel
 import tachiyomi.domain.history.novel.model.NovelHistoryUpdate
@@ -74,7 +72,6 @@ internal class NovelProgressPersistenceController(
     private val host: NovelProgressPersistenceHost,
     private val novelChapterRepository: NovelChapterRepository,
     private val getIncognitoState: GetNovelIncognitoState,
-    private val eventBus: AchievementEventBus?,
     private val activityDataRepository: ActivityDataRepository,
     private val historyRepository: NovelHistoryRepository?,
 ) {
@@ -194,15 +191,6 @@ internal class NovelProgressPersistenceController(
             )
 
             if (nextUpdate.emitReadEvent) {
-                eventBus?.tryEmit(
-                    AchievementEvent.NovelChapterRead(
-                        novelId = nextUpdate.novelId,
-                        chapterNumber = nextUpdate.chapterNumber,
-                    ),
-                )
-                if (nextUpdate.emitNovelCompleted) {
-                    eventBus?.tryEmit(AchievementEvent.NovelCompleted(nextUpdate.novelId))
-                }
                 activityDataRepository.recordReading(
                     id = nextUpdate.chapterId,
                     chaptersCount = 1,

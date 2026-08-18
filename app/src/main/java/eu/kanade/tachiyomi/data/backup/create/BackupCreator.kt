@@ -7,7 +7,7 @@ import dev.h80r.mugen.BuildConfig
 import eu.kanade.tachiyomi.data.backup.BackupDiagnosticLog
 import eu.kanade.tachiyomi.data.backup.BackupOrigin
 import eu.kanade.tachiyomi.data.backup.contentSummary
-import eu.kanade.tachiyomi.data.backup.create.creators.AchievementBackupCreator
+import eu.kanade.tachiyomi.data.backup.create.creators.ActivityStatsBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.AnimeBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.AnimeCategoriesBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.AnimeExtensionRepoBackupCreator
@@ -49,8 +49,6 @@ import kotlinx.serialization.protobuf.ProtoBuf
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.achievement.handler.AchievementHandler
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.backup.service.BackupPreferences
 import tachiyomi.domain.entries.anime.interactor.GetAnimeFavorites
 import tachiyomi.domain.entries.anime.model.Anime
@@ -101,8 +99,7 @@ class BackupCreator(
     private val novelSeriesBackupCreator: NovelSeriesBackupCreator = NovelSeriesBackupCreator(),
     private val feedBackupCreator: FeedBackupCreator = FeedBackupCreator(),
     private val extensionsBackupCreator: ExtensionsBackupCreator = ExtensionsBackupCreator(context),
-    private val achievementBackupCreator: AchievementBackupCreator = AchievementBackupCreator(),
-    private val achievementHandler: AchievementHandler = Injekt.get(),
+    private val activityStatsBackupCreator: ActivityStatsBackupCreator = ActivityStatsBackupCreator(),
 ) {
 
     suspend fun backup(uri: Uri, options: BackupOptions): String {
@@ -175,8 +172,8 @@ class BackupCreator(
                 )
             }
 
-            val achievementData = BackupDiagnosticLog.measure(context, "collect_achievements") {
-                achievementBackupCreator(options)
+            val activityStatsData = BackupDiagnosticLog.measure(context, "collect_activity_stats") {
+                activityStatsBackupCreator(options)
             }
             val backupMangaSeries = BackupDiagnosticLog.measure(context, "collect_manga_series") {
                 if (shouldBackupManga) mangaSeriesBackupCreator() else emptyList()
@@ -246,10 +243,8 @@ class BackupCreator(
                 backupAnimeExtensionStore = backupAnimeExtensionStores(options, includeAnimeType),
                 backupMangaExtensionStore = backupMangaExtensionStores(options, includeMangaType),
                 backupNovelExtensionStore = backupNovelExtensionStores(options, includeNovelType),
-                backupAchievements = if (options.sisterAppCompatible) emptyList() else achievementData.achievements,
-                backupUserProfile = if (options.sisterAppCompatible) null else achievementData.userProfile,
-                backupActivityLog = if (options.sisterAppCompatible) emptyList() else achievementData.activityLog,
-                backupStats = if (options.sisterAppCompatible) null else achievementData.stats,
+                backupActivityLog = if (options.sisterAppCompatible) emptyList() else activityStatsData.activityLog,
+                backupStats = if (options.sisterAppCompatible) null else activityStatsData.stats,
                 backupMangaSeries = if (options.sisterAppCompatible) emptyList() else backupMangaSeries,
                 backupNovelSeries = if (options.sisterAppCompatible) emptyList() else backupNovelSeries,
                 backupFeeds = if (options.sisterAppCompatible) emptyList() else backupFeeds,
@@ -291,11 +286,6 @@ class BackupCreator(
             if (isAutoBackup) {
                 pruneOldAutoBackups(uri, keep = file)
                 backupPreferences.lastAutoBackupTimestamp().set(Instant.now().toEpochMilli())
-            }
-
-            // Track backup achievement for manual backups only
-            if (!isAutoBackup) {
-                achievementHandler.trackFeatureUsed(AchievementEvent.Feature.BACKUP)
             }
 
             BackupDiagnosticLog.log(context, "creator_done", "origin=$expectedOrigin")

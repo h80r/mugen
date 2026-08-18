@@ -17,7 +17,7 @@ data class RestoreOptions(
     val customButtons: Boolean = true,
     val sourceSettings: Boolean = true,
     val extensions: Boolean = false,
-    val achievements: Boolean = true,
+    val activityLog: Boolean = true,
     val stats: Boolean = true,
     /**
      * Explicit user statement that a markerless, Mihon shaped file is an old Tadami sister export.
@@ -44,7 +44,7 @@ data class RestoreOptions(
         customButtons,
         sourceSettings,
         extensions,
-        achievements,
+        activityLog,
         stats,
         restoreManga,
         restoreAnime,
@@ -61,7 +61,7 @@ data class RestoreOptions(
             customButtons ||
             sourceSettings ||
             extensions ||
-            achievements ||
+            activityLog ||
             stats
     }
 
@@ -122,8 +122,8 @@ data class RestoreOptions(
             ),
             Entry(
                 label = AYMR.strings.achievements,
-                getter = RestoreOptions::achievements,
-                setter = { options, enabled -> options.copy(achievements = enabled) },
+                getter = RestoreOptions::activityLog,
+                setter = { options, enabled -> options.copy(activityLog = enabled) },
             ),
             Entry(
                 label = AYMR.strings.stats,
@@ -140,7 +140,7 @@ data class RestoreOptions(
             customButtons = array.getOrNull(4) ?: true,
             sourceSettings = array.getOrNull(5) ?: true,
             extensions = array.getOrNull(6) ?: false,
-            achievements = array.getOrNull(7) ?: true,
+            activityLog = array.getOrNull(7) ?: true,
             stats = array.getOrNull(8) ?: true,
             restoreManga = array.getOrNull(9) ?: true,
             restoreAnime = array.getOrNull(10) ?: true,

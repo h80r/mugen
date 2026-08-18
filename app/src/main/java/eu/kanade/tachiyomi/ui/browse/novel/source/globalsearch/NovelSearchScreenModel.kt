@@ -29,8 +29,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.preference.toggle
-import tachiyomi.data.achievement.handler.AchievementHandler
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.entries.novel.interactor.GetNovel
 import tachiyomi.domain.entries.novel.interactor.NetworkToLocalNovel
 import tachiyomi.domain.entries.novel.model.Novel
@@ -46,7 +44,6 @@ abstract class NovelSearchScreenModel(
     private val networkToLocalNovel: NetworkToLocalNovel = Injekt.get(),
     private val getNovel: GetNovel = Injekt.get(),
     private val preferences: SourcePreferences = Injekt.get(),
-    private val achievementHandler: AchievementHandler = Injekt.get(),
 ) : StateScreenModel<NovelSearchScreenModel.State>(initialState) {
 
     private val coroutineDispatcher = Executors.newFixedThreadPool(5).asCoroutineDispatcher()
@@ -139,7 +136,6 @@ abstract class NovelSearchScreenModel(
 
         this.lastQuery = query
         this.lastSourceFilter = sourceFilter
-        achievementHandler.trackFeatureUsed(AchievementEvent.Feature.SEARCH)
 
         searchJob?.cancel()
 

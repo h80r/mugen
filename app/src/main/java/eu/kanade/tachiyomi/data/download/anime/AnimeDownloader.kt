@@ -59,8 +59,6 @@ import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.achievement.handler.AchievementHandler
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.items.episode.model.Episode
@@ -88,7 +86,6 @@ class AnimeDownloader(
     private val sourceManager: AnimeSourceManager = Injekt.get(),
     var telemetryEmitter: DownloadTelemetryEmitter = DownloadTelemetryEmitter.NOOP,
     var completionTracker: DownloadCompletionTracker = DownloadCompletionTracker(),
-    private val achievementHandler: AchievementHandler = Injekt.get(),
 ) {
     /**
      * Store for persisting downloads across restarts.
@@ -438,7 +435,6 @@ class AnimeDownloader(
             download.currentSpeedBytesPerSecond = 0L
             removeFromQueue(download)
             completionTracker.recordCompletion(DownloadSection.ANIME)
-            achievementHandler.trackFeatureUsed(AchievementEvent.Feature.DOWNLOAD)
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             // If the video threw, it will resume here

@@ -240,9 +240,6 @@ class PlayerActivity : BaseActivity() {
         registerSecureActivity(this)
         super.onCreate(savedInstanceState)
 
-        // Defer achievement notifications while in player
-        eu.kanade.presentation.achievement.components.AchievementBannerManager.setInReaderOrPlayer(true)
-
         setContentView(binding.root)
 
         setupPlayerMPV()
@@ -314,9 +311,6 @@ class PlayerActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
-        // Allow achievement notifications when exiting player
-        eu.kanade.presentation.achievement.components.AchievementBannerManager.setInReaderOrPlayer(false)
-
         player.isExiting = true
 
         audioFocusRequest?.let {

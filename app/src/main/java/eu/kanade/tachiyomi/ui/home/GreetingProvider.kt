@@ -12,7 +12,6 @@ object GreetingProvider {
         val hourOfDay: Int,
         val dayOfWeek: Int,
         val lastOpenedTime: Long,
-        val achievementCount: Int = 0,
         val episodesWatched: Int = 0,
         val librarySize: Int = 0,
         val currentStreak: Int = 0,
@@ -315,15 +314,6 @@ object GreetingProvider {
         candidate("streak_dedication", AYMR.strings.aurora_greeting_streak_dedication),
     )
 
-    private val achievementGreetings = listOf(
-        candidate("achievement_hunter", AYMR.strings.aurora_greeting_achievement_hunter),
-        candidate("achievement_10", AYMR.strings.aurora_greeting_achievement_10),
-        candidate("achievement_collector", AYMR.strings.aurora_greeting_achievement_collector),
-        candidate("achievement_master", AYMR.strings.aurora_greeting_achievement_master),
-        candidate("achievement_50", AYMR.strings.aurora_greeting_achievement_50),
-        candidate("achievement_legendary", AYMR.strings.aurora_greeting_achievement_legendary),
-    )
-
     private val statsGreetings = listOf(
         candidate("stats_100_eps", AYMR.strings.aurora_greeting_stats_100_eps),
         candidate("stats_marathoner", AYMR.strings.aurora_greeting_stats_marathoner),
@@ -348,7 +338,6 @@ object GreetingProvider {
 
     fun getGreeting(
         lastOpenedTime: Long,
-        achievementCount: Int = 0,
         episodesWatched: Int = 0,
         librarySize: Int = 0,
         currentStreak: Int = 0,
@@ -356,7 +345,6 @@ object GreetingProvider {
     ): StringResource {
         return selectGreeting(
             lastOpenedTime = lastOpenedTime,
-            achievementCount = achievementCount,
             episodesWatched = episodesWatched,
             librarySize = librarySize,
             currentStreak = currentStreak,
@@ -366,7 +354,6 @@ object GreetingProvider {
 
     fun selectGreeting(
         lastOpenedTime: Long,
-        achievementCount: Int = 0,
         episodesWatched: Int = 0,
         librarySize: Int = 0,
         currentStreak: Int = 0,
@@ -383,7 +370,6 @@ object GreetingProvider {
             hourOfDay = calendar.get(Calendar.HOUR_OF_DAY),
             dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK),
             lastOpenedTime = lastOpenedTime,
-            achievementCount = achievementCount,
             episodesWatched = episodesWatched,
             librarySize = librarySize,
             currentStreak = currentStreak,
@@ -439,7 +425,6 @@ object GreetingProvider {
 
         val milestoneCandidates = getMilestoneCandidates(
             currentStreak = context.currentStreak,
-            achievementCount = context.achievementCount,
             episodesWatched = context.episodesWatched,
             librarySize = context.librarySize,
         )
@@ -581,12 +566,10 @@ object GreetingProvider {
 
     private fun getMilestoneCandidates(
         currentStreak: Int,
-        achievementCount: Int,
         episodesWatched: Int,
         librarySize: Int,
     ): List<GreetingCandidate> {
         checkStreakMilestone(currentStreak)?.let { return it }
-        checkAchievementMilestone(achievementCount)?.let { return it }
         checkStatsMilestone(episodesWatched)?.let { return it }
         checkLibraryMilestone(librarySize)?.let { return it }
         return emptyList()
@@ -615,20 +598,6 @@ object GreetingProvider {
                 candidate("streak_continues", AYMR.strings.aurora_greeting_streak_continues),
             )
             streak >= 3 -> streakGreetings
-            else -> null
-        }
-    }
-
-    private fun checkAchievementMilestone(count: Int): List<GreetingCandidate>? {
-        return when {
-            count >= 100 -> listOf(
-                candidate("achievement_legendary", AYMR.strings.aurora_greeting_achievement_legendary),
-            )
-            count >= 50 -> listOf(
-                candidate("achievement_50", AYMR.strings.aurora_greeting_achievement_50),
-                candidate("achievement_master", AYMR.strings.aurora_greeting_achievement_master),
-            )
-            count >= 10 -> achievementGreetings
             else -> null
         }
     }
@@ -737,7 +706,6 @@ object GreetingProvider {
         seed = seed * 31 + context.daysSinceLastOpen
         seed = seed * 31 + context.totalLaunches
         seed = seed * 31 + context.currentStreak
-        seed = seed * 31 + context.achievementCount
         seed = seed * 31 + context.episodesWatched
         seed = seed * 31 + context.librarySize
         seed = seed * 31 + salt.hashCode()
@@ -750,7 +718,7 @@ object GreetingProvider {
             firstTimeGreetings, absenceLongGreetings, absenceMidGreetings, frequentUserGreetings,
             saturdayGreetings, sundayGreetings, weekendFallbackGreetings, weekdayMondayGreetings,
             weekdayTuesdayGreetings, weekdayWednesdayGreetings, weekdayThursdayGreetings, weekdayFridayGreetings,
-            weekdayFallbackGreetings, streakGreetings, achievementGreetings, statsGreetings, libraryGreetings,
+            weekdayFallbackGreetings, streakGreetings, statsGreetings, libraryGreetings,
         ).flatten().associate { it.id to it.value }
     }
 

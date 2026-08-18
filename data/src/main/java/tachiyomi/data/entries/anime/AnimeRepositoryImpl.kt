@@ -7,10 +7,7 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.AnimeUpdateStrategyColumnAdapter
 import tachiyomi.data.FetchTypeColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
-import tachiyomi.data.achievement.handler.AchievementEventBus
 import tachiyomi.data.handlers.anime.AnimeDatabaseHandler
-import tachiyomi.domain.achievement.model.AchievementCategory
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.entries.anime.model.AnimeUpdate
 import tachiyomi.domain.entries.anime.repository.AnimeRepository
@@ -21,7 +18,6 @@ import java.time.ZoneId
 
 class AnimeRepositoryImpl(
     private val handler: AnimeDatabaseHandler,
-    private val eventBus: AchievementEventBus,
 ) : AnimeRepository {
 
     override suspend fun getAnimeById(id: Long): Anime {
@@ -443,16 +439,6 @@ class AnimeRepositoryImpl(
                     seasonNumber = value.seasonNumber,
                     seasonSourceOrder = value.seasonSourceOrder,
                 )
-
-                // Emit achievement event if favorite status changed
-                value.favorite?.let { isFavorite ->
-                    val event = if (isFavorite) {
-                        AchievementEvent.LibraryAdded(value.id, AchievementCategory.ANIME)
-                    } else {
-                        AchievementEvent.LibraryRemoved(value.id, AchievementCategory.ANIME)
-                    }
-                    eventBus.tryEmit(event)
-                }
             }
         }
     }

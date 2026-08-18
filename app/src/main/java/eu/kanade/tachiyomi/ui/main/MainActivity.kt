@@ -70,10 +70,6 @@ import eu.kanade.domain.source.interactor.NovelReaderIncognitoState
 import eu.kanade.domain.source.manga.interactor.GetMangaIncognitoState
 import eu.kanade.domain.source.novel.interactor.GetNovelIncognitoState
 import eu.kanade.domain.ui.UiPreferences
-import eu.kanade.presentation.achievement.components.AchievementGroupNotification
-import eu.kanade.presentation.achievement.components.AchievementListDialog
-import eu.kanade.presentation.achievement.components.AchievementPopupSizeTokens
-import eu.kanade.presentation.achievement.components.AchievementUnlockBanner
 import eu.kanade.presentation.components.AppStateBanners
 import eu.kanade.presentation.components.DownloadedOnlyBannerBackgroundColor
 import eu.kanade.presentation.components.IncognitoModeBannerBackgroundColor
@@ -147,7 +143,6 @@ import mihon.core.migration.Migrator
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.domain.achievement.model.Achievement
 import tachiyomi.domain.achievement.repository.ActivityDataRepository
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.release.interactor.GetApplicationRelease
@@ -396,39 +391,6 @@ class MainActivity : BaseActivity() {
                                     .padding(contentPadding)
                                     .consumeWindowInsets(contentPadding),
                             )
-                            // Achievement unlock banner overlay
-                            AchievementUnlockBanner(
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .windowInsetsPadding(WindowInsets.statusBars)
-                                    .padding(top = AchievementPopupSizeTokens.overlayTopPadding),
-                            )
-                            // Achievement group notification (for multiple achievements after reader/player)
-                            var showAchievementsList by remember { mutableStateOf(false) }
-                            var pendingAchievements by remember { mutableStateOf<List<Achievement>>(emptyList()) }
-
-                            AchievementGroupNotification(
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .windowInsetsPadding(WindowInsets.statusBars)
-                                    .padding(top = AchievementPopupSizeTokens.overlayTopPadding),
-                                onViewAll = { achievements ->
-                                    // Get achievements directly from notification
-                                    pendingAchievements = achievements
-                                    showAchievementsList = true
-                                },
-                            )
-
-                            // Achievement list dialog
-                            if (showAchievementsList && pendingAchievements.isNotEmpty()) {
-                                AchievementListDialog(
-                                    achievements = pendingAchievements,
-                                    onDismiss = {
-                                        showAchievementsList = false
-                                        pendingAchievements = emptyList()
-                                    },
-                                )
-                            }
                             // Draw navigation bar scrim when needed
                             if (remember { isNavigationBarNeedsScrim() }) {
                                 Spacer(
@@ -917,9 +879,6 @@ class MainActivity : BaseActivity() {
                 null
             }
             INTENT_OPEN_TREASURY -> {
-                val justUnlocked = intent.getBooleanExtra("just_unlocked", false)
-                eu.kanade.presentation.more.settings.screen.SettingsTreasuryScreen.shouldShowVoidBroadcastBanner =
-                    justUnlocked
                 navigator.popUntilRoot()
                 navigator.push(SettingsTreasuryScreen)
                 null

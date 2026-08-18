@@ -6,7 +6,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import tachiyomi.data.achievement.database.AchievementsDatabase
+import tachiyomi.data.activity.database.ActivityDatabase
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlin.test.assertEquals
@@ -16,15 +16,15 @@ import kotlin.test.assertTrue
 class ActivityDataRepositoryImplTest {
 
     private lateinit var driver: JdbcSqliteDriver
-    private lateinit var database: AchievementsDatabase
+    private lateinit var database: ActivityDatabase
     private lateinit var repository: ActivityDataRepositoryImpl
 
     @BeforeEach
     fun setup() {
         // Create in-memory database for testing
         driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        tachiyomi.db.achievement.AchievementsDatabase.Schema.create(driver)
-        database = AchievementsDatabase(driver)
+        tachiyomi.db.activity.ActivityDatabase.Schema.create(driver)
+        database = ActivityDatabase(driver)
         repository = ActivityDataRepositoryImpl(database)
     }
 

@@ -1,25 +1,36 @@
 package tachiyomi.data.achievement
 
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
 import tachiyomi.data.achievement.handler.checkers.StreakAchievementChecker
+import tachiyomi.data.activity.database.ActivityDatabase
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 @Execution(ExecutionMode.CONCURRENT)
-class StreakAchievementCheckerTest : AchievementTestBase() {
+class StreakAchievementCheckerTest {
 
+    private lateinit var driver: JdbcSqliteDriver
+    private lateinit var database: ActivityDatabase
     private lateinit var streakChecker: StreakAchievementChecker
-    private val millisInDay = 24 * 60 * 60 * 1000L
 
-    @org.junit.jupiter.api.BeforeEach
-    override fun setup() {
-        super.setup()
+    @BeforeEach
+    fun setup() {
+        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        tachiyomi.db.activity.ActivityDatabase.Schema.create(driver)
+        database = ActivityDatabase(driver)
         streakChecker = StreakAchievementChecker(database)
+    }
+
+    @AfterEach
+    fun teardown() {
+        driver.close()
     }
 
     @Test
@@ -30,7 +41,12 @@ class StreakAchievementCheckerTest : AchievementTestBase() {
 
     @Test
     fun `streak is one after logging activity today`() = runTest {
-        streakChecker.logChapterRead()
+        database.activityLogQueries.incrementChapters(
+            date = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE),
+            level = 1,
+            count = 1,
+            last_updated = System.currentTimeMillis(),
+        )
 
         val streak = streakChecker.getCurrentStreak()
         streak shouldBe 1
@@ -99,44 +115,6 @@ class StreakAchievementCheckerTest : AchievementTestBase() {
 
         val streak = streakChecker.getCurrentStreak()
         streak shouldBe 2 // Yesterday and day before (today doesn't break streak)
-    }
-
-    @Test
-    fun `logging chapter read increments count`() = runTest {
-        streakChecker.logChapterRead()
-
-        val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
-        val activity = database.activityLogQueries.getActivityForDate(date = today).executeAsOneOrNull()
-
-        activity shouldNotBe null
-        activity!!.chapters_read shouldBe 1L
-        activity.episodes_watched shouldBe 0L
-    }
-
-    @Test
-    fun `logging episode watched increments count`() = runTest {
-        streakChecker.logEpisodeWatched()
-
-        val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
-        val activity = database.activityLogQueries.getActivityForDate(date = today).executeAsOneOrNull()
-
-        activity shouldNotBe null
-        activity!!.chapters_read shouldBe 0L
-        activity.episodes_watched shouldBe 1L
-    }
-
-    @Test
-    fun `multiple chapter reads in same day update existing log`() = runTest {
-        streakChecker.logChapterRead()
-        streakChecker.logChapterRead()
-        streakChecker.logChapterRead()
-
-        val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
-        val activity = database.activityLogQueries.getActivityForDate(date = today).executeAsOneOrNull()
-
-        activity shouldNotBe null
-        // The increment operation updates the existing record
-        activity!!.chapters_read shouldBe 3L
     }
 
     @Test

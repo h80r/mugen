@@ -4,8 +4,6 @@ import eu.kanade.domain.download.manga.interactor.DeleteChapterDownload
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.withNonCancellableContext
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.achievement.handler.AchievementEventBus
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.achievement.repository.ActivityDataRepository
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.entries.manga.model.Manga
@@ -21,7 +19,6 @@ class SetReadStatus(
     private val deleteDownload: DeleteChapterDownload,
     private val mangaRepository: MangaRepository,
     private val chapterRepository: ChapterRepository,
-    private val eventBus: AchievementEventBus,
     private val activityDataRepository: ActivityDataRepository = Injekt.get(),
 ) {
 
@@ -65,24 +62,6 @@ class SetReadStatus(
         }
 
         if (read) {
-            // Emit ChapterRead events for achievement tracking
-            chaptersToUpdate.forEach { chapter ->
-                eventBus.tryEmit(
-                    AchievementEvent.ChapterRead(
-                        mangaId = chapter.mangaId,
-                        chapterNumber = chapter.chapterNumber.toInt(),
-                    ),
-                )
-            }
-
-            // Check for manga completion
-            chaptersToUpdate.map { it.mangaId }.distinct().forEach { mangaId ->
-                val allChapters = chapterRepository.getChapterByMangaId(mangaId)
-                if (allChapters.all { it.read }) {
-                    eventBus.tryEmit(AchievementEvent.MangaCompleted(mangaId))
-                }
-            }
-
             // Record reading activity for stats
             chaptersToUpdate.forEach { chapter ->
                 activityDataRepository.recordReading(

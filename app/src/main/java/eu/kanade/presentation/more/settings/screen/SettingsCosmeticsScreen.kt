@@ -179,7 +179,6 @@ object SettingsCosmeticsScreen : Screen {
                         uiPreferences = uiPreferences,
                         unlockableManager = unlockableManager,
                         unlockedUnlockables = unlockedUnlockables,
-                        rewardToAchievementMap = emptyMap(),
                         amoled = amoled,
                     )
                 },
@@ -277,7 +276,6 @@ object SettingsCosmeticsScreen : Screen {
                         subtitle = stringResource(AYMR.strings.treasury_background_effects_subtitle),
                         presets = presets,
                         unlockedUnlockables = unlockedUnlockables,
-                        rewardToAchievementMap = emptyMap(),
                         amoled = amoled,
                     )
                 },
@@ -336,7 +334,6 @@ object SettingsCosmeticsScreen : Screen {
                         subtitle = stringResource(MR.strings.treasury_tab_customization),
                         presets = presets,
                         unlockedUnlockables = unlockedUnlockables,
-                        rewardToAchievementMap = emptyMap(),
                         amoled = amoled,
                     )
                 },
@@ -411,7 +408,6 @@ object SettingsCosmeticsScreen : Screen {
                         subtitle = stringResource(AYMR.strings.treasury_profile_titles),
                         presets = presets,
                         unlockedUnlockables = unlockedUnlockables,
-                        rewardToAchievementMap = emptyMap(),
                         amoled = amoled,
                     )
                 },
@@ -511,7 +507,6 @@ object SettingsCosmeticsScreen : Screen {
                         subtitle = stringResource(AYMR.strings.treasury_profile_effects),
                         presets = presets,
                         unlockedUnlockables = unlockedUnlockables,
-                        rewardToAchievementMap = emptyMap(),
                         amoled = amoled,
                     )
                 },
@@ -617,7 +612,6 @@ object SettingsCosmeticsScreen : Screen {
                         subtitle = stringResource(AYMR.strings.treasury_avatar_frames_subtitle),
                         presets = presets,
                         unlockedUnlockables = unlockedUnlockables,
-                        rewardToAchievementMap = emptyMap(),
                         amoled = amoled,
                     )
                 },
@@ -714,7 +708,6 @@ object SettingsCosmeticsScreen : Screen {
                         subtitle = stringResource(AYMR.strings.treasury_home_hub_rewards_subtitle),
                         presets = presets,
                         unlockedUnlockables = unlockedUnlockables,
-                        rewardToAchievementMap = emptyMap(),
                         amoled = amoled,
                     )
                 },

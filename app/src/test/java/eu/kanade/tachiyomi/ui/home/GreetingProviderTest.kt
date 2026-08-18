@@ -32,7 +32,6 @@ class GreetingProviderTest {
             hourOfDay = 19,
             dayOfWeek = Calendar.SATURDAY,
             lastOpenedTime = now - eightDaysMs,
-            achievementCount = 99,
             episodesWatched = 1200,
             librarySize = 250,
             currentStreak = 30,
@@ -50,7 +49,10 @@ class GreetingProviderTest {
         val now = 1_700_000_000_000L
         val scenarios = mutableSetOf<String>()
 
-        repeat(16) { step ->
+        // 30 draws (rather than 16): with achievementCount no longer part of the seed
+        // (removed alongside UserProfile), 16 draws over a 16-minute window no longer
+        // samples enough of the weighted range to reliably hit every scenario.
+        repeat(30) { step ->
             val context = GreetingProvider.GreetingContext(
                 nowMillis = now + step * 60_000L,
                 hourOfDay = 21,

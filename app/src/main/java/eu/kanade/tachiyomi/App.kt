@@ -37,7 +37,6 @@ import eu.kanade.domain.tutorial.TutorialPreferences
 import eu.kanade.domain.tutorial.model.TutorialMode
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.domain.ui.model.setAppCompatDelegateThemeMode
-import eu.kanade.presentation.achievement.components.AchievementBannerManager
 import eu.kanade.presentation.components.CoverReloadSignal
 import eu.kanade.presentation.tutorial.CoachTipRegistry
 import eu.kanade.tachiyomi.crash.CrashActivity
@@ -105,7 +104,6 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.util.system.ImageUtil
-import tachiyomi.data.achievement.loader.AchievementLoader
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.widget.entries.anime.AnimeWidgetManager
@@ -122,7 +120,6 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
     private val basePreferences: BasePreferences by injectLazy()
     private val networkPreferences: NetworkPreferences by injectLazy()
     private val appUpdateFileManager: AppUpdateFileManager by injectLazy()
-    private val sessionManager: tachiyomi.data.achievement.handler.SessionManager by injectLazy()
 
     private val disableIncognitoReceiver = DisableIncognitoReceiver()
     private val achievementScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -276,41 +273,18 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
                 init(ProcessLifecycleOwner.get().lifecycleScope)
             }
 
-            // Defer achievement initialization past the first frame.
+            // Defer achievement-adjacent initialization past the first frame.
             // Handler.post fires in the next main-thread message-queue cycle, after onCreate() has
             // returned and the first activity draw pass has been scheduled. All Injekt modules are
             // fully imported by then, so DI resolution inside achievementScope (Dispatchers.IO)
-            // is safe. Achievement events can only come from user actions that haven't happened yet.
+            // is safe.
             Handler(Looper.getMainLooper()).post {
-                // Initialize achievements from JSON
-                achievementScope.launch {
-                    try {
-                        val loader = Injekt.get<tachiyomi.data.achievement.loader.AchievementLoader>()
-                        loader.loadAchievements()
-                    } catch (e: Exception) {
-                        logcat(LogPriority.ERROR) { "Error during achievement initialization: ${e.message}" }
-                    }
-                }
-
                 // Clean up legacy phantom theme unlockables (theme_achievement_* no longer exist)
                 achievementScope.launch {
                     try {
                         val unlockableManager = Injekt.get<tachiyomi.data.achievement.UnlockableManager>()
-                        val userProfileManager = Injekt.get<tachiyomi.data.achievement.UserProfileManager>()
-                        val validThemeIds = eu.kanade.domain.ui.model.AppTheme.entries
-                            .filter { it.titleRes != null }
-                            .map { it.name.uppercase() }
-                            .toSet()
-
                         unlockableManager.removeUnlockable("theme_achievement_gold")
                         unlockableManager.removeUnlockable("theme_achievement_sapphire")
-
-                        val staleThemes = userProfileManager.getUnlockedThemes()
-                            .filter { it.uppercase() !in validThemeIds }
-                        staleThemes.forEach { themeId ->
-                            logcat(LogPriority.INFO) { "[ACHIEVEMENTS] Removing stale legacy theme: $themeId" }
-                            userProfileManager.removeTheme(themeId)
-                        }
                     } catch (e: Exception) {
                         logcat(LogPriority.ERROR) { "Error during legacy theme cleanup: ${e.message}" }
                     }
@@ -341,38 +315,6 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
                         }
                     } catch (e: Exception) {
                         logcat(LogPriority.ERROR) { "[MIGRATION] Error during legacy data migration: ${e.message}" }
-                    }
-                }
-
-                // Start achievement handler
-                achievementScope.launch {
-                    try {
-                        logcat(LogPriority.INFO) {
-                            "[ACHIEVEMENTS-INIT] About to get AchievementHandler from Injekt..."
-                        }
-                        val achievementHandler = Injekt.get<tachiyomi.data.achievement.handler.AchievementHandler>()
-                        logcat(LogPriority.INFO) { "[ACHIEVEMENTS-INIT] AchievementHandler obtained successfully" }
-
-                        // Set up callback to show unlock banners
-                        achievementHandler.unlockCallback =
-                            object : tachiyomi.data.achievement.handler.AchievementHandler.AchievementUnlockCallback {
-                                override fun onAchievementUnlocked(
-                                    achievement: tachiyomi.domain.achievement.model.Achievement,
-                                ) {
-                                    AchievementBannerManager.showAchievement(achievement)
-                                }
-                            }
-
-                        logcat(LogPriority.INFO) { "[ACHIEVEMENTS-INIT] Calling achievementHandler.start()..." }
-                        achievementHandler.start()
-                        logcat(LogPriority.INFO) { "[ACHIEVEMENTS-INIT] AchievementHandler started successfully" }
-                    } catch (e: Exception) {
-                        logcat(LogPriority.ERROR) {
-                            "[ACHIEVEMENTS-INIT] Failed to start achievement handler: ${e.message}"
-                        }
-                        logcat(LogPriority.ERROR) {
-                            "[ACHIEVEMENTS-INIT] Failed to start achievement handler: ${e.stackTraceToString()}"
-                        }
                     }
                 }
             }
@@ -492,7 +434,6 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
     override fun onStart(owner: LifecycleOwner) {
         if (isMainProcess) {
             SecureActivityDelegate.onApplicationStart()
-            sessionManager.onSessionStart()
             applicationScope.launch {
                 PendingApkInstallStore(basePreferences).resumeIfPermissionGranted(this@App)
                 // Creating the extension managers synchronously loads every installed extension on
@@ -516,7 +457,6 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
     override fun onStop(owner: LifecycleOwner) {
         if (isMainProcess) {
             SecureActivityDelegate.onApplicationStopped()
-            sessionManager.onSessionEnd()
         }
     }
 

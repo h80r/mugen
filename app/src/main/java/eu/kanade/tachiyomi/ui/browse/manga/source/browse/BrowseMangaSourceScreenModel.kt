@@ -42,8 +42,6 @@ import kotlinx.serialization.json.jsonArray
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.mapAsCheckboxState
 import tachiyomi.core.common.util.lang.launchIO
-import tachiyomi.data.achievement.handler.AchievementHandler
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.category.manga.interactor.GetMangaCategories
 import tachiyomi.domain.category.manga.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
@@ -87,7 +85,6 @@ class BrowseMangaSourceScreenModel(
     private val updateManga: UpdateManga = Injekt.get(),
     private val addTracks: AddMangaTracks = Injekt.get(),
     private val getIncognitoState: GetMangaIncognitoState = Injekt.get(),
-    private val achievementHandler: AchievementHandler = Injekt.get(),
     private val getSavedSearchById: GetSavedSearchById = Injekt.get(),
     private val getSavedSearchBySourceId: GetSavedSearchBySourceId = Injekt.get(),
     private val insertSavedSearch: InsertSavedSearch = Injekt.get(),
@@ -99,7 +96,6 @@ class BrowseMangaSourceScreenModel(
     var displayMode by sourcePreferences.sourceDisplayMode().asState(screenModelScope)
 
     val source = sourceManager.getOrStub(sourceId)
-    private var defaultFiltersSerialized: String? = null
 
     init {
         if (source is CatalogueSource) {
@@ -191,13 +187,11 @@ class BrowseMangaSourceScreenModel(
     }
 
     private suspend fun loadSourceFilters(): FilterList {
-        val filters = runCatching {
+        return runCatching {
             withContext(ioCoroutineScope.coroutineContext) {
                 (source as CatalogueSource).getFilterList()
             }
         }.getOrElse { FilterList() }
-        defaultFiltersSerialized = serializeFilters(filters)
-        return filters
     }
 
     internal fun serializeFilters(filters: FilterList): String? {
@@ -348,20 +342,10 @@ class BrowseMangaSourceScreenModel(
     fun setFilters(filters: FilterList) {
         if (source !is CatalogueSource) return
 
-        val changed = try {
-            kotlinx.serialization.json.Json.encodeToString(filterSerializer.serialize(filters)) !=
-                kotlinx.serialization.json.Json.encodeToString(filterSerializer.serialize(state.value.filters))
-        } catch (e: Exception) {
-            true
-        }
-
         mutableState.update {
             it.copy(
                 filters = filters,
             )
-        }
-        if (changed) {
-            achievementHandler.trackFeatureUsed(AchievementEvent.Feature.FILTER)
         }
     }
 
@@ -371,17 +355,6 @@ class BrowseMangaSourceScreenModel(
         val currentState = state.value
         val input = currentState.listing as? Listing.Search
             ?: Listing.Search(query = null, filters = currentState.filters)
-
-        val q = query ?: input.query
-        if (!q.isNullOrBlank()) {
-            val f = filters ?: input.filters
-            val hasActiveFilters = serializeFilters(f)?.let { it != defaultFiltersSerialized } ?: f.isNotEmpty()
-            if (hasActiveFilters) {
-                achievementHandler.trackFeatureUsed(AchievementEvent.Feature.ADVANCED_SEARCH)
-            } else {
-                achievementHandler.trackFeatureUsed(AchievementEvent.Feature.SEARCH)
-            }
-        }
 
         mutableState.update {
             it.copy(

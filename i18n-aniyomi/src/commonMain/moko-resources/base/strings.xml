@@ -2557,7 +2557,7 @@
     <string name="reader_navigator_slider_color_gray">Gray</string>
 
     <!-- Backup Options -->
-    <string name="achievements">Achievements</string>
+    <string name="achievements">Activity log</string>
     <string name="stats">Statistics</string>
     <string name="pref_customize_home_header_layout">Customize Home header layout</string>
     <string name="pref_customize_home_header_layout_summary">Drag greeting, nickname, avatar, and streak positions</string>

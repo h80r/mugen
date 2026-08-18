@@ -5,8 +5,6 @@ import datanovel.Novel_history
 import datanovel.Novels
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import io.kotest.matchers.shouldBe
-import io.mockk.mockk
-import io.mockk.verify
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeEach
@@ -15,10 +13,7 @@ import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.MangaUpdateStrategyColumnAdapter
 import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
-import tachiyomi.data.achievement.handler.AchievementEventBus
 import tachiyomi.data.handlers.novel.AndroidNovelDatabaseHandler
-import tachiyomi.domain.achievement.model.AchievementCategory
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.entries.novel.model.Novel
 import tachiyomi.domain.entries.novel.model.NovelUpdate
 import tachiyomi.novel.data.NovelDatabase
@@ -28,7 +23,6 @@ class NovelRepositoryImplTest {
     private lateinit var driver: JdbcSqliteDriver
     private lateinit var database: NovelDatabase
     private lateinit var handler: AndroidNovelDatabaseHandler
-    private lateinit var eventBus: AchievementEventBus
     private lateinit var repository: NovelRepositoryImpl
 
     @BeforeEach
@@ -54,8 +48,7 @@ class NovelRepositoryImplTest {
             queryDispatcher = kotlinx.coroutines.Dispatchers.Default,
             transactionDispatcher = kotlinx.coroutines.Dispatchers.Default,
         )
-        eventBus = mockk(relaxed = true)
-        repository = NovelRepositoryImpl(handler, eventBus)
+        repository = NovelRepositoryImpl(handler)
     }
 
     @Test
@@ -137,41 +130,4 @@ class NovelRepositoryImplTest {
         repository.getNovelById(checkNotNull(novelId)).viewerFlags shouldBe 0L
     }
 
-    @Test
-    fun `update novel favorite emits NOVEL library achievement events`() = runTest {
-        val novelId = checkNotNull(
-            repository.insertNovel(
-                Novel.create().copy(
-                    source = 5L,
-                    url = "/novel-achievements",
-                    title = "Achievement Novel",
-                    favorite = false,
-                    status = 1L,
-                    updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
-                ),
-            ),
-        )
-
-        repository.updateNovel(NovelUpdate(id = novelId, favorite = true))
-        repository.updateNovel(NovelUpdate(id = novelId, favorite = false))
-
-        verify {
-            eventBus.tryEmit(
-                match {
-                    it is AchievementEvent.LibraryAdded &&
-                        it.entryId == novelId &&
-                        it.type == AchievementCategory.NOVEL
-                },
-            )
-        }
-        verify {
-            eventBus.tryEmit(
-                match {
-                    it is AchievementEvent.LibraryRemoved &&
-                        it.entryId == novelId &&
-                        it.type == AchievementCategory.NOVEL
-                },
-            )
-        }
-    }
 }

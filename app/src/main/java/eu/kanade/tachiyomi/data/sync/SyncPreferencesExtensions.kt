@@ -21,7 +21,7 @@ fun SyncPreferences.getCloudSyncOptions(): BackupOptions {
         sourceSettings = "sourceSettings" in set,
         privateSettings = "privateSettings" in set,
         extensions = "extensions" in set,
-        achievements = "achievements" in set,
+        activityLog = "activityLog" in set,
         stats = "stats" in set,
         sisterAppCompatible = "sisterAppCompatible" in set,
     )
@@ -44,7 +44,7 @@ fun SyncPreferences.setCloudSyncOptions(options: BackupOptions) {
     if (options.sourceSettings) set.add("sourceSettings")
     if (options.privateSettings) set.add("privateSettings")
     if (options.extensions) set.add("extensions")
-    if (options.achievements) set.add("achievements")
+    if (options.activityLog) set.add("activityLog")
     if (options.stats) set.add("stats")
     if (options.sisterAppCompatible) set.add("sisterAppCompatible")
     cloudSyncOptions().set(set)

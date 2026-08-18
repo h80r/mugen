@@ -209,7 +209,6 @@ class PlayerViewModelRegressionTest {
             libraryPreferences = mockk(relaxed = true),
             preferenceStore = mockk(relaxed = true),
             uiPreferences = uiPreferences,
-            eventBus = mockk(relaxed = true),
             activityDataRepository = mockk(relaxed = true),
         )
 

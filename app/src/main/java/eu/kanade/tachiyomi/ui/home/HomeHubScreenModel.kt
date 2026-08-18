@@ -89,7 +89,6 @@ internal class HomeHubScreenModel(
     private val getAnimeCategories: GetAnimeCategories by injectLazy()
     private val sourcePreferences: SourcePreferences by injectLazy()
     private val sourceManager: AnimeSourceManager by injectLazy()
-    private val userProfileManager: tachiyomi.data.achievement.UserProfileManager by injectLazy()
     private val streakChecker: tachiyomi.data.achievement.handler.checkers.StreakAchievementChecker by injectLazy()
     private val activityDataRepository: tachiyomi.domain.achievement.repository.ActivityDataRepository by injectLazy()
 
@@ -112,13 +111,11 @@ internal class HomeHubScreenModel(
     }
 
     override suspend fun loadGreetingStats(): HomeGreetingStats {
-        val profile = userProfileManager.getCurrentProfile()
         val currentStreak = streakChecker.getCurrentStreak()
         val monthStats = activityDataRepository.getCurrentMonthStats()
         val libraryAnime = getLibraryAnime.await()
 
         return HomeGreetingStats(
-            achievementCount = profile.achievementsUnlocked,
             episodesWatched = monthStats.episodesWatched,
             librarySize = libraryAnime.size,
             currentStreak = currentStreak,

@@ -67,9 +67,6 @@ import logcat.LogPriority
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.achievement.handler.AchievementHandler
-import tachiyomi.data.achievement.handler.FeatureUsageCollector
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.domain.release.service.AppUpdatePreferences
 import tachiyomi.i18n.MR
@@ -98,7 +95,6 @@ object AboutScreen : Screen() {
         val handleBack = LocalBackPress.current
         val navigator = LocalNavigator.currentOrThrow
         val uiStyle = rememberResolvedSettingsUiStyle()
-        val achievementHandler = remember { Injekt.get<AchievementHandler>() }
         var isCheckingUpdates by remember { mutableStateOf(false) }
         var logoTapCount by remember { mutableStateOf(0) }
         val itemModifier = if (uiStyle == SettingsUiStyle.Aurora) {
@@ -136,7 +132,6 @@ object AboutScreen : Screen() {
                     item {
                         LogoHeader(
                             onClick = {
-                                achievementHandler.trackFeatureUsed(AchievementEvent.Feature.LOGO_CLICK)
                                 logoTapCount++
                                 context.toast("Logo tapped $logoTapCount times")
                             },

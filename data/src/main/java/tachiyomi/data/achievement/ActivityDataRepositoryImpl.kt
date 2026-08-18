@@ -6,7 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.achievement.database.AchievementsDatabase
+import tachiyomi.data.activity.database.ActivityDatabase
 import tachiyomi.domain.achievement.model.ActivityType
 import tachiyomi.domain.achievement.model.DayActivity
 import tachiyomi.domain.achievement.model.MonthStats
@@ -24,7 +24,7 @@ import java.time.format.DateTimeFormatter
  * at the date level but will accumulate counts if called multiple times.
  */
 class ActivityDataRepositoryImpl(
-    private val database: AchievementsDatabase,
+    private val database: ActivityDatabase,
 ) : ActivityDataRepository {
 
     private val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE

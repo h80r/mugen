@@ -5,7 +5,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 internal data class HomeGreetingStats(
-    val achievementCount: Int = 0,
     val episodesWatched: Int = 0,
     val librarySize: Int = 0,
     val currentStreak: Int = 0,
@@ -13,7 +12,6 @@ internal data class HomeGreetingStats(
 
 internal data class HomeGreetingSelectionRequest(
     val lastOpenedTime: Long,
-    val achievementCount: Int,
     val episodesWatched: Int,
     val librarySize: Int,
     val currentStreak: Int,
@@ -42,7 +40,6 @@ internal object HomeGreetingSession {
         selector: HomeGreetingSelector = HomeGreetingSelector { request ->
             GreetingProvider.selectGreeting(
                 lastOpenedTime = request.lastOpenedTime,
-                achievementCount = request.achievementCount,
                 episodesWatched = request.episodesWatched,
                 librarySize = request.librarySize,
                 currentStreak = request.currentStreak,
@@ -72,7 +69,6 @@ internal object HomeGreetingSession {
 
             val request = HomeGreetingSelectionRequest(
                 lastOpenedTime = lastOpened,
-                achievementCount = stats.achievementCount,
                 episodesWatched = stats.episodesWatched,
                 librarySize = stats.librarySize,
                 currentStreak = stats.currentStreak,

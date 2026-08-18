@@ -112,18 +112,7 @@ import mihon.domain.upcoming.anime.interactor.GetUpcomingAnime
 import mihon.domain.upcoming.manga.interactor.GetUpcomingManga
 import mihon.domain.upcoming.novel.interactor.GetUpcomingNovel
 import tachiyomi.data.achievement.ActivityDataRepositoryImpl
-import tachiyomi.data.achievement.UserProfileManager
-import tachiyomi.data.achievement.handler.AchievementCalculator
-import tachiyomi.data.achievement.handler.AchievementEventBus
-import tachiyomi.data.achievement.handler.AchievementHandler
-import tachiyomi.data.achievement.handler.AchievementRuleRegistry
-import tachiyomi.data.achievement.handler.FeatureUsageCollector
-import tachiyomi.data.achievement.handler.SessionManager
-import tachiyomi.data.achievement.handler.checkers.DiversityAchievementChecker
-import tachiyomi.data.achievement.handler.checkers.FeatureBasedAchievementChecker
 import tachiyomi.data.achievement.handler.checkers.StreakAchievementChecker
-import tachiyomi.data.achievement.handler.checkers.TimeBasedAchievementChecker
-import tachiyomi.data.achievement.repository.AchievementRepositoryImpl
 import tachiyomi.data.book.novel.NovelBookStateRepositoryImpl
 import tachiyomi.data.category.anime.AnimeCategoryRepositoryImpl
 import tachiyomi.data.category.manga.MangaCategoryRepositoryImpl
@@ -158,7 +147,6 @@ import tachiyomi.data.track.novel.NovelTrackRepositoryImpl
 import tachiyomi.data.updates.anime.AnimeUpdatesRepositoryImpl
 import tachiyomi.data.updates.manga.MangaUpdatesRepositoryImpl
 import tachiyomi.data.updates.novel.NovelUpdatesRepositoryImpl
-import tachiyomi.domain.achievement.repository.AchievementRepository
 import tachiyomi.domain.achievement.repository.ActivityDataRepository
 import tachiyomi.domain.book.novel.interactor.DeleteNovelBookState
 import tachiyomi.domain.book.novel.interactor.GetNovelBookState
@@ -411,7 +399,7 @@ class DomainModule : InjektModule {
         addFactory { SetNovelBookProgress(get()) }
         addFactory { DeleteNovelBookState(get()) }
 
-        addSingletonFactory<AnimeRepository> { AnimeRepositoryImpl(get(), get()) }
+        addSingletonFactory<AnimeRepository> { AnimeRepositoryImpl(get()) }
         addFactory { GetDuplicateLibraryAnime(get()) }
         addFactory { GetAnimeFavorites(get()) }
         addFactory { GetLibraryAnime(get()) }
@@ -486,7 +474,7 @@ class DomainModule : InjektModule {
         addFactory { ShouldUpdateDbSeason() }
         addFactory { SyncSeasonsWithSource(get(), get(), get(), get(), get()) }
 
-        addSingletonFactory<MangaRepository> { MangaRepositoryImpl(get(), get()) }
+        addSingletonFactory<MangaRepository> { MangaRepositoryImpl(get()) }
         addFactory { GetDuplicateLibraryManga(get()) }
         addFactory { GetMangaFavorites(get()) }
         addFactory { GetLibraryManga(get()) }
@@ -515,7 +503,7 @@ class DomainModule : InjektModule {
         addFactory { GetExcludedScanlators(get()) }
         addFactory { SetExcludedScanlators(get()) }
 
-        addSingletonFactory<NovelRepository> { NovelRepositoryImpl(get(), get()) }
+        addSingletonFactory<NovelRepository> { NovelRepositoryImpl(get()) }
         addFactory { GetNovel(get()) }
         addFactory { GetNovelByUrlAndSourceId(get()) }
         addFactory { GetNovelFavorites(get()) }
@@ -578,7 +566,7 @@ class DomainModule : InjektModule {
         addFactory { GetEpisodesByAnimeId(get()) }
         addFactory { GetEpisodeByUrlAndAnimeId(get()) }
         addFactory { UpdateEpisode(get()) }
-        addFactory { SetSeenStatus(get(), get(), get(), get(), get()) }
+        addFactory { SetSeenStatus(get(), get(), get(), get()) }
         addFactory { ShouldUpdateDbEpisode() }
         addFactory { SyncEpisodesWithSource(get(), get(), get(), get(), get(), get(), get(), get()) }
         addFactory { FilterEpisodesForDownload(get(), get(), get()) }
@@ -588,7 +576,7 @@ class DomainModule : InjektModule {
         addFactory { GetChaptersByMangaId(get()) }
         addFactory { GetChapterByUrlAndMangaId(get()) }
         addFactory { UpdateChapter(get()) }
-        addFactory { SetReadStatus(get(), get(), get(), get(), get()) }
+        addFactory { SetReadStatus(get(), get(), get(), get()) }
         addFactory { ShouldUpdateDbChapter() }
         addFactory { SyncChaptersWithSource(get(), get(), get(), get(), get(), get(), get(), get(), get()) }
         addFactory { GetAvailableScanlators(get()) }
@@ -750,41 +738,10 @@ class DomainModule : InjektModule {
 
         addFactory { TrackSelect(get(), get()) }
 
-        addSingletonFactory<AchievementRepository> { AchievementRepositoryImpl(get()) }
-        addSingletonFactory<tachiyomi.domain.achievement.repository.UserProfileRepository> {
-            tachiyomi.data.achievement.UserProfileRepositoryImpl(get())
-        }
         addSingletonFactory<tachiyomi.domain.achievement.repository.ActivityDataRepository> {
             tachiyomi.data.achievement.ActivityDataRepositoryImpl(get())
         }
-        addSingletonFactory { DiversityAchievementChecker(get(), get(), get()) }
         addSingletonFactory { StreakAchievementChecker(get()) }
-        addSingletonFactory { FeatureUsageCollector(get()) }
-        addSingletonFactory { TimeBasedAchievementChecker(get(), get()) }
-        addSingletonFactory { FeatureBasedAchievementChecker(get(), get()) }
-        addSingletonFactory { AchievementRuleRegistry(get(), get(), get()) }
-        addSingletonFactory {
-            AchievementCalculator(
-                get(), get(), get(), get(), get(),
-                get(), get(), get(), get(), get(),
-                get(), get(), get(), get(), get(),
-                get(),
-            )
-        }
-        addSingletonFactory { AchievementEventBus() }
-        addSingletonFactory { SessionManager(get(), get()) }
-        addSingletonFactory {
-            tachiyomi.data.achievement.UserProfileManager(get())
-        }
-        addSingletonFactory {
-            AchievementHandler(
-                get(), get(), get(), get(), get(),
-                get(), get(), get(), get(), get(),
-                get(), get(), get(), get(), get(),
-                get(), get(), get(),
-            )
-        }
-        // Note: AchievementLoader, PointsManager, UnlockableManager require Context
-        // They are registered in AppModule instead
+        // Note: UnlockableManager requires Context, registered in AppModule instead
     }
 }

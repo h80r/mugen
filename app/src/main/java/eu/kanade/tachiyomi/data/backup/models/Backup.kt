@@ -28,9 +28,7 @@ data class LegacyBackup(
     @ProtoNumber(650) var backupAnimeExtensionStore: List<BackupExtensionStore> = emptyList(),
     @ProtoNumber(651) var backupMangaExtensionStore: List<BackupExtensionStore> = emptyList(),
     @ProtoNumber(652) var backupNovelExtensionStore: List<BackupExtensionStore> = emptyList(),
-    // Achievement system
-    @ProtoNumber(600) var backupAchievements: List<BackupAchievement> = emptyList(),
-    @ProtoNumber(601) var backupUserProfile: BackupUserProfile? = null,
+    // Activity log & stats
     @ProtoNumber(602) var backupActivityLog: List<BackupDayActivity> = emptyList(),
     @ProtoNumber(603) var backupStats: BackupStats? = null,
     @ProtoNumber(620) var backupMangaSeries: List<BackupMangaSeries> = emptyList(),
@@ -61,8 +59,6 @@ data class LegacyBackup(
             backupNovelExtensionRepo = backupNovelExtensionRepo,
             backupAnimeExtensionStore = backupAnimeExtensionStore,
             backupNovelExtensionStore = backupNovelExtensionStore,
-            backupAchievements = backupAchievements,
-            backupUserProfile = backupUserProfile,
             backupActivityLog = backupActivityLog,
             backupStats = backupStats,
             backupMangaSeries = backupMangaSeries,
@@ -97,9 +93,7 @@ data class Backup(
     @ProtoNumber(509) var backupNovelCategories: List<BackupCategory> = emptyList(),
     @ProtoNumber(510) var backupNovelSources: List<BackupSource> = emptyList(),
 
-    // Achievement system
-    @ProtoNumber(600) var backupAchievements: List<BackupAchievement> = emptyList(),
-    @ProtoNumber(601) var backupUserProfile: BackupUserProfile? = null,
+    // Activity log & stats
     @ProtoNumber(602) var backupActivityLog: List<BackupDayActivity> = emptyList(),
     @ProtoNumber(603) var backupStats: BackupStats? = null,
     @ProtoNumber(620) var backupMangaSeries: List<BackupMangaSeries> = emptyList(),
@@ -127,8 +121,6 @@ internal fun Backup.mergeLegacyPayloadIfPresent(legacy: LegacyBackup): Backup {
         backupAnimeExtensionStore = backupAnimeExtensionStore.ifEmpty { legacy.backupAnimeExtensionStore },
         backupMangaExtensionStore = backupMangaExtensionStore.ifEmpty { legacy.backupMangaExtensionStore },
         backupNovelExtensionStore = backupNovelExtensionStore.ifEmpty { legacy.backupNovelExtensionStore },
-        backupAchievements = backupAchievements.ifEmpty { legacy.backupAchievements },
-        backupUserProfile = backupUserProfile ?: legacy.backupUserProfile,
         backupActivityLog = backupActivityLog.ifEmpty { legacy.backupActivityLog },
         backupStats = backupStats ?: legacy.backupStats,
         backupMangaSeries = backupMangaSeries.ifEmpty { legacy.backupMangaSeries },

@@ -59,8 +59,6 @@ import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.core.metadata.comicinfo.COMIC_INFO_FILE
 import tachiyomi.core.metadata.comicinfo.ComicInfo
-import tachiyomi.data.achievement.handler.AchievementHandler
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.category.manga.interactor.GetMangaCategories
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.entries.manga.model.Manga
@@ -93,7 +91,6 @@ class MangaDownloader(
     private val xml: XML = Injekt.get(),
     private val getCategories: GetMangaCategories = Injekt.get(),
     private val getMangaTracks: GetMangaTracks = Injekt.get(),
-    private val achievementHandler: AchievementHandler = Injekt.get(),
     // SY -->
     private val sourcePreferences: SourcePreferences = Injekt.get(),
     // SY <--
@@ -495,7 +492,6 @@ class MangaDownloader(
             download.currentSpeedBytesPerSecond = 0L
             removeFromQueue(download)
             completionTracker.recordCompletion(DownloadSection.MANGA)
-            achievementHandler.trackFeatureUsed(AchievementEvent.Feature.DOWNLOAD)
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             // If the page list threw, it will resume here

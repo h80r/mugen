@@ -4,8 +4,6 @@ import eu.kanade.domain.download.anime.interactor.DeleteEpisodeDownload
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.withNonCancellableContext
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.achievement.handler.AchievementEventBus
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.achievement.repository.ActivityDataRepository
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.entries.anime.model.Anime
@@ -21,7 +19,6 @@ class SetSeenStatus(
     private val deleteDownload: DeleteEpisodeDownload,
     private val animeRepository: AnimeRepository,
     private val episodeRepository: EpisodeRepository,
-    private val eventBus: AchievementEventBus,
     private val activityDataRepository: ActivityDataRepository = Injekt.get(),
 ) {
 
@@ -65,24 +62,6 @@ class SetSeenStatus(
         }
 
         if (seen) {
-            // Emit EpisodeWatched events for achievement tracking
-            episodesToUpdate.forEach { episode ->
-                eventBus.tryEmit(
-                    AchievementEvent.EpisodeWatched(
-                        animeId = episode.animeId,
-                        episodeNumber = episode.episodeNumber.toInt(),
-                    ),
-                )
-            }
-
-            // Check for anime completion
-            episodesToUpdate.map { it.animeId }.distinct().forEach { animeId ->
-                val allEpisodes = episodeRepository.getEpisodeByAnimeId(animeId)
-                if (allEpisodes.all { it.seen }) {
-                    eventBus.tryEmit(AchievementEvent.AnimeCompleted(animeId))
-                }
-            }
-
             // Record watching activity for stats
             episodesToUpdate.forEach { episode ->
                 activityDataRepository.recordWatching(

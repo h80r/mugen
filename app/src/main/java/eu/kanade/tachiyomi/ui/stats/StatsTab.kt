@@ -21,12 +21,8 @@ import eu.kanade.tachiyomi.ui.stats.general.generalStatsTab
 import eu.kanade.tachiyomi.ui.stats.manga.mangaStatsTab
 import eu.kanade.tachiyomi.ui.stats.novel.novelStatsTab
 import kotlinx.collections.immutable.toPersistentList
-import tachiyomi.data.achievement.handler.AchievementHandler
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 data object StatsTab : Tab {
 
@@ -78,10 +74,6 @@ data object StatsTab : Tab {
 
         LaunchedEffect(Unit) {
             (context as? MainActivity)?.ready = true
-
-            // Track stats visit for achievement
-            val achievementHandler = Injekt.get<AchievementHandler>()
-            achievementHandler.trackFeatureUsed(AchievementEvent.Feature.STATS)
         }
     }
 }

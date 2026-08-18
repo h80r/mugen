@@ -96,22 +96,22 @@ class HomeGreetingSessionTest {
         val selector = HomeGreetingSelector { request ->
             GreetingProvider.GreetingSelection(
                 greeting = AYMR.strings.aurora_greeting_ready,
-                greetingId = "ready_${request.achievementCount}",
-                scenarioId = "scenario_${request.achievementCount}",
+                greetingId = "ready_${request.episodesWatched}",
+                scenarioId = "scenario_${request.episodesWatched}",
             )
         }
 
         val first = async {
             HomeGreetingSession.resolveGreeting(
                 userProfilePreferences = prefs,
-                stats = HomeGreetingStats(achievementCount = 1),
+                stats = HomeGreetingStats(episodesWatched = 1),
                 selector = selector,
             )
         }
         val second = async {
             HomeGreetingSession.resolveGreeting(
                 userProfilePreferences = prefs,
-                stats = HomeGreetingStats(achievementCount = 99),
+                stats = HomeGreetingStats(episodesWatched = 99),
                 selector = selector,
             )
         }

@@ -15,7 +15,7 @@ class RestoreOptionsTest {
             false, // customButtons
             true, // sourceSettings
             false, // extensions
-            true, // achievements
+            true, // activityLog
             false, // stats
         )
 
@@ -28,7 +28,7 @@ class RestoreOptionsTest {
         options.customButtons shouldBe false
         options.sourceSettings shouldBe true
         options.extensions shouldBe false
-        options.achievements shouldBe true
+        options.activityLog shouldBe true
         options.stats shouldBe false
         options.restoreManga shouldBe true
         options.restoreAnime shouldBe true
@@ -66,7 +66,7 @@ class RestoreOptionsTest {
             customButtons = false,
             sourceSettings = false,
             extensions = false,
-            achievements = false,
+            activityLog = false,
             stats = false,
         )
 
@@ -86,7 +86,7 @@ class RestoreOptionsTest {
             customButtons = false,
             sourceSettings = false,
             extensions = false,
-            achievements = false,
+            activityLog = false,
             stats = false,
         )
 

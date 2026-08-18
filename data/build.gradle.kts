@@ -17,7 +17,6 @@ android {
                 "build/generated/sqldelight/code/Database/debug",
                 "build/generated/sqldelight/code/AnimeDatabase/debug",
                 "build/generated/sqldelight/code/NovelDatabase/debug",
-                "build/generated/sqldelight/code/AchievementsDatabase/debug",
                 "build/generated/sqldelight/code/ActivityDatabase/debug",
             )
         }
@@ -26,7 +25,6 @@ android {
                 "build/generated/sqldelight/code/Database/release",
                 "build/generated/sqldelight/code/AnimeDatabase/release",
                 "build/generated/sqldelight/code/NovelDatabase/release",
-                "build/generated/sqldelight/code/AchievementsDatabase/release",
                 "build/generated/sqldelight/code/ActivityDatabase/release",
             )
         }
@@ -52,12 +50,6 @@ android {
                 schemaOutputDirectory.set(project.file("./src/main/sqldelightnovel"))
                 srcDirs.from(project.file("./src/main/sqldelightnovel"))
             }
-            create("AchievementsDatabase") {
-                packageName.set("tachiyomi.db.achievement")
-                dialect(libs.sqldelight.dialects.sql)
-                schemaOutputDirectory.set(project.file("./src/main/sqldelightachievements"))
-                srcDirs.from(project.file("./src/main/sqldelightachievements"))
-            }
             create("ActivityDatabase") {
                 packageName.set("tachiyomi.db.activity")
                 dialect(libs.sqldelight.dialects.sql)
@@ -76,7 +68,6 @@ tasks.matching {
         "generate${variant}DatabaseInterface",
         "generate${variant}AnimeDatabaseInterface",
         "generate${variant}NovelDatabaseInterface",
-        "generate${variant}AchievementsDatabaseInterface",
         "generate${variant}ActivityDatabaseInterface",
     )
 }

@@ -2,10 +2,8 @@ package tachiyomi.data.category.novel
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import io.kotest.matchers.shouldBe
-import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
-import tachiyomi.data.achievement.handler.AchievementEventBus
 import tachiyomi.data.entries.novel.NovelRepositoryImpl
 import tachiyomi.data.handlers.novel.AndroidNovelDatabaseHandler
 import tachiyomi.data.novel.createTestNovelDatabase
@@ -20,8 +18,7 @@ class NovelCategoryRepositoryImplTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         val database = createTestNovelDatabase(driver)
         val handler = AndroidNovelDatabaseHandler(database, driver)
-        val eventBus: AchievementEventBus = mockk(relaxed = true)
-        val novelRepository = NovelRepositoryImpl(handler, eventBus)
+        val novelRepository = NovelRepositoryImpl(handler)
         val categoryRepository = NovelCategoryRepositoryImpl(handler)
 
         val novelId = novelRepository.insertNovel(

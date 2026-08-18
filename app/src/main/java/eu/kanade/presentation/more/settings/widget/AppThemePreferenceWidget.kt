@@ -109,17 +109,13 @@ private fun AppThemesList(
     val uiPreferences = remember { Injekt.get<UiPreferences>() }
     val debugBypassLocks by uiPreferences.debugBypassTreasuryLocks().collectAsStateWithLifecycle()
 
-    val userProfileManager = remember { Injekt.get<tachiyomi.data.achievement.UserProfileManager>() }
-    val userProfile by userProfileManager.profile.collectAsStateWithLifecycle(initialValue = null)
-
     val unlockableManager = remember { Injekt.get<tachiyomi.data.achievement.UnlockableManager>() }
 
     val rawUnlockedUnlockables by remember {
         unlockableManager.observeUnlockedUnlockables()
     }.collectAsStateWithLifecycle(initialValue = unlockableManager.getUnlockedUnlockables())
 
-    val appThemes = remember(userProfile, debugBypassLocks, rawUnlockedUnlockables) {
-        val unlockedThemes = userProfile?.unlockedThemes?.toSet() ?: emptySet()
+    val appThemes = remember(debugBypassLocks, rawUnlockedUnlockables) {
         val unlockedUnlockables = visibleUnlockablesForTreasuryPreview(
             debugBypassLocks = debugBypassLocks,
             unlockedUnlockables = rawUnlockedUnlockables,
@@ -132,7 +128,6 @@ private fun AppThemesList(
                     (it == AppTheme.MONET && !DeviceUtil.isDynamicColorAvailable) ||
                     (
                         it.isHidden &&
-                            !unlockedThemes.contains(it.name) &&
                             !isThemePreviewUnlocked(it, unlockedUnlockables)
                         )
             }

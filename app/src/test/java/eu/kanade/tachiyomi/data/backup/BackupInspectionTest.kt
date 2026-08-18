@@ -71,7 +71,7 @@ class BackupInspectionTest {
             sourceSettings = false,
             privateSettings = true,
             extensions = true,
-            achievements = false,
+            activityLog = false,
             stats = true,
             sisterAppCompatible = true,
         )
@@ -92,7 +92,7 @@ class BackupInspectionTest {
             customButtons = false,
             sourceSettings = true,
             extensions = true,
-            achievements = false,
+            activityLog = false,
             stats = true,
         )
 

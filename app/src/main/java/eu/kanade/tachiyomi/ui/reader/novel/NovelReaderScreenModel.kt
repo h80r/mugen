@@ -130,7 +130,6 @@ import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.achievement.handler.AchievementEventBus
 import tachiyomi.domain.achievement.repository.ActivityDataRepository
 import tachiyomi.domain.entries.novel.interactor.GetNovel
 import tachiyomi.domain.entries.novel.model.Novel
@@ -181,7 +180,6 @@ class NovelReaderScreenModel(
         pluginStorage = pluginStorage,
         novelReaderPreferences = novelReaderPreferences,
     ),
-    private val eventBus: AchievementEventBus? = runCatching { Injekt.get<AchievementEventBus>() }.getOrNull(),
     private val activityDataRepository: ActivityDataRepository = Injekt.get(),
     private val isSystemDark: () -> Boolean = { Injekt.get<Application>().isNightMode() },
     private val geminiTranslationService: GeminiTranslationService = run {
@@ -880,7 +878,6 @@ class NovelReaderScreenModel(
         host = this,
         novelChapterRepository = novelChapterRepository,
         getIncognitoState = getIncognitoState,
-        eventBus = eventBus,
         activityDataRepository = activityDataRepository,
         historyRepository = historyRepository,
     )

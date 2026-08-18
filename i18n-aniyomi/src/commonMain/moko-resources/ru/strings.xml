@@ -2151,7 +2151,7 @@
     <string name="achievement_secret_weeb_awakening_desc">Твоя истинная сила пробуждается — скрытое достижение</string>
 
     <!-- Backup Options -->
-    <string name="achievements">Достижения</string>
+    <string name="achievements">Журнал активности</string>
     <string name="stats">Статистика</string>
     <string name="novel_reader_font_family">Шрифт</string>
     <string name="novel_reader_appearance_mode">Режим оформления</string>

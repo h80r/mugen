@@ -2203,7 +2203,7 @@
     <string name="reader_navigator_slider_color_turquoise">فيروزي</string>
     <string name="reader_navigator_slider_color_brown">بني</string>
     <string name="reader_navigator_slider_color_gray">رمادي</string>
-    <string name="achievements">الإنجازات</string>
+    <string name="achievements">سجل النشاط</string>
     <string name="stats">الإحصائيات</string>
     <string name="pref_customize_home_header_layout">تخصيص تخطيط رأس الصفحة الرئيسية</string>
     <string name="pref_customize_home_header_layout_summary">اسحب التحية واللقب والصورة الرمزية والسلسلة إلى مواقعها</string>

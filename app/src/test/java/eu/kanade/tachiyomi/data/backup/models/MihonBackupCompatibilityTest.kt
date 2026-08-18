@@ -19,7 +19,6 @@ class MihonBackupCompatibilityTest {
         val tadamiBackup = sampleTadamiBackup().copy(
             isLegacy = false,
             backupNovel = listOf(sampleNovel()),
-            backupAchievements = listOf(sampleAchievement()),
         )
 
         val nativeBytes = ProtoBuf.encodeToByteArray(Backup.serializer(), tadamiBackup)
@@ -172,7 +171,6 @@ class MihonBackupCompatibilityTest {
             Backup.serializer(),
             Backup(
                 backupManga = listOf(sampleManga()),
-                backupAchievements = listOf(sampleAchievement()),
                 isLegacy = false,
             ),
         )
@@ -308,16 +306,6 @@ class MihonBackupCompatibilityTest {
             shortName = null,
             website = "https://example.invalid",
             signingKeyFingerprint = "fingerprint",
-        )
-    }
-
-    private fun sampleAchievement(): BackupAchievement {
-        return BackupAchievement(
-            id = "first_backup",
-            title = "First backup",
-            description = "Create a backup",
-            category = 0,
-            type = 0,
         )
     }
 

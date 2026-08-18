@@ -104,7 +104,6 @@ import tachiyomi.data.FetchTypeColumnAdapter
 import tachiyomi.data.MangaUpdateStrategyColumnAdapter
 import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
-import tachiyomi.data.achievement.database.AchievementsDatabase
 import tachiyomi.data.activity.ActivityLogRepository
 import tachiyomi.data.activity.database.ActivityDatabase
 import tachiyomi.data.extension.novel.AndroidNovelPluginKeyValueStore
@@ -198,9 +197,6 @@ class AppModule(val app: Application) : InjektModule {
 
     private fun ensureAnimeDatabaseIsUsable(context: Context) =
         ensureDatabaseIsUsable(context, "tachiyomi.animedb", "animes")
-
-    private fun ensureAchievementsDatabaseIsUsable(context: Context) =
-        ensureDatabaseIsUsable(context, AchievementsDatabase.NAME, "achievements")
 
     private fun ensureActivityDatabaseIsUsable(context: Context) =
         ensureDatabaseIsUsable(context, ActivityDatabase.NAME, "activity_log")
@@ -368,7 +364,6 @@ class AppModule(val app: Application) : InjektModule {
         ensureMangaDatabaseIsUsable(app)
         ensureAnimeDatabaseIsUsable(app)
         ensureNovelDatabaseIsUsable(app)
-        ensureAchievementsDatabaseIsUsable(app)
         ensureActivityDatabaseIsUsable(app)
 
         val sqlDriverManga = AndroidSqliteDriver(
@@ -414,31 +409,6 @@ class AppModule(val app: Application) : InjektModule {
                     setPragma(db, "journal_mode = WAL")
                     setPragma(db, "synchronous = NORMAL")
                     migrateAnimeNotesSchema(db)
-                }
-                private fun setPragma(db: SupportSQLiteDatabase, pragma: String) {
-                    val cursor = db.query("PRAGMA $pragma")
-                    cursor.moveToFirst()
-                    cursor.close()
-                }
-            },
-        )
-
-        val sqlDriverAchievements = AndroidSqliteDriver(
-            schema = tachiyomi.db.achievement.AchievementsDatabase.Schema,
-            context = app,
-            name = AchievementsDatabase.NAME,
-            factory = if (BuildConfig.DEBUG && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // Support database inspector in Android Studio
-                FrameworkSQLiteOpenHelperFactory()
-            } else {
-                RequerySQLiteOpenHelperFactory()
-            },
-            callback = object : AndroidSqliteDriver.Callback(tachiyomi.db.achievement.AchievementsDatabase.Schema) {
-                override fun onOpen(db: SupportSQLiteDatabase) {
-                    super.onOpen(db)
-                    setPragma(db, "foreign_keys = ON")
-                    setPragma(db, "journal_mode = WAL")
-                    setPragma(db, "synchronous = NORMAL")
                 }
                 private fun setPragma(db: SupportSQLiteDatabase, pragma: String) {
                     val cursor = db.query("PRAGMA $pragma")
@@ -545,12 +515,6 @@ class AppModule(val app: Application) : InjektModule {
                     update_strategyAdapter = AnimeUpdateStrategyColumnAdapter,
                     fetch_typeAdapter = FetchTypeColumnAdapter,
                 ),
-            )
-        }
-
-        addSingletonFactory {
-            AchievementsDatabase(
-                driver = sqlDriverAchievements,
             )
         }
 
@@ -883,28 +847,12 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { TranslationQueueManager() }
         addSingletonFactory { TranslationNotificationManager(app) }
 
-        // Achievement system repositories
-        addSingletonFactory<tachiyomi.domain.achievement.repository.AchievementRepository> {
-            tachiyomi.data.achievement.repository.AchievementRepositoryImpl(get())
-        }
         addSingletonFactory<tachiyomi.domain.achievement.repository.ActivityDataRepository> {
             tachiyomi.data.achievement.ActivityDataRepositoryImpl(get())
         }
-        addSingletonFactory<tachiyomi.domain.achievement.repository.UserProfileRepository> {
-            tachiyomi.data.achievement.UserProfileRepositoryImpl(get())
-        }
-
-        // Achievement system managers and handlers
-        addSingletonFactory<tachiyomi.data.achievement.localization.AchievementTextResolver> {
-            eu.kanade.tachiyomi.data.achievement.localization.AchievementTextResolverImpl(app)
-        }
-        addSingletonFactory { tachiyomi.data.achievement.loader.AchievementLoader(app, get(), get(), get()) }
-        addSingletonFactory { tachiyomi.data.achievement.handler.PointsManager(get()) }
-        addSingletonFactory { tachiyomi.data.achievement.UserProfileManager(get()) }
         addSingletonFactory {
             tachiyomi.data.achievement.UnlockableManager(
                 app.getSharedPreferences("achievement_unlockables", Context.MODE_PRIVATE),
-                get(),
             )
         }
 
@@ -923,7 +871,6 @@ class AppModule(val app: Application) : InjektModule {
             get<Database>()
             get<AnimeDatabase>()
             get<NovelDatabase>()
-            get<AchievementsDatabase>()
 
             get<MangaDownloadManager>()
             get<AnimeDownloadManager>()

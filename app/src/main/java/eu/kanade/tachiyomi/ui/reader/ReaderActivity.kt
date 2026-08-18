@@ -216,9 +216,6 @@ class ReaderActivity : BaseActivity() {
             window.sharedElementReturnTransition = null
         }
 
-        // Defer achievement notifications while in reader
-        eu.kanade.presentation.achievement.components.AchievementBannerManager.setInReaderOrPlayer(true)
-
         binding = ReaderActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
         applyReaderSystemBarIconStyle(viewModel.state.value.menuVisible)
@@ -320,8 +317,6 @@ class ReaderActivity : BaseActivity() {
      * Called when the activity is destroyed. Cleans up the viewer, configuration and any view.
      */
     override fun onDestroy() {
-        // Allow achievement notifications when exiting reader
-        eu.kanade.presentation.achievement.components.AchievementBannerManager.setInReaderOrPlayer(false)
         super.onDestroy()
         viewModel.state.value.viewer?.destroy()
         config = null

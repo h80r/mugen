@@ -38,8 +38,6 @@ import kotlinx.coroutines.withContext
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.mapAsCheckboxState
 import tachiyomi.core.common.util.lang.launchIO
-import tachiyomi.data.achievement.handler.AchievementHandler
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.novel.interactor.GetNovelCategories
 import tachiyomi.domain.category.novel.interactor.SetNovelCategories
@@ -146,11 +144,9 @@ class BrowseNovelSourceScreenModel(
     private val getSavedSearchBySourceIdInteractor: GetSavedSearchBySourceId? = null,
     private val insertSavedSearchInteractor: InsertSavedSearch? = null,
     private val deleteSavedSearchByIdInteractor: DeleteSavedSearchById? = null,
-    private val achievementHandler: AchievementHandler = Injekt.get(),
 ) : StateScreenModel<BrowseNovelSourceScreenModel.State>(State(Listing.valueOf(listingQuery))) {
 
     var displayMode by sourcePreferences.sourceDisplayMode().asState(screenModelScope)
-    private var defaultFiltersSerialized: String? = null
 
     val source = sourceManager.getOrStub(sourceId)
 
@@ -258,17 +254,11 @@ class BrowseNovelSourceScreenModel(
     }
 
     private suspend fun loadSourceFilters(): NovelFilterList {
-        val filters = runCatching {
+        return runCatching {
             withContext(ioCoroutineScope.coroutineContext) {
                 (source as NovelCatalogueSource).getFilterList()
             }
         }.getOrElse { NovelFilterList() }
-        defaultFiltersSerialized = serializeFilters(filters)
-        return filters
-    }
-
-    private fun serializeFilters(filters: NovelFilterList): String? {
-        return runCatching { SavedSearchFilterSerializer.serialize(filters) }.getOrNull()
     }
 
     fun loadSavedSearches() {
@@ -411,13 +401,6 @@ class BrowseNovelSourceScreenModel(
     fun setFilters(filters: NovelFilterList) {
         if (source !is NovelCatalogueSource) return
 
-        val currentFilters = state.value.filters
-        val changed = try {
-            SavedSearchFilterSerializer.serialize(filters) != SavedSearchFilterSerializer.serialize(currentFilters)
-        } catch (e: Exception) {
-            true
-        }
-
         mutableState.update { current ->
             val updatedFilters = if (current.listing == Listing.Latest && filters !== current.filters) {
                 current.filters.also { copyNovelFilterState(filters, it) }
@@ -425,9 +408,6 @@ class BrowseNovelSourceScreenModel(
                 filters
             }
             current.copy(filters = updatedFilters)
-        }
-        if (changed) {
-            achievementHandler.trackFeatureUsed(AchievementEvent.Feature.FILTER)
         }
     }
 
@@ -438,20 +418,6 @@ class BrowseNovelSourceScreenModel(
         val updatedFilters = filters ?: currentState.filters
         val input = currentState.listing as? Listing.Search
             ?: Listing.Search(query = null, filters = updatedFilters)
-
-        val q = query ?: input.query
-        if (!q.isNullOrBlank()) {
-            val f = filters ?: input.filters
-            if (defaultFiltersSerialized == null) {
-                defaultFiltersSerialized = serializeFilters(source.getFilterList())
-            }
-            val hasActiveFilters = serializeFilters(f)?.let { it != defaultFiltersSerialized } ?: f.isNotEmpty()
-            if (hasActiveFilters) {
-                achievementHandler.trackFeatureUsed(AchievementEvent.Feature.ADVANCED_SEARCH)
-            } else {
-                achievementHandler.trackFeatureUsed(AchievementEvent.Feature.SEARCH)
-            }
-        }
 
         mutableState.update {
             it.copy(

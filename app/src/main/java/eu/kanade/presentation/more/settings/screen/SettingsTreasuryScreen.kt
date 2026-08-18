@@ -97,9 +97,7 @@ import eu.kanade.presentation.theme.AuroraTheme
 import eu.kanade.presentation.theme.TachiyomiTheme
 import eu.kanade.tachiyomi.ui.home.components.AvatarFrameDecorations
 import eu.kanade.tachiyomi.ui.home.components.avatarGlitch
-import kotlinx.coroutines.flow.first
 import tachiyomi.data.achievement.UnlockableManager
-import tachiyomi.domain.achievement.model.Achievement
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -109,8 +107,6 @@ import uy.kohesive.injekt.api.get
 import androidx.compose.ui.graphics.drawscope.scale as drawScopeScale
 
 object SettingsTreasuryScreen : SearchableSettings {
-
-    var shouldShowVoidBroadcastBanner: Boolean = false
 
     @ReadOnlyComposable
     @Composable
@@ -143,34 +139,6 @@ object SettingsTreasuryScreen : SearchableSettings {
             debugBypassLocks = debugBypassLocks,
             unlockedUnlockables = rawUnlockedUnlockables,
         )
-
-        val achievementRepository = remember {
-            Injekt.get<tachiyomi.domain.achievement.repository.AchievementRepository>()
-        }
-        LaunchedEffect(Unit) {
-            if (shouldShowVoidBroadcastBanner) {
-                shouldShowVoidBroadcastBanner = false
-                val allAchievements = achievementRepository.getAll().first()
-                val achievement = allAchievements.firstOrNull { it.id == "void_broadcast_unlocked" }
-                if (achievement != null) {
-                    eu.kanade.presentation.achievement.components.AchievementBannerManager.showAchievement(achievement)
-                }
-            }
-        }
-        val achievements by achievementRepository.getAll().collectAsStateWithLifecycle(initialValue = emptyList())
-
-        val rewardToAchievementMap = remember(achievements) {
-            val map = mutableMapOf<String, Achievement>()
-            achievements.forEach { achievement ->
-                achievement.rewards?.forEach { reward ->
-                    map[reward.id] = achievement
-                }
-                achievement.unlockableId?.let { uid ->
-                    map[uid] = achievement
-                }
-            }
-            map
-        }
 
         val titlePresets = listOf(
             TreasuryPreset(
@@ -709,7 +677,6 @@ object SettingsTreasuryScreen : SearchableSettings {
                 TreasuryThemeSelector(
                     uiPreferences = uiPreferences,
                     unlockedUnlockables = unlockedUnlockables,
-                    rewardToAchievementMap = rewardToAchievementMap,
                 )
             },
         )
@@ -720,7 +687,6 @@ object SettingsTreasuryScreen : SearchableSettings {
                     uiPreferences = uiPreferences,
                     unlockableManager = unlockableManager,
                     unlockedUnlockables = unlockedUnlockables,
-                    rewardToAchievementMap = rewardToAchievementMap,
                     amoled = amoled,
                 )
             },
@@ -735,7 +701,6 @@ object SettingsTreasuryScreen : SearchableSettings {
                     subtitle = stringResource(AYMR.strings.treasury_background_effects_subtitle),
                     presets = specialBackgroundPresets,
                     unlockedUnlockables = unlockedUnlockables,
-                    rewardToAchievementMap = rewardToAchievementMap,
                     amoled = amoled,
                 )
             },
@@ -750,7 +715,6 @@ object SettingsTreasuryScreen : SearchableSettings {
                     subtitle = stringResource(MR.strings.treasury_tab_customization_subtitle),
                     presets = tabCustomizationPresets,
                     unlockedUnlockables = unlockedUnlockables,
-                    rewardToAchievementMap = rewardToAchievementMap,
                     amoled = amoled,
                 )
             },
@@ -765,7 +729,6 @@ object SettingsTreasuryScreen : SearchableSettings {
                     subtitle = stringResource(AYMR.strings.treasury_profile_titles_subtitle),
                     presets = titlePresets,
                     unlockedUnlockables = unlockedUnlockables,
-                    rewardToAchievementMap = rewardToAchievementMap,
                     amoled = amoled,
                 )
             },
@@ -780,7 +743,6 @@ object SettingsTreasuryScreen : SearchableSettings {
                     subtitle = stringResource(AYMR.strings.treasury_profile_effects_subtitle),
                     presets = profileEffectPresets,
                     unlockedUnlockables = unlockedUnlockables,
-                    rewardToAchievementMap = rewardToAchievementMap,
                     amoled = amoled,
                 )
             },
@@ -795,7 +757,6 @@ object SettingsTreasuryScreen : SearchableSettings {
                     subtitle = stringResource(AYMR.strings.treasury_avatar_frames_subtitle),
                     presets = avatarFramePresets,
                     unlockedUnlockables = unlockedUnlockables,
-                    rewardToAchievementMap = rewardToAchievementMap,
                     amoled = amoled,
                 )
             },
@@ -810,7 +771,6 @@ object SettingsTreasuryScreen : SearchableSettings {
                     subtitle = stringResource(AYMR.strings.treasury_home_hub_rewards_subtitle),
                     presets = homePresets,
                     unlockedUnlockables = unlockedUnlockables,
-                    rewardToAchievementMap = rewardToAchievementMap,
                     amoled = amoled,
                 )
             },
@@ -1770,7 +1730,6 @@ private data class TreasuryExclusiveThemeSpec(
 private fun TreasuryThemeSelector(
     uiPreferences: UiPreferences,
     unlockedUnlockables: Set<String>,
-    rewardToAchievementMap: Map<String, Achievement>,
 ) {
     val context = LocalContext.current
     val appTheme by uiPreferences.appTheme().collectAsStateWithLifecycle()
@@ -1849,12 +1808,8 @@ private fun TreasuryThemeSelector(
             items(visibleThemes.size) { index ->
                 val spec = visibleThemes[index]
                 val theme = spec.theme
-                val rewardId = "theme_${theme.name}"
                 val isUnlocked = isThemePreviewUnlocked(theme, unlockedUnlockables)
-                val achievement = rewardToAchievementMap[rewardId]
-                    ?: rewardToAchievementMap["theme_${theme.name.lowercase()}"]
-                val achievementTitle = achievement?.title
-                    ?: stringResource(AYMR.strings.treasury_fallback_achievement)
+                val achievementTitle = stringResource(AYMR.strings.treasury_fallback_achievement)
                 val isSelected = appTheme == theme
 
                 TreasuryThemePoster(
@@ -2151,7 +2106,6 @@ internal fun TreasuryAuraSelector(
     uiPreferences: UiPreferences,
     unlockableManager: UnlockableManager,
     unlockedUnlockables: Set<String>,
-    rewardToAchievementMap: Map<String, Achievement>,
     amoled: Boolean,
 ) {
     val enabledAuras by uiPreferences.enabledAuras().collectAsStateWithLifecycle()
@@ -2170,8 +2124,7 @@ internal fun TreasuryAuraSelector(
             auraPalettes.forEachIndexed { index, aura ->
                 val isUnlocked = unlockedUnlockables.contains(aura.id)
                 val isEnabled = enabledAuras.contains(aura.id)
-                val achievementTitle = rewardToAchievementMap[aura.id]?.title
-                    ?: stringResource(AYMR.strings.treasury_fallback_achievement)
+                val achievementTitle = stringResource(AYMR.strings.treasury_fallback_achievement)
                 val rewardIconResId = remember(aura.id) { getRewardIconResourceId(aura.id, context) }
 
                 TreasuryAuraChannel(
@@ -2498,7 +2451,6 @@ internal fun TreasuryToggleSelector(
     subtitle: String,
     presets: List<TreasuryPreset>,
     unlockedUnlockables: Set<String>,
-    rewardToAchievementMap: Map<String, Achievement>,
     amoled: Boolean,
 ) {
     val context = LocalContext.current
@@ -2526,8 +2478,7 @@ internal fun TreasuryToggleSelector(
             visiblePresets.forEachIndexed { index, preset ->
                 val isUnlocked = unlockedUnlockables.contains(preset.unlockableId)
                 val isActive = isUnlocked && preset.isActive()
-                val achievementTitle = rewardToAchievementMap[preset.unlockableId]?.title
-                    ?: stringResource(AYMR.strings.treasury_fallback_achievement)
+                val achievementTitle = stringResource(AYMR.strings.treasury_fallback_achievement)
                 val rewardIconResId = remember(preset.unlockableId) {
                     getRewardIconResourceId(preset.unlockableId, context)
                 }

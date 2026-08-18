@@ -129,8 +129,6 @@ import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.achievement.handler.AchievementEventBus
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.achievement.repository.ActivityDataRepository
 import tachiyomi.domain.category.anime.interactor.GetAnimeCategories
 import tachiyomi.domain.custombuttons.interactor.GetCustomButtons
@@ -197,7 +195,6 @@ class PlayerViewModel @JvmOverloads constructor(
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val preferenceStore: PreferenceStore = Injekt.get(),
     uiPreferences: UiPreferences = Injekt.get(),
-    private val eventBus: AchievementEventBus = Injekt.get(),
     private val activityDataRepository: ActivityDataRepository = Injekt.get(),
 ) : ViewModel() {
 
@@ -2213,17 +2210,6 @@ class PlayerViewModel @JvmOverloads constructor(
 
         currentEp.seen = true
 
-        // Emit EpisodeWatched event for achievement tracking only once, when the episode
-        // actually transitions from unseen to seen. This method is called every second after
-        // the configured completion threshold, so recording unconditionally here inflates the
-        // "episodes watched" stats on the achievements screen.
-        val animeId = currentAnime.value?.id ?: 0L
-        eventBus.tryEmit(
-            AchievementEvent.EpisodeWatched(
-                animeId = animeId,
-                episodeNumber = currentEp.episode_number.toInt(),
-            ),
-        )
         // Record watching activity for stats
         val episodeId = currentEp.id ?: 0L
         if (episodeId > 0) {
@@ -2232,12 +2218,6 @@ class PlayerViewModel @JvmOverloads constructor(
                 episodesCount = 1,
                 durationMs = episodeReadStartTime?.let { System.currentTimeMillis() - it } ?: 0L,
             )
-        }
-
-        // Check for anime completion
-        val allEpisodes = currentPlaylist.value
-        if (allEpisodes.all { it.seen }) {
-            eventBus.tryEmit(AchievementEvent.AnimeCompleted(animeId))
         }
 
         updateTrackEpisodeSeen(currentEp)

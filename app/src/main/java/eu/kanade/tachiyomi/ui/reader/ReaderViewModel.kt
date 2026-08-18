@@ -75,8 +75,6 @@ import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.achievement.handler.AchievementEventBus
-import tachiyomi.domain.achievement.model.AchievementEvent
 import tachiyomi.domain.achievement.repository.ActivityDataRepository
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.entries.manga.interactor.GetManga
@@ -120,7 +118,6 @@ class ReaderViewModel @JvmOverloads constructor(
     private val setMangaViewerFlags: SetMangaViewerFlags = Injekt.get(),
     private val getIncognitoState: GetMangaIncognitoState = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
-    private val eventBus: AchievementEventBus = Injekt.get(),
     private val activityDataRepository: ActivityDataRepository = Injekt.get(),
 ) : ViewModel() {
 
@@ -753,14 +750,7 @@ class ReaderViewModel @JvmOverloads constructor(
         deleteChapterIfNeeded(readerChapter)
         maybeShowSeriesInterstitial(readerChapter)
 
-        // Emit ChapterRead event for achievement tracking
-        val mangaId = manga?.id ?: return
-        eventBus.tryEmit(
-            AchievementEvent.ChapterRead(
-                mangaId = mangaId,
-                chapterNumber = readerChapter.chapter.chapter_number.toInt(),
-            ),
-        )
+        if (manga?.id == null) return
 
         // Record reading activity for stats
         val chapterId = readerChapter.chapter.id ?: 0L
@@ -770,12 +760,6 @@ class ReaderViewModel @JvmOverloads constructor(
                 chaptersCount = 1,
                 durationMs = chapterReadStartTime?.let { System.currentTimeMillis() - it } ?: 0L,
             )
-        }
-
-        // Check for manga completion
-        val allChapters = chapterList.map { it.chapter }
-        if (allChapters.all { it.read }) {
-            eventBus.tryEmit(AchievementEvent.MangaCompleted(mangaId))
         }
 
         val markDuplicateAsRead = libraryPreferences.markDuplicateReadChapterAsRead().get()

@@ -21,7 +21,6 @@ import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Inventory2
@@ -79,7 +78,6 @@ fun MoreScreenAurora(
     onDebugUpdatedChangelogPreviewClick: () -> Unit,
     onStatsClick: () -> Unit,
     onLibraryUpdateErrorsClick: () -> Unit,
-    onAchievementsClick: () -> Unit,
     onTreasuryClick: () -> Unit,
     onHelpClick: () -> Unit,
 ) {
@@ -133,13 +131,6 @@ fun MoreScreenAurora(
                     title = stringResource(AYMR.strings.aurora_statistics),
                     icon = Icons.Filled.QueryStats,
                     onClick = onStatsClick,
-                    darkRimLightEnabled = darkRimLightEnabled,
-                )
-
-                AuroraSettingItem(
-                    title = stringResource(AYMR.strings.aurora_achievements),
-                    icon = Icons.Filled.EmojiEvents,
-                    onClick = onAchievementsClick,
                     darkRimLightEnabled = darkRimLightEnabled,
                 )
 

@@ -15,7 +15,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupNovel
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
-import eu.kanade.tachiyomi.data.backup.restore.restorers.AchievementRestorer
+import eu.kanade.tachiyomi.data.backup.restore.restorers.ActivityStatsRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.AnimeCategoriesRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.AnimeExtensionRepoRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.AnimeExtensionStoreRestorer
@@ -79,7 +79,7 @@ class BackupRestorer(
     private val novelSeriesRestorer: NovelSeriesRestorer = NovelSeriesRestorer(),
     private val feedRestorer: FeedRestorer = FeedRestorer(),
     private val extensionsRestorer: ExtensionsRestorer = ExtensionsRestorer(context),
-    private val achievementRestorer: AchievementRestorer = AchievementRestorer(),
+    private val activityStatsRestorer: ActivityStatsRestorer = ActivityStatsRestorer(),
 ) {
 
     private var restoreAmount = 0
@@ -325,12 +325,10 @@ class BackupRestorer(
                 feedRestorer.restoreFeeds(backup.backupFeeds)
             }
 
-            // Restore achievements if option enabled
-            if (options.achievements || options.stats) {
-                restoreAchievements(
-                    achievements = if (options.achievements) backup.backupAchievements else emptyList(),
-                    userProfile = backup.backupUserProfile.takeIf { options.achievements },
-                    activityLog = if (options.achievements) backup.backupActivityLog else emptyList(),
+            // Restore activity log and stats if option enabled
+            if (options.activityLog || options.stats) {
+                restoreActivityAndStats(
+                    activityLog = if (options.activityLog) backup.backupActivityLog else emptyList(),
                     stats = backup.backupStats.takeIf { options.stats },
                 )
             }
@@ -663,14 +661,12 @@ class BackupRestorer(
         )
     }
 
-    private fun CoroutineScope.restoreAchievements(
-        achievements: List<eu.kanade.tachiyomi.data.backup.models.BackupAchievement>,
-        userProfile: eu.kanade.tachiyomi.data.backup.models.BackupUserProfile?,
+    private fun CoroutineScope.restoreActivityAndStats(
         activityLog: List<eu.kanade.tachiyomi.data.backup.models.BackupDayActivity>,
         stats: eu.kanade.tachiyomi.data.backup.models.BackupStats?,
     ) = launch {
         ensureActive()
-        achievementRestorer.restoreAchievements(achievements, userProfile, activityLog, stats)
+        activityStatsRestorer.restoreActivityAndStats(activityLog, stats)
     }
 
     private fun writeErrorLog(): File {
