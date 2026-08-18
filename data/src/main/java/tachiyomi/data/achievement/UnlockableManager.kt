@@ -39,6 +39,111 @@ class UnlockableManager(
             "theme_achievement_gold",
             "theme_achievement_sapphire",
         )
+
+        /**
+         * Every reward id granted by any achievement in achievements.json
+         * (`unlockableId` + `rewards[].id` across all entries, easter eggs
+         * included). The achievement engine that grants these is being
+         * removed, so these are always-unlocked to avoid stranding the
+         * cosmetics behind an unreachable quest.
+         */
+        private val ACHIEVEMENT_UNLOCKABLE_IDS = setOf(
+            // Easter eggs: Aurora Heart, Lattice Resonance, Void Broadcast
+            "theme_AURORA_PRIME",
+            "special_navbar_aurora_celestial",
+            "theme_LATTICE_PROTOCOL",
+            "special_navbar_lattice_circuit",
+            "theme_void_red",
+            "profile_nickname_effect_glitch_rune_red",
+            "aura_void_broadcast_red",
+            "avatar_frame_glitch_red",
+            "special_background_void_weeping_red",
+
+            // Themes
+            "theme_SAKURA_NOIR",
+            "theme_ONYX_GOLD",
+            "theme_NEBULA_TIDE",
+            "theme_EVENT_HORIZON",
+
+            // Auras
+            "aura_level_up",
+            "aura_harem",
+            "aura_matrix",
+            "aura_trinity_orbit",
+            "aura_deep_focus",
+            "aura_shadow_monarch",
+            "aura_ascendant_gold",
+
+            // Titles
+            "title_trinity_initiate",
+            "title_trinity_master",
+            "title_trinity_legend",
+            "title_three_realms_collector",
+            "title_event_horizon_cartographer",
+            "title_finisher",
+            "title_closer",
+            "title_romance",
+            "title_horror",
+            "title_isekai",
+            "title_sol",
+            "title_shadow_monarch",
+            "title_weeb",
+            "title_focus_reader",
+            "title_deep_reader",
+            "title_immersion_adept",
+            "title_immersion_master",
+            "title_hybrid_reader",
+            "title_cross_format_scholar",
+            "title_anime_novel_master",
+            "title_cross_media_beginner",
+            "title_cross_media_enthusiast",
+            "title_cross_media_champion",
+            "title_rank_1",
+            "title_rank_2",
+            "title_rank_3",
+            "title_rank_4",
+            "title_rank_5",
+            "title_rank_6",
+            "title_rank_7",
+            "title_rank_8",
+            "title_rank_9",
+            "title_rank_10",
+
+            // Avatar frames
+            "avatar_frame_hologram",
+            "avatar_frame_neon",
+            "avatar_frame_prismatic",
+            "avatar_frame_trinity_orbit",
+            "avatar_frame_deep_archive",
+            "avatar_frame_hybrid_scroll",
+            "avatar_frame_ascendant",
+
+            // Home badges
+            "home_badge_shuriken",
+            "home_badge_orbit",
+            "home_badge_crown",
+            "home_badge_trinity",
+            "home_badge_finisher",
+            "home_badge_immersion",
+            "home_badge_ascendant",
+
+            // Profile nickname effects
+            "profile_nickname_effect_aurora_crown",
+            "profile_nickname_effect_glitch_rune",
+            "profile_nickname_effect_cipher",
+            "profile_nickname_effect_trinity_prism",
+            "profile_nickname_effect_shadow_crown",
+            "profile_nickname_effect_rank_sigils",
+
+            // Special backgrounds / navbar / tab
+            "special_background_petal_storm",
+            "special_background_neon_orbit",
+            "special_background_event_horizon_library",
+            "special_background_trinity_constellation",
+            "special_background_shadow_realm",
+            "special_background_deep_space_archive",
+            "special_tab_glow",
+        )
     }
 
     /**
@@ -72,15 +177,18 @@ class UnlockableManager(
     }
 
     /**
-     * Get all unlocked unlockables
+     * Get all unlocked unlockables, including ids that are always-unlocked
+     * via [isDefaultUnlockable] (they are never written to prefs, so callers
+     * that only scan stored keys would otherwise miss them).
      */
     fun getUnlockedUnlockables(): Set<String> {
         val allKeys = preferences.all.keys
-        return allKeys
+        val storedUnlocked = allKeys
             .filter { it.startsWith(PREFIX) }
             .filter { preferences.getBoolean(it, false) }
             .map { it.removePrefix(PREFIX) }
             .toSet()
+        return storedUnlocked + ACHIEVEMENT_UNLOCKABLE_IDS
     }
 
     /**
@@ -90,11 +198,12 @@ class UnlockableManager(
     fun observeUnlockedUnlockables(): Flow<Set<String>> = callbackFlow {
         fun snapshot(): Set<String> {
             val allKeys = preferences.all.keys
-            return allKeys
+            val storedUnlocked = allKeys
                 .filter { it.startsWith(PREFIX) }
                 .filter { preferences.getBoolean(it, false) }
                 .map { it.removePrefix(PREFIX) }
                 .toSet()
+            return storedUnlocked + ACHIEVEMENT_UNLOCKABLE_IDS
         }
         // Emit current state immediately.
         trySend(snapshot())
@@ -244,7 +353,8 @@ class UnlockableManager(
         return unlockableId.startsWith("default_") ||
             unlockableId.startsWith("theme_default_") ||
             unlockableId.startsWith("badge_default_") ||
-            unlockableId.startsWith("display_default_")
+            unlockableId.startsWith("display_default_") ||
+            unlockableId in ACHIEVEMENT_UNLOCKABLE_IDS
     }
 
     /**

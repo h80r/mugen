@@ -2,6 +2,7 @@ package tachiyomi.data.achievement
 
 import android.content.SharedPreferences
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
@@ -13,6 +14,111 @@ import tachiyomi.domain.achievement.model.Reward
 import tachiyomi.domain.achievement.model.RewardType
 import tachiyomi.domain.achievement.model.UserProfile
 import tachiyomi.domain.achievement.repository.UserProfileRepository
+
+/**
+ * Every `unlockableId`/`rewards[].id` value present in
+ * `app/src/main/assets/achievements/achievements.json` (excluding the
+ * tombstoned [UnlockableManager] REMOVED_UNLOCKABLE_IDS), independently
+ * transcribed here so the fresh-install test below validates the
+ * production allowlist rather than restating it.
+ */
+private val ALL_ACHIEVEMENT_REWARD_IDS = setOf(
+    // Easter eggs: Aurora Heart, Lattice Resonance, Void Broadcast
+    "theme_AURORA_PRIME",
+    "special_navbar_aurora_celestial",
+    "theme_LATTICE_PROTOCOL",
+    "special_navbar_lattice_circuit",
+    "theme_void_red",
+    "profile_nickname_effect_glitch_rune_red",
+    "aura_void_broadcast_red",
+    "avatar_frame_glitch_red",
+    "special_background_void_weeping_red",
+
+    // Themes
+    "theme_SAKURA_NOIR",
+    "theme_ONYX_GOLD",
+    "theme_NEBULA_TIDE",
+    "theme_EVENT_HORIZON",
+
+    // Auras
+    "aura_level_up",
+    "aura_harem",
+    "aura_matrix",
+    "aura_trinity_orbit",
+    "aura_deep_focus",
+    "aura_shadow_monarch",
+    "aura_ascendant_gold",
+
+    // Titles
+    "title_trinity_initiate",
+    "title_trinity_master",
+    "title_trinity_legend",
+    "title_three_realms_collector",
+    "title_event_horizon_cartographer",
+    "title_finisher",
+    "title_closer",
+    "title_romance",
+    "title_horror",
+    "title_isekai",
+    "title_sol",
+    "title_shadow_monarch",
+    "title_weeb",
+    "title_focus_reader",
+    "title_deep_reader",
+    "title_immersion_adept",
+    "title_immersion_master",
+    "title_hybrid_reader",
+    "title_cross_format_scholar",
+    "title_anime_novel_master",
+    "title_cross_media_beginner",
+    "title_cross_media_enthusiast",
+    "title_cross_media_champion",
+    "title_rank_1",
+    "title_rank_2",
+    "title_rank_3",
+    "title_rank_4",
+    "title_rank_5",
+    "title_rank_6",
+    "title_rank_7",
+    "title_rank_8",
+    "title_rank_9",
+    "title_rank_10",
+
+    // Avatar frames
+    "avatar_frame_hologram",
+    "avatar_frame_neon",
+    "avatar_frame_prismatic",
+    "avatar_frame_trinity_orbit",
+    "avatar_frame_deep_archive",
+    "avatar_frame_hybrid_scroll",
+    "avatar_frame_ascendant",
+
+    // Home badges
+    "home_badge_shuriken",
+    "home_badge_orbit",
+    "home_badge_crown",
+    "home_badge_trinity",
+    "home_badge_finisher",
+    "home_badge_immersion",
+    "home_badge_ascendant",
+
+    // Profile nickname effects
+    "profile_nickname_effect_aurora_crown",
+    "profile_nickname_effect_glitch_rune",
+    "profile_nickname_effect_cipher",
+    "profile_nickname_effect_trinity_prism",
+    "profile_nickname_effect_shadow_crown",
+    "profile_nickname_effect_rank_sigils",
+
+    // Special backgrounds / navbar / tab
+    "special_background_petal_storm",
+    "special_background_neon_orbit",
+    "special_background_event_horizon_library",
+    "special_background_trinity_constellation",
+    "special_background_shadow_realm",
+    "special_background_deep_space_archive",
+    "special_tab_glow",
+)
 
 class UnlockableManagerTest {
 
@@ -168,6 +274,72 @@ class UnlockableManagerTest {
 
         manager.isUnlockableUnlocked("aura_matrix") shouldBe true
         manager.isUnlockableUnlocked("theme_NEBULA_TIDE") shouldBe true
+    }
+
+    @Test
+    fun `every achievement reward id is available on a fresh install`() = runTest {
+        val prefs = InMemorySharedPreferences()
+        val manager = UnlockableManager(prefs, stubProfileManager)
+
+        ALL_ACHIEVEMENT_REWARD_IDS.forEach { id ->
+            manager.isUnlockableAvailable(id) shouldBe true
+        }
+    }
+
+    @Test
+    fun `previously unlocked achievement rewards remain available`() = runTest {
+        val prefs = InMemorySharedPreferences()
+        val manager = UnlockableManager(prefs, stubProfileManager)
+
+        val achievement = Achievement(
+            id = "void_broadcast_unlocked",
+            type = AchievementType.SECRET,
+            category = AchievementCategory.BOTH,
+            title = "Transmission Lost",
+            rewards = listOf(
+                Reward(type = RewardType.THEME, id = "theme_void_red", title = "Blood of Lilith"),
+                Reward(type = RewardType.AURA, id = "aura_void_broadcast_red", title = "Core Melt Aura"),
+            ),
+        )
+
+        manager.unlockAchievementRewards(achievement)
+
+        manager.isUnlockableUnlocked("theme_void_red") shouldBe true
+        manager.isUnlockableAvailable("theme_void_red") shouldBe true
+        manager.isUnlockableAvailable("aura_void_broadcast_red") shouldBe true
+    }
+
+    @Test
+    fun `removed legacy unlockables stay excluded from the default allowlist`() = runTest {
+        val prefs = InMemorySharedPreferences()
+        val manager = UnlockableManager(prefs, stubProfileManager)
+
+        manager.isUnlockableAvailable("theme_achievement_gold") shouldBe false
+        manager.isUnlockableAvailable("theme_achievement_sapphire") shouldBe false
+    }
+
+    @Test
+    fun `getUnlockedUnlockables includes default-unlocked achievement rewards on a fresh install`() {
+        val prefs = InMemorySharedPreferences()
+        val manager = UnlockableManager(prefs, stubProfileManager)
+
+        val unlocked = manager.getUnlockedUnlockables()
+
+        ALL_ACHIEVEMENT_REWARD_IDS.forEach { id ->
+            unlocked.contains(id) shouldBe true
+        }
+    }
+
+    @Test
+    fun `observeUnlockedUnlockables emits default-unlocked achievement rewards on a fresh install`() = runTest {
+        val prefs = InMemorySharedPreferences()
+        val manager = UnlockableManager(prefs, stubProfileManager)
+
+        val firstEmission = manager.observeUnlockedUnlockables().first()
+
+        ALL_ACHIEVEMENT_REWARD_IDS.forEach { id ->
+            firstEmission.contains(id) shouldBe true
+        }
     }
 
     @Test
