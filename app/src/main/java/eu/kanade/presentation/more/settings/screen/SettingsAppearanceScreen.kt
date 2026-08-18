@@ -88,6 +88,7 @@ object SettingsAppearanceScreen : SearchableSettings {
 
         return listOf(
             getThemeGroup(uiPreferences = uiPreferences),
+            getCosmeticsGroup(),
             getAppInterfaceGroup(uiPreferences = uiPreferences),
             getNavigationGroup(uiPreferences = uiPreferences),
             getHomeScreenGroup(
@@ -184,6 +185,21 @@ object SettingsAppearanceScreen : SearchableSettings {
                     )
                 }
             }.toPersistentList(),
+        )
+    }
+
+    @Composable
+    private fun getCosmeticsGroup(): Preference.PreferenceGroup {
+        val navigator = LocalNavigator.currentOrThrow
+
+        return Preference.PreferenceGroup(
+            title = stringResource(AYMR.strings.pref_cosmetics_title),
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(AYMR.strings.pref_cosmetics_title),
+                    onClick = { navigator.push(SettingsCosmeticsScreen) },
+                ),
+            ),
         )
     }
 

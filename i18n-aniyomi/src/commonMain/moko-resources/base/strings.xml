@@ -2099,6 +2099,7 @@
     <string name="pref_animated_aurora_background_summary">Show soft animated color glows on Aurora screens</string>
     <string name="pref_aurora_dark_rim_light">Rim light border in dark theme</string>
     <string name="pref_aurora_dark_rim_light_summary">Show the glowing top-edge border on Aurora cards in dark theme</string>
+    <string name="pref_cosmetics_title">Cosmetics</string>
     <string name="pref_e_ink_profile">E-ink profile</string>
     <string name="pref_e_ink_profile_monochrome">Monochrome</string>
     <string name="pref_e_ink_profile_color">Color</string>

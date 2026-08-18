@@ -27,8 +27,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
@@ -92,14 +94,7 @@ fun SettingsScaffold(
             SettingsUiStyle.Aurora -> {
                 val layoutDirection = LocalLayoutDirection.current
                 val topBarState = rememberTopAppBarState()
-                val topBarScrollBehavior = if (showTopBar) {
-                    TopAppBarDefaults.enterAlwaysScrollBehavior(
-                        state = topBarState,
-                        canScroll = topBarCanScroll,
-                    )
-                } else {
-                    TopAppBarDefaults.pinnedScrollBehavior(topBarState)
-                }
+                val topBarScrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(topBarState)
                 Scaffold(
                     topBarScrollBehavior = topBarScrollBehavior,
                     containerColor = Color.Transparent,
@@ -141,10 +136,11 @@ internal fun AuroraSettingsTopBarChrome(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    val colors = AuroraTheme.colors
+    val shadowHeight = 16.dp
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clipToBounds()
             .onSizeChanged { size ->
                 scrollBehavior.state.heightOffsetLimit = resolveAuroraSettingsTopBarHeightOffsetLimit(
                     size.height,
@@ -152,6 +148,22 @@ internal fun AuroraSettingsTopBarChrome(
             }
             .graphicsLayer {
                 translationY = scrollBehavior.state.heightOffset
+            }
+            .drawWithContent {
+                val shadowHeightPx = shadowHeight.toPx()
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            colors.background.copy(alpha = 1f),
+                            colors.background.copy(alpha = 0.8f),
+                            colors.background.copy(alpha = 0f),
+                        ),
+                        startY = 0f,
+                        endY = size.height + shadowHeightPx,
+                    ),
+                    size = Size(size.width, size.height + shadowHeightPx),
+                )
+                drawContent()
             },
     ) {
         content()

@@ -57,6 +57,7 @@ val migrations: List<Migration>
         EInkProfileMigration(),
         MoveLatestToFeedMigration(),
         RecomputeGenreAchievementsMigration(),
+        CopyActivityLogToActivityDatabaseMigration(),
         ExtensionRepoToStoreMigration(),
         ExtensionStoreUrlRepairMigration(),
         ForceMissedMigrations187(),

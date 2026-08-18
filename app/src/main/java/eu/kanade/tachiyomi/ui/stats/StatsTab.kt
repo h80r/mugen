@@ -17,6 +17,7 @@ import eu.kanade.presentation.components.TabbedScreenAurora
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.stats.anime.animeStatsTab
+import eu.kanade.tachiyomi.ui.stats.general.generalStatsTab
 import eu.kanade.tachiyomi.ui.stats.manga.mangaStatsTab
 import eu.kanade.tachiyomi.ui.stats.novel.novelStatsTab
 import kotlinx.collections.immutable.toPersistentList
@@ -58,6 +59,7 @@ data object StatsTab : Tab {
         val tabs = statsContentTabs()
             .map { tab ->
                 when (tab) {
+                    StatsContentTab.GENERAL -> generalStatsTab().copy(navigateUp = navigateUp)
                     StatsContentTab.ANIME -> animeStatsTab().copy(navigateUp = navigateUp)
                     StatsContentTab.MANGA -> mangaStatsTab().copy(navigateUp = navigateUp)
                     StatsContentTab.NOVEL -> novelStatsTab().copy(navigateUp = navigateUp)
@@ -70,7 +72,7 @@ data object StatsTab : Tab {
             titleRes = MR.strings.label_stats,
             tabs = tabs,
             state = state,
-            isMangaTab = { it == 1 },
+            isMangaTab = { it == 2 },
             scrollable = false,
         )
 
@@ -85,6 +87,7 @@ data object StatsTab : Tab {
 }
 
 internal enum class StatsContentTab {
+    GENERAL,
     ANIME,
     MANGA,
     NOVEL,
@@ -92,6 +95,7 @@ internal enum class StatsContentTab {
 
 internal fun statsContentTabs(): List<StatsContentTab> {
     return listOf(
+        StatsContentTab.GENERAL,
         StatsContentTab.ANIME,
         StatsContentTab.MANGA,
         StatsContentTab.NOVEL,

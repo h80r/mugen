@@ -2522,6 +2522,7 @@
     <string name="pref_e_ink_auto_optimization">Otimizar automaticamente as configurações do leitor</string>
     <string name="pref_e_ink_auto_optimization_applied">Configurações de leitor recomendadas aplicadas</string>
     <string name="pref_e_ink_auto_optimization_summary">Aplica as configurações de leitor de baixo movimento recomendadas uma vez, quando ativado</string>
+    <string name="pref_cosmetics_title">Cosméticos</string>
     <string name="pref_e_ink_profile">Perfil E-ink</string>
     <string name="pref_e_ink_profile_color">Cor</string>
     <string name="pref_e_ink_profile_monochrome">Monocromático</string>

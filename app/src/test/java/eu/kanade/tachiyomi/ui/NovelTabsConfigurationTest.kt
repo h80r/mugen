@@ -34,6 +34,7 @@ class NovelTabsConfigurationTest {
     @Test
     fun `stats tabs include novel tab in expected order`() {
         statsContentTabs() shouldBe listOf(
+            StatsContentTab.GENERAL,
             StatsContentTab.ANIME,
             StatsContentTab.MANGA,
             StatsContentTab.NOVEL,

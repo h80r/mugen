@@ -105,6 +105,8 @@ import tachiyomi.data.MangaUpdateStrategyColumnAdapter
 import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.achievement.database.AchievementsDatabase
+import tachiyomi.data.activity.ActivityLogRepository
+import tachiyomi.data.activity.database.ActivityDatabase
 import tachiyomi.data.extension.novel.AndroidNovelPluginKeyValueStore
 import tachiyomi.data.extension.novel.NetworkNovelPluginDownloader
 import tachiyomi.data.extension.novel.NovelPluginDownloader
@@ -199,6 +201,9 @@ class AppModule(val app: Application) : InjektModule {
 
     private fun ensureAchievementsDatabaseIsUsable(context: Context) =
         ensureDatabaseIsUsable(context, AchievementsDatabase.NAME, "achievements")
+
+    private fun ensureActivityDatabaseIsUsable(context: Context) =
+        ensureDatabaseIsUsable(context, ActivityDatabase.NAME, "activity_log")
 
     private fun ensureNotesSchema(
         db: SupportSQLiteDatabase,
@@ -364,6 +369,7 @@ class AppModule(val app: Application) : InjektModule {
         ensureAnimeDatabaseIsUsable(app)
         ensureNovelDatabaseIsUsable(app)
         ensureAchievementsDatabaseIsUsable(app)
+        ensureActivityDatabaseIsUsable(app)
 
         val sqlDriverManga = AndroidSqliteDriver(
             schema = Database.Schema,
@@ -428,6 +434,31 @@ class AppModule(val app: Application) : InjektModule {
                 RequerySQLiteOpenHelperFactory()
             },
             callback = object : AndroidSqliteDriver.Callback(tachiyomi.db.achievement.AchievementsDatabase.Schema) {
+                override fun onOpen(db: SupportSQLiteDatabase) {
+                    super.onOpen(db)
+                    setPragma(db, "foreign_keys = ON")
+                    setPragma(db, "journal_mode = WAL")
+                    setPragma(db, "synchronous = NORMAL")
+                }
+                private fun setPragma(db: SupportSQLiteDatabase, pragma: String) {
+                    val cursor = db.query("PRAGMA $pragma")
+                    cursor.moveToFirst()
+                    cursor.close()
+                }
+            },
+        )
+
+        val sqlDriverActivity = AndroidSqliteDriver(
+            schema = tachiyomi.db.activity.ActivityDatabase.Schema,
+            context = app,
+            name = ActivityDatabase.NAME,
+            factory = if (BuildConfig.DEBUG && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // Support database inspector in Android Studio
+                FrameworkSQLiteOpenHelperFactory()
+            } else {
+                RequerySQLiteOpenHelperFactory()
+            },
+            callback = object : AndroidSqliteDriver.Callback(tachiyomi.db.activity.ActivityDatabase.Schema) {
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     super.onOpen(db)
                     setPragma(db, "foreign_keys = ON")
@@ -521,6 +552,16 @@ class AppModule(val app: Application) : InjektModule {
             AchievementsDatabase(
                 driver = sqlDriverAchievements,
             )
+        }
+
+        addSingletonFactory {
+            ActivityDatabase(
+                driver = sqlDriverActivity,
+            )
+        }
+
+        addSingletonFactory {
+            ActivityLogRepository(get())
         }
 
         addSingletonFactory<NovelDatabaseHandler> {

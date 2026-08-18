@@ -640,232 +640,14 @@ object SettingsTreasuryScreen : SearchableSettings {
             Preference.PreferenceItem.CustomPreference(
                 title = stringResource(AYMR.strings.treasury_nickname_preview),
             ) {
-                val colors = AuroraTheme.colors
-                val defaultUserName = stringResource(AYMR.strings.treasury_default_user_name)
-                val decoratedName = remember(name, defaultUserName) {
-                    name.trim().ifEmpty { defaultUserName }
-                }
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .auroraCardStyle(colors, AURORA_SETTINGS_CARD_SHAPE, applyDarkRimLight = true)
-                        .semantics(mergeDescendants = true) {
-                            contentDescription = decoratedName
-                        },
-                    shape = AURORA_SETTINGS_CARD_SHAPE,
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (!colors.isDark && !colors.isEInk) {
-                            Color.Transparent
-                        } else {
-                            resolveAuroraMoreCardContainerColor(colors)
-                        },
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    border = if (colors.isEInk) {
-                        BorderStroke(
-                            width = 1.dp,
-                            color = resolveAuroraMoreCardBorderColor(colors),
-                        )
-                    } else {
-                        null
-                    },
-                ) {
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        val infiniteTransition = rememberInfiniteTransition(label = "identity-preview-blob")
-                        val wavePhase by infiniteTransition.animateFloat(
-                            initialValue = 0f,
-                            targetValue = (2 * kotlin.math.PI).toFloat(),
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(
-                                    durationMillis = 6000,
-                                    easing = androidx.compose.animation.core.LinearEasing,
-                                ),
-                                repeatMode = RepeatMode.Restart,
-                            ),
-                            label = "identity-preview-blob-phase",
-                        )
-
-                        Canvas(modifier = Modifier.matchParentSize()) {
-                            val width = size.width
-                            val height = size.height
-                            val cosPhase = kotlin.math.cos(wavePhase.toDouble()).toFloat()
-                            val sinPhase = kotlin.math.sin(wavePhase.toDouble()).toFloat()
-                            val alphaMultiplier = if (colors.isDark) 0.14f else 0.08f
-
-                            drawCircle(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        TreasuryViolet.copy(alpha = 0.85f * alphaMultiplier),
-                                        Color.Transparent,
-                                    ),
-                                    center = Offset(
-                                        width * 0.25f + width * 0.12f * cosPhase,
-                                        height * 0.50f + height * 0.25f * sinPhase,
-                                    ),
-                                    radius = size.minDimension * 0.65f,
-                                ),
-                            )
-                            drawCircle(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        TreasuryCyan.copy(alpha = 0.65f * alphaMultiplier),
-                                        Color.Transparent,
-                                    ),
-                                    center = Offset(
-                                        width * 0.75f - width * 0.15f * cosPhase,
-                                        height * 0.50f - height * 0.20f * sinPhase,
-                                    ),
-                                    radius = size.minDimension * 0.70f,
-                                ),
-                            )
-                            drawCircle(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        TreasuryGold.copy(alpha = 0.55f * alphaMultiplier),
-                                        Color.Transparent,
-                                    ),
-                                    center = Offset(
-                                        width * 0.50f + width * 0.10f * sinPhase,
-                                        height * 0.40f + height * 0.15f * cosPhase,
-                                    ),
-                                    radius = size.minDimension * 0.50f,
-                                ),
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 18.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier.size(76.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                val auraTransition = rememberInfiniteTransition(label = "avatar-aura")
-                                val auraRotation by auraTransition.animateFloat(
-                                    initialValue = 0f,
-                                    targetValue = 360f,
-                                    animationSpec = infiniteRepeatable(
-                                        animation = tween(
-                                            durationMillis = 4000,
-                                            easing = androidx.compose.animation.core.LinearEasing,
-                                        ),
-                                        repeatMode = RepeatMode.Restart,
-                                    ),
-                                    label = "aura-rotation",
-                                )
-
-                                if (avatarFrameStyleKey != "none") {
-                                    Canvas(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .graphicsLayer {
-                                                scaleX = 1f
-                                                scaleY = 1f
-                                                rotationZ = auraRotation
-                                            },
-                                    ) {
-                                        val radius = size.minDimension / 2f - 2.dp.toPx()
-                                        drawCircle(
-                                            brush = Brush.sweepGradient(
-                                                colors = listOf(
-                                                    TreasuryViolet,
-                                                    TreasuryCyan,
-                                                    TreasuryGold,
-                                                    TreasuryViolet,
-                                                ),
-                                                center = center,
-                                            ),
-                                            radius = radius,
-                                            style = Stroke(width = 3.dp.toPx()),
-                                        )
-                                        drawCircle(
-                                            brush = Brush.radialGradient(
-                                                colors = listOf(
-                                                    colors.accent.copy(alpha = 0.25f),
-                                                    Color.Transparent,
-                                                ),
-                                                center = center,
-                                                radius = radius + 8.dp.toPx(),
-                                            ),
-                                        )
-                                    }
-                                }
-
-                                val avatarModifier = Modifier
-                                    .size(if (avatarFrameStyleKey != "none") 62.dp else 70.dp)
-                                    .clip(CircleShape)
-                                    .avatarGlitch(avatarFrameStyleKey)
-
-                                if (avatarUrl.isNotEmpty()) {
-                                    AsyncImage(
-                                        model = avatarUrl,
-                                        contentDescription = null,
-                                        modifier = avatarModifier,
-                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Default.AccountCircle,
-                                        contentDescription = null,
-                                        modifier = avatarModifier,
-                                        tint = colors.accent,
-                                    )
-                                }
-
-                                AvatarFrameDecorations(
-                                    styleKey = avatarFrameStyleKey,
-                                    accentColor = colors.accent,
-                                )
-                            }
-
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                eu.kanade.tachiyomi.ui.home.StyledNicknameText(
-                                    text = decoratedName,
-                                    nicknameStyle = activeNicknameStyle,
-                                    badgeStyleKey = homeBadgeStyleKey,
-                                )
-                                if (profileTitleKey != "none") {
-                                    Box(
-                                        modifier = Modifier
-                                            .border(
-                                                width = 1.dp,
-                                                brush = Brush.horizontalGradient(
-                                                    listOf(
-                                                        colors.accent,
-                                                        colors.accent.copy(alpha = 0.4f),
-                                                    ),
-                                                ),
-                                                shape = RoundedCornerShape(6.dp),
-                                            )
-                                            .background(
-                                                color = colors.accent.copy(alpha = 0.07f),
-                                                shape = RoundedCornerShape(6.dp),
-                                            )
-                                            .padding(horizontal = 8.dp, vertical = 2.dp),
-                                    ) {
-                                        Text(
-                                            text = profileTitleDisplayName(profileTitleKey),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = colors.accent,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                TreasuryIdentityPreviewCard(
+                    name = name,
+                    avatarUrl = avatarUrl,
+                    activeNicknameStyle = activeNicknameStyle,
+                    avatarFrameStyleKey = avatarFrameStyleKey,
+                    homeBadgeStyleKey = homeBadgeStyleKey,
+                    profileTitleKey = profileTitleKey,
+                )
             },
         )
 
@@ -1039,7 +821,7 @@ object SettingsTreasuryScreen : SearchableSettings {
 }
 
 @Composable
-private fun profileTitleDisplayName(titleId: String): String {
+internal fun profileTitleDisplayName(titleId: String): String {
     return when (titleId) {
         "title_trinity_initiate" -> stringResource(AYMR.strings.treasury_title_trinity_initiate_title)
         "title_finisher" -> stringResource(AYMR.strings.treasury_title_finisher_title)
@@ -1048,6 +830,244 @@ private fun profileTitleDisplayName(titleId: String): String {
         "title_rank_4" -> stringResource(AYMR.strings.treasury_title_rank_4_title)
         else -> titleId.removePrefix("title_").replace("_", " ").replaceFirstChar {
             if (it.isLowerCase()) it.titlecase() else it.toString()
+        }
+    }
+}
+
+@Composable
+internal fun TreasuryIdentityPreviewCard(
+    name: String,
+    avatarUrl: String,
+    activeNicknameStyle: eu.kanade.tachiyomi.ui.home.NicknameStyle,
+    avatarFrameStyleKey: String,
+    homeBadgeStyleKey: String,
+    profileTitleKey: String,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AuroraTheme.colors
+    val defaultUserName = stringResource(AYMR.strings.treasury_default_user_name)
+    val decoratedName = remember(name, defaultUserName) {
+        name.trim().ifEmpty { defaultUserName }
+    }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .auroraCardStyle(colors, AURORA_SETTINGS_CARD_SHAPE, applyDarkRimLight = true)
+            .semantics(mergeDescendants = true) {
+                contentDescription = decoratedName
+            },
+        shape = AURORA_SETTINGS_CARD_SHAPE,
+        colors = CardDefaults.cardColors(
+            containerColor = if (!colors.isDark && !colors.isEInk) {
+                Color.Transparent
+            } else {
+                resolveAuroraMoreCardContainerColor(colors)
+            },
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = if (colors.isEInk) {
+            BorderStroke(
+                width = 1.dp,
+                color = resolveAuroraMoreCardBorderColor(colors),
+            )
+        } else {
+            null
+        },
+    ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            val infiniteTransition = rememberInfiniteTransition(label = "identity-preview-blob")
+            val wavePhase by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = (2 * kotlin.math.PI).toFloat(),
+                animationSpec = infiniteRepeatable(
+                    animation = tween(
+                        durationMillis = 6000,
+                        easing = androidx.compose.animation.core.LinearEasing,
+                    ),
+                    repeatMode = RepeatMode.Restart,
+                ),
+                label = "identity-preview-blob-phase",
+            )
+
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val width = size.width
+                val height = size.height
+                val cosPhase = kotlin.math.cos(wavePhase.toDouble()).toFloat()
+                val sinPhase = kotlin.math.sin(wavePhase.toDouble()).toFloat()
+                val alphaMultiplier = if (colors.isDark) 0.14f else 0.08f
+
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            TreasuryViolet.copy(alpha = 0.85f * alphaMultiplier),
+                            Color.Transparent,
+                        ),
+                        center = Offset(
+                            width * 0.25f + width * 0.12f * cosPhase,
+                            height * 0.50f + height * 0.25f * sinPhase,
+                        ),
+                        radius = size.minDimension * 0.65f,
+                    ),
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            TreasuryCyan.copy(alpha = 0.65f * alphaMultiplier),
+                            Color.Transparent,
+                        ),
+                        center = Offset(
+                            width * 0.75f - width * 0.15f * cosPhase,
+                            height * 0.50f - height * 0.20f * sinPhase,
+                        ),
+                        radius = size.minDimension * 0.70f,
+                    ),
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            TreasuryGold.copy(alpha = 0.55f * alphaMultiplier),
+                            Color.Transparent,
+                        ),
+                        center = Offset(
+                            width * 0.50f + width * 0.10f * sinPhase,
+                            height * 0.40f + height * 0.15f * cosPhase,
+                        ),
+                        radius = size.minDimension * 0.50f,
+                    ),
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Box(
+                    modifier = Modifier.size(76.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val auraTransition = rememberInfiniteTransition(label = "avatar-aura")
+                    val auraRotation by auraTransition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 360f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(
+                                durationMillis = 4000,
+                                easing = androidx.compose.animation.core.LinearEasing,
+                            ),
+                            repeatMode = RepeatMode.Restart,
+                        ),
+                        label = "aura-rotation",
+                    )
+
+                    if (avatarFrameStyleKey != "none") {
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    scaleX = 1f
+                                    scaleY = 1f
+                                    rotationZ = auraRotation
+                                },
+                        ) {
+                            val radius = size.minDimension / 2f - 2.dp.toPx()
+                            drawCircle(
+                                brush = Brush.sweepGradient(
+                                    colors = listOf(
+                                        TreasuryViolet,
+                                        TreasuryCyan,
+                                        TreasuryGold,
+                                        TreasuryViolet,
+                                    ),
+                                    center = center,
+                                ),
+                                radius = radius,
+                                style = Stroke(width = 3.dp.toPx()),
+                            )
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        colors.accent.copy(alpha = 0.25f),
+                                        Color.Transparent,
+                                    ),
+                                    center = center,
+                                    radius = radius + 8.dp.toPx(),
+                                ),
+                            )
+                        }
+                    }
+
+                    val avatarModifier = Modifier
+                        .size(if (avatarFrameStyleKey != "none") 62.dp else 70.dp)
+                        .clip(CircleShape)
+                        .avatarGlitch(avatarFrameStyleKey)
+
+                    if (avatarUrl.isNotEmpty()) {
+                        AsyncImage(
+                            model = avatarUrl,
+                            contentDescription = null,
+                            modifier = avatarModifier,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = null,
+                            modifier = avatarModifier,
+                            tint = colors.accent,
+                        )
+                    }
+
+                    AvatarFrameDecorations(
+                        styleKey = avatarFrameStyleKey,
+                        accentColor = colors.accent,
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    eu.kanade.tachiyomi.ui.home.StyledNicknameText(
+                        text = decoratedName,
+                        nicknameStyle = activeNicknameStyle,
+                        badgeStyleKey = homeBadgeStyleKey,
+                    )
+                    if (profileTitleKey != "none") {
+                        Box(
+                            modifier = Modifier
+                                .border(
+                                    width = 1.dp,
+                                    brush = Brush.horizontalGradient(
+                                        listOf(
+                                            colors.accent,
+                                            colors.accent.copy(alpha = 0.4f),
+                                        ),
+                                    ),
+                                    shape = RoundedCornerShape(6.dp),
+                                )
+                                .background(
+                                    color = colors.accent.copy(alpha = 0.07f),
+                                    shape = RoundedCornerShape(6.dp),
+                                )
+                                .padding(horizontal = 8.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                text = profileTitleDisplayName(profileTitleKey),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.accent,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -1721,11 +1741,11 @@ private fun TreasuryPathCard(
     }
 }
 
-private val TreasuryGold = Color(0xFFA8841C)
-private val TreasuryViolet = Color(0xFF9C7CFF)
-private val TreasuryCyan = Color(0xFF0095AE)
+internal val TreasuryGold = Color(0xFFA8841C)
+internal val TreasuryViolet = Color(0xFF9C7CFF)
+internal val TreasuryCyan = Color(0xFF0095AE)
 
-private data class TreasuryPreset(
+internal data class TreasuryPreset(
     val unlockableId: String,
     val title: String,
     val description: String,
@@ -2127,7 +2147,7 @@ private fun TreasuryLockVeil(
 }
 
 @Composable
-private fun TreasuryAuraSelector(
+internal fun TreasuryAuraSelector(
     uiPreferences: UiPreferences,
     unlockableManager: UnlockableManager,
     unlockedUnlockables: Set<String>,
@@ -2183,7 +2203,7 @@ private fun TreasuryAuraSelector(
 }
 
 @Composable
-private fun TreasuryAuraChannel(
+internal fun TreasuryAuraChannel(
     index: Int,
     title: String,
     description: String,
@@ -2473,7 +2493,7 @@ private fun TreasuryAuraChannel(
 }
 
 @Composable
-private fun TreasuryToggleSelector(
+internal fun TreasuryToggleSelector(
     title: String,
     subtitle: String,
     presets: List<TreasuryPreset>,
@@ -2541,7 +2561,7 @@ private fun TreasuryToggleSelector(
 }
 
 @Composable
-private fun TreasuryArtifactShard(
+internal fun TreasuryArtifactShard(
     index: Int,
     preset: TreasuryPreset,
     iconResId: Int,
@@ -2834,7 +2854,7 @@ private fun TreasuryArtifactShard(
 }
 
 @Composable
-private fun TreasurySectionStage(
+internal fun TreasurySectionStage(
     title: String,
     subtitle: String,
     accent: Color,
@@ -2920,7 +2940,7 @@ internal fun calculateTreasuryRewardProgress(
     )
 }
 
-private fun getRewardIconResourceId(rewardId: String, context: android.content.Context): Int {
+internal fun getRewardIconResourceId(rewardId: String, context: android.content.Context): Int {
     val formattedId = when (rewardId) {
         "special_background_petal_storm" -> "ic_reward_background_petal_storm"
         "special_background_neon_orbit" -> "ic_reward_background_neon_orbit"
