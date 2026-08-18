@@ -83,14 +83,7 @@ class MangaCategoryScreenModel(
                     MangaCategoryEvent.InternalError,
                 )
 
-                else -> {
-                    runCatching {
-                        val manager = Injekt.get<eu.kanade.domain.easteregg.aurora.AuroraHeartManager>()
-                        if (!manager.state.value.unlocked) {
-                            manager.offer(eu.kanade.domain.easteregg.aurora.AuroraChannels.named("категория", name))
-                        }
-                    }
-                }
+                else -> {}
             }
         }
     }
@@ -151,14 +144,7 @@ class MangaCategoryScreenModel(
                     MangaCategoryEvent.InternalError,
                 )
 
-                else -> {
-                    runCatching {
-                        val manager = Injekt.get<eu.kanade.domain.easteregg.aurora.AuroraHeartManager>()
-                        if (!manager.state.value.unlocked) {
-                            manager.offer(eu.kanade.domain.easteregg.aurora.AuroraChannels.named("категория", name))
-                        }
-                    }
-                }
+                else -> {}
             }
         }
     }

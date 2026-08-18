@@ -32,8 +32,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import eu.kanade.domain.easteregg.lattice.LatticeCarrier
-import eu.kanade.presentation.easteregg.lattice.LatticeCarrierSlot
 import eu.kanade.tachiyomi.ui.player.controls.components.AutoPlaySwitch
 import eu.kanade.tachiyomi.ui.player.controls.components.ControlsButton
 import tachiyomi.presentation.core.components.material.padding
@@ -71,7 +69,6 @@ fun TopRightPlayerControls(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Absolute.SpaceEvenly,
     ) {
-        LatticeCarrierSlot(LatticeCarrier.ANIME)
         AutoPlaySwitch(
             isChecked = autoPlayEnabled,
             onToggleAutoPlay = onToggleAutoPlay,

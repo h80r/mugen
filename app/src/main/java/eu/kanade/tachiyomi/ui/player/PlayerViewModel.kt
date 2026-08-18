@@ -2224,12 +2224,6 @@ class PlayerViewModel @JvmOverloads constructor(
                 episodeNumber = currentEp.episode_number.toInt(),
             ),
         )
-        if (eu.kanade.domain.easteregg.aurora.AuroraNight.isVeilThin()) {
-            val manager = Injekt.get<eu.kanade.domain.easteregg.aurora.AuroraHeartManager>()
-            manager.registerNightAction()
-            manager.revealHint()
-        }
-
         // Record watching activity for stats
         val episodeId = currentEp.id ?: 0L
         if (episodeId > 0) {

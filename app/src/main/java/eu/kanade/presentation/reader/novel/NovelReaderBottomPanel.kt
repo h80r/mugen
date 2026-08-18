@@ -42,8 +42,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import eu.kanade.domain.easteregg.lattice.LatticeCarrier
-import eu.kanade.presentation.easteregg.lattice.LatticeCarrierSlot
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.novel.tts.NovelReaderTtsUiState
 import tachiyomi.i18n.MR
@@ -208,7 +206,6 @@ internal fun NovelReaderBottomPanel(
                         )
                     }
                 }
-                LatticeCarrierSlot(LatticeCarrier.NOVEL)
                 if (ttsPlacement.showFooterEntry) {
                     IconButton(onClick = onOpenTtsBehaviorSettings) {
                         Icon(

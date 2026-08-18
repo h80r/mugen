@@ -2,36 +2,18 @@ package eu.kanade.presentation.more.settings.screen
 
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
-import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.webkit.WebStorage
 import android.webkit.WebView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,19 +21,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -62,12 +34,6 @@ import eu.kanade.domain.source.model.IncognitoPolicy
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.source.service.SourcePreferences.DataSaver
 import eu.kanade.domain.ui.UiPreferences
-import eu.kanade.presentation.components.GlitchPalette
-import eu.kanade.presentation.components.RiftBreachDirective
-import eu.kanade.presentation.components.RiftCorruptTerminal
-import eu.kanade.presentation.components.heartbeat
-import eu.kanade.presentation.components.quakeOffset
-import eu.kanade.presentation.components.rememberGlitchTime
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.presentation.components.TabbedScreen
 import eu.kanade.presentation.more.settings.Preference
@@ -260,9 +226,6 @@ object SettingsAdvancedScreen : Screen() {
         val navigator = LocalNavigator.currentOrThrow
         val networkPreferences = remember { Injekt.get<NetworkPreferences>() }
         val basePreferences = remember { Injekt.get<BasePreferences>() }
-        val uiPreferences = remember { Injekt.get<UiPreferences>() }
-
-        val meltdownStage by uiPreferences.meltdownStage().collectAsState()
 
         val list = mutableListOf<Preference>(
             Preference.PreferenceItem.TextPreference(
@@ -289,51 +252,6 @@ object SettingsAdvancedScreen : Screen() {
             ),
             getExtensionsGroup(basePreferences = basePreferences),
         )
-
-        if (meltdownStage == 1) {
-            list.add(
-                Preference.PreferenceItem.CustomPreference(
-                    title = stringResource(MR.strings.settings_advanced_glitch_rift_title),
-                    content = {
-                        GlitchRiftWidget(
-                            onTap = {
-                                scope.launch {
-                                    try {
-                                        val vibrator = if (android.os.Build.VERSION.SDK_INT >=
-                                            android.os.Build.VERSION_CODES.S
-                                        ) {
-                                            val manager = context.getSystemService(
-                                                android.os.VibratorManager::class.java,
-                                            )
-                                            manager?.defaultVibrator
-                                        } else {
-                                            @Suppress("DEPRECATION")
-                                            context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
-                                        }
-                                        if (vibrator != null && vibrator.hasVibrator()) {
-                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                                vibrator.vibrate(
-                                                    android.os.VibrationEffect.createOneShot(
-                                                        800,
-                                                        android.os.VibrationEffect.DEFAULT_AMPLITUDE,
-                                                    ),
-                                                )
-                                            } else {
-                                                @Suppress("DEPRECATION")
-                                                vibrator.vibrate(800)
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        // Ignore vibration SecurityException or other issues
-                                    }
-                                    uiPreferences.meltdownStage().set(2)
-                                }
-                            },
-                        )
-                    },
-                ),
-            )
-        }
 
         return list
     }
@@ -914,189 +832,4 @@ object SettingsAdvancedScreen : Screen() {
         )
     }
     // SY <--
-
-    @Composable
-    private fun GlitchRiftWidget(onTap: () -> Unit) {
-        val time by rememberGlitchTime()
-        var breaching by remember { mutableStateOf(false) }
-        var showDirective by remember { mutableStateOf(false) }
-        // Раскрытие разлома при УДЕРЖАНИИ: заряд 0 -> 1 плавно раскрывает
-        // разлом; полный заряд = брешь и переход на brutalist (Шаг 3).
-        val holdCharge = remember { Animatable(0f) }
-        val scope = rememberCoroutineScope()
-
-        // Покой: медленное "дыхание" разлома, чтобы шов и датамош были живыми.
-        val idle = rememberInfiniteTransition(label = "rift_idle")
-        val breathe by idle.animateFloat(
-            initialValue = 0.16f,
-            targetValue = 0.34f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(2200, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "rift_breathe",
-        )
-        // Итоговое раскрытие: дыхание + заряд удержания; после бреши — плавно разрывается до пика.
-        val breachOpenProg = androidx.compose.animation.core.animateFloatAsState(
-            targetValue = if (breaching) 1f else 0f,
-            animationSpec = tween(3000, easing = androidx.compose.animation.core.LinearEasing),
-            label = "breach_open",
-        )
-        val openValue = when {
-            breaching -> breathe + breachOpenProg.value * (0.97f - breathe)
-            else -> (breathe + holdCharge.value * (0.94f - breathe)).coerceIn(0f, 0.97f)
-        }
-
-        // После бреши — медленная пауза/анимация разрыва, затем полноэкранная директива (как дойти до Шага 3).
-        LaunchedEffect(breaching) {
-            if (breaching) {
-                kotlinx.coroutines.delay(3500)
-                showDirective = true
-            }
-        }
-
-        // Пульс интенсивности глитча в такт "сердцебиения" движка.
-        val hb = heartbeat(time)
-        val baseIntensity = (0.34f + (hb - 1f) * 1.1f).coerceIn(0.22f, 0.62f)
-        // Во время бреши глитч раскручивается вслед за раскрытием разлома.
-        val intensity = (baseIntensity + openValue * 0.9f).coerceIn(0.22f, 1.0f)
-        val flicker = kotlin.math.sin(time * 24f) * 0.5f + 0.5f
-
-        // SYNC RATE: держится у красной черты ~400% и дёргается за неё.
-        val syncRate = (
-            376f +
-                kotlin.math.sin(time * 5.5f) * 34f +
-                kotlin.math.sin(time * 57f) * 9f
-            ).coerceIn(0f, 420f)
-        val syncPct = syncRate.toInt()
-        val redline = syncRate >= 400f
-
-        val shape = CutCornerShape(topStart = 14.dp, bottomEnd = 14.dp)
-
-        // Экран директивы после бреши: объясняет, как попасть на Шаг 3.
-        // Кнопка «ВОЙТИ В ПУСТОТУ» → onTap() переводит meltdownStage в 2.
-        if (showDirective) {
-            Dialog(
-                onDismissRequest = { onTap() },
-                properties = DialogProperties(usePlatformDefaultWidth = false),
-            ) {
-                RiftBreachDirective(onEnter = { onTap() })
-            }
-        }
-
-        val shakeIntensity = when {
-            breaching -> 3f * breachOpenProg.value
-            holdCharge.value > 0.001f -> holdCharge.value * 0.7f
-            else -> 0f
-        }
-        val q = quakeOffset(time, shakeIntensity)
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .height(150.dp)
-                .offset { IntOffset(q.x.roundToInt(), q.y.roundToInt()) }
-                .clip(shape)
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onPress = {
-                            if (breaching) return@detectTapGestures
-                            // удержание заряжает раскрытие; полный заряд = брешь (4.5 секунды)
-                            val job = scope.launch {
-                                holdCharge.animateTo(
-                                    1f,
-                                    animationSpec = tween(4500, easing = FastOutSlowInEasing),
-                                )
-                                breaching = true
-                            }
-                            tryAwaitRelease()
-                            if (!breaching) {
-                                job.cancel()
-                                scope.launch {
-                                    holdCharge.animateTo(
-                                        0f,
-                                        animationSpec = tween(700, easing = FastOutSlowInEasing),
-                                    )
-                                }
-                            }
-                        },
-                    )
-                },
-        ) {
-            // Разлом + приглушённый глитч: тяжёлые Canvas-фолбэки (datamosh/scan/static)
-            // отключены, а текст вынесен НАД оверлеями, чтобы его снова было видно.
-            // Весь арт (рамка-терминал, RGB-датамош, шов, сфера-глобус, трещина)
-            // рисуется одним AGSL-шейдером; на API<33 — фолбэк RiftDatamoshBackground.
-            RiftCorruptTerminal(
-                time = time,
-                charge = holdCharge.value,
-                breach = if (breaching) breachOpenProg.value else 0f,
-                open = openValue,
-                modifier = Modifier.matchParentSize(),
-            )
-
-            // Текст и шкала — в левой части блока (сфера шейдера справа).
-            Column(
-                modifier = Modifier
-                    .matchParentSize()
-                    .padding(start = 18.dp, end = 8.dp, top = 24.dp, bottom = 12.dp)
-                    .fillMaxWidth(0.60f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = stringResource(AYMR.strings.meltdown_system_compromised),
-                    color = GlitchPalette.HazardRed.copy(alpha = 0.75f + 0.25f * flicker),
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center,
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Счётчик SYNC RATE + блочная шкала
-                val filled = ((syncRate / 400f) * 16f).toInt().coerceIn(0, 16)
-                val bar = buildString {
-                    repeat(16) { i -> append(if (i < filled) '\u2588' else '\u2591') }
-                }
-                Text(
-                    text = stringResource(AYMR.strings.meltdown_sync_rate, syncPct),
-                    color = if (redline) GlitchPalette.SignalRed else GlitchPalette.Phosphor,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 15.sp,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = bar,
-                    color = GlitchPalette.HazardRed.copy(alpha = if (redline) flicker else 0.9f),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center,
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                val charging = holdCharge.value > 0.001f
-                Text(
-                    text = when {
-                        breaching -> stringResource(AYMR.strings.meltdown_inhibitors_disengaged)
-                        charging -> stringResource(AYMR.strings.meltdown_breaching, (holdCharge.value * 100f).toInt())
-                        else -> stringResource(AYMR.strings.meltdown_hold_rift)
-                    },
-                    color = if (breaching || charging) {
-                        GlitchPalette.SignalRed.copy(alpha = 0.6f + 0.4f * flicker)
-                    } else {
-                        Color.LightGray.copy(alpha = 0.55f + 0.35f * flicker)
-                    },
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    textAlign = TextAlign.Center,
-                )
-            }
-        }
-    }
 }

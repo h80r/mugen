@@ -630,7 +630,6 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { eu.kanade.tachiyomi.data.coil.MetadataCoverResolver(get(), get(), get()) }
 
         addSingletonFactory { NetworkHelper(app, get()) }
-        addSingletonFactory { eu.kanade.domain.easteregg.aurora.AuroraHeartManager.get(app) }
         addSingletonFactory { TorrentServerApi(get(), get()) }
         addSingletonFactory { TorrentServerUtils(get(), get()) }
         addSingletonFactory { JavaScriptEngine(app) }

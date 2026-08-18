@@ -93,9 +93,6 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
         pager.adapter = adapter
         pager.addOnPageChangeListener(
             object : ViewPager.SimpleOnPageChangeListener() {
-                // Track swipes into void at the last page
-                private var dragStartedAtLastPage = false
-
                 override fun onPageSelected(position: Int) {
                     if (!activity.isScrollingThroughPages) {
                         activity.hideMenu()
@@ -105,19 +102,8 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
 
                 override fun onPageScrollStateChanged(state: Int) {
                     when (state) {
-                        ViewPager.SCROLL_STATE_DRAGGING -> {
-                            // Record if user starts dragging when already on the last page
-                            dragStartedAtLastPage = pager.currentItem == adapter.count - 1
-                            pauseAutoScroll()
-                        }
-                        ViewPager.SCROLL_STATE_IDLE -> {
-                            if (dragStartedAtLastPage && pager.currentItem == adapter.count - 1) {
-                                // Drag started and ended on last page — user swiped into void
-                                activity.onMeltdownTransitionActivated()
-                            }
-                            dragStartedAtLastPage = false
-                            resumeAutoScroll()
-                        }
+                        ViewPager.SCROLL_STATE_DRAGGING -> pauseAutoScroll()
+                        ViewPager.SCROLL_STATE_IDLE -> resumeAutoScroll()
                         else -> { /* SETTLING — ignore */ }
                     }
                     isIdle = state == ViewPager.SCROLL_STATE_IDLE
@@ -428,12 +414,9 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
         } else {
             // At the end of the current list.
             // If there is a logical next chapter, request its preload (so switching can happen when it loads).
-            // Only fire meltdown if there is truly no next (the "no more chapters" case).
             val next = adapter.nextTransition?.to
             if (next != null) {
                 activity.requestPreloadChapter(next)
-            } else {
-                activity.onMeltdownTransitionActivated()
             }
         }
     }

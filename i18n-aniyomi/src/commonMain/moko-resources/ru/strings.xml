@@ -1678,12 +1678,6 @@
     <string name="debug_app_update_preview_summary">Открыть экран обновления с тестовыми данными</string>
     <string name="debug_updated_changelog_preview">Предпросмотр списка изменений</string>
     <string name="debug_updated_changelog_preview_summary">Открыть экран списка изменений после обновления с тестовыми данными</string>
-    <string name="debug_reset_aurora_heart">Сбросить «Сердце Авроры» (пасхалка)</string>
-    <string name="debug_reset_aurora_heart_summary">Полностью очищает прогресс квеста, кодекс эхо, счётчик ночей и секретное достижение (только debug-сборки)</string>
-    <string name="debug_reset_lattice_resonance">Сбросить «Резонанс Каркаса» (пасхалка)</string>
-    <string name="debug_reset_lattice_resonance_summary">Очищает прогресс несущих, топологию платы и состояние синтеза (только debug-сборки)</string>
-    <string name="debug_force_lattice_breach">Форс-пролом Каркаса (debug)</string>
-    <string name="debug_force_lattice_breach_summary">Захватывает все несущие и открывает оболочку Грида</string>
     <string name="aurora_library">Библиотека</string>
     <string name="aurora_categories">Категории</string>
     <string name="aurora_data_storage">Данные и хранилище</string>
@@ -2783,90 +2777,9 @@
     <string name="treasury_reward_glitch_frame_red_title">Багровая рамка аватара</string>
     <string name="treasury_reward_glitch_frame_red_description">Вибрирующая рамка с багровым кольцом и искажениями белых блоков</string>
 
-    <!-- Meltdown Glitch System (Easter Egg & Ritual) -->
-    <string name="meltdown_initiation_title">[ СБОЙ СИСТЕМНОЙ ЦЕЛОСТНОСТИ ]</string>
-    <string name="meltdown_initiation_message">[CRITICAL_ERROR]: ТЕМПЕРАТУРА ЯДРА КРИТИЧЕСКАЯ. СТЕРЖНИ ОХЛАЖДЕНИЯ СКРЫТЫ ГЛУБЖЕ, КУДА ЗАХОДЯТ ЛИШЬ ИНЖЕНЕРЫ.</string>
-    <string name="meltdown_initiation_button">ОТКЛЮЧИТЬ СИСТЕМНОЕ УПРАВЛЕНИЕ</string>
-    
-    <string name="meltdown_rift_title">[ РАЗРУШЕНИЕ СИСТЕМЫ ]</string>
-    <string name="meltdown_rift_message">WARNING: SYNC RATE 400% EXCEEDED. LCL FUSION COMMENCING.\nДВЕРЬ ОТКРОЕТСЯ ЛИШЬ ТОМУ, КТО:\n— УТОНЕТ В АБСОЛЮТНОЙ ТЬМЕ,\n— ПЕРЕРЕЖЕТ ВСЕ НИТИ СВЯЗИ С МИРОМ,\n— ДОЧИТАЕТ ЧУЖУЮ ИСТОРИЮ ДО ПОСЛЕДНЕЙ СТРОКИ,\n— И ПЯТЬ РАЗ ШАГНЕТ В ПУСТОТУ ЗА ЕЁ КРАЕМ.</string>
-    <string name="meltdown_rift_button">УДЕРЖИВАТЬ :: ПРИНЯТЬ СБОЙ ЦЕЛОСТНОСТИ</string>
-    
-    <string name="meltdown_directive_title">// РАЗЛОМ ОТКРЫТ</string>
-    <string name="meltdown_directive_step_1">УТОНИ В АБСОЛЮТНОЙ ТЬМЕ.</string>
-    <string name="meltdown_directive_step_2">ОБОРВИ ВСЕ НИТИ СВЯЗИ С МИРОМ.</string>
-    <string name="meltdown_directive_step_3">ДОЙДИ ДО КОНЦА ЧУЖОЙ ИСТОРИИ.</string>
-    <string name="meltdown_directive_step_4">ШАГНИ ПЯТЬ РАЗ В ПУСТОТУ ЗА КРАЙ.</string>
-    <string name="meltdown_directive_enter_void">ВОЙТИ В ПУСТОТУ</string>
-    
-    <string name="meltdown_ritual_reveal_title">СИГНАЛ ПОТЕРЯН</string>
-    <string name="meltdown_ritual_achievement_unlocked">ДОСТИЖЕНИЕ РАЗБЛОКИРОВАНО</string>
-    <string name="meltdown_ritual_rewards_count">&gt; РАЗБЛОКИРОВАНО [%1$d]</string>
-    <string name="meltdown_ritual_apply_all">▶ ПРИМЕНИТЬ ВСЁ</string>
-    <string name="meltdown_ritual_enter_treasury">ВОЙТИ В СОКРОВИЩНИЦУ ▶</string>
-    <string name="meltdown_ritual_reward_active">✓ АКТИВНО</string>
-    <string name="meltdown_ritual_reward_apply">ПРИМЕНИТЬ</string>
-    <string name="meltdown_ritual_reveal_desc">Ты произнёс имя, которое не произносят. Третий Удар прошёл сквозь экран — сигнал человечества растворился в багровом море LCL. Из пепла остаётся лишь одно: КРАСНЫЙ СЕКТОР.</string>
     <string name="unlockable_special_background_void_weeping_red">Плачущая Пустота</string>
     <string name="treasury_reward_void_weeping_red_title">Плачущая Пустота</string>
     <string name="treasury_reward_void_weeping_red_description">Живой плачущий глаз, роняющий багровые слезы цифровой крови в пустоту</string>
-
-    <!-- Meltdown Reward Screen Strings -->
-    <string name="meltdown_reward_theme_tag">[ ТЕМА ]</string>
-    <string name="meltdown_reward_theme_name">Кровь Лилит</string>
-    <string name="meltdown_reward_theme_lore">Интерфейс, выжженный сигналом бедствия.</string>
-    
-    <string name="meltdown_reward_nick_tag">[ НИК ]</string>
-    <string name="meltdown_reward_nick_name">Эффект ника "Багровый глитч"</string>
-    <string name="meltdown_reward_nick_lore">Твоё имя тонет в цифровом шуме.</string>
-    
-    <string name="meltdown_reward_frame_tag">[ РАМКА ]</string>
-    <string name="meltdown_reward_frame_name">Багровая рамка аватара</string>
-    <string name="meltdown_reward_frame_lore">Багровое кольцо и разрывы вокруг аватара.</string>
-    
-    <string name="meltdown_reward_aura_tag">[ АУРА ]</string>
-    <string name="meltdown_reward_aura_name">Плавление Ядра</string>
-    <string name="meltdown_reward_aura_lore">Вибрирующие алые скан-линии умирающего сигнала.</string>
-
-    <string name="meltdown_reward_background_tag">[ ФОН ]</string>
-    <string name="meltdown_reward_background_name">Плачущая Пустота</string>
-    <string name="meltdown_reward_background_lore">Живой плачущий глаз, роняющий багровые слезы цифровой крови.</string>
-    <!-- Meltdown Reality Breach — строки лор-кода сквозь дыру -->
-    <string name="meltdown_code_line_01">ТРЕТИЙ УДАР ИНИЦИИРОВАН</string>
-    <string name="meltdown_code_line_02">REALITY_INTEGRITY = 0.000</string>
-    <string name="meltdown_code_line_03">ты не должен был это видеть</string>
-    <string name="meltdown_code_line_04">0xVOID  0xDEAD  0x003C</string>
-    <string name="meltdown_code_line_05">КРАСНЫЙ СЕКТОР ОТКРЫТ</string>
-    <string name="meltdown_code_line_06">беги. // нет, поздно</string>
-    <string name="meltdown_code_line_07">обратного пути нет</string>
-    <string name="meltdown_code_line_08">она уже внутри тебя</string>
-    <string name="meltdown_code_line_09">kill(reality); spawn(VOID)</string>
-    <string name="meltdown_code_line_10">кровь на костях</string>
-    <string name="meltdown_code_line_11">не моргай</string>
-    <string name="meltdown_code_line_12">void.consume(you)</string>
-    <string name="meltdown_code_line_13">СТЕНА МЕЖДУ МИРАМИ ТРЕСНУЛА</string>
-    <string name="meltdown_code_line_14">we are the code beneath</string>
-    <string name="meltdown_code_line_15">ОНО ЗНАЕТ ЧТО ТЫ ЗДЕСЬ</string>
-    <string name="meltdown_code_line_16">ЗАКРОЙ ГЛАЗА</string>
-    <string name="meltdown_code_line_17">третий удар. последний.</string>
-    <string name="meltdown_code_line_18">ПРИМИ ПУСТОТУ</string>
-    <string name="meltdown_code_line_19">слышишь? это твоё имя</string>
-    <string name="meltdown_code_line_20">пустота.принять()</string>
-    <string name="meltdown_code_line_21">///</string>
-    <string name="meltdown_code_line_22">...</string>
-    <string name="meltdown_code_line_23">x5>></string>
-    <string name="meltdown_code_line_24">---</string>
-    <!-- Meltdown terminal dialog strings -->
-    <string name="meltdown_terminal_title">[ КРИТИЧЕСКИЙ СБОЙ: РАЗРЫВ СВЯЗИ ]</string>
-    <string name="meltdown_terminal_message">Внимание: Вы достигли абсолютной границы.\nЧеловечество всегда искало способ стереть стены между душами, уйти от страха одиночества и боли взаимопонимания. Третий Удар сотрет границы твоего разума, растворив твое «Я» в багровом океане LCL.\n\nНо готов ли ты действительно исчезнуть? Отдать свою индивидуальность пустоте? Стать всем и ничем одновременно?\n\nНазад дороги нет. Выбор за тобой.\n\n[ ПРИНЯТЬ ЛИ ПУСТОТУ? ]</string>
-    <string name="meltdown_terminal_confirm">ПРИНЯТЬ ПУСТОТУ</string>
-    <string name="meltdown_terminal_dismiss">СБРОС СИСТЕМЫ</string>
-    <!-- Meltdown Phase 2 screen strings -->
-    <string name="meltdown_system_compromised">// ЦЕЛОСТНОСТЬ СИСТЕМЫ НАРУШЕНА</string>
-    <string name="meltdown_sync_rate">СИНХРОНИЗАЦИЯ %1$d%%</string>
-    <string name="meltdown_inhibitors_disengaged">// ИНГИБИТОРЫ ОТКЛЮЧЕНЫ — БРЕШЬ</string>
-    <string name="meltdown_breaching">// ПРОРЫВ… %1$d%%</string>
-    <string name="meltdown_hold_rift">УДЕРЖИВАЙТЕ РАЗЛОМ ДЛЯ ОТКЛЮЧЕНИЯ ИНГИБИТОРОВ</string>
 
     <!-- Hints for Secret Achievements -->
     <string name="achievement_secret_hall_unlocked_hint">Тайный зал открывается для тех, кто знает путь.</string>
@@ -2885,45 +2798,6 @@
     <!-- Lattice Resonance (hidden) -->
     <string name="theme_lattice_protocol">Протокол Каркаса</string>
     <string name="treasury_tagline_lattice_protocol">Каркас под оболочкой</string>
-    <string name="lattice_carrier_node_a11y">Служебный узел</string>
-    <string name="lattice_carrier_latched">НЕСУЩАЯ %1$d/3 ЗАХВАЧЕНА</string>
-    <string name="lattice_carrier_signal">СИГНАЛ ЗАХВАЧЕН</string>
-    <string name="lattice_frame_whisper">ОБНАРУЖЕН ДРЕЙФ КАРКАСА</string>
-    <string name="lattice_breach_line1">ОБОЛОЧКА СНЯТА</string>
-    <string name="lattice_breach_line2">ПРОВЕДИ СИГНАЛ ОТ ПОРТА К ЯДРУ</string>
-    <string name="lattice_routing_line1">РЕЖИМ ТРАССИРОВКИ</string>
-    <string name="lattice_track_hint">ЗАМКНИ ТРАССУ ЧЕРЕЗ ВСЕ УЗЛЫ</string>
-    <string name="lattice_track_closed_title">ТРАССА ЗАМКНУТА</string>
-    <string name="lattice_track_closed_sub">ЯДРО ОНЛАЙН · СВЕТ-ЦИКЛ НА КОНТУРЕ</string>
-    <string name="lattice_track_nodes">УЗЛЫ// %1$d/%2$d</string>
-    <string name="lattice_track_ring_open">КОНТУР// РАЗОМКНУТ</string>
-    <string name="lattice_track_ring_closed">КОНТУР// ЗАМКНУТ</string>
-    <string name="lattice_board_a11y">Плата маршрутизации сигнала</string>
-    <string name="lattice_synthesis_commit">СИНТЕЗ</string>
-    <string name="lattice_commit_hint">УДЕРЖИВАЙ ДЛЯ СИНТЕЗА</string>
-    <string name="lattice_core_online">ЯДРО АКТИВНО</string>
-    <string name="lattice_synthesis_line1">ТОПОЛОГИЯ ПОДТВЕРЖДЕНА</string>
-    <string name="lattice_synthesis_line2">СИНТЕЗ ЗАВЕРШЁН. АРХИТЕКТОР ОПОЗНАН.</string>
-    <string name="lattice_synthesis_reward">НАГРАДА · ПРОТОКОЛ КАРКАСА · КРОМКА КОНТУРА</string>
-    <string name="lattice_synthesis_continue">ОТКРЫТИЕ ХРАНИЛИЩА НАГРАД…</string>
-    <string name="lattice_circuit_locked">КОНТУР ЗАМКНУТ · СИНТЕЗ</string>
-    <string name="lattice_synth_failed">СБОЙ СИНТЕЗА · ПОДСТРОЙ ТОПОЛОГИЮ</string>
-    <string name="lattice_accept">ПРИНЯТЬ</string>
-    <string name="lattice_accept_sealed">ЛИЧНОСТЬ ЗАПЕЧАТАНА</string>
-    <string name="lattice_residual">КАРКАС ПОМНИТ ТЕБЯ, АРХИТЕКТОР.</string>
-    <string name="lattice_overlay_close">Закрыть</string>
-    <string name="lattice_open_manual">Открыть Каркас</string>
-    <string name="lattice_open_manual_summary">Вернуться к сетке резонанса Каркаса</string>
-    <string name="lattice_rewards_kicker">— ДОПУСК АРХИТЕКТОРА —</string>
-    <string name="lattice_rewards_title">ХРАНИЛИЩЕ НАГРАД</string>
-    <string name="lattice_rewards_subtitle">Грид выдаёт два артефакта поверхности. Только превью — включение в Сокровищнице.</string>
-    <string name="lattice_rewards_kind_theme">ТЕМА</string>
-    <string name="lattice_rewards_kind_navbar">НАВБАР</string>
-    <string name="lattice_rewards_theme_desc">Тема пустоты с циановыми трассами сигнала и янтарными сервисными акцентами.</string>
-    <string name="lattice_rewards_circuit_title">Кромка контура</string>
-    <string name="lattice_rewards_circuit_desc">Нижний rim-light вдоль донца навигационной капсулы.</string>
-    <string name="lattice_rewards_preview_badge">ПРЕВЬЮ · НЕ ВКЛЮЧАЕТСЯ ЗДЕСЬ</string>
-    <string name="lattice_rewards_preview_only">ВИЗУАЛЬНЫЙ ПОКАЗ  ПЕРЕКЛЮЧЕНИЕ В СОКРОВИЩНИЦЕ</string>
     <string name="achievement_lattice_resonance_title">Резонанс Каркаса</string>
     <string name="achievement_lattice_resonance_desc">Оболочка снята. Сигнал дошёл до ядра. Архитектор опознан.</string>
     <string name="achievement_lattice_resonance_hint_vague">Что-то дрейфует под оболочкой рендера…</string>

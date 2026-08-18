@@ -1,7 +1,6 @@
 package eu.kanade.presentation.more.settings.screen.about
 
 import android.content.Context
-import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -30,9 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -88,13 +85,6 @@ import uy.kohesive.injekt.api.get
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
-import java.util.Locale
-
-private val GlitchMarks = charArrayOf(
-    '\u0337',
-    '\u0338',
-    '\u0336',
-)
 
 private val ABOUT_FOOTER_ICON_SLOT_SIZE = 40.dp
 private val ABOUT_FOOTER_ICON_GAP = 8.dp
@@ -104,35 +94,13 @@ object AboutScreen : Screen() {
     override fun Content() {
         val scope = rememberCoroutineScope()
         val context = LocalContext.current
-        val haptic = LocalHapticFeedback.current
         val uriHandler = LocalUriHandler.current
         val handleBack = LocalBackPress.current
         val navigator = LocalNavigator.currentOrThrow
         val uiStyle = rememberResolvedSettingsUiStyle()
         val achievementHandler = remember { Injekt.get<AchievementHandler>() }
-        val featureUsageCollector = remember { Injekt.get<FeatureUsageCollector>() }
-        val hiddenFeatureConfig = remember(context) { loadAboutHiddenFeatureConfig(context) }
-        val hiddenFeatureContent = remember(hiddenFeatureConfig?.content) {
-            hiddenFeatureConfig?.content?.localizedForLanguage(Locale.getDefault().language)
-        }
-        val easterEggStateMachine = remember(hiddenFeatureConfig) {
-            hiddenFeatureConfig?.trigger?.let { trigger ->
-                AboutEasterEggStateMachine(
-                    requiredPrimarySignals = trigger.requiredPrimarySignals,
-                    primedWindowMs = trigger.primedWindowMs,
-                    tapStreakWindowMs = trigger.tapStreakWindowMs,
-                )
-            }
-        }
         var isCheckingUpdates by remember { mutableStateOf(false) }
-        var easterEggPhase by remember(easterEggStateMachine) {
-            mutableStateOf(easterEggStateMachine?.phase ?: AboutEasterEggPhase.Idle)
-        }
-        val isPrimed = easterEggPhase == AboutEasterEggPhase.Primed
-        val isEasterEggVisible = easterEggPhase !in setOf(
-            AboutEasterEggPhase.Idle,
-            AboutEasterEggPhase.Primed,
-        )
+        var logoTapCount by remember { mutableStateOf(0) }
         val itemModifier = if (uiStyle == SettingsUiStyle.Aurora) {
             Modifier.padding(horizontal = AURORA_SETTINGS_CARD_HORIZONTAL_INSET)
         } else {
@@ -142,23 +110,6 @@ object AboutScreen : Screen() {
         val uiPreferences = remember { Injekt.get<UiPreferences>() }
         val darkRimLightEnabled by uiPreferences.auroraDarkRimLightEnabled().collectAsState()
 
-        fun syncEasterEggPhase(block: (AboutEasterEggStateMachine) -> Unit) {
-            val machine = easterEggStateMachine ?: return
-            block(machine)
-            easterEggPhase = machine.phase
-        }
-
-        LaunchedEffect(easterEggPhase, easterEggStateMachine) {
-            if (easterEggStateMachine != null &&
-                hiddenFeatureConfig != null &&
-                easterEggPhase == AboutEasterEggPhase.Primed
-            ) {
-                kotlinx.coroutines.delay(hiddenFeatureConfig.trigger.primedWindowMs)
-                syncEasterEggPhase { machine ->
-                    machine.tick(SystemClock.uptimeMillis())
-                }
-            }
-        }
         val disclaimerTitle = stringResource(MR.strings.pref_disclaimer)
         val disclaimerContent = stringResource(MR.strings.pref_disclaimer_text)
 
@@ -176,7 +127,6 @@ object AboutScreen : Screen() {
                 title = stringResource(MR.strings.pref_category_about),
                 uiStyle = uiStyle,
                 onBackPressed = if (handleBack != null) handleBack::invoke else null,
-                showTopBar = !isEasterEggVisible,
                 topBarCanScroll = { state.canScroll() },
             ) { contentPadding ->
                 ScrollbarLazyColumn(
@@ -187,17 +137,8 @@ object AboutScreen : Screen() {
                         LogoHeader(
                             onClick = {
                                 achievementHandler.trackFeatureUsed(AchievementEvent.Feature.LOGO_CLICK)
-                                syncEasterEggPhase { machine ->
-                                    when (machine.onPrimarySignal(SystemClock.uptimeMillis())) {
-                                        AboutEasterEggTapFeedback.Light -> {
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        }
-                                        AboutEasterEggTapFeedback.Primed -> {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        }
-                                        AboutEasterEggTapFeedback.None -> Unit
-                                    }
-                                }
+                                logoTapCount++
+                                context.toast("Logo tapped $logoTapCount times")
                             },
                         )
                     }
@@ -206,20 +147,10 @@ object AboutScreen : Screen() {
                         TextPreferenceWidget(
                             modifier = itemModifier,
                             title = stringResource(MR.strings.version),
-                            subtitle = buildAboutVersionSubtitle(
-                                normalVersionName = getVersionName(withBuildDate = true),
-                                isPrimed = isPrimed,
-                            ),
+                            subtitle = getVersionName(withBuildDate = true),
                             onPreferenceClick = {
                                 val deviceInfo = CrashLogUtil(context).getDebugInfo()
                                 context.copyToClipboard("Debug information", deviceInfo)
-                            },
-                            onPreferenceLongClick = {
-                                syncEasterEggPhase { machine ->
-                                    if (machine.onSecondarySignal(SystemClock.uptimeMillis())) {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    }
-                                }
                             },
                         )
                     }
@@ -465,43 +396,6 @@ object AboutScreen : Screen() {
                     }
                 }
             }
-
-            if (hiddenFeatureConfig != null && hiddenFeatureContent != null) {
-                AboutEasterEggOverlay(
-                    phase = easterEggPhase,
-                    content = hiddenFeatureContent,
-                    onGlyphRainFinished = {
-                        syncEasterEggPhase { machine ->
-                            machine.onGlyphRainFinished()
-                        }
-                    },
-                    onPageMaterialized = {
-                        syncEasterEggPhase { machine ->
-                            machine.onPageMaterialized()
-                        }
-                    },
-                    onDismissRequest = {
-                        syncEasterEggPhase { machine ->
-                            machine.dismiss()
-                        }
-                    },
-                    onDismissFinished = {
-                        syncEasterEggPhase { machine ->
-                            machine.onDismissFinished()
-                        }
-                    },
-                    onRevealComplete = {
-                        val missingLogoClicks = (
-                            10 -
-                                featureUsageCollector.getFeatureCount(AchievementEvent.Feature.LOGO_CLICK)
-                            )
-                            .coerceAtLeast(0)
-                        repeat(missingLogoClicks) {
-                            achievementHandler.trackFeatureUsed(AchievementEvent.Feature.LOGO_CLICK)
-                        }
-                    },
-                )
-            }
         }
     }
 
@@ -680,24 +574,3 @@ internal enum class AboutFooterLinkIcon {
     Github,
 }
 
-internal fun buildAboutVersionSubtitle(normalVersionName: String, isPrimed: Boolean): String {
-    return if (isPrimed) {
-        glitchAboutVersion(normalVersionName)
-    } else {
-        normalVersionName
-    }
-}
-
-private fun glitchAboutVersion(versionName: String): String {
-    return buildString(versionName.length * 2 + 16) {
-        append("V")
-        append('\u0338')
-        append(' ')
-        versionName.forEachIndexed { index, character ->
-            append(character)
-            if (!character.isWhitespace()) {
-                append(GlitchMarks[index % GlitchMarks.size])
-            }
-        }
-    }
-}

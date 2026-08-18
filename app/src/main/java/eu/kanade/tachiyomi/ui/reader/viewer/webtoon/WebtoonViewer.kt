@@ -137,10 +137,6 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
                 // onScrollStateChanged below), so throttling never loses precision.
                 private var lastProgressUpdateMs = 0L
 
-                // True when a drag starts with the "no more chapters" transition already
-                // visible — the webtoon equivalent of swiping into the void.
-                private var scrollStartedAtEndOfChapter = false
-
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                     onScrolled()
                     applyPendingRelativeRestore(clearWhenApplied = false)
@@ -171,24 +167,7 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
 
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                     when (newState) {
-                        RecyclerView.SCROLL_STATE_DRAGGING -> {
-                            // Only a drag that starts with the end-of-manga transition already
-                            // visible counts as a swipe into the void; landing on the page
-                            // must not trigger the meltdown escalation.
-                            val lastIndex = layoutManager.findLastEndVisibleItemPosition()
-                            val lastItem = adapter.items.getOrNull(lastIndex)
-                            scrollStartedAtEndOfChapter =
-                                lastItem is ChapterTransition.Next && lastItem.to == null
-                        }
                         RecyclerView.SCROLL_STATE_IDLE -> {
-                            if (scrollStartedAtEndOfChapter) {
-                                val lastIndex = layoutManager.findLastEndVisibleItemPosition()
-                                val lastItem = adapter.items.getOrNull(lastIndex)
-                                if (lastItem is ChapterTransition.Next && lastItem.to == null) {
-                                    activity.onMeltdownTransitionActivated()
-                                }
-                            }
-                            scrollStartedAtEndOfChapter = false
                             // Persist the exact resting position once scrolling settles
                             lastProgressUpdateMs = SystemClock.uptimeMillis()
                             getCurrentScrollProgress()?.let(activity.viewModel::onWebtoonScrollProgressChanged)

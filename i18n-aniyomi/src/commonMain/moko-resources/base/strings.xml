@@ -2029,12 +2029,6 @@
     <string name="debug_app_update_preview_summary">Open the update sheet with mock release data</string>
     <string name="debug_updated_changelog_preview">Updated changelog preview</string>
     <string name="debug_updated_changelog_preview_summary">Open the post-update changelog sheet with mock release data</string>
-    <string name="debug_reset_aurora_heart">Reset Aurora Heart (easter egg)</string>
-    <string name="debug_reset_aurora_heart_summary">Completely clears quest progress, echoes, night counter and the secret achievement (debug builds only)</string>
-    <string name="debug_reset_lattice_resonance">Reset Lattice Resonance (easter egg)</string>
-    <string name="debug_reset_lattice_resonance_summary">Clears carrier progress, board topology and synthesis state (debug builds only)</string>
-    <string name="debug_force_lattice_breach">Force Lattice breach (debug)</string>
-    <string name="debug_force_lattice_breach_summary">Latches all carriers and opens the Grid shell</string>
     <string name="aurora_library">Library</string>
     <string name="aurora_categories">Categories</string>
     <string name="aurora_data_storage">Data &amp; Storage</string>
@@ -2803,90 +2797,9 @@
     <string name="treasury_reward_glitch_frame_red_title">Crimson Avatar Frame</string>
     <string name="treasury_reward_glitch_frame_red_description">Flickering red static ring with white horizontal block distortions</string>
 
-    <!-- Meltdown Glitch System (Easter Egg & Ritual) -->
-    <string name="meltdown_initiation_title">[ SYSTEM INTEGRITY COMPROMISED ]</string>
-    <string name="meltdown_initiation_message">[CRITICAL_ERROR]: CORE TEMPERATURE CRITICAL. COOLING RODS ARE HIDDEN DEEPER THAN A NORMAL EYE CAN SEE. DESCEND WHERE ONLY ENGINEERS GO.</string>
-    <string name="meltdown_initiation_button">DISENGAGE SYSTEM CONTROLS</string>
-
-    <string name="meltdown_rift_title">[ SYSTEM MELTDOWN ]</string>
-    <string name="meltdown_rift_message">WARNING: SYNC RATE 400% EXCEEDED. LCL FUSION COMMENCING.\nTHE DOOR WILL ONLY OPEN TO ONE WHO:\n— DROWNS IN ABSOLUTE DARKNESS,\n— CUTS ALL THREADS OF COMMUNICATION WITH THE WORLD,\n— FINISHES SOMEONE ELSE\'S STORY TO THE VERY LAST LINE,\n— AND STEPS FIVE TIMES INTO THE VOID BEYOND ITS EDGE.</string>
-    <string name="meltdown_rift_button">HOLD :: ACCEPT INTEGRITY BREACH</string>
-
-    <string name="meltdown_directive_title">// RIFT BREACHED</string>
-    <string name="meltdown_directive_step_1">DROWN IN ABSOLUTE DARKNESS.</string>
-    <string name="meltdown_directive_step_2">SEVER ALL THREADS OF COMMUNICATION WITH THE WORLD.</string>
-    <string name="meltdown_directive_step_3">FINISH SOMEONE ELSE\'S STORY TO THE VERY LAST LINE.</string>
-    <string name="meltdown_directive_step_4">STEP FIVE TIMES INTO THE VOID BEYOND ITS EDGE.</string>
-    <string name="meltdown_directive_enter_void">ENTER THE VOID</string>
-
-    <string name="meltdown_ritual_reveal_title">SIGNAL LOST</string>
-    <string name="meltdown_ritual_achievement_unlocked">ACHIEVEMENT UNLOCKED</string>
-    <string name="meltdown_ritual_rewards_count">&gt; UNLOCKED [%1$d]</string>
-    <string name="meltdown_ritual_apply_all">▶ APPLY ALL</string>
-    <string name="meltdown_ritual_enter_treasury">ENTER TREASURY ▶</string>
-    <string name="meltdown_ritual_reward_active">✓ ACTIVE</string>
-    <string name="meltdown_ritual_reward_apply">Apply</string>
-    <string name="meltdown_ritual_reveal_desc">You spoke the name that is never spoken. The Third Impact has breached the screen — the signal of humanity has dissolved into the crimson sea of LCL. From the ashes, only one thing remains: THE RED SECTOR.</string>
     <string name="unlockable_special_background_void_weeping_red">Weeping Void</string>
     <string name="treasury_reward_void_weeping_red_title">Weeping Void</string>
     <string name="treasury_reward_void_weeping_red_description">A living weeping eye that drops crimson tears of digital blood into the void</string>
-
-    <!-- Meltdown Reward Screen Strings -->
-    <string name="meltdown_reward_theme_tag">[ THEME ]</string>
-    <string name="meltdown_reward_theme_name">Blood of Lilith</string>
-    <string name="meltdown_reward_theme_lore">An interface scorched by a distress signal.</string>
-
-    <string name="meltdown_reward_nick_tag">[ NICKNAME ]</string>
-    <string name="meltdown_reward_nick_name">Crimson Glitch Nickname Effect</string>
-    <string name="meltdown_reward_nick_lore">Your name dissolves in digital noise.</string>
-
-    <string name="meltdown_reward_frame_tag">[ FRAME ]</string>
-    <string name="meltdown_reward_frame_name">Crimson Avatar Frame</string>
-    <string name="meltdown_reward_frame_lore">A crimson ring and disruptions around the avatar.</string>
-
-    <string name="meltdown_reward_aura_tag">[ AURA ]</string>
-    <string name="meltdown_reward_aura_name">Core Melt</string>
-    <string name="meltdown_reward_aura_lore">Vibrating crimson scanlines of a dying signal.</string>
-
-    <string name="meltdown_reward_background_tag">[ BACKGROUND ]</string>
-    <string name="meltdown_reward_background_name">Weeping Void</string>
-    <string name="meltdown_reward_background_lore">A living weeping eye that drops crimson tears of digital blood.</string>
-    <!-- Meltdown Reality Breach — lore code lines shown through the crack/hole -->
-    <string name="meltdown_code_line_01">THIRD IMPACT INITIATED</string>
-    <string name="meltdown_code_line_02">REALITY_INTEGRITY = 0.000</string>
-    <string name="meltdown_code_line_03">you were not supposed to see this</string>
-    <string name="meltdown_code_line_04">0xVOID  0xDEAD  0x003C</string>
-    <string name="meltdown_code_line_05">VOID SECTOR UNLOCKED</string>
-    <string name="meltdown_code_line_06">run. // no, too late</string>
-    <string name="meltdown_code_line_07">no way back</string>
-    <string name="meltdown_code_line_08">she is already inside you</string>
-    <string name="meltdown_code_line_09">kill(reality); spawn(VOID)</string>
-    <string name="meltdown_code_line_10">blood on the bones</string>
-    <string name="meltdown_code_line_11">do not blink</string>
-    <string name="meltdown_code_line_12">void.consume(you)</string>
-    <string name="meltdown_code_line_13">THE WALL BETWEEN WORLDS HAS CRACKED</string>
-    <string name="meltdown_code_line_14">we are the code beneath</string>
-    <string name="meltdown_code_line_15">it knows you are here</string>
-    <string name="meltdown_code_line_16">CLOSE YOUR EYES</string>
-    <string name="meltdown_code_line_17">third impact. the last.</string>
-    <string name="meltdown_code_line_18">ACCEPT THE VOID</string>
-    <string name="meltdown_code_line_19">can you hear it? that is your name</string>
-    <string name="meltdown_code_line_20">void.accept()</string>
-    <string name="meltdown_code_line_21">///</string>
-    <string name="meltdown_code_line_22">...</string>
-    <string name="meltdown_code_line_23">x5>></string>
-    <string name="meltdown_code_line_24">---</string>
-    <!-- Meltdown terminal dialog strings -->
-    <string name="meltdown_terminal_title">[ CRITICAL FAULT: CONNECTION RUPTURED ]</string>
-    <string name="meltdown_terminal_message">Warning: You have reached the absolute boundary.\nHumanity has always sought a way to erase the walls between souls, to escape the fear of isolation and the pain of understanding. The Third Impact will dissolve the boundaries of your mind, dissolving your self in the crimson sea of LCL.\n\nBut are you truly ready to cease to exist? To surrender your individuality to the void? To become everything and nothing at once?\n\nThere is no turning back. The choice is yours.\n\n[ ACCEPT THE VOID? ]</string>
-    <string name="meltdown_terminal_confirm">ACCEPT THE VOID</string>
-    <string name="meltdown_terminal_dismiss">SYSTEM RESET</string>
-    <!-- Meltdown Phase 2 screen strings -->
-    <string name="meltdown_system_compromised">// SYSTEM INTEGRITY COMPROMISED</string>
-    <string name="meltdown_sync_rate">SYNC RATE %1$d%%</string>
-    <string name="meltdown_inhibitors_disengaged">// INHIBITORS DISENGAGED — BREACH</string>
-    <string name="meltdown_breaching">// BREACHING… %1$d%%</string>
-    <string name="meltdown_hold_rift">HOLD RIFT TO DISENGAGE INHIBITORS</string>
 
     <!-- Hints for Secret Achievements -->
     <string name="achievement_secret_hall_unlocked_hint">A hidden hall opens for those who know the way.</string>
@@ -2912,45 +2825,6 @@
     <!-- Lattice Resonance (hidden) -->
     <string name="theme_lattice_protocol">Lattice Protocol</string>
     <string name="treasury_tagline_lattice_protocol">The frame beneath the shell</string>
-    <string name="lattice_carrier_node_a11y">Service node</string>
-    <string name="lattice_carrier_latched">CARRIER %1$d/3 LATCHED</string>
-    <string name="lattice_carrier_signal">SIGNAL LATCHED</string>
-    <string name="lattice_frame_whisper">FRAME DRIFT DETECTED</string>
-    <string name="lattice_breach_line1">SHELL DETACHED</string>
-    <string name="lattice_breach_line2">ROUTE THE SIGNAL FROM PORT TO CORE</string>
-    <string name="lattice_routing_line1">ROUTING MODE</string>
-    <string name="lattice_track_hint">CLOSE THE RING THROUGH EVERY NODE</string>
-    <string name="lattice_track_closed_title">TRACK CLOSED</string>
-    <string name="lattice_track_closed_sub">CORE ONLINE · LIGHT-CYCLE ON CONTOUR</string>
-    <string name="lattice_track_nodes">NODES// %1$d/%2$d</string>
-    <string name="lattice_track_ring_open">RING// OPEN</string>
-    <string name="lattice_track_ring_closed">RING// CLOSED</string>
-    <string name="lattice_board_a11y">Signal routing board</string>
-    <string name="lattice_synthesis_commit">SYNTHESIZE</string>
-    <string name="lattice_commit_hint">HOLD TO SYNTHESIZE</string>
-    <string name="lattice_core_online">CORE ONLINE</string>
-    <string name="lattice_synthesis_line1">TOPOLOGY CONFIRMED</string>
-    <string name="lattice_synthesis_line2">SYNTHESIS COMPLETE. ARCHITECT IDENTIFIED.</string>
-    <string name="lattice_synthesis_reward">REWARD UNLOCKED · LATTICE PROTOCOL · CIRCUIT EDGE</string>
-    <string name="lattice_synthesis_continue">OPENING REWARD VAULT…</string>
-    <string name="lattice_circuit_locked">CIRCUIT LOCKED · SYNTHESIZING</string>
-    <string name="lattice_synth_failed">SYNTHESIS FAILED · ADJUST TOPOLOGY</string>
-    <string name="lattice_accept">ACCEPT</string>
-    <string name="lattice_accept_sealed">IDENTITY SEALED</string>
-    <string name="lattice_residual">THE LATTICE REMEMBERS YOU, ARCHITECT.</string>
-    <string name="lattice_overlay_close">Close</string>
-    <string name="lattice_open_manual">Open the Lattice</string>
-    <string name="lattice_open_manual_summary">Return to the frame resonance grid</string>
-    <string name="lattice_rewards_kicker">— ARCHITECT CLEARANCE —</string>
-    <string name="lattice_rewards_title">REWARD VAULT</string>
-    <string name="lattice_rewards_subtitle">The Grid grants two surface-layer artifacts. Preview only — equip them in the Treasury.</string>
-    <string name="lattice_rewards_kind_theme">THEME</string>
-    <string name="lattice_rewards_kind_navbar">NAVBAR</string>
-    <string name="lattice_rewards_theme_desc">Circuit-etched void theme with cyan signal traces and amber service accents.</string>
-    <string name="lattice_rewards_circuit_title">Circuit Edge</string>
-    <string name="lattice_rewards_circuit_desc">A bottom-only rim-light along the navigation capsule underside.</string>
-    <string name="lattice_rewards_preview_badge">PREVIEW · NOT EQUIPPED HERE</string>
-    <string name="lattice_rewards_preview_only">VISUAL SHOWCASE  TOGGLE IN TREASURY</string>
     <string name="achievement_lattice_resonance_title">Lattice Resonance</string>
     <string name="achievement_lattice_resonance_desc">The shell peeled back. Signal reached the core. Architect identified.</string>
     <string name="achievement_lattice_resonance_hint_vague">Something drifts under the render shell…</string>

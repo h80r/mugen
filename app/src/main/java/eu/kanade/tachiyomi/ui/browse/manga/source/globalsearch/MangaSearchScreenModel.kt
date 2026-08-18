@@ -147,13 +147,6 @@ abstract class MangaSearchScreenModel(
 
         if (query.isNullOrBlank()) return
 
-        val manager = Injekt.get<eu.kanade.domain.easteregg.aurora.AuroraHeartManager>()
-        if (!manager.state.value.unlocked) {
-            screenModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                manager.offer(query)
-            }
-        }
-
         val sameQuery = this.lastQuery == query
         if (sameQuery && this.lastSourceFilter == sourceFilter) return
 

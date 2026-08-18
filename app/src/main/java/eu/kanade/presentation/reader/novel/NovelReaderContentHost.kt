@@ -117,10 +117,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import coil3.compose.AsyncImage
-import eu.kanade.domain.easteregg.lattice.LatticeCarrier
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.AppBar
-import eu.kanade.presentation.easteregg.lattice.LatticeCarrierSlot
 import eu.kanade.presentation.reader.DisplayRefreshHost
 import eu.kanade.presentation.reader.components.AutoScrollActionFab
 import eu.kanade.presentation.theme.AuroraTheme

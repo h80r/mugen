@@ -84,13 +84,6 @@ class NovelCategoryScreenModel(
             val result = createCategoryWithName.await(name, order = order, flags = 0L)
             if (result == null) {
                 _events.send(NovelCategoryEvent.InternalError)
-            } else {
-                runCatching {
-                    val manager = Injekt.get<eu.kanade.domain.easteregg.aurora.AuroraHeartManager>()
-                    if (!manager.state.value.unlocked) {
-                        manager.offer(eu.kanade.domain.easteregg.aurora.AuroraChannels.named("категория", name))
-                    }
-                }
             }
         }
     }
@@ -142,14 +135,6 @@ class NovelCategoryScreenModel(
     fun renameCategory(category: Category, name: String) {
         screenModelScope.launch {
             runCatching { renameCategory.await(category.id, name) }
-                .onSuccess {
-                    runCatching {
-                        val manager = Injekt.get<eu.kanade.domain.easteregg.aurora.AuroraHeartManager>()
-                        if (!manager.state.value.unlocked) {
-                            manager.offer(eu.kanade.domain.easteregg.aurora.AuroraChannels.named("категория", name))
-                        }
-                    }
-                }
                 .onFailure { _events.send(NovelCategoryEvent.InternalError) }
         }
     }

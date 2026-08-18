@@ -6,7 +6,6 @@ import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.rememberScreenModel
@@ -72,16 +71,6 @@ data object MoreTab : Tab {
 
         val navStyle = currentNavigationStyle()
 
-        // Manual entry point for the Frame resonance Grid (read on every recomposition so
-        // it appears as soon as the third carrier latches).
-        val app = remember { Injekt.get<android.app.Application>() }
-        val latticeManager = remember {
-            eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app)
-        }
-        // Disappears again once the rewards are granted: from then on the grid is reachable
-        // from the Achievements screen instead.
-        val latticeGridAvailable = latticeManager.shouldShowMoreEntry()
-
         val downloadedOnly by screenModel.downloadedOnlyFlow.collectAsStateWithLifecycle()
         val incognitoMode by screenModel.incognitoModeFlow.collectAsStateWithLifecycle()
 
@@ -99,41 +88,10 @@ data object MoreTab : Tab {
             onHelpClick = { navigator.push(HelpScreen) },
             onDebugAppUpdatePreviewClick = { navigator.push(DebugAppUpdatePreviewScreen()) },
             onDebugUpdatedChangelogPreviewClick = { navigator.push(DebugUpdatedChangelogPreviewScreen()) },
-            onDebugResetAuroraHeartClick = {
-                screenModel.screenModelScope.launchIO {
-                    val manager = Injekt.get<eu.kanade.domain.easteregg.aurora.AuroraHeartManager>()
-                    manager.debugReset()
-
-                    runCatching {
-                        val repo = Injekt.get<tachiyomi.domain.achievement.repository.AchievementRepository>()
-                        repo.deleteAchievement("aurora_heart")
-                    }
-                }
-            },
-            onDebugResetLatticeResonanceClick = {
-                screenModel.screenModelScope.launchIO {
-                    val app = Injekt.get<android.app.Application>()
-                    eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app).debugReset()
-                    runCatching {
-                        val repo = Injekt.get<tachiyomi.domain.achievement.repository.AchievementRepository>()
-                        repo.deleteAchievement("lattice_resonance")
-                    }
-                }
-            },
-            onDebugForceLatticeBreachClick = {
-                screenModel.screenModelScope.launchIO {
-                    val app = Injekt.get<android.app.Application>()
-                    eu.kanade.domain.easteregg.lattice.LatticeProtocolManager.get(app).debugForceBreach()
-                }
-            },
             onStatsClick = { navigator.push(StatsTab) },
             onLibraryUpdateErrorsClick = { navigator.push(LibraryUpdateErrorScreen()) },
             onAchievementsClick = { navigator.push(AchievementScreenVoyager) },
             onTreasuryClick = { navigator.push(SettingsTreasuryScreen) },
-            latticeGridAvailable = latticeGridAvailable,
-            onOpenLatticeGridClick = {
-                screenModel.screenModelScope.launchIO { latticeManager.requestBreach() }
-            },
         )
     }
 }

@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.ReportProblem
@@ -78,16 +77,11 @@ fun MoreScreenAurora(
     onSettingsClick: () -> Unit,
     onDebugAppUpdatePreviewClick: () -> Unit,
     onDebugUpdatedChangelogPreviewClick: () -> Unit,
-    onDebugResetAuroraHeartClick: () -> Unit,
-    onDebugResetLatticeResonanceClick: () -> Unit,
-    onDebugForceLatticeBreachClick: () -> Unit,
     onStatsClick: () -> Unit,
     onLibraryUpdateErrorsClick: () -> Unit,
     onAchievementsClick: () -> Unit,
     onTreasuryClick: () -> Unit,
     onHelpClick: () -> Unit,
-    latticeGridAvailable: Boolean,
-    onOpenLatticeGridClick: () -> Unit,
 ) {
     val colors = AuroraTheme.colors
     val hostScaffoldContentPadding = LocalHostScaffoldContentPadding.current
@@ -211,18 +205,6 @@ fun MoreScreenAurora(
                     darkRimLightEnabled = darkRimLightEnabled,
                 )
 
-                // Safety net for the Frame resonance easter egg: once every carrier is
-                // latched the Grid must always be reachable by hand.
-                if (latticeGridAvailable) {
-                    AuroraSettingItem(
-                        title = stringResource(AYMR.strings.lattice_open_manual),
-                        subtitle = stringResource(AYMR.strings.lattice_open_manual_summary),
-                        icon = Icons.Outlined.Hub,
-                        onClick = onOpenLatticeGridClick,
-                        darkRimLightEnabled = darkRimLightEnabled,
-                    )
-                }
-
                 if (BuildConfig.DEBUG) {
                     AuroraSettingItem(
                         title = stringResource(AYMR.strings.debug_app_update_preview),
@@ -236,27 +218,6 @@ fun MoreScreenAurora(
                         subtitle = stringResource(AYMR.strings.debug_updated_changelog_preview_summary),
                         icon = Icons.Outlined.NewReleases,
                         onClick = onDebugUpdatedChangelogPreviewClick,
-                        darkRimLightEnabled = darkRimLightEnabled,
-                    )
-                    AuroraSettingItem(
-                        title = stringResource(AYMR.strings.debug_reset_aurora_heart),
-                        subtitle = stringResource(AYMR.strings.debug_reset_aurora_heart_summary),
-                        icon = Icons.Outlined.ReportProblem,
-                        onClick = onDebugResetAuroraHeartClick,
-                        darkRimLightEnabled = darkRimLightEnabled,
-                    )
-                    AuroraSettingItem(
-                        title = stringResource(AYMR.strings.debug_reset_lattice_resonance),
-                        subtitle = stringResource(AYMR.strings.debug_reset_lattice_resonance_summary),
-                        icon = Icons.Outlined.ReportProblem,
-                        onClick = onDebugResetLatticeResonanceClick,
-                        darkRimLightEnabled = darkRimLightEnabled,
-                    )
-                    AuroraSettingItem(
-                        title = stringResource(AYMR.strings.debug_force_lattice_breach),
-                        subtitle = stringResource(AYMR.strings.debug_force_lattice_breach_summary),
-                        icon = Icons.Outlined.NewReleases,
-                        onClick = onDebugForceLatticeBreachClick,
                         darkRimLightEnabled = darkRimLightEnabled,
                     )
                 }

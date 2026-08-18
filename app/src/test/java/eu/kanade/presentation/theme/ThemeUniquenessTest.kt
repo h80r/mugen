@@ -104,32 +104,6 @@ class ThemeUniquenessTest {
     }
 
     @Test
-    fun `aurora prime live palette stays unique in dark mode`() {
-        // Visible AURORA_PRIME colors come from the payload defaults (AuroraPublicPalette):
-        // Green=primary, Violet=secondary, Blue=tertiary.
-        val violations = mutableListOf<String>()
-        val live = listOf(
-            eu.kanade.presentation.easteregg.aurora.AuroraPublicPalette.Green,
-            eu.kanade.presentation.easteregg.aurora.AuroraPublicPalette.Violet,
-            eu.kanade.presentation.easteregg.aurora.AuroraPublicPalette.Blue,
-        )
-        val ownScheme = colorSchemes.getValue(AppTheme.AURORA_PRIME)
-        for (other in colorSchemes.values.distinct()) {
-            if (other === ownScheme) continue
-            val otherTokens = other.getColorScheme(isDark = true, isAmoled = false).roleTokens()
-            for (role in ROLE_NAMES.indices) {
-                val d = deltaE(live[role], otherTokens[role])
-                if (d <= 15.0) {
-                    violations += "AURORA_PRIME-live.${ROLE_NAMES[role]} (dark) ΔE=${
-                        String.format("%.1f", d)
-                    } vs ${schemeNames[other]}"
-                }
-            }
-        }
-        check(violations.isEmpty()) { violations.joinToString("\n") }
-    }
-
-    @Test
     fun `lattice live palette endpoints stay unique in dark mode`() {
         // Visible LATTICE_PROTOCOL colors breathe between the live endpoints.
         val palette = eu.kanade.presentation.easteregg.lattice.LatticeProtocolLivePalette

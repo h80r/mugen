@@ -502,7 +502,6 @@
     <string name="action_start_downloading_now">Começar o download agora</string>
     <string name="about_dont_kill_my_app">Algumas fabricantes possuem restrições adicionais de aplicativos que encerram os serviços em segundo plano. Este site possui mais informações sobre como corrigir este problema.</string>
     <string name="about_dont_kill_my_app_title">Não mate meu app!</string>
-    <string name="settings_advanced_glitch_rift_title">Fenda Glitch</string>
     <string name="restore_miui_warning">O backup e restauração podem não funcionar corretamente se a Otimização da MIUI estiver desabilitada.</string>
     <string name="pref_dark_theme_pure_black">Modo noturno com preto absoluto</string>
     <string name="theme_yotsuba">Yotsuba</string>
