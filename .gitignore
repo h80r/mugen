@@ -10,3 +10,6 @@ kls_database.db
 !.idea/icon.png
 *.iml
 local.properties
+key.properties
+*.jks
+*.keystore
