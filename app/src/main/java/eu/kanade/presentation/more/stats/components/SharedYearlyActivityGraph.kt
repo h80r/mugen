@@ -44,7 +44,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -70,7 +70,7 @@ fun SharedYearlyActivityGraph(
     modifier: Modifier = Modifier,
 ) {
     val colors = AuroraTheme.colors
-    val locale = LocalContext.current.resources.configuration.locales[0] ?: Locale.getDefault()
+    val locale = LocalLocale.current.platformLocale
 
     val firstHalf = yearlyStats
         .filter { it.first.monthValue in 1..6 }

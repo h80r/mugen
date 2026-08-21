@@ -51,6 +51,7 @@ import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.LocalAppHaptics
 import tachiyomi.presentation.core.util.selectedBackground
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 internal fun LazyListScope.animeUpdatesLastUpdatedItem(
@@ -273,6 +274,7 @@ private fun AnimeUpdatesUiItem(
 private fun formatProgress(milliseconds: Long): String {
     return if (milliseconds > 3600000L) {
         String.format(
+            Locale.getDefault(),
             "%d:%02d:%02d",
             TimeUnit.MILLISECONDS.toHours(milliseconds),
             TimeUnit.MILLISECONDS.toMinutes(milliseconds) -
@@ -282,6 +284,7 @@ private fun formatProgress(milliseconds: Long): String {
         )
     } else {
         String.format(
+            Locale.getDefault(),
             "%d:%02d",
             TimeUnit.MILLISECONDS.toMinutes(milliseconds),
             TimeUnit.MILLISECONDS.toSeconds(milliseconds) -

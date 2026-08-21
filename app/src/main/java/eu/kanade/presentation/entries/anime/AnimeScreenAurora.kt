@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -2074,7 +2075,7 @@ fun VirtualSeasonSwitcherAurora(
 
 @Composable
 private fun getLocalizedSeasonLabel(season: String): String {
-    val isRussian = LocalContext.current.resources.configuration.locales[0].language == "ru"
+    val isRussian = LocalLocale.current.platformLocale.language == "ru"
     return when {
         season.startsWith("Season ", ignoreCase = true) -> {
             val num = season.substringAfter("Season ").trim()

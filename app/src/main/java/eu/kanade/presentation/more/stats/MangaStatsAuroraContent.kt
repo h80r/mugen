@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -711,7 +712,7 @@ private fun StatsSectionCard(
                     }
 
                     val isNoScore = meanScore == "N/A" || meanScore.isBlank()
-                    val locale = Locale.getDefault().language
+                    val locale = LocalLocale.current.platformLocale.language
                     val scoreText = if (isNoScore) {
                         if (locale == "ru") "Без оценки" else "No score"
                     } else {

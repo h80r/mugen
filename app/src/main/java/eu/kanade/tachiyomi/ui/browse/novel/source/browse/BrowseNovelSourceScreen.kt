@@ -289,7 +289,7 @@ data class BrowseNovelSourceScreen(
                         onReset = screenModel::resetFilters,
                         onFilter = screenModel::applyFilters,
                         onUpdate = screenModel::setFilters,
-                        savedSearches = screenModel.state.value.savedSearches,
+                        savedSearches = state.savedSearches,
                         onSaveSearch = screenModel::openSaveSearchDialog,
                         onOpenSavedSearch = screenModel::openSavedSearch,
                         onDeleteSavedSearch = {

@@ -84,11 +84,7 @@ data class ExtensionInstallDiagnostic(
                     preferredBackend = ApkDownloadBackend.AUTO,
                 ),
                 installBackend = installBackend,
-                installUnknownAppsGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.packageManager.canRequestPackageInstalls()
-                } else {
-                    true
-                },
+                installUnknownAppsGranted = context.packageManager.canRequestPackageInstalls(),
                 manufacturer = Build.MANUFACTURER.orEmpty(),
                 model = Build.MODEL.orEmpty(),
                 androidVersion = Build.VERSION.RELEASE.orEmpty(),
@@ -107,11 +103,7 @@ data class ExtensionInstallDiagnostic(
 
         fun getInstallerDiagnosticString(context: Context, basePreferences: BasePreferences): String {
             val installer = basePreferences.extensionInstaller().get()
-            val installUnknownAppsGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.packageManager.canRequestPackageInstalls()
-            } else {
-                true
-            }
+            val installUnknownAppsGranted = context.packageManager.canRequestPackageInstalls()
             return buildString {
                 appendLine("Installer compatibility diagnostics")
                 appendLine("manufacturer=${Build.MANUFACTURER}")

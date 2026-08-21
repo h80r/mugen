@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
 import eu.kanade.presentation.entries.components.aurora.AuroraCoverSectionHeader
 import eu.kanade.tachiyomi.animesource.model.FetchType
 import tachiyomi.i18n.aniyomi.AYMR
@@ -18,8 +19,7 @@ fun EpisodesHeader(
     fetchType: FetchType = FetchType.Episodes,
     modifier: Modifier = Modifier,
 ) {
-    val isRussian =
-        androidx.compose.ui.platform.LocalContext.current.resources.configuration.locales[0].language == "ru"
+    val isRussian = LocalLocale.current.platformLocale.language == "ru"
     val titleText = when (fetchType) {
         FetchType.Seasons -> if (isRussian) "Сезоны" else "Seasons"
         FetchType.Episodes -> stringResource(AYMR.strings.aurora_episodes_header)

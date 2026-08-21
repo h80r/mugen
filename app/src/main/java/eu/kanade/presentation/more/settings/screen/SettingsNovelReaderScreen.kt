@@ -3,6 +3,7 @@ package eu.kanade.presentation.more.settings.screen
 import android.text.format.Formatter
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.ui.platform.LocalLocale
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -317,6 +318,7 @@ object SettingsNovelReaderScreen : Screen() {
     private fun getDisplayGroup(prefs: NovelReaderPreferences): Preference.PreferenceGroup {
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
+        val locale = LocalLocale.current.platformLocale
         val typographyPresetPref = prefs.typographyPreset()
         val typographyPreset by typographyPresetPref.collectAsState()
         val fontSizePref = prefs.fontSize()
@@ -403,7 +405,7 @@ object SettingsNovelReaderScreen : Screen() {
                 Preference.PreferenceItem.SliderPreference(
                     value = (resolvedLineHeight * 10).toInt(),
                     title = stringResource(AYMR.strings.novel_reader_line_height),
-                    subtitle = String.format("%.2f", resolvedLineHeight),
+                    subtitle = String.format(locale, "%.2f", resolvedLineHeight),
                     valueRange = 12..20,
                     onValueChanged = {
                         if (typographyPreset != NovelReaderTypographyPreset.CUSTOM) {
@@ -477,7 +479,7 @@ object SettingsNovelReaderScreen : Screen() {
                 Preference.PreferenceItem.SliderPreference(
                     value = (textShadowBlur * 2f).toInt(),
                     title = stringResource(AYMR.strings.novel_reader_text_shadow_blur),
-                    subtitle = String.format("%.1f", textShadowBlur),
+                    subtitle = String.format(locale, "%.1f", textShadowBlur),
                     valueRange = 0..40,
                     enabled = textShadowEnabled,
                     onValueChanged = {
@@ -488,7 +490,7 @@ object SettingsNovelReaderScreen : Screen() {
                 Preference.PreferenceItem.SliderPreference(
                     value = (textShadowX * 2f).toInt(),
                     title = stringResource(AYMR.strings.novel_reader_text_shadow_x),
-                    subtitle = String.format("%.1f", textShadowX),
+                    subtitle = String.format(locale, "%.1f", textShadowX),
                     valueRange = -40..40,
                     enabled = textShadowEnabled,
                     onValueChanged = {
@@ -499,7 +501,7 @@ object SettingsNovelReaderScreen : Screen() {
                 Preference.PreferenceItem.SliderPreference(
                     value = (textShadowY * 2f).toInt(),
                     title = stringResource(AYMR.strings.novel_reader_text_shadow_y),
-                    subtitle = String.format("%.1f", textShadowY),
+                    subtitle = String.format(locale, "%.1f", textShadowY),
                     valueRange = -40..40,
                     enabled = textShadowEnabled,
                     onValueChanged = {

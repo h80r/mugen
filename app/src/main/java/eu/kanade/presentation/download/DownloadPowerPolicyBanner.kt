@@ -164,11 +164,10 @@ private class DownloadPowerPolicyAdvisor(
         val isXiaomiFamily = listOf("xiaomi", "redmi", "poco").any { token ->
             manufacturer.contains(token) || brand.contains(token)
         }
-        val ignoringBatteryOptimizations = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-            runCatching {
-                val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-                powerManager.isIgnoringBatteryOptimizations(context.packageName)
-            }.getOrDefault(false)
+        val ignoringBatteryOptimizations = runCatching {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            powerManager.isIgnoringBatteryOptimizations(context.packageName)
+        }.getOrDefault(false)
 
         return State(
             isXiaomiFamily = isXiaomiFamily,
@@ -178,17 +177,11 @@ private class DownloadPowerPolicyAdvisor(
 
     fun openBatteryOptimizationSettings() {
         val packageUri = Uri.parse("package:${context.packageName}")
-        val intents = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            listOf(
-                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, packageUri),
-                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri),
-                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
-            )
-        } else {
-            listOf(
-                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri),
-            )
-        }
+        val intents = listOf(
+            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, packageUri),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri),
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+        )
         openFirstAvailable(intents)
     }
 

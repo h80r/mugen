@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.ui.reader.novel.BookSeekRequest
@@ -126,6 +127,7 @@ internal fun NovelBookContentHost(
     bookRendererDecision: NovelBookRendererDecision,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val resources = LocalResources.current
     val useNativeBookScroll = bookRendererDecision.renderer.usesWebView.not()
     val nativeSections = remember(state.novel.id) {
         mutableStateOf<NovelBookNativeSections>(emptyList())
@@ -179,7 +181,7 @@ internal fun NovelBookContentHost(
             NovelBookRendererReason.CUSTOM_STYLES -> AYMR.strings.novel_book_renderer_fallback_custom_styles
             else -> AYMR.strings.novel_book_renderer_fallback_unsupported_content
         }
-        Toast.makeText(context, context.getString(reasonMessage.resourceId), Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, resources.getString(reasonMessage.resourceId), Toast.LENGTH_SHORT).show()
     }
     DisposableEffect(textListState, useNativeBookScroll) {
         if (!useNativeBookScroll) return@DisposableEffect onDispose { }

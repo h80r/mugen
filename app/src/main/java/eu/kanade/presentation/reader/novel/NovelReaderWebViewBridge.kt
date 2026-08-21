@@ -1,8 +1,9 @@
 package eu.kanade.presentation.reader.novel
 
 import android.content.Context
-import android.os.Build
 import android.os.SystemClock
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -415,10 +416,11 @@ internal fun WebView.revealReaderDocumentAndWebView(hideUntilReveal: Boolean = t
                         .start()
                 }
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                postVisualStateCallback(
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.VISUAL_STATE_CALLBACK)) {
+                WebViewCompat.postVisualStateCallback(
+                    this,
                     SystemClock.uptimeMillis(),
-                    object : WebView.VisualStateCallback() {
+                    object : WebViewCompat.VisualStateCallback {
                         override fun onComplete(requestId: Long) {
                             post(reveal)
                         }

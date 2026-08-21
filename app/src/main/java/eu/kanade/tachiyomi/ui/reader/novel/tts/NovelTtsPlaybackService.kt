@@ -10,12 +10,12 @@ import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.media.session.MediaButtonReceiver.handleIntent
 import dev.h80r.mugen.R
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.util.system.notificationBuilder
+import eu.kanade.tachiyomi.util.system.notify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -153,8 +153,7 @@ class NovelTtsPlaybackService : Service() {
         stateCollectionJob = serviceScope.launch {
             runtime.playbackState().collectLatest {
                 updateMediaSessionState()
-                NotificationManagerCompat.from(this@NovelTtsPlaybackService)
-                    .notify(Notifications.ID_NOVEL_TTS_PLAYBACK, buildNotification())
+                notify(Notifications.ID_NOVEL_TTS_PLAYBACK, buildNotification())
                 if (
                     it.playbackState == NovelTtsPlaybackState.IDLE ||
                     it.playbackState == NovelTtsPlaybackState.COMPLETED
@@ -164,7 +163,7 @@ class NovelTtsPlaybackService : Service() {
             }
         }
         updateMediaSessionState()
-        NotificationManagerCompat.from(this).notify(Notifications.ID_NOVEL_TTS_PLAYBACK, buildNotification())
+        notify(Notifications.ID_NOVEL_TTS_PLAYBACK, buildNotification())
     }
 
     override fun onDestroy() {
@@ -178,8 +177,7 @@ class NovelTtsPlaybackService : Service() {
         serviceScope.launch {
             runtime?.handleTransportAction(action)
             updateMediaSessionState()
-            NotificationManagerCompat.from(this@NovelTtsPlaybackService)
-                .notify(Notifications.ID_NOVEL_TTS_PLAYBACK, buildNotification())
+            notify(Notifications.ID_NOVEL_TTS_PLAYBACK, buildNotification())
             if (action == NovelTtsTransportAction.STOP) {
                 stopForegroundPlayback()
             }

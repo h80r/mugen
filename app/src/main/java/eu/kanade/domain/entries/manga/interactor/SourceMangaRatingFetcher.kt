@@ -105,7 +105,7 @@ class SourceMangaRatingFetcher {
     }
 
     private fun Float?.previewFloat(): String {
-        return this?.let { String.format("%.3f", it) }.orEmpty()
+        return this?.let { String.format(Locale.ROOT, "%.3f", it) }.orEmpty()
     }
 
     private fun debugLog(message: String) {

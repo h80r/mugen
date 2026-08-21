@@ -20,12 +20,9 @@ class OmniBuilderScreenModel(
     private val domain = runCatching { URL(url).host }.getOrDefault(url)
     private val ruleBuilder = OmniRuleBuilder(domain)
 
-    val bridge = object : Any() {
-        @JavascriptInterface
-        fun onElementSelected(selector: String, text: String) {
-            screenModelScope.launch {
-                handleSelection(selector, text)
-            }
+    val bridge = OmniBuilderBridge { selector, text ->
+        screenModelScope.launch {
+            handleSelection(selector, text)
         }
     }
 
@@ -176,5 +173,14 @@ class OmniBuilderScreenModel(
             contentSelector = "div.entry-content, div.reading-content, div.text-left", // Default content area
             removeSelectors = ".code-block, .adsbygoogle, .social-share, .comments-area",
         )
+    }
+}
+
+class OmniBuilderBridge(
+    private val onElementSelected: (String, String) -> Unit,
+) {
+    @JavascriptInterface
+    fun onElementSelected(selector: String, text: String) {
+        onElementSelected(selector, text)
     }
 }

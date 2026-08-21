@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
@@ -53,6 +54,7 @@ fun SharedActivityStreakCard(
     modifier: Modifier = Modifier,
 ) {
     val colors = AuroraTheme.colors
+    val locale = LocalLocale.current.platformLocale
     val today = java.time.LocalDate.now()
     val days = (0..4).map { offset ->
         today.plusDays((offset - 3).toLong())
@@ -215,7 +217,7 @@ fun SharedActivityStreakCard(
                         } else {
                             val dayName = day.dayOfWeek.getDisplayName(
                                 java.time.format.TextStyle.SHORT,
-                                java.util.Locale.getDefault(),
+                                locale,
                             ).first().toString().uppercase()
                             Box(
                                 modifier = Modifier

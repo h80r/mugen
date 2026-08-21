@@ -7,7 +7,6 @@ import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.os.Build
 import androidx.core.content.ContextCompat
 
 class AndroidNovelTtsAudioFocusBridge(
@@ -17,7 +16,6 @@ class AndroidNovelTtsAudioFocusBridge(
         context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     }.getOrNull()
     private var focusRequest: AudioFocusRequest? = null
-    private var legacyFocusListener: AudioManager.OnAudioFocusChangeListener? = null
     private var noisyReceiver: BroadcastReceiver? = null
 
     override fun requestAudioFocus(onFocusChange: (NovelTtsAudioFocusChange) -> Unit): Boolean {
@@ -27,43 +25,24 @@ class AndroidNovelTtsAudioFocusBridge(
         }
         // Long-form spoken playback behaves like media playback: request full focus
         // (not a transient duck) so music apps pause instead of playing underneath.
-        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build(),
-                )
-                .setAcceptsDelayedFocusGain(false)
-                .setOnAudioFocusChangeListener(listener)
-                .build()
-            focusRequest = request
-            audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        } else {
-            legacyFocusListener = listener
-            @Suppress("DEPRECATION")
-            audioManager.requestAudioFocus(
-                listener,
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN,
-            ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        }
-        return granted
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build(),
+            )
+            .setAcceptsDelayedFocusGain(false)
+            .setOnAudioFocusChangeListener(listener)
+            .build()
+        focusRequest = request
+        return audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 
     override fun abandonAudioFocus() {
         val audioManager = audioManager ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            focusRequest?.let(audioManager::abandonAudioFocusRequest)
-            focusRequest = null
-        } else {
-            // Abandoning with the original listener is required on pre-O devices;
-            // passing null used to leave the focus request dangling.
-            @Suppress("DEPRECATION")
-            legacyFocusListener?.let(audioManager::abandonAudioFocus)
-            legacyFocusListener = null
-        }
+        focusRequest?.let(audioManager::abandonAudioFocusRequest)
+        focusRequest = null
     }
 
     override fun registerHeadsetDisconnectListener(onDisconnect: () -> Unit) {

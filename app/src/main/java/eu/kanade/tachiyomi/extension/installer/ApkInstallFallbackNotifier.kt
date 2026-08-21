@@ -2,11 +2,11 @@ package eu.kanade.tachiyomi.extension.installer
 
 import android.content.Context
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import dev.h80r.mugen.R
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.util.system.notificationBuilder
+import eu.kanade.tachiyomi.util.system.notify
 import tachiyomi.i18n.R as I18nR
 
 class ApkInstallFallbackNotifier(
@@ -32,7 +32,7 @@ class ApkInstallFallbackNotifier(
             setContentIntent(pendingIntent)
             setAutoCancel(true)
         }.build()
-        NotificationManagerCompat.from(context).notify(notificationId(suggestion), notification)
+        context.notify(notificationId(suggestion), notification)
     }
 
     private fun notificationId(suggestion: ApkInstallFallbackSuggestion): Int {

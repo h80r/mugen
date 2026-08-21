@@ -118,7 +118,7 @@ private fun applyNovelReaderAuroraSheetWindowFx(
     supportsBlurBehind: Boolean,
 ) {
     val glass = ((reveal - 0.18f) / 0.82f).coerceIn(0f, 1f)
-    if (supportsBlurBehind) {
+    if (supportsBlurBehind && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val radius = if (glass <= 0.02f) 0 else (28f * glass).roundToInt().coerceIn(1, 32)
         val attrs = window.attributes
         if (attrs.blurBehindRadius != radius) {

@@ -2,7 +2,6 @@ package eu.kanade.tachiyomi.extension.installer
 
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.util.storage.getUriCompat
 import kotlinx.serialization.json.Json
@@ -79,7 +78,7 @@ class PendingApkInstallStore(
 
     @Suppress("DEPRECATION")
     suspend fun resumeIfPermissionGranted(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+        if (!context.packageManager.canRequestPackageInstalls()) {
             return false
         }
 

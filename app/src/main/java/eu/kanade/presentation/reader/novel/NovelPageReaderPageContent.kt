@@ -13,6 +13,7 @@ import android.icu.text.BreakIterator
 import android.os.Build
 import android.os.SystemClock
 import android.text.Layout
+import android.util.AttributeSet
 import android.text.Selection
 import android.text.Spannable
 import android.text.SpannableStringBuilder
@@ -36,6 +37,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.appcompat.widget.AppCompatTextView
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -351,12 +353,10 @@ internal fun applyNovelPageReaderTextViewMetrics(
             resolvedShadow.color.toArgb(),
         )
     } ?: textView.setShadowLayer(0f, 0f, 0f, Color.Transparent.toArgb())
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        textView.justificationMode = if (metrics.textAlign == ReaderTextAlign.JUSTIFY) {
-            Layout.JUSTIFICATION_MODE_INTER_WORD
-        } else {
-            Layout.JUSTIFICATION_MODE_NONE
-        }
+    textView.justificationMode = if (metrics.textAlign == ReaderTextAlign.JUSTIFY) {
+        Layout.JUSTIFICATION_MODE_INTER_WORD
+    } else {
+        Layout.JUSTIFICATION_MODE_NONE
     }
 }
 
@@ -413,7 +413,33 @@ internal class NovelPageReaderTextView constructor(
     private var onSelectionGestureActiveChanged: ((Boolean) -> Unit)?,
     private val touchHandlingEnabled: Boolean,
     selectionInteractionEnabled: Boolean,
-) : TextView(context) {
+) : AppCompatTextView(context) {
+    constructor(context: Context) : this(
+        context,
+        selectionRenderer = NovelSelectedTextRenderer.PAGE_READER,
+        selectionSessionIdProvider = { 0L },
+        onSelectedTextSelectionChanged = {},
+        selectionCoordinator = null,
+        selectionBlockOrder = 0,
+        onPlainTap = null,
+        onSelectionGestureActiveChanged = null,
+        touchHandlingEnabled = false,
+        selectionInteractionEnabled = false,
+    )
+
+    constructor(context: Context, attrs: AttributeSet?) : this(
+        context,
+        selectionRenderer = NovelSelectedTextRenderer.PAGE_READER,
+        selectionSessionIdProvider = { 0L },
+        onSelectedTextSelectionChanged = {},
+        selectionCoordinator = null,
+        selectionBlockOrder = 0,
+        onPlainTap = null,
+        onSelectionGestureActiveChanged = null,
+        touchHandlingEnabled = false,
+        selectionInteractionEnabled = false,
+    )
+
     private enum class SelectionHandle { START, END }
 
     private val touchSlopPx = ViewConfiguration.get(context).scaledTouchSlop.toFloat()

@@ -11,6 +11,9 @@ import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import android.graphics.RenderEffect
+import android.graphics.RuntimeShader
+import androidx.annotation.RequiresApi
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -1349,49 +1352,39 @@ class ReaderActivity : BaseActivity() {
         }
 
         private fun applyRenderEffects() {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                val sharpeningVal = readerPreferences.sharpening().get() / 100f
-                val denoiseVal = readerPreferences.denoise().get() / 100f
-                val binarizationVal = readerPreferences.binarization().get() / 100f
-
-                var effect: android.graphics.RenderEffect? = null
-
-                if (sharpeningVal > 0f) {
-                    val sharpShader = android.graphics.RuntimeShader(SHARPEN_SHADER)
-                    sharpShader.setFloatUniform("sharpness", sharpeningVal)
-                    effect = android.graphics.RenderEffect.createRuntimeShaderEffect(sharpShader, "inputShader")
-                }
-
-                if (denoiseVal > 0f) {
-                    val denoiseShader = android.graphics.RuntimeShader(DENOISE_SHADER)
-                    denoiseShader.setFloatUniform("denoise", denoiseVal)
-                    val denoiseEffect = android.graphics.RenderEffect.createRuntimeShaderEffect(
-                        denoiseShader,
-                        "inputShader",
-                    )
-                    effect = if (effect != null) {
-                        android.graphics.RenderEffect.createChainEffect(denoiseEffect, effect)
-                    } else {
-                        denoiseEffect
-                    }
-                }
-
-                if (binarizationVal > 0f) {
-                    val binarizationShader = android.graphics.RuntimeShader(BINARIZATION_SHADER)
-                    binarizationShader.setFloatUniform("binarization", binarizationVal)
-                    val binarizationEffect = android.graphics.RenderEffect.createRuntimeShaderEffect(
-                        binarizationShader,
-                        "inputShader",
-                    )
-                    effect = if (effect != null) {
-                        android.graphics.RenderEffect.createChainEffect(binarizationEffect, effect)
-                    } else {
-                        binarizationEffect
-                    }
-                }
-
-                binding.viewerContainer.setRenderEffect(effect)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ReaderRenderEffects.apply(
+                    target = binding.viewerContainer,
+                    sharpening = readerPreferences.sharpening().get() / 100f,
+                    denoise = readerPreferences.denoise().get() / 100f,
+                    binarization = readerPreferences.binarization().get() / 100f,
+                )
             }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private object ReaderRenderEffects {
+        fun apply(target: View, sharpening: Float, denoise: Float, binarization: Float) {
+            var effect: RenderEffect? = null
+            if (sharpening > 0f) {
+                val shader = RuntimeShader(SHARPEN_SHADER)
+                shader.setFloatUniform("sharpness", sharpening)
+                effect = RenderEffect.createRuntimeShaderEffect(shader, "inputShader")
+            }
+            if (denoise > 0f) {
+                val shader = RuntimeShader(DENOISE_SHADER)
+                shader.setFloatUniform("denoise", denoise)
+                val denoiseEffect = RenderEffect.createRuntimeShaderEffect(shader, "inputShader")
+                effect = if (effect != null) RenderEffect.createChainEffect(denoiseEffect, effect) else denoiseEffect
+            }
+            if (binarization > 0f) {
+                val shader = RuntimeShader(BINARIZATION_SHADER)
+                shader.setFloatUniform("binarization", binarization)
+                val binarizationEffect = RenderEffect.createRuntimeShaderEffect(shader, "inputShader")
+                effect = if (effect != null) RenderEffect.createChainEffect(binarizationEffect, effect) else binarizationEffect
+            }
+            target.setRenderEffect(effect)
         }
     }
 

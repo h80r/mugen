@@ -100,6 +100,6 @@ object RatingParser {
      * Formats votes count with thousands separator (e.g., "3,725")
      */
     fun formatVotes(votes: Int): String {
-        return String.format("%,d", votes)
+        return String.format(Locale.getDefault(), "%,d", votes)
     }
 }

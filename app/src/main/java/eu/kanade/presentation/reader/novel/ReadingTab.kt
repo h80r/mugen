@@ -3,6 +3,7 @@
 package eu.kanade.presentation.reader.novel
 
 import android.widget.Toast
+import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -316,7 +317,7 @@ fun ReadingTab(
             )
             LnReaderSliderRow(
                 label = stringResource(AYMR.strings.novel_reader_line_height),
-                valueText = { String.format("%.2f", it) },
+                valueText = { String.format(Locale.getDefault(), "%.2f", it) },
                 committedValue = settings.lineHeight,
                 range = 1.2f..2f,
                 steps = 16,
@@ -477,7 +478,7 @@ fun ReadingTab(
                 )
                 LnReaderSliderRow(
                     label = stringResource(AYMR.strings.novel_reader_text_shadow_blur),
-                    valueText = { String.format("%.1f", it) },
+                    valueText = { String.format(Locale.getDefault(), "%.1f", it) },
                     committedValue = settings.textShadowBlur,
                     range = 0f..20f,
                     steps = 39,
@@ -487,7 +488,7 @@ fun ReadingTab(
                 )
                 LnReaderSliderRow(
                     label = stringResource(AYMR.strings.novel_reader_text_shadow_x),
-                    valueText = { String.format("%.1f", it) },
+                    valueText = { String.format(Locale.getDefault(), "%.1f", it) },
                     committedValue = settings.textShadowX,
                     range = -20f..20f,
                     steps = 79,
@@ -497,7 +498,7 @@ fun ReadingTab(
                 )
                 LnReaderSliderRow(
                     label = stringResource(AYMR.strings.novel_reader_text_shadow_y),
-                    valueText = { String.format("%.1f", it) },
+                    valueText = { String.format(Locale.getDefault(), "%.1f", it) },
                     committedValue = settings.textShadowY,
                     range = -20f..20f,
                     steps = 79,

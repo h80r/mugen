@@ -15,6 +15,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
 import java.time.ZonedDateTime
+import java.util.Locale
 
 class UpdateManga(
     private val mangaRepository: MangaRepository,
@@ -178,7 +179,7 @@ class UpdateManga(
             .orEmpty()
     }
 
-    private fun Float.previewFloat(): String = String.format("%.3f", this)
+    private fun Float.previewFloat(): String = String.format(Locale.ROOT, "%.3f", this)
 
     private fun SManga.safeTitle(): String {
         return runCatching { title }.getOrDefault("")

@@ -3,7 +3,6 @@
 package eu.kanade.tachiyomi.ui.reader.novel.tts
 
 import android.content.Context
-import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -159,7 +158,7 @@ private class AndroidNovelTtsPlatformEngine(
             // Modern engines report per-word ranges through onRangeStart (API 26+).
             // Estimated highlighting stays active as a fallback until the first
             // range event actually arrives for an utterance.
-            supportsExactWordOffsets = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O,
+            supportsExactWordOffsets = true,
             supportsReliablePauseResume = false,
             supportsVoiceEnumeration = voices.isNotEmpty(),
             supportsLocaleEnumeration = voices.isNotEmpty(),

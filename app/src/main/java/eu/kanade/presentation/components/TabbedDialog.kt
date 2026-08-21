@@ -202,6 +202,7 @@ private fun CapsuleOverflowMenu(
  * [reveal] is AdaptiveSheet open fraction: 0 dismissed → 1 fully open.
  */
 fun applyAuroraSheetWindowFx(window: Window, reveal: Float) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
     // 0..~0.2 of travel = sheet still mostly off-screen, keep FX off.
     val glass = ((reveal - 0.18f) / 0.82f).coerceIn(0f, 1f)
     val radius = if (glass <= 0.02f) {

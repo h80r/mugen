@@ -47,11 +47,7 @@ class DownloadEngineFacade(
     private val telemetryCollector = DownloadTelemetryCollector(speedTracker)
     private val storageManager: StorageManager = Injekt.get()
     private val application: Application? = runCatching { Injekt.get<Application>() }.getOrNull()
-    private val storageStatsManager: StorageStatsManager? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        application?.getSystemService(StorageStatsManager::class.java)
-    } else {
-        null
-    }
+    private val storageStatsManager: StorageStatsManager? = application?.getSystemService(StorageStatsManager::class.java)
     private val storageStatsRefreshMs = 5_000L
     private var lastStorageStatsAtMs = 0L
     private var storageStatsJob: Job? = null
@@ -184,7 +180,6 @@ class DownloadEngineFacade(
         val filePathFreeSpace = runCatching { freeSpaceFromFilePath(downloadsDir?.filePath) }.getOrNull()
         if (filePathFreeSpace != null) return filePathFreeSpace
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
         val manager = storageStatsManager ?: return null
         return runCatching { manager.getFreeBytes(AndroidStorageManager.UUID_DEFAULT) }.getOrNull()
     }

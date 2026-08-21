@@ -312,7 +312,7 @@ data class BrowseAnimeSourceScreen(
                     onReset = screenModel::resetFilters,
                     onFilter = { screenModel.search(filters = state.filters) },
                     onUpdate = screenModel::setFilters,
-                    savedSearches = screenModel.state.value.savedSearches,
+                    savedSearches = state.savedSearches,
                     onSaveSearch = screenModel::openSaveSearchDialog,
                     onOpenSavedSearch = screenModel::openSavedSearch,
                     onDeleteSavedSearch = {

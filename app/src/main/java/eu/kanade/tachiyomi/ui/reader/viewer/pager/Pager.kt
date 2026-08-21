@@ -17,6 +17,9 @@ open class Pager(
     isHorizontal: Boolean = true,
 ) : DirectionalViewPager(context, isHorizontal) {
 
+    constructor(context: Context) : this(context, true)
+    constructor(context: Context, attrs: android.util.AttributeSet?) : this(context, true)
+
     /**
      * Tap listener function to execute when a tap is detected.
      */

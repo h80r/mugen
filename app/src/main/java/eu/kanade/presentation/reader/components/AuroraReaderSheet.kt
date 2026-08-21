@@ -189,7 +189,7 @@ private fun applyReaderSheetWindowFx(
 ) {
     // 0..~0.2 of travel = sheet still mostly off-screen → keep FX off.
     val glass = ((reveal - 0.18f) / 0.82f).coerceIn(0f, 1f)
-    if (supportsBlurBehind) {
+    if (supportsBlurBehind && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val radius = if (glass <= 0.02f) {
             0
         } else {

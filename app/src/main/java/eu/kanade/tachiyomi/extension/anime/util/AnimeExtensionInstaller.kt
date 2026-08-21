@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.extension.anime.util
 
 import android.app.DownloadManager
-import android.app.ForegroundServiceStartNotAllowedException
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -444,7 +443,12 @@ internal class AnimeExtensionInstaller(private val context: Context) {
                     )
                 try {
                     ContextCompat.startForegroundService(context, intent)
-                } catch (e: ForegroundServiceStartNotAllowedException) {
+                } catch (e: Exception) {
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                        e.javaClass.name != "android.app.ForegroundServiceStartNotAllowedException"
+                    ) {
+                        throw e
+                    }
                     val pendingIntent = PendingIntent.getService(
                         context,
                         downloadId.toInt(),
@@ -578,7 +582,6 @@ internal class AnimeExtensionInstaller(private val context: Context) {
 
     private fun requiresUnknownAppsPermission(installer: BasePreferences.ExtensionInstaller): Boolean {
         return installer.requiresSystemPermission &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !context.packageManager.canRequestPackageInstalls()
     }
 

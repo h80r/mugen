@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import eu.kanade.tachiyomi.extension.InstallStep
@@ -82,7 +81,7 @@ class SystemIntentApkInstallBackendAdapter(
 
     @Suppress("DEPRECATION")
     private suspend fun installApk(request: ApkInstallRequest, apkFile: File) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+        if (!context.packageManager.canRequestPackageInstalls()) {
             pendingInstallStore.save(
                 PendingApkInstallStore.PendingInstall(
                     packageName = request.packageName,

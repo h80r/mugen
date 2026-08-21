@@ -62,7 +62,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.LocalActivity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
@@ -523,7 +523,7 @@ fun PlayerControls(
                         end.linkTo(seekbar.end)
                     },
                 ) {
-                    val activity = LocalContext.current as PlayerActivity
+                    val activity = LocalActivity.current as PlayerActivity
                     BottomRightPlayerControls(
                         layoutSlots = bottomRightLayoutSlots,
                         customButton = visibleCustomButton,
@@ -690,7 +690,7 @@ fun PlayerControls(
             onDismissRequest = { viewModel.showPanel(Panels.None) },
         )
 
-        val activity = LocalContext.current as PlayerActivity
+        val activity = LocalActivity.current as PlayerActivity
         val dialog by viewModel.dialogShown.collectAsStateWithLifecycle()
         val anime by viewModel.currentAnime.collectAsStateWithLifecycle()
         val playlist by viewModel.currentPlaylist.collectAsStateWithLifecycle()

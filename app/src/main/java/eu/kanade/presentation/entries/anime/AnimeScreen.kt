@@ -20,6 +20,7 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 @Composable
@@ -174,6 +175,7 @@ fun AnimeScreen(
 fun formatTime(milliseconds: Long, useDayFormat: Boolean = false): String {
     return if (useDayFormat) {
         String.format(
+            Locale.getDefault(),
             "Airing in %02dd %02dh %02dm %02ds",
             TimeUnit.MILLISECONDS.toDays(milliseconds),
             TimeUnit.MILLISECONDS.toHours(milliseconds) -
@@ -185,6 +187,7 @@ fun formatTime(milliseconds: Long, useDayFormat: Boolean = false): String {
         )
     } else if (milliseconds > 3600000L) {
         String.format(
+            Locale.getDefault(),
             "%d:%02d:%02d",
             TimeUnit.MILLISECONDS.toHours(milliseconds),
             TimeUnit.MILLISECONDS.toMinutes(milliseconds) -
@@ -194,6 +197,7 @@ fun formatTime(milliseconds: Long, useDayFormat: Boolean = false): String {
         )
     } else {
         String.format(
+            Locale.getDefault(),
             "%d:%02d",
             TimeUnit.MILLISECONDS.toMinutes(milliseconds),
             TimeUnit.MILLISECONDS.toSeconds(milliseconds) -
