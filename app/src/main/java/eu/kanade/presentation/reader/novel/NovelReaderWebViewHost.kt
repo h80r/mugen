@@ -22,65 +22,9 @@ class NovelReaderWebView(context: Context) : WebView(context) {
     }
 
     override fun startActionMode(callback: ActionMode.Callback?, type: Int): ActionMode? {
-        val wrappedCallback = object : ActionMode.Callback {
-            override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
-                val result = callback?.onCreateActionMode(mode, menu) ?: true
-                if (menu != null) {
-                    val menuOrder = 100
-                    if (isDictionaryEnabled) {
-                        menu.add(
-                            Menu.NONE,
-                            MENU_ID_DICTIONARY,
-                            menuOrder,
-                            context.getString(AYMR.strings.novel_reader_text_selection_action_dictionary.resourceId),
-                        )
-                    }
-                    if (isTranslationEnabled) {
-                        menu.add(
-                            Menu.NONE,
-                            MENU_ID_TRANSLATION,
-                            menuOrder + 1,
-                            context.getString(AYMR.strings.novel_reader_text_selection_action_translate.resourceId),
-                        )
-                    }
-                }
-                return result
-            }
-
-            override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
-                return callback?.onPrepareActionMode(mode, menu) ?: false
-            }
-
-            override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean {
-                if (item != null) {
-                    val selection = localSelection
-                    if (selection != null) {
-                        when (item.itemId) {
-                            MENU_ID_DICTIONARY -> {
-                                isExecutingAction = true
-                                val selectionWithAction = selection.copy(triggerAction = SelectedTextAction.DICTIONARY)
-                                onSelectedTextSelectionChanged?.invoke(selectionWithAction)
-                                mode?.finish()
-                                return true
-                            }
-                            MENU_ID_TRANSLATION -> {
-                                isExecutingAction = true
-                                val selectionWithAction = selection.copy(triggerAction = SelectedTextAction.TRANSLATION)
-                                onSelectedTextSelectionChanged?.invoke(selectionWithAction)
-                                mode?.finish()
-                                return true
-                            }
-                        }
-                    }
-                }
-                return callback?.onActionItemClicked(mode, item) ?: false
-            }
-
-            override fun onDestroyActionMode(mode: ActionMode?) {
-                callback?.onDestroyActionMode(mode)
-            }
-        }
-        return super.startActionMode(wrappedCallback, type)
+        // Returning null suppresses Android's floating contextual toolbar while leaving the DOM
+        // range and WebView's native selection handles intact for the Aurora console.
+        return null
     }
 }
 

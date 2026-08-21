@@ -2336,7 +2336,7 @@ class NovelReaderScreenModel(
             val selectedTextTranslationUiState: NovelSelectedTextTranslationUiState =
                 NovelSelectedTextTranslationUiState.Idle,
             val novelDictionaryUiState: NovelDictionaryUiState = NovelDictionaryUiState.Idle,
-            val novelDictionaryEnabled: Boolean = false,
+            val novelDictionaryEnabled: Boolean = true,
             val novelDictionaryTargetLanguage: String = "Russian",
             val geminiTranslation: ReaderGeminiState = ReaderGeminiState(),
             val googleTranslation: ReaderGoogleState = ReaderGoogleState(),

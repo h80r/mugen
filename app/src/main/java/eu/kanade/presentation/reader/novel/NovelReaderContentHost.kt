@@ -9,6 +9,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -38,6 +39,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -51,7 +53,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
@@ -110,6 +111,7 @@ import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -117,6 +119,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import coil3.compose.AsyncImage
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.reader.DisplayRefreshHost
@@ -133,7 +140,12 @@ import eu.kanade.tachiyomi.ui.reader.novel.NovelBookLocation
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSpine
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookWindowState
 import eu.kanade.tachiyomi.ui.reader.novel.NovelReaderScreenModel
+import eu.kanade.tachiyomi.ui.reader.novel.NovelDictionaryUiState
+import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextTranslationUiState
+import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextConsoleAction
+import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRenderer
+import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection
 import eu.kanade.tachiyomi.ui.reader.novel.encodeNativeScrollProgress
 import eu.kanade.tachiyomi.ui.reader.novel.encodePageReaderProgress
 import eu.kanade.tachiyomi.ui.reader.novel.encodeWebScrollProgressPercent
@@ -294,7 +306,7 @@ internal fun NovelReaderContentHost(
     val onDownloadChapter = actions.onDownloadChapter
     val onSetShowReaderUi = actions.onSetShowReaderUi
     val onOpenBottomSheet = actions.onOpenBottomSheet
-    val onSelectedTextSelectionChanged = actions.onSelectedTextSelectionChanged
+    val rawOnSelectedTextSelectionChanged = actions.onSelectedTextSelectionChanged
     val onTranslateSelectedText = actions.onTranslateSelectedText
     val onRetrySelectedTextTranslation = actions.onRetrySelectedTextTranslation
     val onDismissSelectedTextTranslation = actions.onDismissSelectedTextTranslation
@@ -361,6 +373,75 @@ internal fun NovelReaderContentHost(
     var showTtsBehaviorSettings by remember { mutableStateOf(false) }
     var selectedTextSelectionSessionId by remember(state.chapter.id) {
         mutableIntStateOf(0)
+    }
+    // The native selection lives inside whichever NovelPageReaderTextView currently holds it, with
+    // no other hoisted record of "a selection is active" independent of the dictionary/translation
+    // feature (selectedTextTranslationSelection is only populated when one of those is enabled).
+    // selectedTextSelectionActive tracks presence for the BackHandler below (updated by the
+    // onSelectedTextSelectionChanged wrapper further down); bumping selectionClearRequestToken is
+    // the downward signal the active TextView's AndroidView update block observes to actually
+    // clear its native Selection.
+    var selectedTextSelectionActive by remember(state.chapter.id) { mutableStateOf(false) }
+    var selectedTextSelection by remember(state.chapter.id) { mutableStateOf<NovelSelectedTextSelection?>(null) }
+    var selectionClearRequestToken by remember(state.chapter.id) { mutableIntStateOf(0) }
+    var selectionExpandRequestToken by remember(state.chapter.id) { mutableIntStateOf(0) }
+    var retainingSelectionForLookup by remember(state.chapter.id) { mutableStateOf(false) }
+    var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+    var selectionRendererActions by remember(state.chapter.id) {
+        mutableStateOf(NovelSelectedTextRendererActions())
+    }
+    val onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = { selection ->
+        // Dictionary/translation keep an immutable snapshot in the screen model. Clearing the
+        // renderer must therefore not publish a null selection back to that model while its
+        // drawer is opening.
+        if (selection == null && retainingSelectionForLookup) {
+            retainingSelectionForLookup = false
+            selectedTextSelectionActive = false
+            selectedTextSelection = null
+            selectionRendererActions = NovelSelectedTextRendererActions()
+        } else {
+            if (selection != null) retainingSelectionForLookup = false
+            selectedTextSelectionActive = selection != null
+            selectedTextSelection = selection
+            selectionRendererActions = if (selection == null) {
+                NovelSelectedTextRendererActions()
+            } else if (selection.renderer == NovelSelectedTextRenderer.WEBVIEW) {
+                NovelSelectedTextRendererActions(
+                    clear = { webViewInstance?.clearNovelReaderWebSelection() },
+                    expand = { webViewInstance?.expandNovelReaderWebSelection() },
+                )
+            } else {
+                selectionRendererActions
+            }
+            rawOnSelectedTextSelectionChanged(selection)
+        }
+    }
+    val clearSelectedTextSelection = {
+        retainingSelectionForLookup = false
+        selectionClearRequestToken += 1
+        selectionRendererActions.clear()
+        onSelectedTextSelectionChanged(null)
+    }
+    // Dictionary and translation retain their immutable selection snapshot in the screen model,
+    // while the renderer itself must still drop visible handles/highlighting.
+    val dismissSelectedTextForLookup = {
+        retainingSelectionForLookup = true
+        selectionClearRequestToken += 1
+        selectionRendererActions.clear()
+        selectedTextSelectionActive = false
+        selectedTextSelection = null
+        selectionRendererActions = NovelSelectedTextRendererActions()
+    }
+    BackHandler(enabled = selectedTextSelectionActive) {
+        clearSelectedTextSelection()
+    }
+    val latestSelectionRendererActions by rememberUpdatedState(selectionRendererActions)
+    val latestRawOnSelectedTextSelectionChanged by rememberUpdatedState(rawOnSelectedTextSelectionChanged)
+    DisposableEffect(state.chapter.id) {
+        onDispose {
+            latestSelectionRendererActions.clear()
+            latestRawOnSelectedTextSelectionChanged(null)
+        }
     }
     val appHaptics = LocalAppHaptics.current
     val ttsPlacement = remember(state.readerSettings.ttsEnabled) {
@@ -475,7 +556,6 @@ internal fun NovelReaderContentHost(
         mutableStateOf<TranslationSwitchRequest?>(null)
     }
     var requestedTtsChapterSyncTarget by remember(state.chapter.id) { mutableStateOf<Long?>(null) }
-    var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var pendingProgrammaticTtsBlockIndex by remember(state.chapter.id) { mutableStateOf<Int?>(null) }
     var suppressManualTtsPauseUntilMs by remember(state.chapter.id) { mutableLongStateOf(0L) }
     val shouldHideWebViewUntilReveal = state.enableJs
@@ -538,6 +618,7 @@ internal fun NovelReaderContentHost(
     val viewConfiguration = LocalViewConfiguration.current
     val batteryLevel by rememberBatteryLevel(context)
     val timeText by rememberCurrentTimeText(context)
+    val infoChipHazeState = remember { HazeState() }
     val geminiTranslationLabel = stringResource(AYMR.strings.novel_reader_gemini_button)
     val googleTranslationLabel = stringResource(AYMR.strings.novel_reader_google_translate)
     val disableGeminiForGoogleMessage = stringResource(
@@ -1722,7 +1803,6 @@ internal fun NovelReaderContentHost(
     }
     val showBottomInfoOverlay = shouldShowBottomInfoOverlay(
         showReaderUi = showReaderUi,
-        showBatteryAndTime = state.readerSettings.showBatteryAndTime,
         showKindleInfoBlock = state.readerSettings.showKindleInfoBlock,
         showTimeToEnd = state.readerSettings.showTimeToEnd,
         showWordCount = state.readerSettings.showWordCount,
@@ -1962,20 +2042,28 @@ internal fun NovelReaderContentHost(
             width,
             height,
         ->
-        dispatchConfiguredReaderTapAction(
-            tapX = tapX,
-            tapY = tapY,
-            width = width,
-            height = height,
-            customTapZonesEnabled = latestCustomTapZonesEnabled,
-            tapZoneActions = latestTapZoneActions,
-            tapToScrollEnabled = latestTapToScrollEnabled,
-            onToggleUi = { onSetShowReaderUi(!latestShowReaderUi) },
-            onBackward = { coroutineScope.launch { moveBackwardByReaderAction() } },
-            onForward = { coroutineScope.launch { moveForwardByReaderAction() } },
-            onNextChapter = { openNextChapterFromReader() },
-            onPrevChapter = { openPreviousChapterFromReader() },
-        )
+        if (selectedTextSelectionActive) {
+            // A tap on another text block is delivered to that block's plain-tap handler rather
+            // than to the TextView that owns the selection. Dismiss globally before dispatching
+            // any reader action so an outside tap cannot turn the page or toggle the UI while a
+            // selection remains visible.
+            clearSelectedTextSelection()
+        } else {
+            dispatchConfiguredReaderTapAction(
+                tapX = tapX,
+                tapY = tapY,
+                width = width,
+                height = height,
+                customTapZonesEnabled = latestCustomTapZonesEnabled,
+                tapZoneActions = latestTapZoneActions,
+                tapToScrollEnabled = latestTapToScrollEnabled,
+                onToggleUi = { onSetShowReaderUi(!latestShowReaderUi) },
+                onBackward = { coroutineScope.launch { moveBackwardByReaderAction() } },
+                onForward = { coroutineScope.launch { moveForwardByReaderAction() } },
+                onNextChapter = { openNextChapterFromReader() },
+                onPrevChapter = { openPreviousChapterFromReader() },
+            )
+        }
     }
 
     fun handleVolumeKey(event: KeyEvent): Boolean {
@@ -2235,7 +2323,9 @@ internal fun NovelReaderContentHost(
             }
             // Контент главы занимает весь экран; padding уже учтён в contentPadding.
             androidx.compose.foundation.layout.Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .hazeSource(state = infoChipHazeState),
             ) {
                 if (!showWebView && (scrollContentBlocks.isNotEmpty() || richScrollBlocks.isNotEmpty())) {
                     val chapterImageModels = remember(scrollContentBlocks, richScrollBlocks, refererUrl) {
@@ -2433,6 +2523,9 @@ internal fun NovelReaderContentHost(
                             ttsHighlightColor = ttsHighlightColor,
                             selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                             onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                            onSelectionRendererActionsChanged = { selectionRendererActions = it },
+                            selectionClearRequestToken = selectionClearRequestToken,
+                            selectionExpandRequestToken = selectionExpandRequestToken,
                             onPlainTap = { tapX, tapY, width, height ->
                                 latestReaderShortTapHandler(tapX, tapY, width, height)
                             },
@@ -2501,6 +2594,9 @@ internal fun NovelReaderContentHost(
                             },
                             selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                             onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                            onSelectionRendererActionsChanged = { selectionRendererActions = it },
+                            selectionClearRequestToken = selectionClearRequestToken,
+                            selectionExpandRequestToken = selectionExpandRequestToken,
                         )
                     } else if (pageReaderRendererRoute == NovelPageReaderRendererRoute.PAGE_TURN_RENDERER &&
                         novelSpreadColumns > 1
@@ -2560,6 +2656,9 @@ internal fun NovelReaderContentHost(
                             },
                             selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                             onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                            onSelectionRendererActionsChanged = { selectionRendererActions = it },
+                            selectionClearRequestToken = selectionClearRequestToken,
+                            selectionExpandRequestToken = selectionExpandRequestToken,
                         )
                     } else if (pageReaderRendererRoute == NovelPageReaderRendererRoute.PAGE_TURN_RENDERER) {
                         PageTurnPageRenderer(
@@ -2615,6 +2714,10 @@ internal fun NovelReaderContentHost(
                             },
                             selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                             onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                            onSelectionRendererActionsChanged = { selectionRendererActions = it },
+                            selectionClearRequestToken = selectionClearRequestToken,
+                            selectionExpandRequestToken = selectionExpandRequestToken,
+                            selectionActive = selectedTextSelectionActive,
                         )
                     } else {
                         // Scroll mode.
@@ -2625,7 +2728,19 @@ internal fun NovelReaderContentHost(
                         // seamless in-place switch has already advanced the chapter — skips one.
                         // Mirrors the `horizontalSwipeHandled` guard the WebView touch listener uses.
                         var horizontalChapterSwipeHandled by remember { mutableStateOf(false) }
+                        // A long-press-to-select gesture in a NovelPageReaderTextBlock item disallows
+                        // parent touch interception via the View system, which LazyColumn's Compose-
+                        // native scroll/tap/swipe detectors never consult. Suspend them explicitly
+                        // while a selection gesture is pending or active so they stop racing it.
+                        var selectionGestureActive by remember { mutableStateOf(false) }
+                        // Shared across every composed item so a selection/handle drag can span
+                        // paragraphs, matching the page-turn renderer's per-page coordinator. Scoped
+                        // to the chapter so switching chapters starts a clean selection surface.
+                        val scrollSelectionCoordinator = remember(state.chapter.id) {
+                            NovelPageReaderSelectionCoordinator()
+                        }
                         LazyColumn(
+                            userScrollEnabled = !selectionGestureActive,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .pointerInput(
@@ -2634,7 +2749,9 @@ internal fun NovelReaderContentHost(
                                     state.previousChapterId,
                                     state.nextChapterId,
                                     nativeScrollItemsCount,
+                                    selectionGestureActive,
                                 ) {
+                                    if (selectionGestureActive) return@pointerInput
                                     awaitEachGesture {
                                         val down = awaitFirstDown(requireUnconsumed = true)
                                         val up = waitForUpOrCancellation() ?: return@awaitEachGesture
@@ -2651,10 +2768,11 @@ internal fun NovelReaderContentHost(
                                     }
                                 }
                                 .then(
-                                    if (state.readerSettings.swipeGestures) {
+                                    if (state.readerSettings.swipeGestures && !selectionGestureActive) {
                                         Modifier.pointerInput(
                                             state.previousChapterId,
                                             state.nextChapterId,
+                                            selectionGestureActive,
                                         ) {
                                             var totalDrag = 0f
                                             var handled = false
@@ -2692,8 +2810,11 @@ internal fun NovelReaderContentHost(
                                 )
                                 .then(
                                     if (
-                                        state.readerSettings.swipeToNextChapter ||
-                                        state.readerSettings.swipeToPrevChapter
+                                        (
+                                            state.readerSettings.swipeToNextChapter ||
+                                                state.readerSettings.swipeToPrevChapter
+                                            ) &&
+                                        !selectionGestureActive
                                     ) {
                                         Modifier.pointerInput(
                                             state.readerSettings.swipeToNextChapter,
@@ -2703,6 +2824,7 @@ internal fun NovelReaderContentHost(
                                             showWebView,
                                             state.previousChapterId,
                                             state.nextChapterId,
+                                            selectionGestureActive,
                                         ) {
                                             awaitEachGesture {
                                                 val down = awaitFirstDown(requireUnconsumed = false)
@@ -2831,9 +2953,16 @@ internal fun NovelReaderContentHost(
                                         ttsHighlightColor = ttsHighlightColor,
                                         selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                                         onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                                        onSelectionRendererActionsChanged = { selectionRendererActions = it },
+                                        selectionClearRequestToken = selectionClearRequestToken,
+                                        selectionExpandRequestToken = selectionExpandRequestToken,
                                         onPlainTap = { tapX, tapY, width, height ->
                                             latestReaderShortTapHandler(tapX, tapY, width, height)
                                         },
+                                        onSelectionGestureActiveChanged = { active ->
+                                            selectionGestureActive = active
+                                        },
+                                        selectionCoordinator = scrollSelectionCoordinator,
                                     )
                                 }
                             } else {
@@ -2887,9 +3016,17 @@ internal fun NovelReaderContentHost(
                                                         selectionRenderer = NovelSelectedTextRenderer.NATIVE_SCROLL,
                                                         selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                                                         onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                                                        onSelectionRendererActionsChanged = { selectionRendererActions = it },
+                                                        selectionClearRequestToken = selectionClearRequestToken,
+                                                        selectionExpandRequestToken = selectionExpandRequestToken,
                                                         onPlainTap = { tapX, tapY, width, height ->
                                                             latestReaderShortTapHandler(tapX, tapY, width, height)
                                                         },
+                                                        onSelectionGestureActiveChanged = { active ->
+                                                            selectionGestureActive = active
+                                                        },
+                                                        selectionCoordinator = scrollSelectionCoordinator,
+                                                        selectionBlockOrder = index,
                                                         modifier = Modifier.fillMaxWidth(),
                                                     )
                                                     Box(
@@ -2926,9 +3063,17 @@ internal fun NovelReaderContentHost(
                                                     selectionRenderer = NovelSelectedTextRenderer.NATIVE_SCROLL,
                                                     selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                                                     onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                                                    onSelectionRendererActionsChanged = { selectionRendererActions = it },
+                                                    selectionClearRequestToken = selectionClearRequestToken,
+                                                    selectionExpandRequestToken = selectionExpandRequestToken,
                                                     onPlainTap = { tapX, tapY, width, height ->
                                                         latestReaderShortTapHandler(tapX, tapY, width, height)
                                                     },
+                                                    onSelectionGestureActiveChanged = { active ->
+                                                        selectionGestureActive = active
+                                                    },
+                                                    selectionCoordinator = scrollSelectionCoordinator,
+                                                    selectionBlockOrder = index,
                                                     modifier = Modifier.padding(
                                                         top = if (index == 0) statusBarTopPadding else 0.dp,
                                                         bottom = if (index == scrollContentBlocks.lastIndex) {
@@ -3705,8 +3850,6 @@ internal fun NovelReaderContentHost(
             NovelReaderInfoOverlay(
                 visible = showBottomInfoOverlay,
                 settings = state.readerSettings,
-                batteryLevel = batteryLevel,
-                timeText = timeText,
                 remainingMinutes = remainingMinutes,
                 readWords = readWords,
                 totalWords = totalWords,
@@ -3831,6 +3974,46 @@ internal fun NovelReaderContentHost(
                 modifier = Modifier.align(androidx.compose.ui.Alignment.CenterEnd),
             )
 
+            if (state.readerSettings.showBatteryAndTime) {
+                val infoChipShape = MaterialTheme.shapes.small
+                val infoChipHazeStyle = HazeStyle(
+                    backgroundColor = MaterialTheme.colorScheme.surface,
+                    tint = HazeTint(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)),
+                    blurRadius = 16.dp,
+                    noiseFactor = 0.1f,
+                )
+                Surface(
+                    shape = infoChipShape,
+                    color = androidx.compose.ui.graphics.Color.Transparent,
+                    modifier = Modifier
+                        .align(androidx.compose.ui.Alignment.BottomStart)
+                        .padding(start = MaterialTheme.padding.small, bottom = 6.dp)
+                        .clip(infoChipShape)
+                        .hazeEffect(state = infoChipHazeState, style = infoChipHazeStyle),
+                ) {
+                    Text(
+                        text = timeText,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+                Surface(
+                    shape = infoChipShape,
+                    color = androidx.compose.ui.graphics.Color.Transparent,
+                    modifier = Modifier
+                        .align(androidx.compose.ui.Alignment.BottomEnd)
+                        .padding(end = MaterialTheme.padding.small, bottom = 6.dp)
+                        .clip(infoChipShape)
+                        .hazeEffect(state = infoChipHazeState, style = infoChipHazeStyle),
+                ) {
+                    Text(
+                        text = "${batteryLevel.coerceIn(0, 100)}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+
             if (shouldShowPersistentProgressLine(showReaderUi = showReaderUi)) {
                 val lineColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                 Box(
@@ -3942,17 +4125,6 @@ internal fun NovelReaderContentHost(
                         )
                     }
                 },
-                onScrollToTop = {
-                    coroutineScope.launch {
-                        if (showWebView) {
-                            webViewInstance?.scrollTo(0, 0)
-                        } else if (usePageReader) {
-                            pagerState.animateScrollToPage(0)
-                        } else {
-                            textListState.animateScrollToItem(0)
-                        }
-                    }
-                },
                 onOpenSettings = { showSettings = true },
                 onOpenTtsBehaviorSettings = { showTtsBehaviorSettings = true },
                 onOpenGeminiDialog = { showGeminiDialog = true },
@@ -3976,16 +4148,70 @@ internal fun NovelReaderContentHost(
                 modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
             )
 
+            val lookupActive = state.selectedTextTranslationUiState !is NovelSelectedTextTranslationUiState.Idle ||
+                state.novelDictionaryUiState !is NovelDictionaryUiState.Idle
+            if (selectedTextSelectionActive && selectedTextSelection != null && !lookupActive) {
+                // Keep the action's target stable even if the underlying Android TextView also
+                // observes the pointer-up and clears its own transient selection state.
+                val consoleSelection = requireNotNull(selectedTextSelection)
+                val consoleRendererActions = selectionRendererActions
+                NovelSelectedTextActionConsole(
+                    dictionaryEnabled = state.novelDictionaryEnabled,
+                    translationEnabled = state.readerSettings.selectedTextTranslationEnabled,
+                    hazeState = infoChipHazeState,
+                    onAction = { action ->
+                        when (action) {
+                            NovelSelectedTextConsoleAction.COPY -> {
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                                    as? android.content.ClipboardManager
+                                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText(null, consoleSelection.text))
+                                clearSelectedTextSelection()
+                            }
+                            NovelSelectedTextConsoleAction.SHARE -> {
+                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(android.content.Intent.EXTRA_TEXT, consoleSelection.text)
+                                }
+                                context.startActivity(android.content.Intent.createChooser(shareIntent, null))
+                                clearSelectedTextSelection()
+                            }
+                            NovelSelectedTextConsoleAction.DICTIONARY -> {
+                                rawOnSelectedTextSelectionChanged(consoleSelection)
+                                onLookupSelectedTextDefinition()
+                                dismissSelectedTextForLookup()
+                            }
+                            NovelSelectedTextConsoleAction.TRANSLATE -> {
+                                rawOnSelectedTextSelectionChanged(consoleSelection)
+                                onTranslateSelectedText()
+                                dismissSelectedTextForLookup()
+                            }
+                            NovelSelectedTextConsoleAction.EXPAND -> {
+                                selectionExpandRequestToken += 1
+                                consoleRendererActions.expand()
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .offset(y = (-32).dp),
+                )
+            }
+
             SelectedTextTranslationOverlay(
                 state = state,
                 onTranslate = onTranslateSelectedText,
                 onRetry = onRetrySelectedTextTranslation,
-                onDismiss = onDismissSelectedTextTranslation,
+                onDismiss = {
+                    clearSelectedTextSelection()
+                    onDismissSelectedTextTranslation()
+                },
                 onLookupDefinition = onLookupSelectedTextDefinition,
                 onRetryDictionary = onRetryNovelDictionary,
-                onDismissDictionary = onDismissNovelDictionary,
+                onDismissDictionary = {
+                    clearSelectedTextSelection()
+                    onDismissNovelDictionary()
+                },
                 onPlayPronunciation = onPlaySelectedTextPronunciation,
-                modifier = Modifier.align(Alignment.BottomEnd),
             )
 
             if (autoScrollEnabled) {

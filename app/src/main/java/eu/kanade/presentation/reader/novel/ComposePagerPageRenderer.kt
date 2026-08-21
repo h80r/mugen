@@ -225,6 +225,9 @@ internal fun ComposePagerPageRenderer(
     onImageLongClick: ((String) -> Unit)? = null,
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
+    onSelectionRendererActionsChanged: (eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions) -> Unit = {},
+    selectionClearRequestToken: Int = 0,
+    selectionExpandRequestToken: Int = 0,
 ) {
     val density = LocalDensity.current
     // Chapter neighbour availability drives two different things: the extra boundary placeholder
@@ -462,6 +465,9 @@ internal fun ComposePagerPageRenderer(
                     ttsHighlightColor = ttsHighlightColor,
                     selectionSessionIdProvider = selectionSessionIdProvider,
                     onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                    onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                    selectionClearRequestToken = selectionClearRequestToken,
+                    selectionExpandRequestToken = selectionExpandRequestToken,
                     onPlainTap = onTextTap,
                     onImageLongClick = onImageLongClick,
                 )
@@ -492,6 +498,9 @@ internal fun ComposePagerPageRenderer(
                             ttsHighlightColor = ttsHighlightColor,
                             selectionSessionIdProvider = selectionSessionIdProvider,
                             onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                            onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                            selectionClearRequestToken = selectionClearRequestToken,
+                            selectionExpandRequestToken = selectionExpandRequestToken,
                             onPlainTap = onTextTap,
                             onImageLongClick = onImageLongClick,
                             modifier = Modifier.weight(1f),

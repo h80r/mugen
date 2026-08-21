@@ -115,6 +115,9 @@ internal fun SpreadPageTurnPageRenderer(
     onTextTap: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> onToggleUi() },
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
+    onSelectionRendererActionsChanged: (eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions) -> Unit = {},
+    selectionClearRequestToken: Int = 0,
+    selectionExpandRequestToken: Int = 0,
 ) {
     val hasPreviousChapterNavigation = hasPreviousChapter
     val hasNextChapterNavigation = hasNextChapter
@@ -555,6 +558,9 @@ internal fun SpreadPageTurnPageRenderer(
                 ttsHighlightColor = ttsHighlightColor,
                 selectionSessionIdProvider = selectionSessionIdProvider,
                 onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                selectionClearRequestToken = selectionClearRequestToken,
+                selectionExpandRequestToken = selectionExpandRequestToken,
                 onTextTap = onTextTap,
             )
             SpreadColumnCurl(
@@ -604,6 +610,9 @@ internal fun SpreadPageTurnPageRenderer(
                 ttsHighlightColor = ttsHighlightColor,
                 selectionSessionIdProvider = selectionSessionIdProvider,
                 onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                selectionClearRequestToken = selectionClearRequestToken,
+                selectionExpandRequestToken = selectionExpandRequestToken,
                 onTextTap = onTextTap,
             )
         }
@@ -748,6 +757,9 @@ private fun SpreadColumnCurl(
     ttsHighlightColor: Color,
     selectionSessionIdProvider: () -> Long,
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit,
+    onSelectionRendererActionsChanged: (eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions) -> Unit,
+    selectionClearRequestToken: Int,
+    selectionExpandRequestToken: Int,
     onTextTap: (Float, Float, Float, Float) -> Unit,
 ) {
     val curlModifier = if (mirrored) {
@@ -900,8 +912,13 @@ private fun SpreadColumnCurl(
                     ttsHighlightColor = ttsHighlightColor,
                     selectionSessionIdProvider = selectionSessionIdProvider,
                     onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                    onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                    selectionClearRequestToken = selectionClearRequestToken,
+                    selectionExpandRequestToken = selectionExpandRequestToken,
                     onPlainTap = onTextTap,
-                    touchHandlingEnabled = false,
+                    touchHandlingEnabled = readerSettings.textSelectionEnabled ||
+                        readerSettings.selectedTextTranslationEnabled ||
+                        readerSettings.novelDictionaryEnabled,
                 )
             }
         }

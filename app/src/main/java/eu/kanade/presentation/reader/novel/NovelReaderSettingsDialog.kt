@@ -2,12 +2,7 @@
 
 package eu.kanade.presentation.reader.novel
 
-import android.graphics.drawable.ColorDrawable
-import android.os.Build
-import android.view.Window
-import android.view.WindowManager
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,48 +17,33 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.ZeroCornerSize
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import eu.kanade.presentation.components.AdaptiveSheet
 import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.more.settings.widget.ListPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
 import eu.kanade.presentation.reader.settings.AuroraTabRow
-import eu.kanade.presentation.reader.settings.auroraRimColor
 import eu.kanade.presentation.theme.AuroraTheme
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderOverride
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelTtsHighlightMode
 import kotlinx.collections.immutable.persistentListOf
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.math.roundToInt
-import android.graphics.Color as AndroidColor
 
 /**
  * Aurora glass sheet for novel reader quick settings — same chrome language as manga
@@ -98,86 +78,8 @@ fun NovelReaderSettingsDialog(
     val scope = rememberCoroutineScope()
 
     val aurora = AuroraTheme.colors
-    val baseScheme = MaterialTheme.colorScheme
-    var sheetReveal by remember { mutableFloatStateOf(0f) }
-
-    val sheetContainer = remember(aurora.isDark, aurora.isEInk) {
-        when {
-            aurora.isEInk -> baseScheme.surfaceContainerHigh
-            aurora.isDark -> Color.Black.copy(alpha = 0.70f)
-            else -> Color.White.copy(alpha = 0.88f)
-        }
-    }
-    val auroraScheme = remember(baseScheme, aurora) {
-        baseScheme.copy(
-            primary = aurora.accent,
-            onPrimary = if (aurora.isDark) aurora.background else Color.White,
-            surfaceContainerHigh = sheetContainer,
-            surfaceContainerHighest = sheetContainer,
-            secondaryContainer = aurora.accent.copy(alpha = 0.22f),
-            onSecondaryContainer = aurora.accent,
-        )
-    }
-    val sheetShape = MaterialTheme.shapes.extraLarge.copy(
-        bottomStart = ZeroCornerSize,
-        bottomEnd = ZeroCornerSize,
-    )
     val pageMaxHeight = (LocalConfiguration.current.screenHeightDp * 0.62f).dp
-    val supportsBlurBehind = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !aurora.isEInk
-
-    MaterialTheme(
-        colorScheme = auroraScheme,
-        shapes = MaterialTheme.shapes,
-        typography = MaterialTheme.typography,
-    ) {
-        AdaptiveSheet(
-            onDismissRequest = onDismissRequest,
-            modifier = Modifier.border(
-                width = 1.dp,
-                color = auroraRimColor(),
-                shape = sheetShape,
-            ),
-            containerColor = sheetContainer,
-            scrimAlpha = 0f,
-            applyStatusBarsPadding = false,
-            onRevealChange = { sheetReveal = it },
-        ) {
-            val window = (LocalView.current.parent as? DialogWindowProvider)?.window
-            val revealState = rememberUpdatedState(sheetReveal)
-
-            DisposableEffect(window, supportsBlurBehind) {
-                val w = window
-                if (w != null) {
-                    w.setBackgroundDrawable(ColorDrawable(AndroidColor.TRANSPARENT))
-                    w.setDimAmount(0f)
-                    if (supportsBlurBehind) {
-                        w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                        w.attributes = w.attributes.apply { blurBehindRadius = 0 }
-                    }
-                }
-                onDispose {
-                    if (w != null && supportsBlurBehind) {
-                        w.attributes = w.attributes.apply { blurBehindRadius = 0 }
-                        w.setDimAmount(0f)
-                        w.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                    }
-                }
-            }
-
-            LaunchedEffect(window, supportsBlurBehind) {
-                val w = window ?: return@LaunchedEffect
-                snapshotFlow { revealState.value.coerceIn(0f, 1f) }
-                    .map { reveal -> (reveal * 20f).roundToInt().coerceIn(0, 20) }
-                    .distinctUntilChanged()
-                    .collect { step ->
-                        applyNovelSheetWindowFx(
-                            window = w,
-                            reveal = step / 20f,
-                            supportsBlurBehind = supportsBlurBehind,
-                        )
-                    }
-            }
-
+    NovelReaderAuroraSheet(onDismissRequest = onDismissRequest) {
             Column {
                 Box(
                     modifier = Modifier
@@ -252,29 +154,6 @@ fun NovelReaderSettingsDialog(
                 }
                 Spacer(Modifier.height(4.dp))
             }
-        }
-    }
-}
-
-private fun applyNovelSheetWindowFx(
-    window: Window,
-    reveal: Float,
-    supportsBlurBehind: Boolean,
-) {
-    val glass = ((reveal - 0.18f) / 0.82f).coerceIn(0f, 1f)
-    if (supportsBlurBehind) {
-        val radius = if (glass <= 0.02f) {
-            0
-        } else {
-            (44f * glass).roundToInt().coerceIn(1, 48)
-        }
-        val attrs = window.attributes
-        if (attrs.blurBehindRadius != radius) {
-            window.attributes = attrs.apply { blurBehindRadius = radius }
-        }
-        window.setDimAmount(0.18f * glass)
-    } else {
-        window.setDimAmount(0.26f * glass)
     }
 }
 

@@ -92,13 +92,12 @@ internal fun calculateRadialGradientFarthestCornerRadius(
 
 internal fun shouldShowBottomInfoOverlay(
     showReaderUi: Boolean,
-    showBatteryAndTime: Boolean,
     showKindleInfoBlock: Boolean,
     showTimeToEnd: Boolean,
     showWordCount: Boolean,
 ): Boolean {
     val kindleInfoVisible = showKindleInfoBlock && (showTimeToEnd || showWordCount)
-    return showReaderUi && (showBatteryAndTime || kindleInfoVisible)
+    return showReaderUi && kindleInfoVisible
 }
 
 internal fun shouldShowPersistentProgressLine(

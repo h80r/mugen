@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.reader.novel.setting
 
+import androidx.appcompat.app.AppCompatDelegate
 import eu.kanade.tachiyomi.data.download.novel.NovelTranslatedDownloadFormat
 import eu.kanade.tachiyomi.ui.reader.novel.replace.ReplaceRule
 import kotlinx.coroutines.CoroutineScope
@@ -117,11 +118,11 @@ data class NovelReaderSettings(
     val textSelectionEnabled: Boolean = false,
 
     // Selected text translation
-    val selectedTextTranslationEnabled: Boolean = false,
+    val selectedTextTranslationEnabled: Boolean = true,
     val selectedTextTranslationTargetLanguage: String = "ru",
 
     // Novel dictionary
-    val novelDictionaryEnabled: Boolean = false,
+    val novelDictionaryEnabled: Boolean = true,
     val novelDictionaryTargetLanguage: String = "ru",
 
     // Gemini Translation
@@ -461,6 +462,7 @@ class NovelReaderPreferences(
         migrateLegacyBackgroundSelectionIfNeeded()
         migrateLegacyPageTransitionStyleIfNeeded()
         migrateStaleEnumValuesIfNeeded()
+        seedTextLookupLanguagesFromAppLocaleIfNeeded()
     }
 
     // Display
@@ -702,13 +704,13 @@ class NovelReaderPreferences(
         preferenceStore.getBoolean("novel_reader_text_selection_enabled", false)
 
     fun selectedTextTranslationEnabled() =
-        preferenceStore.getBoolean("novel_reader_selected_text_translation_enabled", false)
+        preferenceStore.getBoolean("novel_reader_selected_text_translation_enabled", true)
 
     fun selectedTextTranslationTargetLanguage() =
         preferenceStore.getString("novel_reader_selected_text_translation_target_language", "ru")
 
     fun novelDictionaryEnabled() =
-        preferenceStore.getBoolean("novel_reader_dictionary_enabled", false)
+        preferenceStore.getBoolean("novel_reader_dictionary_enabled", true)
 
     fun novelDictionarySource() =
         preferenceStore.getString("novel_reader_dictionary_source", "ONLINE")
@@ -1057,6 +1059,25 @@ class NovelReaderPreferences(
         }
         if (hasChanges) {
             sourceOverrides().set(migrated)
+        }
+    }
+
+    private fun seedTextLookupLanguagesFromAppLocaleIfNeeded() {
+        val translationTarget = selectedTextTranslationTargetLanguage()
+        val dictionaryTarget = novelDictionaryTargetLanguage()
+        if (translationTarget.isSet() && dictionaryTarget.isSet()) return
+
+        val language = AppCompatDelegate.getApplicationLocales()
+            .get(0)
+            ?.language
+            ?.takeIf { it in SUPPORTED_TEXT_LOOKUP_LANGUAGES }
+            ?: "en"
+
+        if (!translationTarget.isSet()) {
+            translationTarget.set(language)
+        }
+        if (!dictionaryTarget.isSet()) {
+            dictionaryTarget.set(language)
         }
     }
 
@@ -2079,6 +2100,9 @@ class NovelReaderPreferences(
         const val DEFAULT_AUTO_SCROLL_OFFSET = 0
         const val DEFAULT_BACKGROUND_PRESET_ID = "linen_paper"
         const val DEFAULT_BOOK_MODE_PREPARE_AHEAD = 3
+
+        private val SUPPORTED_TEXT_LOOKUP_LANGUAGES =
+            setOf("en", "ru", "ja", "zh", "ko", "es", "fr", "de", "it", "pt")
 
         /** Hidden debug flag guarding the reworked book-mode pipeline. */
         const val NOVEL_BOOK_MODE_V2_KEY = "novel_reader_book_mode_v2"

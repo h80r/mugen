@@ -94,7 +94,12 @@ class NovelReaderPreferencesTest {
         prefs.geminiAutoTranslateEnglishSource().get() shouldBe false
         prefs.geminiPrefetchNextChapterTranslation().get() shouldBe false
         prefs.geminiStylePreset().get() shouldBe NovelTranslationStylePreset.PROFESSIONAL
+        prefs.selectedTextTranslationEnabled().get() shouldBe true
+        prefs.novelDictionaryEnabled().get() shouldBe true
+        prefs.selectedTextTranslationEnabled().set(false)
+        prefs.novelDictionaryEnabled().set(false)
         prefs.selectedTextTranslationEnabled().get() shouldBe false
+        prefs.novelDictionaryEnabled().get() shouldBe false
         prefs.selectedTextTranslationTargetLanguage().get() shouldBe "ru"
         prefs.translationProvider().get() shouldBe NovelTranslationProvider.GEMINI
         prefs.openRouterBaseUrl().get() shouldBe "https://openrouter.ai/api/v1"

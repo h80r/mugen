@@ -19,7 +19,8 @@ import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 
 /**
- * Bottom info overlay: battery/time, time-to-end and word count.
+ * Bottom info overlay: time-to-end and word count. Battery/time now render persistently
+ * above the progress line in [NovelReaderContentHost] instead of in this tap-reveal chip.
  *
  * Leaf composable extracted from [NovelReaderContentHost] with a narrow parameter list - only the
  * values this block actually reads, so changing unrelated reader state does not recompose it.
@@ -28,8 +29,6 @@ import tachiyomi.presentation.core.i18n.stringResource
 internal fun NovelReaderInfoOverlay(
     visible: Boolean,
     settings: NovelReaderSettings,
-    batteryLevel: Int,
-    timeText: String,
     remainingMinutes: Int?,
     readWords: Int,
     totalWords: Int,
@@ -56,12 +55,6 @@ internal fun NovelReaderInfoOverlay(
                 ),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                if (settings.showBatteryAndTime) {
-                    Text(
-                        text = "${batteryLevel.coerceIn(0, 100)}% $timeText",
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                }
                 if (settings.showKindleInfoBlock && settings.showTimeToEnd) {
                     Text(
                         text = if (remainingMinutes == null) {

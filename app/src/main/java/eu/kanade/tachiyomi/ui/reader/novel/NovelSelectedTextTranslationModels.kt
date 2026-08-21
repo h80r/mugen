@@ -21,6 +21,24 @@ enum class SelectedTextAction {
     TRANSLATION,
 }
 
+/** Commands exposed by the reader's Compose-owned selection action console. */
+enum class NovelSelectedTextConsoleAction {
+    COPY,
+    SHARE,
+    EXPAND,
+    DICTIONARY,
+    TRANSLATE,
+}
+
+/**
+ * Renderer-owned operations for the current selection. This is intentionally transient UI state:
+ * the screen model only receives immutable selection snapshots and never retains a View/WebView.
+ */
+data class NovelSelectedTextRendererActions(
+    val clear: () -> Unit = {},
+    val expand: () -> Unit = {},
+)
+
 data class NovelSelectedTextSelection(
     val sessionId: Long,
     val renderer: NovelSelectedTextRenderer,
@@ -48,6 +66,14 @@ data class NovelSelectedTextTranslationCacheKey(
 
 fun normalizeNovelSelectedText(text: String): String {
     return text.trim().replace(Regex("\\s+"), " ")
+}
+
+/** True when a selection can meaningfully be offered as a dictionary headword. */
+fun isNovelSelectedTextSingleWord(text: String): Boolean {
+    val normalized = normalizeNovelSelectedText(text)
+    return normalized.isNotBlank() && normalized.none(Char::isWhitespace) &&
+        normalized.any(Char::isLetterOrDigit) &&
+        normalized.all { it.isLetterOrDigit() || it == '\'' || it == '’' || it == '-' }
 }
 
 fun buildNovelSelectedTextTranslationCacheKey(

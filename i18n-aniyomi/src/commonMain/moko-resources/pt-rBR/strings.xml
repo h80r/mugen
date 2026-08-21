@@ -1047,6 +1047,7 @@
     <string name="novel_reader_selected_text_translation_action_close">Fechar</string>
     <string name="novel_reader_selected_text_translation_action_retry">Tentar novamente</string>
     <string name="novel_reader_selected_text_translation_action_translate">Traduzir</string>
+    <string name="novel_reader_selected_text_translation_tab">Tradução</string>
     <string name="novel_reader_selected_text_translation_action_speak">Falar</string>
     <string name="novel_reader_selected_text_translation_source_language">Idioma de origem: %s</string>
     <string name="novel_reader_selected_text_translation_enabled">Ativar tradução de texto selecionado</string>
@@ -1128,7 +1129,12 @@
     <string name="novel_reader_text_replace_test">Testar regras</string>
     <string name="novel_reader_text_replace_test_result">Resultado</string>
     <string name="novel_reader_text_replace_test_sample">Texto de exemplo</string>
-    <string name="novel_reader_text_selection_action_dictionary">Dicionário</string>
+    <string name="novel_reader_text_selection_action_dictionary">Definir</string>
+    <string name="novel_reader_text_selection_action_select_sentence">Selecionar frase</string>
+    <string name="novel_reader_text_selection_action_select_paragraph">Selecionar parágrafo</string>
+    <string name="novel_reader_text_selection_action_expand">Expandir</string>
+    <string name="novel_reader_selected_text_translation_action_view_definition">Ver definição</string>
+    <string name="novel_reader_selected_text_translation_action_view_translation">Ver tradução</string>
     <string name="novel_reader_text_selection_action_translate">Traduzir</string>
     <string name="novel_reader_text_selection_enabled">Ativar seleção de texto</string>
     <string name="novel_reader_text_selection_enabled_summary">Necessário para dicionário e tradução. Selecione texto para copiar, consultar ou traduzir.</string>

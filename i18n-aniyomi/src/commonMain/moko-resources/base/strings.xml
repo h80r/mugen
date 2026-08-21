@@ -866,9 +866,15 @@
     <string name="novel_reader_selected_text_translation_too_long">Selection is too long to translate.</string>
     <string name="novel_reader_selected_text_translation_retry_cooldown">Please wait before retrying this translation.</string>
     <string name="novel_reader_selected_text_translation_action_translate">Translate</string>
+    <string name="novel_reader_selected_text_translation_tab">Translation</string>
     <string name="novel_reader_selected_text_translation_action_speak">Speak</string>
     <string name="novel_reader_selected_text_translation_source_language">Source language: %s</string>
     <string name="novel_reader_text_selection_action_dictionary">Dictionary</string>
+    <string name="novel_reader_text_selection_action_select_sentence">Select sentence</string>
+    <string name="novel_reader_text_selection_action_select_paragraph">Select paragraph</string>
+    <string name="novel_reader_text_selection_action_expand">Expand</string>
+    <string name="novel_reader_selected_text_translation_action_view_definition">View definition</string>
+    <string name="novel_reader_selected_text_translation_action_view_translation">View translation</string>
     <string name="novel_reader_text_selection_action_translate">Translate</string>
     <string name="novel_reader_selected_text_translation_action_retry">Retry</string>
     <string name="novel_reader_selected_text_translation_action_close">Close</string>

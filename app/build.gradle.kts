@@ -26,9 +26,9 @@ android {
 
     defaultConfig {
         applicationId = "dev.h80r.mugen"
-        versionCode = 232
+        versionCode = 274
 
-        versionName = "0.64.0"
+        versionName = "0.65.7"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")

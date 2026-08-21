@@ -130,6 +130,78 @@ internal fun buildWebReaderSelectionJavascript(
                 }
             };
 
+            window.__anReaderClearSelection = () => {
+                const selection = window.getSelection ? window.getSelection() : null;
+                selection?.removeAllRanges();
+                clearSelection();
+            };
+            window.__anReaderExpandSelection = () => {
+                const selection = window.getSelection ? window.getSelection() : null;
+                if (!selection || selection.rangeCount === 0) return;
+                const range = selection.getRangeAt(0);
+                const element = (range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+                    ? range.commonAncestorContainer
+                    : range.commonAncestorContainer.parentElement);
+                const block = element?.closest?.('p, li, blockquote, div') || document.body;
+                const nodes = [];
+                const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+                while (walker.nextNode()) nodes.push(walker.currentNode);
+                const offsetAt = (container, offset) => {
+                    let total = 0;
+                    for (const node of nodes) {
+                        if (node === container) return total + offset;
+                        total += node.textContent.length;
+                    }
+                    return total;
+                };
+                const boundaryAt = (offset) => {
+                    let remaining = Math.max(0, offset);
+                    for (const node of nodes) {
+                        const length = node.textContent.length;
+                        if (remaining <= length) return { node: node, offset: remaining };
+                        remaining -= length;
+                    }
+                    const last = nodes[nodes.length - 1];
+                    return last ? { node: last, offset: last.textContent.length } : null;
+                };
+                const fullText = nodes.map(node => node.textContent).join('');
+                const start = offsetAt(range.startContainer, range.startOffset);
+                const end = offsetAt(range.endContainer, range.endOffset);
+                let sentenceStart = 0;
+                let sentenceEnd = fullText.length;
+                if (window.Intl && Intl.Segmenter) {
+                    const segmenter = new Intl.Segmenter(document.documentElement.lang || undefined, { granularity: 'sentence' });
+                    for (const segment of segmenter.segment(fullText)) {
+                        const segmentEnd = segment.index + segment.segment.length;
+                        if (start >= segment.index && end <= segmentEnd) {
+                            sentenceStart = segment.index;
+                            sentenceEnd = segmentEnd;
+                            break;
+                        }
+                    }
+                } else {
+                    const before = fullText.slice(0, start);
+                    const after = fullText.slice(end);
+                    sentenceStart = Math.max(0, before.lastIndexOf('.') + 1, before.lastIndexOf('!') + 1, before.lastIndexOf('?') + 1);
+                    const endings = [after.indexOf('.'), after.indexOf('!'), after.indexOf('?')].filter(index => index >= 0);
+                    sentenceEnd = endings.length ? end + Math.min(...endings) + 1 : fullText.length;
+                }
+                const expanded = document.createRange();
+                if (start > sentenceStart || end < sentenceEnd) {
+                    const startBoundary = boundaryAt(sentenceStart);
+                    const endBoundary = boundaryAt(sentenceEnd);
+                    if (!startBoundary || !endBoundary) return;
+                    expanded.setStart(startBoundary.node, startBoundary.offset);
+                    expanded.setEnd(endBoundary.node, endBoundary.offset);
+                } else {
+                    expanded.selectNodeContents(block);
+                }
+                selection.removeAllRanges();
+                selection.addRange(expanded);
+                schedulePublish();
+            };
+            window.__anReaderPublishSelection = schedulePublish;
+
             document.addEventListener('selectionchange', schedulePublish, true);
             document.addEventListener('pointerup', schedulePublish, true);
             document.addEventListener('mouseup', schedulePublish, true);
@@ -137,6 +209,18 @@ internal fun buildWebReaderSelectionJavascript(
             document.addEventListener('touchend', schedulePublish, true);
         })();
     """.trimIndent()
+}
+
+internal fun WebView.clearNovelReaderWebSelection() {
+    evaluateJavascript("window.__anReaderClearSelection && window.__anReaderClearSelection()", null)
+}
+
+internal fun WebView.publishNovelReaderWebSelection() {
+    evaluateJavascript("window.__anReaderPublishSelection && window.__anReaderPublishSelection()", null)
+}
+
+internal fun WebView.expandNovelReaderWebSelection() {
+    evaluateJavascript("window.__anReaderExpandSelection && window.__anReaderExpandSelection()", null)
 }
 
 internal fun WebView.syncTtsApproximatePosition(

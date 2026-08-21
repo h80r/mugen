@@ -46,8 +46,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -69,6 +71,7 @@ import eu.kanade.tachiyomi.data.coil.NovelReaderRefererImage
 import eu.kanade.tachiyomi.source.novel.NovelPluginImage
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextAnchor
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRenderer
+import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection
 import eu.kanade.tachiyomi.ui.reader.novel.SelectedTextAction
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundTexture
@@ -83,8 +86,15 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.TextAlign as ReaderTextAlign
 internal const val MENU_ID_DICTIONARY = 0x9001
 internal const val MENU_ID_TRANSLATION = 0x9002
 internal const val MENU_ID_COPY = 0x9003
-internal const val MENU_ID_SELECT_ALL = 0x9004
+internal const val MENU_ID_SELECT_SENTENCE = 0x9004
 internal const val MENU_ID_SHARE = 0x9005
+internal const val MENU_ID_SELECT_PARAGRAPH = 0x9006
+
+/**
+ * Extra stillness required after the long-press timer fires before a selection is actually
+ * promoted. See [NovelPageReaderTextView]'s selectionPromotionConfirmationRunnable for why.
+ */
+private const val SELECTION_PROMOTION_CONFIRMATION_DELAY_MILLIS = 90L
 
 internal data class NovelPageReaderContentLayout(
     val textPadding: PaddingValues,
@@ -392,15 +402,20 @@ private fun resolveNovelPageReaderTextGravity(
     }
 }
 
-private class NovelPageReaderTextView constructor(
+internal class NovelPageReaderTextView constructor(
     context: android.content.Context,
     private val selectionRenderer: NovelSelectedTextRenderer,
     private val selectionSessionIdProvider: () -> Long,
     private val onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit,
+    private val selectionCoordinator: NovelPageReaderSelectionCoordinator? = null,
+    private val selectionBlockOrder: Int = 0,
     private var onPlainTap: ((Float, Float, Float, Float) -> Unit)?,
+    private var onSelectionGestureActiveChanged: ((Boolean) -> Unit)?,
     private val touchHandlingEnabled: Boolean,
     selectionInteractionEnabled: Boolean,
 ) : TextView(context) {
+    private enum class SelectionHandle { START, END }
+
     private val touchSlopPx = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val longPressTimeoutMillis = ViewConfiguration.getLongPressTimeout().toLong()
     private var gestureStartUptimeMillis = 0L
@@ -409,9 +424,17 @@ private class NovelPageReaderTextView constructor(
     private var latestX = 0f
     private var latestY = 0f
     private var selectionPromotionScheduled = false
+    private var selectionPromotionConfirmationScheduled = false
     private var selectionPromotedByLongPress = false
+    private var selectionGestureActive = false
+    private var longPressSelectionStart = -1
+    private var longPressSelectionEnd = -1
+    private var dismissOnlyGesture = false
+    private var draggedSelectionHandle: SelectionHandle? = null
     private var selectionInteractionEnabled = selectionInteractionEnabled
     var renderedTextSignature: Int? = null
+    private var appliedSelectionClearRequestToken: Int? = null
+    private var appliedSelectionExpandRequestToken = 0
     private val selectionPromotionRunnable = Runnable {
         selectionPromotionScheduled = false
         if (
@@ -423,9 +446,22 @@ private class NovelPageReaderTextView constructor(
                 longPressTimeoutMillis = longPressTimeoutMillis,
             )
         ) {
+            // Don't commit yet: a finger that was still right up to this instant may resume a
+            // scroll drag in the next few ms (e.g. a natural pause before dragging, common when
+            // starting to scroll). Committing here would let that drag get consumed as "extend
+            // the long-press selection" instead of reaching LazyColumn as a scroll. Re-check
+            // stillness after a short confirmation beat; only a finger that is STILL still after
+            // the beat gets treated as a deliberate long-press.
+            selectionPromotionConfirmationScheduled = true
+            postDelayed(selectionPromotionConfirmationRunnable, SELECTION_PROMOTION_CONFIRMATION_DELAY_MILLIS)
+        }
+    }
+    private val selectionPromotionConfirmationRunnable = Runnable {
+        selectionPromotionConfirmationScheduled = false
+        if (selectionInteractionEnabled && currentGestureDistancePx() <= touchSlopPx) {
             selectionPromotedByLongPress = promoteSelectionFromGesture()
             if (selectionPromotedByLongPress) {
-                parent?.requestDisallowInterceptTouchEvent(true)
+                setSelectionGestureActive(true)
             }
         }
     }
@@ -434,13 +470,27 @@ private class NovelPageReaderTextView constructor(
     private var selectionActionMode: ActionMode? = null
     private val selectionBoundsInView = RectF()
     private var isExecutingAction = false
+    private var applyingCoordinatedSelection = false
+    private var drawSelectionStartHandle = true
+    private var drawSelectionEndHandle = true
+
+    var selectionHighlightColor: Int = android.graphics.Color.TRANSPARENT
+    var selectionHandleColor: Int = android.graphics.Color.TRANSPARENT
+    private val selectionHighlightPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val selectionHandlePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
     var isDictionaryEnabled = false
     var isTranslationEnabled = false
     private var isDetaching = false
 
     override fun onDetachedFromWindow() {
         isDetaching = true
+        selectionCoordinator?.unregister(this)
         finishSelectionActionMode()
+        clearSelectionPromotion()
+        if (selectionGestureActive) {
+            selectionGestureActive = false
+            onSelectionGestureActiveChanged?.invoke(false)
+        }
         super.onDetachedFromWindow()
         isDetaching = false
     }
@@ -469,6 +519,7 @@ private class NovelPageReaderTextView constructor(
         updateSelectionInteractionEnabled(selectionInteractionEnabled)
         isClickable = false
         setupCustomSelectionActionModeCallback()
+        selectionCoordinator?.register(this)
     }
 
     private fun setupCustomSelectionActionModeCallback() {
@@ -477,8 +528,19 @@ private class NovelPageReaderTextView constructor(
                 if (menu == null) return true
                 // Standard system-style actions first, then the reader-specific ones.
                 menu.add(Menu.NONE, MENU_ID_COPY, 10, context.getString(MR.strings.copy.resourceId))
-                menu.add(Menu.NONE, MENU_ID_SELECT_ALL, 20, context.getString(MR.strings.action_select_all.resourceId))
-                menu.add(Menu.NONE, MENU_ID_SHARE, 30, context.getString(MR.strings.action_share.resourceId))
+                menu.add(
+                    Menu.NONE,
+                    MENU_ID_SELECT_SENTENCE,
+                    20,
+                    context.getString(AYMR.strings.novel_reader_text_selection_action_select_sentence.resourceId),
+                )
+                menu.add(
+                    Menu.NONE,
+                    MENU_ID_SELECT_PARAGRAPH,
+                    30,
+                    context.getString(AYMR.strings.novel_reader_text_selection_action_select_paragraph.resourceId),
+                )
+                menu.add(Menu.NONE, MENU_ID_SHARE, 40, context.getString(MR.strings.action_share.resourceId))
                 val menuOrder = 100
                 if (isDictionaryEnabled) {
                     menu.add(
@@ -513,8 +575,12 @@ private class NovelPageReaderTextView constructor(
                         mode?.finish()
                         return true
                     }
-                    MENU_ID_SELECT_ALL -> {
-                        selectAllText()
+                    MENU_ID_SELECT_SENTENCE -> {
+                        selectSentence()
+                        return true
+                    }
+                    MENU_ID_SELECT_PARAGRAPH -> {
+                        selectParagraph()
                         return true
                     }
                     MENU_ID_SHARE -> {
@@ -544,14 +610,12 @@ private class NovelPageReaderTextView constructor(
             }
 
             override fun onDestroyActionMode(mode: ActionMode?) {
-                // Mirror the framework behavior: collapse the selection when the toolbar
-                // closes (back / tap outside / after an action). publishSelection() skips the
-                // null event while isExecutingAction is set, so dictionary/translation flows
-                // are not cancelled.
-                val spannable = text as? Spannable ?: return
-                val selectionEnd = Selection.getSelectionEnd(spannable)
-                if (selectionEnd >= 0) {
-                    Selection.setSelection(spannable, selectionEnd)
+                // A floating action mode can consume the outside tap before the TextView gets
+                // its ACTION_UP. Clear here as the authoritative dismissal path. Actions that
+                // need to keep the selection alive (dictionary/translation) set this guard
+                // before finishing the mode.
+                if (!isExecutingAction) {
+                    clearSelection()
                 }
             }
 
@@ -585,39 +649,266 @@ private class NovelPageReaderTextView constructor(
         if (!selectionInteractionEnabled) {
             clearSelectionPromotion()
             selectionPromotedByLongPress = false
+            longPressSelectionStart = -1
+            longPressSelectionEnd = -1
             clearSelection()
             finishSelectionActionMode()
+        }
+    }
+
+    /**
+     * Applies a hoisted "clear selection" request (e.g. from the reader's own back handler). The
+     * token only needs to change value to trigger a clear; the caller does not need to know
+     * whether this particular view instance is the one currently holding the selection.
+     */
+    fun applySelectionClearRequestToken(token: Int) {
+        if (appliedSelectionClearRequestToken == token) return
+        appliedSelectionClearRequestToken = token
+        if (hasActiveSelection()) {
+            clearSelection()
+            finishSelectionActionMode()
+        }
+    }
+
+    /** Applies a hoisted expand request to the coordinator owner exactly once. */
+    fun applySelectionExpandRequestToken(token: Int) {
+        if (appliedSelectionExpandRequestToken == token) return
+        appliedSelectionExpandRequestToken = token
+        if (hasActiveSelection() && (selectionCoordinator == null || selectionCoordinator.isOwner(this))) {
+            expandSelectionForConsole()
         }
     }
 
     override fun onSelectionChanged(selStart: Int, selEnd: Int) {
         if (!selectionInteractionEnabled) return
         super.onSelectionChanged(selStart, selEnd)
-        publishSelection(selStart, selEnd)
+        if (!applyingCoordinatedSelection) {
+            publishSelection(selStart, selEnd)
+        }
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        val spannable = text as? Spannable
+        val currentLayout = layout
+        val start = spannable?.let(Selection::getSelectionStart) ?: -1
+        val end = spannable?.let(Selection::getSelectionEnd) ?: -1
+        val hasSelection = currentLayout != null && start >= 0 && end >= 0 && start != end
+        if (hasSelection) {
+            val normalizedStart = minOf(start, end)
+            val normalizedEnd = maxOf(start, end)
+            val selectionPath = Path()
+            currentLayout.getSelectionPath(normalizedStart, normalizedEnd, selectionPath)
+            selectionHighlightPaint.color = selectionHighlightColor
+            canvas.save()
+            canvas.translate((totalPaddingLeft - scrollX).toFloat(), (totalPaddingTop - scrollY).toFloat())
+            canvas.drawPath(selectionPath, selectionHighlightPaint)
+            canvas.restore()
+        }
+
+        super.onDraw(canvas)
+
+        if (hasSelection) {
+            val normalizedStart = minOf(start, end)
+            val normalizedEnd = maxOf(start, end)
+            val startLine = currentLayout.getLineForOffset(normalizedStart)
+            val endLine = currentLayout.getLineForOffset(normalizedEnd)
+            val handleRadius = resources.displayMetrics.density * 5f
+            val contentLeft = (totalPaddingLeft - scrollX).toFloat()
+            selectionHandlePaint.color = selectionHandleColor
+            if (drawSelectionStartHandle) {
+                canvas.drawCircle(
+                    contentLeft + currentLayout.getPrimaryHorizontal(normalizedStart),
+                    selectionHandleY(currentLayout, startLine),
+                    handleRadius,
+                    selectionHandlePaint,
+                )
+            }
+            if (drawSelectionEndHandle) {
+                canvas.drawCircle(
+                    contentLeft + currentLayout.getPrimaryHorizontal(normalizedEnd),
+                    selectionHandleY(currentLayout, endLine),
+                    handleRadius,
+                    selectionHandlePaint,
+                )
+            }
+        }
+    }
+
+    /**
+     * Attach handles to the actual text paint's glyph descent. Layout's line descent/bottom also
+     * includes configured line spacing, which differs between paragraph blocks and makes pins
+     * drift vertically even when their text looks aligned.
+     */
+    private fun selectionHandleY(currentLayout: Layout, line: Int): Float {
+        return totalPaddingTop - scrollY +
+            currentLayout.getLineBaseline(line) + currentLayout.paint.descent() +
+            resources.displayMetrics.density * 4f
+    }
+
+    private fun selectionHandlePoint(handle: SelectionHandle): android.graphics.PointF? {
+        val spannable = text as? Spannable ?: return null
+        val currentLayout = layout ?: return null
+        val rawStart = Selection.getSelectionStart(spannable)
+        val rawEnd = Selection.getSelectionEnd(spannable)
+        if (rawStart < 0 || rawEnd < 0 || rawStart == rawEnd) return null
+        val offset = when (handle) {
+            SelectionHandle.START -> minOf(rawStart, rawEnd)
+            SelectionHandle.END -> maxOf(rawStart, rawEnd)
+        }
+        val line = currentLayout.getLineForOffset(offset)
+        return android.graphics.PointF(
+            totalPaddingLeft - scrollX + currentLayout.getPrimaryHorizontal(offset),
+            selectionHandleY(currentLayout, line),
+        )
+    }
+
+    private fun resolveSelectionHandleAt(x: Float, y: Float): SelectionHandle? {
+        if (!hasActiveSelection()) return null
+        val hitRadius = resources.displayMetrics.density * 24f
+        return SelectionHandle.entries.mapNotNull { handle ->
+            if (handle == SelectionHandle.START && !drawSelectionStartHandle) return@mapNotNull null
+            if (handle == SelectionHandle.END && !drawSelectionEndHandle) return@mapNotNull null
+            val point = selectionHandlePoint(handle) ?: return@mapNotNull null
+            val distance = hypot((x - point.x).toDouble(), (y - point.y).toDouble()).toFloat()
+            if (distance <= hitRadius) handle to distance else null
+        }.minByOrNull { (_, distance) -> distance }?.first
+    }
+
+    private fun updateSelectionHandle(handle: SelectionHandle, x: Float, y: Float) {
+        val spannable = text as? Spannable ?: return
+        val offset = resolveTextOffsetAt(x, y) ?: return
+        val currentStart = minOf(Selection.getSelectionStart(spannable), Selection.getSelectionEnd(spannable))
+        val currentEnd = maxOf(Selection.getSelectionStart(spannable), Selection.getSelectionEnd(spannable))
+        val (start, end) = when (handle) {
+            SelectionHandle.START -> offset.coerceAtMost(currentEnd - 1) to currentEnd
+            SelectionHandle.END -> currentStart to offset.coerceAtLeast(currentStart + 1)
+        }
+        applySelectionRange(start, end)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!touchHandlingEnabled) {
             return false
         }
+
+        // Classify the initial touch before handing it to TextView's native selection handling.
+        // Otherwise the native handler may consume/cancel the stream and the outside-dismiss
+        // cleanup below becomes timing-dependent.
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            gestureStartUptimeMillis = event.eventTime
+            gestureStartX = event.x
+            gestureStartY = event.y
+            latestX = event.x
+            latestY = event.y
+            selectionPromotedByLongPress = false
+            dismissOnlyGesture = false
+            draggedSelectionHandle = resolveSelectionHandleAt(event.x, event.y)
+            if (draggedSelectionHandle != null) {
+                val coordinatedDrag = selectionCoordinator?.beginHandleDrag(
+                    view = this,
+                    movingStart = draggedSelectionHandle == SelectionHandle.START,
+                ) ?: false
+                if (!coordinatedDrag) {
+                    draggedSelectionHandle = null
+                }
+                setSelectionGestureActive(true)
+                return true
+            }
+            if (selectionInteractionEnabled) {
+                if (selectionCoordinator?.hasActiveSelection() == true ||
+                    (hasActiveSelection() && !selectionBoundsInView.contains(event.x, event.y))) {
+                    // Clear immediately. The action-mode window or a parent gesture detector may
+                    // consume the remainder of this tap, so waiting for ACTION_UP is unreliable.
+                    dismissOnlyGesture = true
+                    clearSelection()
+                    finishSelectionActionMode()
+                    setSelectionGestureActive(true)
+                    return true
+                }
+                clearSelection()
+                finishSelectionActionMode()
+                scheduleSelectionPromotion()
+            }
+        }
+
+        if (event.actionMasked == MotionEvent.ACTION_MOVE) {
+            latestX = event.x
+            latestY = event.y
+            if (selectionCoordinator?.updateActiveHandleDrag(this, event.x, event.y) == true) {
+                return true
+            }
+            draggedSelectionHandle?.let { handle ->
+                if (
+                    selectionCoordinator?.updateHandleDrag(
+                        view = this,
+                        movingStart = handle == SelectionHandle.START,
+                        localX = event.x,
+                        localY = event.y,
+                    ) == true
+                ) {
+                    return true
+                }
+                updateSelectionHandle(handle, event.x, event.y)
+                return true
+            }
+            if (selectionPromotedByLongPress) {
+                updateLongPressSelection(event.x, event.y)
+                return true
+            }
+        }
+
+        if (event.actionMasked == MotionEvent.ACTION_UP && dismissOnlyGesture) {
+            dismissOnlyGesture = false
+            setSelectionGestureActive(false)
+            return true
+        }
+
+        if (event.actionMasked == MotionEvent.ACTION_CANCEL && dismissOnlyGesture) {
+            dismissOnlyGesture = false
+            setSelectionGestureActive(false)
+            return true
+        }
+
+        if (event.actionMasked == MotionEvent.ACTION_UP && draggedSelectionHandle != null) {
+            draggedSelectionHandle = null
+            selectionCoordinator?.endHandleDrag()
+            setSelectionGestureActive(false)
+            selectionActionMode?.invalidateContentRect()
+            return true
+        }
+
+        if (event.actionMasked == MotionEvent.ACTION_UP && selectionCoordinator?.hasActiveHandleDrag() == true) {
+            selectionCoordinator.endHandleDrag()
+            setSelectionGestureActive(false)
+            return true
+        }
+
+        if (event.actionMasked == MotionEvent.ACTION_UP && selectionPromotedByLongPress) {
+            selectionPromotedByLongPress = false
+            setSelectionGestureActive(false)
+            selectionActionMode?.invalidateContentRect()
+            return true
+        }
+
+        if (event.actionMasked == MotionEvent.ACTION_CANCEL && draggedSelectionHandle != null) {
+            draggedSelectionHandle = null
+            selectionCoordinator?.endHandleDrag()
+            setSelectionGestureActive(false)
+            return true
+        }
+
+        if (event.actionMasked == MotionEvent.ACTION_CANCEL && selectionCoordinator?.hasActiveHandleDrag() == true) {
+            selectionCoordinator.endHandleDrag()
+            setSelectionGestureActive(false)
+            return true
+        }
+
         val handledBySuper = super.onTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                gestureStartUptimeMillis = event.eventTime
-                gestureStartX = event.x
-                gestureStartY = event.y
-                latestX = event.x
-                latestY = event.y
-                selectionPromotedByLongPress = false
-                if (selectionInteractionEnabled) {
-                    clearSelection()
-                    finishSelectionActionMode()
-                    scheduleSelectionPromotion()
-                }
+                // ACTION_DOWN is classified before the native handler above.
             }
             MotionEvent.ACTION_MOVE -> {
-                latestX = event.x
-                latestY = event.y
                 if (selectionInteractionEnabled && currentGestureDistancePx() > touchSlopPx) {
                     clearSelectionPromotion()
                 }
@@ -659,6 +950,11 @@ private class NovelPageReaderTextView constructor(
                     clearSelectionPromotion()
                 }
                 selectionPromotedByLongPress = false
+                longPressSelectionStart = -1
+                longPressSelectionEnd = -1
+                dismissOnlyGesture = false
+                setSelectionGestureActive(false)
+                draggedSelectionHandle = null
                 return handledBySuper
             }
         }
@@ -677,19 +973,9 @@ private class NovelPageReaderTextView constructor(
         return true
     }
 
-    /**
-     * Programmatic Selection.setSelection() does not make the framework start the
-     * floating selection action mode on its own, and this view is intentionally
-     * non-focusable, so the ActionMode has to be started explicitly to surface the
-     * system copy/share/select-all menu plus the custom dictionary/translation items.
-     */
+    /** The Compose Aurora console owns selection actions; retain only native spans and handles. */
     private fun startSelectionActionMode() {
-        if (!isAttachedToWindow) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            selectionActionMode = startActionMode(customSelectionActionModeCallback, ActionMode.TYPE_FLOATING)
-        } else {
-            selectionActionMode = startActionMode(customSelectionActionModeCallback)
-        }
+        // Deliberately empty: starting an ActionMode would show Android's floating toolbar.
     }
 
     private fun finishSelectionActionMode() {
@@ -714,54 +1000,133 @@ private class NovelPageReaderTextView constructor(
         context.startActivity(chooser)
     }
 
-    private fun selectAllText() {
+    private fun selectSentence() {
+        val spannable = text as? Spannable ?: return
+        val currentText = spannable.toString()
+        if (currentText.isBlank()) return
+        val anchor = Selection.getSelectionStart(spannable).coerceIn(0, currentText.length - 1)
+        val iterator = BreakIterator.getSentenceInstance(Locale.getDefault()).apply { setText(currentText) }
+        val start = if (iterator.isBoundary(anchor)) anchor else iterator.preceding(anchor).coerceAtLeast(0)
+        val end = iterator.following(anchor).takeIf { it != BreakIterator.DONE } ?: currentText.length
+        applySelectionRange(start, end)
+    }
+
+    private fun selectParagraph() {
         val spannable = text as? Spannable ?: return
         if (spannable.length == 0) return
-        Selection.setSelection(spannable, 0, spannable.length)
-        // Re-anchor the floating toolbar to the full selection.
+        applySelectionRange(0, spannable.length)
+    }
+
+    internal fun clearSelectionForConsole() {
+        if (selectionCoordinator?.clearSelection(this) != true) {
+            clearSelection()
+        }
+    }
+
+    internal fun expandSelectionForConsole() {
+        if (selectionCoordinator != null) {
+            selectionCoordinator.expandSelection()
+        } else {
+            expandLocalSelectionForConsole()
+        }
+    }
+
+    internal fun expandLocalSelectionForConsole() {
+        val spannable = text as? Spannable ?: return
+        val currentText = spannable.toString()
+        if (currentText.isBlank()) return
+        val selectionStart = Selection.getSelectionStart(spannable)
+        val selectionEnd = Selection.getSelectionEnd(spannable)
+        if (selectionStart < 0 || selectionEnd <= selectionStart) return
+        val iterator = BreakIterator.getSentenceInstance(Locale.getDefault()).apply { setText(currentText) }
+        val sentenceStart = if (iterator.isBoundary(selectionStart)) {
+            selectionStart
+        } else {
+            iterator.preceding(selectionStart).coerceAtLeast(0)
+        }
+        val sentenceEnd = iterator.following(selectionStart).takeIf { it != BreakIterator.DONE } ?: currentText.length
+        if (selectionStart >= sentenceStart && selectionEnd <= sentenceEnd &&
+            (selectionStart != sentenceStart || selectionEnd != sentenceEnd)
+        ) {
+            applySelectionRange(sentenceStart, sentenceEnd)
+        } else {
+            selectParagraph()
+        }
+    }
+
+    private fun applySelectionRange(start: Int, end: Int) {
+        val spannable = text as? Spannable ?: return
+        Selection.setSelection(spannable, start, end)
+        publishSelection(start, end)
         selectionActionMode?.invalidateContentRect()
+        invalidate()
+    }
+
+    /**
+     * After a long-press selects the initial word, keep the original word as the anchor and use
+     * the same finger's drag to extend the selection in either direction. This mirrors native
+     * text selection while preserving curl gestures for ordinary (non-long-press) drags.
+     */
+    private fun updateLongPressSelection(x: Float, y: Float) {
+        if (selectionCoordinator?.extendSelection(this, x, y) == true) return
+        val offset = resolveTextOffsetAt(x, y) ?: return
+        if (longPressSelectionStart < 0 || longPressSelectionEnd <= longPressSelectionStart) return
+        when {
+            offset < longPressSelectionStart -> applySelectionRange(offset, longPressSelectionEnd)
+            offset > longPressSelectionEnd -> applySelectionRange(longPressSelectionStart, offset)
+        }
     }
 
     private fun scheduleSelectionPromotion() {
         clearSelectionPromotion()
         selectionPromotionScheduled = true
+        // Deliberately does NOT call setSelectionGestureActive(true) yet: this runs on every
+        // ACTION_DOWN, including ones that turn out to be a scroll/swipe/tap. Toggling
+        // userScrollEnabled this early races LazyColumn's own gesture detector — if Compose
+        // recomposes with scrolling disabled before this same pointer's first ACTION_MOVE, the
+        // scrollable pointerInput never arms for it; if it then re-enables once slop is exceeded
+        // (see clearSelectionPromotion below) and recomposes again, the pointerInput restart
+        // misses the pointer's continuation entirely, since a fresh coroutine only observes
+        // events from its own start. Net effect without this guard: the gesture is claimed by
+        // neither scroll nor selection. Only flip the flag once promotion actually succeeds
+        // (selectionPromotionRunnable) or a handle drag begins, where the pointer is already
+        // confirmed to belong to selection, not scrolling.
         postDelayed(selectionPromotionRunnable, longPressTimeoutMillis)
     }
 
     private fun clearSelectionPromotion() {
+        if (selectionPromotionConfirmationScheduled) {
+            removeCallbacks(selectionPromotionConfirmationRunnable)
+            selectionPromotionConfirmationScheduled = false
+        }
         if (!selectionPromotionScheduled) return
         removeCallbacks(selectionPromotionRunnable)
         selectionPromotionScheduled = false
+    }
+
+    private fun setSelectionGestureActive(active: Boolean) {
+        parent?.requestDisallowInterceptTouchEvent(active)
+        if (selectionGestureActive == active) return
+        selectionGestureActive = active
+        onSelectionGestureActiveChanged?.invoke(active)
     }
 
     private fun publishSelection(selStart: Int, selEnd: Int) {
         selectionBoundsInView.setEmpty()
         val currentText = text?.toString().orEmpty()
         if (selStart < 0 || selEnd < 0 || selStart == selEnd || currentText.isBlank()) {
-            localSelection = null
-            if (!isExecutingAction) {
-                onSelectedTextSelectionChanged(null)
-            }
-            isExecutingAction = false
+            clearPublishedSelection()
             return
         }
 
         val layout = layout ?: run {
-            localSelection = null
-            if (!isExecutingAction) {
-                onSelectedTextSelectionChanged(null)
-            }
-            isExecutingAction = false
+            clearPublishedSelection()
             return
         }
         val start = minOf(selStart, selEnd).coerceIn(0, currentText.length)
         val end = maxOf(selStart, selEnd).coerceIn(start, currentText.length)
         if (start >= end) {
-            localSelection = null
-            if (!isExecutingAction) {
-                onSelectedTextSelectionChanged(null)
-            }
-            isExecutingAction = false
+            clearPublishedSelection()
             return
         }
 
@@ -770,22 +1135,14 @@ private class NovelPageReaderTextView constructor(
         val bounds = RectF()
         selectionPath.computeBounds(bounds, true)
         if (bounds.isEmpty) {
-            localSelection = null
-            if (!isExecutingAction) {
-                onSelectedTextSelectionChanged(null)
-            }
-            isExecutingAction = false
+            clearPublishedSelection()
             return
         }
         selectionBoundsInView.set(bounds)
 
         val selectedText = currentText.substring(start, end)
         if (selectedText.isBlank()) {
-            localSelection = null
-            if (!isExecutingAction) {
-                onSelectedTextSelectionChanged(null)
-            }
-            isExecutingAction = false
+            clearPublishedSelection()
             return
         }
 
@@ -802,6 +1159,24 @@ private class NovelPageReaderTextView constructor(
                 bottomPx = (locationOnScreen[1] + bounds.bottom).roundToInt(),
             ),
         )
+        if (!applyingCoordinatedSelection) {
+            onSelectedTextSelectionChanged(localSelection)
+        }
+        isExecutingAction = false
+        invalidate()
+    }
+
+    /**
+     * Only the TextView that published a selection may clear the hoisted selection state. Curl
+     * keeps several sibling page views mounted, and their ordinary collapsed selections must not
+     * dismiss a selection owned by the visible page.
+     */
+    private fun clearPublishedSelection() {
+        val hadPublishedSelection = localSelection != null
+        localSelection = null
+        if (hadPublishedSelection && !isExecutingAction && !applyingCoordinatedSelection) {
+            onSelectedTextSelectionChanged(null)
+        }
         isExecutingAction = false
     }
 
@@ -814,11 +1189,95 @@ private class NovelPageReaderTextView constructor(
     }
 
     private fun clearSelection() {
+        if (!applyingCoordinatedSelection && selectionCoordinator?.clearSelection(this) == true) {
+            return
+        }
         selectionBoundsInView.setEmpty()
+        longPressSelectionStart = -1
+        longPressSelectionEnd = -1
+        val spannable = text as? Spannable
+        val hadSelection = localSelection != null ||
+            (spannable != null && Selection.getSelectionStart(spannable) != Selection.getSelectionEnd(spannable))
+        // Clear local ownership before Selection.removeSelection() dispatches onSelectionChanged,
+        // preventing the callback from firing twice for the same owner.
+        localSelection = null
+        spannable?.let(Selection::removeSelection)
+        if (hadSelection && !isExecutingAction && !applyingCoordinatedSelection) {
+            onSelectedTextSelectionChanged(null)
+        }
+        isExecutingAction = false
+        invalidate()
+    }
+
+    internal fun applySelectionFromCoordinator(start: Int, end: Int) {
         val spannable = text as? Spannable ?: return
-        Selection.removeSelection(spannable)
+        applyingCoordinatedSelection = true
+        try {
+            Selection.setSelection(spannable, start.coerceIn(0, spannable.length), end.coerceIn(0, spannable.length))
+            publishSelection(start, end)
+        } finally {
+            applyingCoordinatedSelection = false
+        }
+    }
+
+    internal fun setCoordinatedHandleVisibility(showStart: Boolean, showEnd: Boolean) {
+        drawSelectionStartHandle = showStart
+        drawSelectionEndHandle = showEnd
+        invalidate()
+    }
+
+    internal fun clearSelectionFromCoordinator() {
+        applyingCoordinatedSelection = true
+        try {
+            clearSelection()
+        } finally {
+            applyingCoordinatedSelection = false
+        }
+        drawSelectionStartHandle = true
+        drawSelectionEndHandle = true
+    }
+
+    internal fun resolveTextOffsetAtScreen(screenX: Float, screenY: Float): Int? {
+        val location = IntArray(2)
+        getLocationOnScreen(location)
+        return resolveTextOffsetAt(screenX - location[0], screenY - location[1])
+    }
+
+    internal fun selectionText(): String = text?.toString().orEmpty()
+
+    internal fun selectionBoundsOnScreen(): RectF? {
+        if (selectionBoundsInView.isEmpty) return null
+        val location = IntArray(2)
+        getLocationOnScreen(location)
+        return RectF(selectionBoundsInView).apply { offset(location[0].toFloat(), location[1].toFloat()) }
+    }
+
+    internal fun publishCoordinatedSelection(text: String, bounds: RectF) {
+        if (text.isBlank()) return
+        localSelection = NovelSelectedTextSelection(
+            sessionId = selectionSessionIdProvider(),
+            renderer = selectionRenderer,
+            text = text,
+            anchor = NovelSelectedTextAnchor(
+                leftPx = bounds.left.roundToInt(),
+                topPx = bounds.top.roundToInt(),
+                rightPx = bounds.right.roundToInt(),
+                bottomPx = bounds.bottom.roundToInt(),
+            ),
+        )
+        onSelectedTextSelectionChanged(localSelection)
+    }
+
+    internal fun notifyCoordinatedSelectionCleared() {
+        localSelection = null
         onSelectedTextSelectionChanged(null)
     }
+
+    internal fun finishSelectionActionModeFromCoordinator() {
+        finishSelectionActionMode()
+    }
+
+    internal fun selectionOrder(): Int = selectionBlockOrder
 
     private fun currentGestureDistancePx(): Float {
         return hypot((latestX - gestureStartX).toDouble(), (latestY - gestureStartY).toDouble()).toFloat()
@@ -830,8 +1289,11 @@ private class NovelPageReaderTextView constructor(
         val selectionRange = resolveWordSelectionRangeAt(latestX, latestY) ?: return false
         val selectionStart = selectionRange.first
         val selectionEnd = selectionRange.last + 1
+        longPressSelectionStart = selectionStart
+        longPressSelectionEnd = selectionEnd
         Selection.setSelection(spannable, selectionStart, selectionEnd)
         publishSelection(selectionStart, selectionEnd)
+        selectionCoordinator?.beginSelection(this, selectionStart, selectionEnd)
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         startSelectionActionMode()
         return true
@@ -843,25 +1305,7 @@ private class NovelPageReaderTextView constructor(
     ): IntRange? {
         val currentText = text?.toString().orEmpty()
         if (currentText.isBlank()) return null
-        val currentLayout = layout ?: return null
-        val contentX = x - totalPaddingLeft + scrollX
-        val contentY = y - totalPaddingTop + scrollY
-        if (
-            contentX < 0f ||
-            contentY < 0f ||
-            contentX > currentLayout.width ||
-            contentY > currentLayout.height
-        ) {
-            return null
-        }
-
-        val line = currentLayout.getLineForVertical(contentY.roundToInt())
-        val lineStart = currentLayout.getLineStart(line)
-        val lineEnd = currentLayout.getLineEnd(line)
-        if (lineStart >= lineEnd) return null
-
-        val offset = currentLayout.getOffsetForHorizontal(line, contentX).coerceIn(lineStart, lineEnd)
-            .coerceIn(0, currentText.length)
+        val offset = resolveTextOffsetAt(x, y) ?: return null
         if (offset >= currentText.length) return null
 
         val wordIterator = BreakIterator.getWordInstance(Locale.getDefault()).apply {
@@ -876,8 +1320,28 @@ private class NovelPageReaderTextView constructor(
         return start until end
     }
 
+    private fun resolveTextOffsetAt(x: Float, y: Float): Int? {
+        val currentLayout = layout ?: return null
+        val contentX = x - totalPaddingLeft + scrollX
+        val contentY = y - totalPaddingTop + scrollY
+        if (contentX < 0f || contentY < 0f || contentX > currentLayout.width || contentY > currentLayout.height) {
+            return null
+        }
+        val line = currentLayout.getLineForVertical(contentY.roundToInt())
+        val lineStart = currentLayout.getLineStart(line)
+        val lineEnd = currentLayout.getLineEnd(line)
+        if (lineStart >= lineEnd) return null
+        return currentLayout.getOffsetForHorizontal(line, contentX)
+            .coerceIn(lineStart, lineEnd)
+            .coerceIn(0, text?.length ?: 0)
+    }
+
     fun updatePlainTapHandler(handler: ((Float, Float, Float, Float) -> Unit)?) {
         onPlainTap = handler
+    }
+
+    fun updateSelectionGestureActiveChangedHandler(handler: ((Boolean) -> Unit)?) {
+        onSelectionGestureActiveChanged = handler
     }
 
     private fun resolveClickableSpanAt(event: MotionEvent): ClickableSpan? {
@@ -892,6 +1356,296 @@ private class NovelPageReaderTextView constructor(
         val line = currentLayout.getLineForVertical(y.roundToInt())
         val offset = currentLayout.getOffsetForHorizontal(line, x).coerceIn(0, spannable.length - 1)
         return spannable.getSpans(offset, offset + 1, ClickableSpan::class.java).lastOrNull()
+    }
+}
+
+/** Coordinates a single page's independently-rendered text blocks as one selection surface. */
+internal class NovelPageReaderSelectionCoordinator {
+    private val views = linkedSetOf<NovelPageReaderTextView>()
+    private var owner: NovelPageReaderTextView? = null
+    private var anchorStart = -1
+    private var anchorEnd = -1
+    private var globalStartView: NovelPageReaderTextView? = null
+    private var globalStartOffset = -1
+    private var globalEndView: NovelPageReaderTextView? = null
+    private var globalEndOffset = -1
+    private var draggingGlobalStart: Boolean? = null
+
+    fun register(view: NovelPageReaderTextView) {
+        views += view
+    }
+
+    /**
+     * Drops [view] from the shared surface. In a `LazyColumn`, this fires whenever a block
+     * scrolls out of the composed window, not just when its selection is dismissed — a block
+     * that currently holds a selection endpoint or sits inside the active range can leave
+     * composition mid-gesture. Rather than leave a stale reference in [globalStartView]/
+     * [globalEndView] (which the next drag/extend call would read and act on with a
+     * detached view) or silently open a gap in [views] that [applyRange] would treat as
+     * adjacency, collapse the whole coordinated selection whenever the departing view was
+     * part of it.
+     */
+    fun unregister(view: NovelPageReaderTextView) {
+        views -= view
+        if (owner === view || globalStartView === view || globalEndView === view) {
+            val previousOwner = owner
+            owner = null
+            anchorStart = -1
+            anchorEnd = -1
+            globalStartView = null
+            globalStartOffset = -1
+            globalEndView = null
+            globalEndOffset = -1
+            draggingGlobalStart = null
+            views.forEach(NovelPageReaderTextView::clearSelectionFromCoordinator)
+            previousOwner?.let {
+                it.finishSelectionActionModeFromCoordinator()
+                it.notifyCoordinatedSelectionCleared()
+            }
+        }
+    }
+
+    fun beginSelection(view: NovelPageReaderTextView, start: Int, end: Int) {
+        owner = view
+        anchorStart = minOf(start, end)
+        anchorEnd = maxOf(start, end)
+        // A new word selection starts in one TextView, but its two visible handles are already
+        // global endpoints. Initialise them here so either handle can cross into another block
+        // on its very first adjustment.
+        globalStartView = view
+        globalStartOffset = anchorStart
+        globalEndView = view
+        globalEndOffset = anchorEnd
+    }
+
+    fun hasActiveSelection(): Boolean = owner != null
+
+    fun extendSelection(source: NovelPageReaderTextView, localX: Float, localY: Float): Boolean {
+        if (owner !== source || anchorStart < 0 || anchorEnd <= anchorStart) return false
+        val sourceLocation = IntArray(2)
+        source.getLocationOnScreen(sourceLocation)
+        val target = views.firstOrNull { view ->
+            val rect = Rect()
+            view.getGlobalVisibleRect(rect) && rect.contains(
+                (sourceLocation[0] + localX).roundToInt(),
+                (sourceLocation[1] + localY).roundToInt(),
+            )
+        } ?: return false
+        val offset = target.resolveTextOffsetAtScreen(
+            sourceLocation[0] + localX,
+            sourceLocation[1] + localY,
+        ) ?: return false
+        applyRange(source, target, offset)
+        return true
+    }
+
+    fun beginHandleDrag(view: NovelPageReaderTextView, movingStart: Boolean): Boolean {
+        draggingGlobalStart = null
+        if (movingStart && view !== globalStartView) return false
+        if (!movingStart && view !== globalEndView) return false
+        draggingGlobalStart = movingStart
+        return true
+    }
+
+    fun endHandleDrag() {
+        draggingGlobalStart = null
+    }
+
+    fun hasActiveHandleDrag(): Boolean = draggingGlobalStart != null
+
+    fun updateActiveHandleDrag(
+        view: NovelPageReaderTextView,
+        localX: Float,
+        localY: Float,
+    ): Boolean {
+        val movingStart = draggingGlobalStart ?: return false
+        return updateHandleDrag(view, movingStart, localX, localY)
+    }
+
+    fun updateHandleDrag(
+        view: NovelPageReaderTextView,
+        movingStart: Boolean,
+        localX: Float,
+        localY: Float,
+    ): Boolean {
+        val activeOwner = owner ?: return false
+        // Android keeps sending this gesture's MOVE events to the TextView that received DOWN.
+        // Once the handle crosses into another paragraph that is no longer the same view as the
+        // global endpoint, so do not reject the continuing stream based on the endpoint's view.
+        val effectiveMovingStart = draggingGlobalStart ?: movingStart
+        val location = IntArray(2)
+        view.getLocationOnScreen(location)
+        val screenX = location[0] + localX
+        val screenY = location[1] + localY
+        val target = views.firstOrNull { candidate ->
+            val rect = Rect()
+            candidate.getGlobalVisibleRect(rect) && rect.contains(screenX.roundToInt(), screenY.roundToInt())
+        } ?: return false
+        val offset = target.resolveTextOffsetAtScreen(screenX, screenY) ?: return false
+        val fixedView = (if (effectiveMovingStart) globalEndView else globalStartView) ?: return false
+        val fixedOffset = if (effectiveMovingStart) globalEndOffset else globalStartOffset
+        if (fixedOffset < 0) return false
+        applyExplicitRange(
+            activeOwner = activeOwner,
+            firstView = if (effectiveMovingStart) target else fixedView,
+            firstOffset = if (effectiveMovingStart) offset else fixedOffset,
+            secondView = if (effectiveMovingStart) fixedView else target,
+            secondOffset = if (effectiveMovingStart) fixedOffset else offset,
+        )
+        // Crossing the stationary endpoint swaps the semantic roles while the same finger keeps
+        // moving. A view alone is not enough to determine this: both endpoints may belong to the
+        // same paragraph/TextView. Compare the resolved text offset too, otherwise an ordinary
+        // end-handle move is mistakenly reclassified as the start handle on its second MOVE.
+        draggingGlobalStart = target === globalStartView && offset == globalStartOffset
+        return true
+    }
+
+    fun clearSelection(requester: NovelPageReaderTextView): Boolean {
+        if (owner == null) return false
+        val previousOwner = owner ?: return false
+        owner = null
+        anchorStart = -1
+        anchorEnd = -1
+        globalStartView = null
+        globalStartOffset = -1
+        globalEndView = null
+        globalEndOffset = -1
+        draggingGlobalStart = null
+        views.forEach(NovelPageReaderTextView::clearSelectionFromCoordinator)
+        previousOwner.finishSelectionActionModeFromCoordinator()
+        previousOwner.notifyCoordinatedSelectionCleared()
+        return true
+    }
+
+    fun expandSelection() {
+        val activeOwner = owner ?: return
+        val startView = globalStartView ?: activeOwner
+        val endView = globalEndView ?: activeOwner
+        if (startView === endView) {
+            activeOwner.expandLocalSelectionForConsole()
+            return
+        }
+        // A multi-block selection is already at paragraph granularity. Expand every touched
+        // block, preserving both global endpoints rather than collapsing back to the owner.
+        applyExplicitRange(
+            activeOwner = activeOwner,
+            firstView = startView,
+            firstOffset = 0,
+            secondView = endView,
+            secondOffset = endView.selectionText().length,
+        )
+    }
+
+    fun isOwner(view: NovelPageReaderTextView): Boolean = owner === view
+
+    private fun applyExplicitRange(
+        activeOwner: NovelPageReaderTextView,
+        firstView: NovelPageReaderTextView,
+        firstOffset: Int,
+        secondView: NovelPageReaderTextView,
+        secondOffset: Int,
+    ) {
+        val ordered = views.sortedBy(NovelPageReaderTextView::selectionOrder)
+        var startView = firstView
+        var startOffset = firstOffset
+        var endView = secondView
+        var endOffset = secondOffset
+        val firstIndex = ordered.indexOf(firstView)
+        val secondIndex = ordered.indexOf(secondView)
+        if (firstIndex > secondIndex || (firstIndex == secondIndex && firstOffset > secondOffset)) {
+            startView = secondView
+            startOffset = secondOffset
+            endView = firstView
+            endOffset = firstOffset
+        }
+        if (startView === endView && startOffset == endOffset) return
+        anchorStart = startOffset
+        anchorEnd = (startOffset + 1).coerceAtMost(startView.selectionText().length)
+        applyRange(startView, endView, endOffset)
+        owner = activeOwner
+        publishCurrentRange(activeOwner)
+    }
+
+    private fun publishCurrentRange(activeOwner: NovelPageReaderTextView) {
+        val ordered = views.sortedBy(NovelPageReaderTextView::selectionOrder)
+        val selectedText = ordered.mapNotNull { view ->
+            val spannable = view.text as? Spannable ?: return@mapNotNull null
+            val start = Selection.getSelectionStart(spannable)
+            val end = Selection.getSelectionEnd(spannable)
+            if (start < 0 || end <= start) null else view.selectionText().substring(start, end)
+        }.joinToString("\n")
+        val bounds = ordered.mapNotNull(NovelPageReaderTextView::selectionBoundsOnScreen).fold(RectF()) { union, next ->
+            if (union.isEmpty) RectF(next) else union.apply { union(next) }
+        }
+        if (!bounds.isEmpty) activeOwner.publishCoordinatedSelection(selectedText, bounds)
+    }
+
+    private fun applyRange(
+        source: NovelPageReaderTextView,
+        target: NovelPageReaderTextView,
+        targetOffset: Int,
+    ) {
+        val orderedViews = views.sortedBy(NovelPageReaderTextView::selectionOrder)
+        val sourceIndex = orderedViews.indexOf(source)
+        val targetIndex = orderedViews.indexOf(target)
+        if (sourceIndex < 0 || targetIndex < 0) return
+
+        val ranges = linkedMapOf<NovelPageReaderTextView, Pair<Int, Int>>()
+        if (sourceIndex == targetIndex) {
+            when {
+                targetOffset < anchorStart -> ranges[source] = targetOffset to anchorEnd
+                targetOffset > anchorEnd -> ranges[source] = anchorStart to targetOffset
+                else -> ranges[source] = anchorStart to anchorEnd
+            }
+        } else if (targetIndex > sourceIndex) {
+            ranges[source] = anchorStart to source.selectionText().length
+            for (index in sourceIndex + 1 until targetIndex) {
+                val view = orderedViews[index]
+                ranges[view] = 0 to view.selectionText().length
+            }
+            ranges[target] = 0 to targetOffset
+        } else {
+            ranges[source] = 0 to anchorEnd
+            for (index in targetIndex + 1 until sourceIndex) {
+                val view = orderedViews[index]
+                ranges[view] = 0 to view.selectionText().length
+            }
+            ranges[target] = targetOffset to target.selectionText().length
+        }
+
+        views.forEach { view ->
+            val range = ranges[view]
+            if (range == null || range.first >= range.second) {
+                view.clearSelectionFromCoordinator()
+            } else {
+                view.applySelectionFromCoordinator(range.first, range.second)
+            }
+        }
+        val selectionStartView = if (targetIndex < sourceIndex) target else source
+        val selectionEndView = if (targetIndex > sourceIndex) target else source
+        globalStartView = selectionStartView
+        globalStartOffset = ranges[selectionStartView]?.first ?: -1
+        globalEndView = selectionEndView
+        globalEndOffset = ranges[selectionEndView]?.second ?: -1
+        ranges.keys.forEach { view ->
+            view.setCoordinatedHandleVisibility(
+                showStart = view === selectionStartView,
+                showEnd = view === selectionEndView,
+            )
+        }
+
+        val selectedText = orderedViews.mapNotNull { view ->
+            val range = ranges[view] ?: return@mapNotNull null
+            view.selectionText().substring(range.first.coerceIn(0, view.selectionText().length), range.second.coerceIn(0, view.selectionText().length))
+                .takeIf(String::isNotBlank)
+        }.joinToString(separator = "\n")
+        val bounds = ranges.keys.mapNotNull(NovelPageReaderTextView::selectionBoundsOnScreen)
+            .fold(RectF()) { union, next ->
+                if (union.isEmpty) RectF(next) else union.apply { union(next) }
+            }
+        if (!bounds.isEmpty) {
+            source.publishCoordinatedSelection(selectedText, bounds)
+        }
     }
 }
 
@@ -919,12 +1673,16 @@ internal fun NovelPageReaderPageContent(
     selectionRenderer: NovelSelectedTextRenderer = NovelSelectedTextRenderer.PAGE_READER,
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
+    onSelectionRendererActionsChanged: (NovelSelectedTextRendererActions) -> Unit = {},
+    selectionClearRequestToken: Int = 0,
+    selectionExpandRequestToken: Int = 0,
     onPlainTap: ((Float, Float, Float, Float) -> Unit)? = null,
     onImageLongClick: ((String) -> Unit)? = null,
     touchHandlingEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
+    val selectionCoordinator = remember(contentPage.pageIndex) { NovelPageReaderSelectionCoordinator() }
     val contentLayout = resolveNovelPageReaderContentLayout(
         contentPadding = contentPadding,
         statusBarTopPadding = statusBarTopPadding,
@@ -1043,6 +1801,11 @@ internal fun NovelPageReaderPageContent(
                                     selectionRenderer = selectionRenderer,
                                     selectionSessionIdProvider = selectionSessionIdProvider,
                                     onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                                    onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                                    selectionCoordinator = selectionCoordinator,
+                                    selectionBlockOrder = index,
+                                    selectionClearRequestToken = selectionClearRequestToken,
+                                    selectionExpandRequestToken = selectionExpandRequestToken,
                                     onPlainTap = onPlainTap,
                                     touchHandlingEnabled = touchHandlingEnabled,
                                     modifier = Modifier.fillMaxWidth(),
@@ -1090,6 +1853,11 @@ internal fun NovelPageReaderPageContent(
                                     selectionRenderer = selectionRenderer,
                                     selectionSessionIdProvider = selectionSessionIdProvider,
                                     onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                                    onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                                    selectionCoordinator = selectionCoordinator,
+                                    selectionBlockOrder = index,
+                                    selectionClearRequestToken = selectionClearRequestToken,
+                                    selectionExpandRequestToken = selectionExpandRequestToken,
                                     onPlainTap = onPlainTap,
                                     touchHandlingEnabled = touchHandlingEnabled,
                                     modifier = Modifier.fillMaxWidth(),
@@ -1212,7 +1980,13 @@ internal fun NovelPageReaderTextBlock(
     selectionRenderer: NovelSelectedTextRenderer? = null,
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
+    onSelectionRendererActionsChanged: (NovelSelectedTextRendererActions) -> Unit = {},
+    selectionCoordinator: NovelPageReaderSelectionCoordinator? = null,
+    selectionBlockOrder: Int = 0,
+    selectionClearRequestToken: Int = 0,
+    selectionExpandRequestToken: Int = 0,
     onPlainTap: ((Float, Float, Float, Float) -> Unit)? = null,
+    onSelectionGestureActiveChanged: ((Boolean) -> Unit)? = null,
     touchHandlingEnabled: Boolean = true,
     onUrlClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -1257,15 +2031,33 @@ internal fun NovelPageReaderTextBlock(
                     readerSettings.selectedTextTranslationEnabled ||
                     readerSettings.novelDictionaryEnabled
                 )
+    // The TextView stays non-focusable to avoid Compose interop focus crashes, so draw selection
+    // feedback explicitly using the reader theme's primary color.
+    val blockSelectionHighlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f).toArgb()
+    val blockSelectionHandleColor = MaterialTheme.colorScheme.primary.toArgb()
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            NovelPageReaderTextView(
+            lateinit var textView: NovelPageReaderTextView
+            textView = NovelPageReaderTextView(
                 context = context,
                 selectionRenderer = selectionRenderer ?: NovelSelectedTextRenderer.PAGE_READER,
                 selectionSessionIdProvider = selectionSessionIdProvider,
-                onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                onSelectedTextSelectionChanged = { selection ->
+                    if (selection != null) {
+                        onSelectionRendererActionsChanged(
+                            NovelSelectedTextRendererActions(
+                                clear = textView::clearSelectionForConsole,
+                                expand = textView::expandSelectionForConsole,
+                            ),
+                        )
+                    }
+                    onSelectedTextSelectionChanged(selection)
+                },
+                selectionCoordinator = selectionCoordinator,
+                selectionBlockOrder = selectionBlockOrder,
                 onPlainTap = onPlainTap,
+                onSelectionGestureActiveChanged = onSelectionGestureActiveChanged,
                 touchHandlingEnabled = touchHandlingEnabled,
                 selectionInteractionEnabled = selectionInteractionEnabled,
             ).apply {
@@ -1277,14 +2069,27 @@ internal fun NovelPageReaderTextBlock(
                 setPadding(0, 0, 0, glyphPadBottom)
                 includeFontPadding = false
                 setTextColor(blockTextColor.toArgb())
+                // Selection is drawn explicitly in NovelPageReaderTextView.onDraw(). Keeping
+                // TextView's native highlight transparent prevents the action-mode owner from
+                // receiving a second, darker/lighter overlay than coordinated sibling blocks.
+                setHighlightColor(android.graphics.Color.TRANSPARENT)
+                selectionHighlightColor = blockSelectionHighlightColor
+                selectionHandleColor = blockSelectionHandleColor
                 applyNovelPageReaderTextViewMetrics(textView = this, metrics = blockTextViewMetrics)
             }
+            textView
         },
         update = { textView ->
             textView.isDictionaryEnabled = readerSettings.novelDictionaryEnabled
             textView.isTranslationEnabled = readerSettings.selectedTextTranslationEnabled
             textView.updatePlainTapHandler(onPlainTap)
+            textView.updateSelectionGestureActiveChangedHandler(onSelectionGestureActiveChanged)
             textView.updateSelectionInteractionEnabled(selectionInteractionEnabled)
+            textView.setHighlightColor(android.graphics.Color.TRANSPARENT)
+            textView.selectionHighlightColor = blockSelectionHighlightColor
+            textView.selectionHandleColor = blockSelectionHandleColor
+            textView.applySelectionClearRequestToken(selectionClearRequestToken)
+            textView.applySelectionExpandRequestToken(selectionExpandRequestToken)
             val glyphPadBottom = resolvePageReaderGlyphOverflowPaddingPx(blockTextSizePx)
             textView.setPadding(textView.paddingLeft, textView.paddingTop, textView.paddingRight, glyphPadBottom)
             applyNovelPageReaderTextViewMetrics(textView = textView, metrics = blockTextViewMetrics)

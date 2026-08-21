@@ -355,7 +355,6 @@ class NovelReaderUiVisibilityTest {
     fun `bottom overlay hidden when reader ui hidden`() {
         val visible = shouldShowBottomInfoOverlay(
             showReaderUi = false,
-            showBatteryAndTime = true,
             showKindleInfoBlock = true,
             showTimeToEnd = true,
             showWordCount = true,
@@ -368,26 +367,12 @@ class NovelReaderUiVisibilityTest {
     fun `bottom overlay hidden when only percentage is enabled`() {
         val visible = shouldShowBottomInfoOverlay(
             showReaderUi = true,
-            showBatteryAndTime = false,
             showKindleInfoBlock = true,
             showTimeToEnd = false,
             showWordCount = false,
         )
 
         assertFalse(visible)
-    }
-
-    @Test
-    fun `bottom overlay stays visible for battery and time`() {
-        val visible = shouldShowBottomInfoOverlay(
-            showReaderUi = true,
-            showBatteryAndTime = true,
-            showKindleInfoBlock = true,
-            showTimeToEnd = false,
-            showWordCount = false,
-        )
-
-        assertTrue(visible)
     }
 
     @Test
@@ -407,7 +392,6 @@ class NovelReaderUiVisibilityTest {
         assertTrue(
             shouldShowBottomInfoOverlay(
                 showReaderUi = true,
-                showBatteryAndTime = false,
                 showKindleInfoBlock = true,
                 showTimeToEnd = true,
                 showWordCount = false,
@@ -416,7 +400,6 @@ class NovelReaderUiVisibilityTest {
         assertTrue(
             shouldShowBottomInfoOverlay(
                 showReaderUi = true,
-                showBatteryAndTime = false,
                 showKindleInfoBlock = true,
                 showTimeToEnd = false,
                 showWordCount = true,
@@ -428,7 +411,6 @@ class NovelReaderUiVisibilityTest {
     fun `bottom overlay hides kindle informers when kindle block is disabled`() {
         val visible = shouldShowBottomInfoOverlay(
             showReaderUi = true,
-            showBatteryAndTime = false,
             showKindleInfoBlock = false,
             showTimeToEnd = true,
             showWordCount = true,

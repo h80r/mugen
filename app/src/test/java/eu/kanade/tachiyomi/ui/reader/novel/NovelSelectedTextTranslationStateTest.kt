@@ -41,6 +41,25 @@ class NovelSelectedTextTranslationStateTest {
     }
 
     @Test
+    fun `dictionary alternate is offered only for a single word`() {
+        isNovelSelectedTextSingleWord("hero") shouldBe true
+        isNovelSelectedTextSingleWord("l'amour") shouldBe true
+        isNovelSelectedTextSingleWord("  hello world  ") shouldBe false
+        isNovelSelectedTextSingleWord("...") shouldBe false
+    }
+
+    @Test
+    fun `selection console keeps its action order`() {
+        NovelSelectedTextConsoleAction.entries shouldBe listOf(
+            NovelSelectedTextConsoleAction.COPY,
+            NovelSelectedTextConsoleAction.SHARE,
+            NovelSelectedTextConsoleAction.EXPAND,
+            NovelSelectedTextConsoleAction.DICTIONARY,
+            NovelSelectedTextConsoleAction.TRANSLATE,
+        )
+    }
+
+    @Test
     fun `stale response is rejected when session id changes`() {
         val activeSelection = NovelSelectedTextSelection(
             sessionId = 7L,

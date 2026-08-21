@@ -6,6 +6,7 @@ import android.graphics.Typeface
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector4D
 import androidx.compose.animation.core.keyframes
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -557,6 +558,10 @@ internal fun PageTurnPageRenderer(
     onTextTap: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> onToggleUi() },
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
+    onSelectionRendererActionsChanged: (eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions) -> Unit = {},
+    selectionClearRequestToken: Int = 0,
+    selectionExpandRequestToken: Int = 0,
+    selectionActive: Boolean = false,
 ) {
     // Chapter neighbour availability drives two different things: the extra boundary placeholder
     // page (renderer geometry) and whether an edge tap may switch chapters (navigation). When the
@@ -591,6 +596,9 @@ internal fun PageTurnPageRenderer(
             hasPreviousChapter = hasPreviousChapter,
         )
     }
+    val selectionRelevantPreferencesEnabled = readerSettings.textSelectionEnabled ||
+        readerSettings.selectedTextTranslationEnabled ||
+        readerSettings.novelDictionaryEnabled
     val pageCurlState = rememberPageCurlState(initialCurrent = initialVirtualPage)
     val currentPage = pageCurlState.current.coerceIn(0, virtualPageCount - 1)
     val currentActualPage = resolvePageTurnRendererProgressPageIndex(
@@ -731,11 +739,11 @@ internal fun PageTurnPageRenderer(
         pageCurlConfig.shadowAlpha = rendererConfig.preset.shadowAlpha
         pageCurlConfig.shadowRadius = rendererConfig.shadowRadiusDp.dp
         pageCurlConfig.shadowOffset = DpOffset(rendererConfig.shadowOffsetXDp.dp, 0.dp)
-        pageCurlConfig.dragBackwardEnabled = currentPage > 0
-        pageCurlConfig.dragForwardEnabled = currentPage < virtualPageCount - 1
-        pageCurlConfig.tapBackwardEnabled = latestTapToScrollEnabled && currentActualPage > 0
-        pageCurlConfig.tapForwardEnabled = latestTapToScrollEnabled && currentActualPage < actualPageCount - 1
-        pageCurlConfig.tapCustomEnabled = rendererConfig.tapCustomEnabled
+        pageCurlConfig.dragBackwardEnabled = !selectionActive && currentPage > 0
+        pageCurlConfig.dragForwardEnabled = !selectionActive && currentPage < virtualPageCount - 1
+        pageCurlConfig.tapBackwardEnabled = !selectionActive && latestTapToScrollEnabled && currentActualPage > 0
+        pageCurlConfig.tapForwardEnabled = !selectionActive && latestTapToScrollEnabled && currentActualPage < actualPageCount - 1
+        pageCurlConfig.tapCustomEnabled = !selectionActive && rendererConfig.tapCustomEnabled
         pageCurlConfig.dragInteraction = dragInteraction
         pageCurlConfig.tapInteraction = tapInteraction
     }
@@ -1024,6 +1032,9 @@ internal fun PageTurnPageRenderer(
                         ttsHighlightColor = ttsHighlightColor,
                         selectionSessionIdProvider = selectionSessionIdProvider,
                         onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                        onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                        selectionClearRequestToken = selectionClearRequestToken,
+                        selectionExpandRequestToken = selectionExpandRequestToken,
                         onPlainTap = onTextTap,
                         touchHandlingEnabled = false,
                     )
@@ -1052,6 +1063,9 @@ internal fun PageTurnPageRenderer(
                                 ttsHighlightColor = ttsHighlightColor,
                                 selectionSessionIdProvider = selectionSessionIdProvider,
                                 onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                                onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                                selectionClearRequestToken = selectionClearRequestToken,
+                                selectionExpandRequestToken = selectionExpandRequestToken,
                                 onPlainTap = onTextTap,
                                 touchHandlingEnabled = false,
                                 modifier = Modifier.weight(1f),
@@ -1059,6 +1073,62 @@ internal fun PageTurnPageRenderer(
                         }
                     }
                 }
+            }
+        }
+
+        val currentBoundaryTarget = resolvePageTurnRendererBoundaryChapterTarget(
+            currentPage = currentPage,
+            contentPageCount = actualPageCount,
+            hasPreviousChapter = hasPreviousChapter,
+            hasNextChapter = hasNextChapter,
+        )
+        if (
+            pageCurlState.progress == 0f &&
+            currentBoundaryTarget == HorizontalChapterSwipeAction.NONE &&
+            spreadColumns == 1
+        ) {
+            val interactivePageTexture = if (isBackgroundMode) activeBackgroundTexture else backgroundTexture
+            val interactiveTextureStrength = if (isBackgroundMode) 0 else nativeTextureStrengthPercent
+            val interactiveSurfaceColor = if (isBackgroundMode) null else rendererConfig.backPageColor
+            Box(modifier = Modifier.fillMaxSize()) {
+                NovelAtmosphereBackground(
+                    backgroundColor = textBackground,
+                    backgroundTexture = interactivePageTexture,
+                    nativeTextureStrengthPercent = interactiveTextureStrength,
+                    oledEdgeGradient = activeOledEdgeGradient,
+                    isDarkTheme = isDarkTheme,
+                    pageEdgeShadow = pageEdgeShadow,
+                    pageEdgeShadowAlpha = pageEdgeShadowAlpha,
+                    backgroundImageModel = backgroundImageModel,
+                )
+                NovelPageReaderPageContent(
+                    contentPage = safeContentPages.getOrElse(currentActualPage) { NovelPageContentPage(emptyList()) },
+                    readerSettings = readerSettings,
+                    textColor = textColor,
+                    textBackground = textBackground,
+                    pageSurfaceColor = interactiveSurfaceColor,
+                    backgroundTexture = interactivePageTexture,
+                    nativeTextureStrengthPercent = interactiveTextureStrength,
+                    chapterTitleTextColor = chapterTitleTextColor,
+                    textTypeface = textTypeface,
+                    chapterTitleTypeface = chapterTitleTypeface,
+                    textShadowEnabled = readerSettings.textShadow,
+                    textShadowColor = readerSettings.textShadowColor,
+                    textShadowBlur = readerSettings.textShadowBlur,
+                    textShadowX = readerSettings.textShadowX,
+                    textShadowY = readerSettings.textShadowY,
+                    contentPadding = contentPadding,
+                    statusBarTopPadding = statusBarTopPadding,
+                    ttsHighlightState = ttsHighlightState,
+                    ttsHighlightColor = ttsHighlightColor,
+                    selectionSessionIdProvider = selectionSessionIdProvider,
+                    onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                    onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                    selectionClearRequestToken = selectionClearRequestToken,
+                    selectionExpandRequestToken = selectionExpandRequestToken,
+                    onPlainTap = onTextTap,
+                    touchHandlingEnabled = selectionRelevantPreferencesEnabled,
+                )
             }
         }
     }

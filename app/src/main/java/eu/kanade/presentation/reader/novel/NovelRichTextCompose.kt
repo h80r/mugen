@@ -108,6 +108,13 @@ internal fun NovelRichNativeScrollItem(
     block: NovelRichContentBlock,
     index: Int,
     lastIndex: Int,
+    /**
+     * Position of this block within the coordinator's shared selection surface. Defaults to
+     * [index] (correct when items are already list-global, e.g. one chapter's scroll list); BOOK
+     * mode's cross-section list passes its own list-wide position instead, since [index] there
+     * resets to 0 at the start of every section and would collide across sections.
+     */
+    selectionBlockOrder: Int = index,
     chapterTitle: String,
     novelTitle: String,
     sourceId: Long,
@@ -124,7 +131,12 @@ internal fun NovelRichNativeScrollItem(
     ttsHighlightColor: Color = Color.Transparent,
     selectionSessionIdProvider: () -> Long,
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit,
+    onSelectionRendererActionsChanged: (eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions) -> Unit = {},
+    selectionClearRequestToken: Int = 0,
+    selectionExpandRequestToken: Int = 0,
     onPlainTap: ((Float, Float, Float, Float) -> Unit)? = null,
+    onSelectionGestureActiveChanged: ((Boolean) -> Unit)? = null,
+    selectionCoordinator: NovelPageReaderSelectionCoordinator? = null,
 ) {
     val context = LocalContext.current
     val onLinkClick: (String) -> Unit = { rawUrl ->
@@ -191,8 +203,14 @@ internal fun NovelRichNativeScrollItem(
                         selectionRenderer = NovelSelectedTextRenderer.NATIVE_SCROLL,
                         selectionSessionIdProvider = selectionSessionIdProvider,
                         onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                        onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                        selectionClearRequestToken = selectionClearRequestToken,
+                        selectionExpandRequestToken = selectionExpandRequestToken,
                         onPlainTap = onPlainTap,
                         onUrlClick = onLinkClick,
+                        onSelectionGestureActiveChanged = onSelectionGestureActiveChanged,
+                        selectionCoordinator = selectionCoordinator,
+                        selectionBlockOrder = selectionBlockOrder,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Box(
@@ -223,8 +241,14 @@ internal fun NovelRichNativeScrollItem(
                     selectionRenderer = NovelSelectedTextRenderer.NATIVE_SCROLL,
                     selectionSessionIdProvider = selectionSessionIdProvider,
                     onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                    onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                    selectionClearRequestToken = selectionClearRequestToken,
+                    selectionExpandRequestToken = selectionExpandRequestToken,
                     onPlainTap = onPlainTap,
                     onUrlClick = onLinkClick,
+                    onSelectionGestureActiveChanged = onSelectionGestureActiveChanged,
+                    selectionCoordinator = selectionCoordinator,
+                    selectionBlockOrder = selectionBlockOrder,
                     modifier = Modifier.padding(
                         top = if (index == 0) statusBarTopPadding else 0.dp,
                         bottom = if (index == lastIndex) 0.dp else paragraphSpacing,
@@ -273,8 +297,14 @@ internal fun NovelRichNativeScrollItem(
                 selectionRenderer = NovelSelectedTextRenderer.NATIVE_SCROLL,
                 selectionSessionIdProvider = selectionSessionIdProvider,
                 onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                selectionClearRequestToken = selectionClearRequestToken,
+                selectionExpandRequestToken = selectionExpandRequestToken,
                 onPlainTap = onPlainTap,
                 onUrlClick = onLinkClick,
+                onSelectionGestureActiveChanged = onSelectionGestureActiveChanged,
+                selectionCoordinator = selectionCoordinator,
+                selectionBlockOrder = selectionBlockOrder,
                 modifier = Modifier.padding(
                     top = if (index == 0) statusBarTopPadding else 4.dp,
                     bottom = if (index == lastIndex) 0.dp else paragraphSpacing + 2.dp,
@@ -314,8 +344,14 @@ internal fun NovelRichNativeScrollItem(
                 selectionRenderer = NovelSelectedTextRenderer.NATIVE_SCROLL,
                 selectionSessionIdProvider = selectionSessionIdProvider,
                 onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                selectionClearRequestToken = selectionClearRequestToken,
+                selectionExpandRequestToken = selectionExpandRequestToken,
                 onPlainTap = onPlainTap,
                 onUrlClick = onLinkClick,
+                onSelectionGestureActiveChanged = onSelectionGestureActiveChanged,
+                selectionCoordinator = selectionCoordinator,
+                selectionBlockOrder = selectionBlockOrder,
                 modifier = Modifier
                     .padding(
                         top = if (index == 0) statusBarTopPadding else 0.dp,

@@ -111,6 +111,9 @@ internal fun NovelBookContentHost(
     ttsHighlightColor: Color,
     selectionSessionIdProvider: () -> Long,
     onSelectedTextSelectionChanged: (eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection?) -> Unit,
+    onSelectionRendererActionsChanged: (eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions) -> Unit = {},
+    selectionClearRequestToken: Int = 0,
+    selectionExpandRequestToken: Int = 0,
     onPlainTap: (Float, Float, Float, Float) -> Unit,
     onRetrySection: (Int) -> Unit,
     contentPaddingTop: Dp,
@@ -317,7 +320,19 @@ internal fun NovelBookContentHost(
     }
 
     if (useNativeBookScroll) {
+        // Mirrors NovelReaderContentHost's scroll-mode fix: a long-press-to-select gesture in a
+        // NovelPageReaderTextBlock item disallows parent touch interception via the View system,
+        // which LazyColumn's Compose-native scroll gesture never consults on its own. Suspending
+        // userScrollEnabled while a selection gesture is pending/active stops the list from
+        // scrolling out from under it.
+        var selectionGestureActive by remember { mutableStateOf(false) }
+        // Shared across every composed item so a selection/handle drag can span paragraphs,
+        // matching the page-turn renderer's per-page coordinator.
+        val bookSelectionCoordinator = remember(state.novel.id) {
+            NovelPageReaderSelectionCoordinator()
+        }
         LazyColumn(
+            userScrollEnabled = !selectionGestureActive,
             modifier = Modifier.fillMaxSize(),
             state = textListState,
             contentPadding = PaddingValues(
@@ -342,8 +357,13 @@ internal fun NovelBookContentHost(
                 ttsHighlightColor = ttsHighlightColor,
                 selectionSessionIdProvider = selectionSessionIdProvider,
                 onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                selectionClearRequestToken = selectionClearRequestToken,
+                selectionExpandRequestToken = selectionExpandRequestToken,
                 onPlainTap = onPlainTap,
                 onRetrySection = onRetrySection,
+                onSelectionGestureActiveChanged = { active -> selectionGestureActive = active },
+                selectionCoordinator = bookSelectionCoordinator,
             )
         }
     } else if (loadDocument != null) {
@@ -418,8 +438,13 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.novelBookNativeConte
     ttsHighlightColor: Color,
     selectionSessionIdProvider: () -> Long,
     onSelectedTextSelectionChanged: (eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection?) -> Unit,
+    onSelectionRendererActionsChanged: (eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions) -> Unit,
+    selectionClearRequestToken: Int = 0,
+    selectionExpandRequestToken: Int = 0,
     onPlainTap: (Float, Float, Float, Float) -> Unit,
     onRetrySection: (Int) -> Unit,
+    onSelectionGestureActiveChanged: ((Boolean) -> Unit)? = null,
+    selectionCoordinator: NovelPageReaderSelectionCoordinator? = null,
 ) {
     itemsIndexed(
         entries,
@@ -429,7 +454,7 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.novelBookNativeConte
                 is NovelBookNativeEntry.Failed -> "book-${entry.sectionIndex}-failed"
             }
         },
-    ) { _, entry ->
+    ) { listIndex, entry ->
         when (entry) {
             is NovelBookNativeEntry.Block -> {
                 val blockAnchor = entry.block.anchor
@@ -460,6 +485,7 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.novelBookNativeConte
                         block = entry.block,
                         index = entry.blockIndex,
                         lastIndex = entry.sectionBlockCount - 1,
+                        selectionBlockOrder = listIndex,
                         chapterTitle = state.chapter.name,
                         novelTitle = state.novel.title,
                         sourceId = state.novel.source,
@@ -476,7 +502,12 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.novelBookNativeConte
                         ttsHighlightColor = ttsHighlightColor,
                         selectionSessionIdProvider = selectionSessionIdProvider,
                         onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                        onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                        selectionClearRequestToken = selectionClearRequestToken,
+                        selectionExpandRequestToken = selectionExpandRequestToken,
                         onPlainTap = onPlainTap,
+                        onSelectionGestureActiveChanged = onSelectionGestureActiveChanged,
+                        selectionCoordinator = selectionCoordinator,
                     )
                 }
             }

@@ -19,7 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.outlined.ChevronLeft
@@ -83,7 +82,6 @@ internal fun NovelReaderBottomPanel(
     onOpenNextChapter: ((Long) -> Unit)?,
     onOpenChapterList: () -> Unit,
     onOpenWebView: (String) -> Unit,
-    onScrollToTop: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenTtsBehaviorSettings: () -> Unit,
     onOpenGeminiDialog: () -> Unit,
@@ -189,9 +187,6 @@ internal fun NovelReaderBottomPanel(
                 }
                 IconButton(onClick = { onOpenWebView(chapterWebUrl ?: chapterUrl ?: novelUrl ?: "") }) {
                     Icon(imageVector = Icons.Filled.Public, contentDescription = null)
-                }
-                IconButton(onClick = onScrollToTop) {
-                    Icon(imageVector = Icons.Filled.KeyboardArrowUp, contentDescription = null)
                 }
                 IconButton(onClick = onOpenSettings) {
                     Icon(imageVector = Icons.Outlined.Settings, contentDescription = null)

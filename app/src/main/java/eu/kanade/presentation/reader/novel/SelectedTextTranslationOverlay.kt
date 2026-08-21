@@ -3,11 +3,6 @@
 package eu.kanade.presentation.reader.novel
 
 import android.text.Spanned
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,33 +13,28 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Translate
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -53,11 +43,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.core.text.HtmlCompat
+import eu.kanade.presentation.reader.settings.AuroraGlassSection
+import eu.kanade.presentation.reader.settings.AuroraTabRow
+import eu.kanade.presentation.theme.AuroraTheme
 import eu.kanade.tachiyomi.ui.reader.novel.NovelDictionaryUiState
 import eu.kanade.tachiyomi.ui.reader.novel.NovelReaderScreenModel
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextTranslationErrorReason
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextTranslationUiState
+import eu.kanade.tachiyomi.ui.reader.novel.isNovelSelectedTextSingleWord
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.i18n.stringResource
 
@@ -72,158 +66,141 @@ internal fun SelectedTextTranslationOverlay(
     onTranslate: () -> Unit,
     onRetry: () -> Unit,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier,
     onLookupDefinition: () -> Unit = {},
     onRetryDictionary: () -> Unit = {},
     onDismissDictionary: () -> Unit = {},
     onPlayPronunciation: (String) -> Unit = {},
 ) {
+    val selection = state.selectedTextTranslationSelection ?: return
     val showTranslation = state.readerSettings.selectedTextTranslationEnabled
     val showDictionary = state.novelDictionaryEnabled
-
-    if (!showTranslation && !showDictionary) return
-
-    val selection = state.selectedTextTranslationSelection
     val translationState = state.selectedTextTranslationUiState
     val dictionaryState = state.novelDictionaryUiState
-
-    val isVisible = selection != null
-
-    var activeTab by remember(selection) {
-        mutableStateOf(
-            if (showDictionary) TabType.DICTIONARY else TabType.TRANSLATION,
-        )
+    val initialTab = when {
+        dictionaryState !is NovelDictionaryUiState.Idle -> TabType.DICTIONARY
+        translationState !is NovelSelectedTextTranslationUiState.Idle -> TabType.TRANSLATION
+        else -> return
     }
+    var activeTab by remember(selection) { mutableStateOf(initialTab) }
+    var showBothTabs by remember(selection) { mutableStateOf(false) }
 
-    // Auto-trigger load when switching tabs if state is Idle
-    LaunchedEffect(activeTab, selection) {
-        if (selection != null) {
-            if (activeTab == TabType.DICTIONARY && dictionaryState is NovelDictionaryUiState.Looking) {
-                // Already loading
-            } else if (activeTab == TabType.TRANSLATION &&
-                translationState is NovelSelectedTextTranslationUiState.Translating
-            ) {
-                // Already loading
-            }
-        }
-    }
-
-    AnimatedVisibility(
-        visible = isVisible,
-        enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
-        exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
-        modifier = modifier,
+    val aurora = AuroraTheme.colors
+    val pageMaxHeight = (LocalConfiguration.current.screenHeightDp * 0.62f).dp
+    NovelReaderAuroraSheet(
+        onDismissRequest = {
+            onDismiss()
+            onDismissDictionary()
+        },
     ) {
-        if (selection != null) {
-            // Show full bottom sheet card
-            Card(
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = pageMaxHeight),
+        ) {
+            // Match the reader settings drawer chrome: the shared sheet supplies the glass,
+            // border, blur, and bottom-sheet behavior; this is its familiar drag handle.
+            Box(
                 modifier = Modifier
-                    .padding(16.dp)
-                    .widthIn(max = 360.dp)
-                    .heightIn(max = 420.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                ),
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 4.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    // 1. Header Tabs
-                    if (showTranslation && showDictionary) {
-                        PrimaryTabRow(
-                            selectedTabIndex = activeTab.ordinal,
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            modifier = Modifier.fillMaxWidth(),
+                Box(
+                    modifier = Modifier
+                        .size(width = 36.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(
+                            if (aurora.isDark) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.18f),
+                        ),
+                )
+            }
+            if (showBothTabs && showTranslation && showDictionary) {
+                AuroraTabRow(
+                    titles = listOf(
+                        stringResource(AYMR.strings.novel_reader_dictionary_action_lookup),
+                        stringResource(AYMR.strings.novel_reader_selected_text_translation_tab),
+                    ),
+                    selectedIndex = activeTab.ordinal,
+                    onSelect = { index ->
+                        activeTab = TabType.entries[index]
+                        if (activeTab == TabType.DICTIONARY && dictionaryState is NovelDictionaryUiState.Idle) {
+                            onLookupDefinition()
+                        } else if (activeTab == TabType.TRANSLATION &&
+                            translationState is NovelSelectedTextTranslationUiState.Idle
                         ) {
-                            Tab(
-                                selected = activeTab == TabType.DICTIONARY,
-                                onClick = {
-                                    activeTab = TabType.DICTIONARY
-                                    if (dictionaryState is NovelDictionaryUiState.Idle) {
-                                        onLookupDefinition()
-                                    }
-                                },
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Search,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                        Spacer(modifier = Modifier.size(6.dp))
-                                        Text(stringResource(AYMR.strings.novel_reader_dictionary_action_lookup))
-                                    }
-                                },
-                            )
-                            Tab(
-                                selected = activeTab == TabType.TRANSLATION,
-                                onClick = {
-                                    activeTab = TabType.TRANSLATION
-                                    if (translationState is NovelSelectedTextTranslationUiState.Idle) {
-                                        onTranslate()
-                                    }
-                                },
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Translate,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                        Spacer(modifier = Modifier.size(6.dp))
-                                        Text(
-                                            stringResource(
-                                                AYMR.strings.novel_reader_selected_text_translation_action_translate,
-                                            ),
-                                        )
-                                    }
-                                },
-                            )
+                            onTranslate()
                         }
-                    }
-
-                    // 2. Content Body (Scrollable)
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
-                    ) {
-                        if (activeTab == TabType.DICTIONARY) {
-                            DictionaryContent(
-                                selection = selection,
-                                state = dictionaryState,
-                                onRetry = onRetryDictionary,
-                                onPlayPronunciation = onPlayPronunciation,
-                            )
-                        } else {
-                            TranslationContent(
-                                selection = selection,
-                                state = translationState,
-                                onRetry = onRetry,
-                            )
-                        }
-                    }
-
-                    // 3. Footer Control Row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        TextButton(onClick = {
-                            onDismiss()
-                            onDismissDictionary()
-                        }) {
-                            Text(stringResource(AYMR.strings.novel_reader_selected_text_translation_action_close))
-                        }
+                    },
+                )
+            }
+            AuroraGlassSection(
+                title = when (activeTab) {
+                    TabType.DICTIONARY -> stringResource(AYMR.strings.novel_reader_dictionary_action_lookup)
+                    TabType.TRANSLATION -> stringResource(AYMR.strings.novel_reader_selected_text_translation_tab)
+                },
+                modifier = Modifier.weight(1f, fill = false),
+            ) {
+                // A lookup only opens after its explicit console action. The alternate mode is
+                // offered progressively once a result is available.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = pageMaxHeight)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                ) {
+                    if (activeTab == TabType.DICTIONARY) {
+                        DictionaryContent(
+                            selection = selection,
+                            state = dictionaryState,
+                            onRetry = onRetryDictionary,
+                            onPlayPronunciation = onPlayPronunciation,
+                        )
+                    } else {
+                        TranslationContent(
+                            selection = selection,
+                            state = translationState,
+                            onRetry = onRetry,
+                        )
                     }
                 }
             }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val offerDictionary = !showBothTabs && showDictionary &&
+                    translationState is NovelSelectedTextTranslationUiState.Result &&
+                    isNovelSelectedTextSingleWord(selection.text)
+                val offerTranslation = !showBothTabs && showTranslation &&
+                    dictionaryState is NovelDictionaryUiState.Result
+                if (offerDictionary) {
+                    TextButton(onClick = {
+                        showBothTabs = true
+                        activeTab = TabType.DICTIONARY
+                        onLookupDefinition()
+                    }) {
+                        Text(stringResource(AYMR.strings.novel_reader_selected_text_translation_action_view_definition))
+                    }
+                } else if (offerTranslation) {
+                    TextButton(onClick = {
+                        showBothTabs = true
+                        activeTab = TabType.TRANSLATION
+                        onTranslate()
+                    }) {
+                        Text(stringResource(AYMR.strings.novel_reader_selected_text_translation_action_view_translation))
+                    }
+                }
+                TextButton(onClick = {
+                    onDismiss()
+                    onDismissDictionary()
+                }) {
+                    Text(stringResource(AYMR.strings.novel_reader_selected_text_translation_action_close))
+                }
+            }
+            Spacer(Modifier.size(4.dp))
         }
     }
 }
