@@ -329,7 +329,6 @@ class UnlockableManager(
             else -> UnlockableType.UNKNOWN
         }
     }
-
 }
 
 /**

@@ -3,7 +3,6 @@
 package eu.kanade.presentation.reader.novel
 
 import android.widget.Toast
-import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -75,6 +74,7 @@ import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.i18n.stringResource
+import java.util.Locale
 import kotlin.math.roundToInt
 import androidx.compose.ui.text.style.TextAlign as ComposeTextAlign
 

@@ -129,5 +129,4 @@ class NovelRepositoryImplTest {
 
         repository.getNovelById(checkNotNull(novelId)).viewerFlags shouldBe 0L
     }
-
 }

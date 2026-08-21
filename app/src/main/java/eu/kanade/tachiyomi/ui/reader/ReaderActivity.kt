@@ -13,7 +13,6 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
-import androidx.annotation.RequiresApi
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -24,6 +23,7 @@ import android.view.View.LAYER_TYPE_HARDWARE
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.viewModels
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -1382,7 +1382,14 @@ class ReaderActivity : BaseActivity() {
                 val shader = RuntimeShader(BINARIZATION_SHADER)
                 shader.setFloatUniform("binarization", binarization)
                 val binarizationEffect = RenderEffect.createRuntimeShaderEffect(shader, "inputShader")
-                effect = if (effect != null) RenderEffect.createChainEffect(binarizationEffect, effect) else binarizationEffect
+                effect =
+                    if (effect !=
+                        null
+                    ) {
+                        RenderEffect.createChainEffect(binarizationEffect, effect)
+                    } else {
+                        binarizationEffect
+                    }
             }
             target.setRenderEffect(effect)
         }

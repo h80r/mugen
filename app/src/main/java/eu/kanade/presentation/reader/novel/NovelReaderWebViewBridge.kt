@@ -2,8 +2,6 @@ package eu.kanade.presentation.reader.novel
 
 import android.content.Context
 import android.os.SystemClock
-import androidx.webkit.WebViewCompat
-import androidx.webkit.WebViewFeature
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -13,6 +11,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.core.content.res.ResourcesCompat
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextAnchor
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRenderer
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection

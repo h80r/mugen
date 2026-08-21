@@ -264,4 +264,3 @@ private fun latticeProtocolOverlay(base: ColorScheme, isAmoled: Boolean, isDark:
         surface = if (isDark && !isAmoled) Color(0xFF050608) else base.surface,
     )
 }
-

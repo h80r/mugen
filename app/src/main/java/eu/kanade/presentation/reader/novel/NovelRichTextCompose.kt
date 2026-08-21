@@ -131,7 +131,9 @@ internal fun NovelRichNativeScrollItem(
     ttsHighlightColor: Color = Color.Transparent,
     selectionSessionIdProvider: () -> Long,
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit,
-    onSelectionRendererActionsChanged: (eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions) -> Unit = {},
+    onSelectionRendererActionsChanged: (
+        eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions,
+    ) -> Unit = {},
     selectionClearRequestToken: Int = 0,
     selectionExpandRequestToken: Int = 0,
     onPlainTap: ((Float, Float, Float, Float) -> Unit)? = null,

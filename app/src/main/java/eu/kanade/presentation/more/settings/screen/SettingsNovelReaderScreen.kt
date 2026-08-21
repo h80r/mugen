@@ -3,7 +3,6 @@ package eu.kanade.presentation.more.settings.screen
 import android.text.format.Formatter
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.ui.platform.LocalLocale
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -47,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -230,7 +230,10 @@ object SettingsNovelReaderScreen : Screen() {
                         contentPadding = contentPadding,
                     )
                 },
-                navigateUp = handleBack ?: { navigator.pop(); Unit },
+                navigateUp = handleBack ?: {
+                    navigator.pop()
+                    Unit
+                },
             ),
             TabContent(
                 titleRes = AYMR.strings.novel_reader_tab_translation,
@@ -240,7 +243,10 @@ object SettingsNovelReaderScreen : Screen() {
                         contentPadding = contentPadding,
                     )
                 },
-                navigateUp = handleBack ?: { navigator.pop(); Unit },
+                navigateUp = handleBack ?: {
+                    navigator.pop()
+                    Unit
+                },
             ),
             TabContent(
                 titleRes = AYMR.strings.novel_reader_tab_navigation,
@@ -250,7 +256,10 @@ object SettingsNovelReaderScreen : Screen() {
                         contentPadding = contentPadding,
                     )
                 },
-                navigateUp = handleBack ?: { navigator.pop(); Unit },
+                navigateUp = handleBack ?: {
+                    navigator.pop()
+                    Unit
+                },
             ),
             TabContent(
                 titleRes = AYMR.strings.novel_reader_tab_accessibility_tts,
@@ -260,7 +269,10 @@ object SettingsNovelReaderScreen : Screen() {
                         contentPadding = contentPadding,
                     )
                 },
-                navigateUp = handleBack ?: { navigator.pop(); Unit },
+                navigateUp = handleBack ?: {
+                    navigator.pop()
+                    Unit
+                },
             ),
             TabContent(
                 titleRes = AYMR.strings.novel_reader_tab_advanced,
@@ -270,7 +282,10 @@ object SettingsNovelReaderScreen : Screen() {
                         contentPadding = contentPadding,
                     )
                 },
-                navigateUp = handleBack ?: { navigator.pop(); Unit },
+                navigateUp = handleBack ?: {
+                    navigator.pop()
+                    Unit
+                },
             ),
         )
         val state = rememberPagerState(initialPage = initialTab) { tabs.size }

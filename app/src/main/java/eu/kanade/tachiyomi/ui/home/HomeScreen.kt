@@ -84,9 +84,9 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.domain.ui.model.BottomNavAppearance
 import eu.kanade.domain.ui.model.StartScreen
-import eu.kanade.presentation.components.LocalHostScaffoldContentPadding
 import eu.kanade.presentation.components.AuroraBottomBar
 import eu.kanade.presentation.components.AuroraBottomBarItem
+import eu.kanade.presentation.components.LocalHostScaffoldContentPadding
 import eu.kanade.presentation.components.auroraCelestialBar
 import eu.kanade.presentation.components.auroraCelestialHalo
 import eu.kanade.presentation.components.auroraCelestialRail

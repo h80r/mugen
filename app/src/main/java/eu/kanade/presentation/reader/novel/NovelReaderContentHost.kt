@@ -95,6 +95,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -111,7 +112,6 @@ import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -139,13 +139,13 @@ import eu.kanade.tachiyomi.ui.reader.novel.NovelBookEngineFlow
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookLocation
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookSpine
 import eu.kanade.tachiyomi.ui.reader.novel.NovelBookWindowState
-import eu.kanade.tachiyomi.ui.reader.novel.NovelReaderScreenModel
 import eu.kanade.tachiyomi.ui.reader.novel.NovelDictionaryUiState
-import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextTranslationUiState
+import eu.kanade.tachiyomi.ui.reader.novel.NovelReaderScreenModel
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextConsoleAction
-import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRenderer
+import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection
+import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextTranslationUiState
 import eu.kanade.tachiyomi.ui.reader.novel.encodeNativeScrollProgress
 import eu.kanade.tachiyomi.ui.reader.novel.encodePageReaderProgress
 import eu.kanade.tachiyomi.ui.reader.novel.encodeWebScrollProgressPercent
@@ -3016,7 +3016,10 @@ internal fun NovelReaderContentHost(
                                                         selectionRenderer = NovelSelectedTextRenderer.NATIVE_SCROLL,
                                                         selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                                                         onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
-                                                        onSelectionRendererActionsChanged = { selectionRendererActions = it },
+                                                        onSelectionRendererActionsChanged = {
+                                                            selectionRendererActions =
+                                                                it
+                                                        },
                                                         selectionClearRequestToken = selectionClearRequestToken,
                                                         selectionExpandRequestToken = selectionExpandRequestToken,
                                                         onPlainTap = { tapX, tapY, width, height ->
@@ -3063,7 +3066,9 @@ internal fun NovelReaderContentHost(
                                                     selectionRenderer = NovelSelectedTextRenderer.NATIVE_SCROLL,
                                                     selectionSessionIdProvider = nextSelectedTextSelectionSessionId,
                                                     onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
-                                                    onSelectionRendererActionsChanged = { selectionRendererActions = it },
+                                                    onSelectionRendererActionsChanged = {
+                                                        selectionRendererActions = it
+                                                    },
                                                     selectionClearRequestToken = selectionClearRequestToken,
                                                     selectionExpandRequestToken = selectionExpandRequestToken,
                                                     onPlainTap = { tapX, tapY, width, height ->
@@ -4164,7 +4169,9 @@ internal fun NovelReaderContentHost(
                             NovelSelectedTextConsoleAction.COPY -> {
                                 val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                                     as? android.content.ClipboardManager
-                                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText(null, consoleSelection.text))
+                                clipboard?.setPrimaryClip(
+                                    android.content.ClipData.newPlainText(null, consoleSelection.text),
+                                )
                                 clearSelectedTextSelection()
                             }
                             NovelSelectedTextConsoleAction.SHARE -> {

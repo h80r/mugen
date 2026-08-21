@@ -225,7 +225,9 @@ internal fun ComposePagerPageRenderer(
     onImageLongClick: ((String) -> Unit)? = null,
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
-    onSelectionRendererActionsChanged: (eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions) -> Unit = {},
+    onSelectionRendererActionsChanged: (
+        eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions,
+    ) -> Unit = {},
     selectionClearRequestToken: Int = 0,
     selectionExpandRequestToken: Int = 0,
 ) {

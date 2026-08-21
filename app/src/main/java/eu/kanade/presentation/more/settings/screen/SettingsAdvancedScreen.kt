@@ -8,8 +8,8 @@ import android.webkit.WebStorage
 import android.webkit.WebView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -136,7 +136,10 @@ object SettingsAdvancedScreen : Screen() {
                         contentPadding = contentPadding,
                     )
                 },
-                navigateUp = handleBack ?: { navigator.pop(); Unit },
+                navigateUp = handleBack ?: {
+                    navigator.pop()
+                    Unit
+                },
             ),
             TabContent(
                 titleRes = AYMR.strings.advanced_tab_data_cache,
@@ -146,7 +149,10 @@ object SettingsAdvancedScreen : Screen() {
                         contentPadding = contentPadding,
                     )
                 },
-                navigateUp = handleBack ?: { navigator.pop(); Unit },
+                navigateUp = handleBack ?: {
+                    navigator.pop()
+                    Unit
+                },
             ),
             TabContent(
                 titleRes = AYMR.strings.advanced_tab_debugging,
@@ -156,7 +162,10 @@ object SettingsAdvancedScreen : Screen() {
                         contentPadding = contentPadding,
                     )
                 },
-                navigateUp = handleBack ?: { navigator.pop(); Unit },
+                navigateUp = handleBack ?: {
+                    navigator.pop()
+                    Unit
+                },
             ),
         )
         val state = rememberPagerState(initialPage = initialTab) { tabs.size }

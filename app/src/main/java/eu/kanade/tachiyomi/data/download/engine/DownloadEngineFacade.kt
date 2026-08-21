@@ -47,7 +47,9 @@ class DownloadEngineFacade(
     private val telemetryCollector = DownloadTelemetryCollector(speedTracker)
     private val storageManager: StorageManager = Injekt.get()
     private val application: Application? = runCatching { Injekt.get<Application>() }.getOrNull()
-    private val storageStatsManager: StorageStatsManager? = application?.getSystemService(StorageStatsManager::class.java)
+    private val storageStatsManager: StorageStatsManager? = application?.getSystemService(
+        StorageStatsManager::class.java,
+    )
     private val storageStatsRefreshMs = 5_000L
     private var lastStorageStatsAtMs = 0L
     private var storageStatsJob: Job? = null

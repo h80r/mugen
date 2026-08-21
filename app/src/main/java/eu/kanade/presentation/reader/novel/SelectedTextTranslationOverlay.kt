@@ -190,7 +190,9 @@ internal fun SelectedTextTranslationOverlay(
                         activeTab = TabType.TRANSLATION
                         onTranslate()
                     }) {
-                        Text(stringResource(AYMR.strings.novel_reader_selected_text_translation_action_view_translation))
+                        Text(
+                            stringResource(AYMR.strings.novel_reader_selected_text_translation_action_view_translation),
+                        )
                     }
                 }
                 TextButton(onClick = {
@@ -272,7 +274,9 @@ private fun DictionaryContent(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                            contentDescription = stringResource(AYMR.strings.novel_reader_selected_text_translation_action_speak),
+                            contentDescription = stringResource(
+                                AYMR.strings.novel_reader_selected_text_translation_action_speak,
+                            ),
                             tint = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                     }
@@ -413,7 +417,10 @@ private fun TranslationContent(
                 )
                 state.translationResult.detectedSourceLanguage?.takeIf<String> { it.isNotBlank() }?.let { lang ->
                     Text(
-                        text = stringResource(AYMR.strings.novel_reader_selected_text_translation_source_language, lang),
+                        text = stringResource(
+                            AYMR.strings.novel_reader_selected_text_translation_source_language,
+                            lang,
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

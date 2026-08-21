@@ -558,7 +558,9 @@ internal fun PageTurnPageRenderer(
     onTextTap: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> onToggleUi() },
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
-    onSelectionRendererActionsChanged: (eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions) -> Unit = {},
+    onSelectionRendererActionsChanged: (
+        eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions,
+    ) -> Unit = {},
     selectionClearRequestToken: Int = 0,
     selectionExpandRequestToken: Int = 0,
     selectionActive: Boolean = false,
@@ -742,7 +744,8 @@ internal fun PageTurnPageRenderer(
         pageCurlConfig.dragBackwardEnabled = !selectionActive && currentPage > 0
         pageCurlConfig.dragForwardEnabled = !selectionActive && currentPage < virtualPageCount - 1
         pageCurlConfig.tapBackwardEnabled = !selectionActive && latestTapToScrollEnabled && currentActualPage > 0
-        pageCurlConfig.tapForwardEnabled = !selectionActive && latestTapToScrollEnabled && currentActualPage < actualPageCount - 1
+        pageCurlConfig.tapForwardEnabled =
+            !selectionActive && latestTapToScrollEnabled && currentActualPage < actualPageCount - 1
         pageCurlConfig.tapCustomEnabled = !selectionActive && rendererConfig.tapCustomEnabled
         pageCurlConfig.dragInteraction = dragInteraction
         pageCurlConfig.tapInteraction = tapInteraction

@@ -14,8 +14,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeState
 import eu.kanade.presentation.components.AuroraBottomBar
 import eu.kanade.presentation.components.AuroraBottomBarItem
@@ -125,8 +125,12 @@ private fun NovelSelectedTextConsoleAction.label(): String = when (this) {
     NovelSelectedTextConsoleAction.COPY -> stringResource(MR.strings.copy)
     NovelSelectedTextConsoleAction.SHARE -> stringResource(MR.strings.action_share)
     NovelSelectedTextConsoleAction.EXPAND -> stringResource(AYMR.strings.novel_reader_text_selection_action_expand)
-    NovelSelectedTextConsoleAction.DICTIONARY -> stringResource(AYMR.strings.novel_reader_text_selection_action_dictionary)
-    NovelSelectedTextConsoleAction.TRANSLATE -> stringResource(AYMR.strings.novel_reader_text_selection_action_translate)
+    NovelSelectedTextConsoleAction.DICTIONARY -> stringResource(
+        AYMR.strings.novel_reader_text_selection_action_dictionary,
+    )
+    NovelSelectedTextConsoleAction.TRANSLATE -> stringResource(
+        AYMR.strings.novel_reader_text_selection_action_translate,
+    )
 }
 
 private fun NovelSelectedTextConsoleAction.icon() = when (this) {

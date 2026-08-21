@@ -80,80 +80,80 @@ fun NovelReaderSettingsDialog(
     val aurora = AuroraTheme.colors
     val pageMaxHeight = (LocalConfiguration.current.screenHeightDp * 0.62f).dp
     NovelReaderAuroraSheet(onDismissRequest = onDismissRequest) {
-            Column {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp, bottom = 4.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(36.dp)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(
-                                if (aurora.isDark) {
-                                    Color.White.copy(alpha = 0.22f)
-                                } else {
-                                    Color.Black.copy(alpha = 0.18f)
-                                },
-                            ),
-                    )
-                }
-                AuroraTabRow(
-                    titles = tabTitles,
-                    selectedIndex = pagerState.currentPage,
-                    onSelect = { scope.launch { pagerState.animateScrollToPage(it) } },
+                        .width(36.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(
+                            if (aurora.isDark) {
+                                Color.White.copy(alpha = 0.22f)
+                            } else {
+                                Color.Black.copy(alpha = 0.18f)
+                            },
+                        ),
                 )
-                // No divider under tabs — glass cards already separate content; a rim line
-                // reads as a flat "belt" between the capsule tabs and the first section.
-                HorizontalPager(
-                    modifier = Modifier.heightIn(max = pageMaxHeight),
-                    state = pagerState,
-                    verticalAlignment = Alignment.Top,
-                    beyondViewportPageCount = 0,
-                ) { page ->
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = pageMaxHeight)
-                            .padding(vertical = 8.dp)
-                            .verticalScroll(rememberScrollState()),
-                    ) {
-                        when (page) {
-                            0 -> GeneralTab(
-                                settings = settings,
-                                sourceId = sourceId,
-                                currentWebViewActive = currentWebViewActive,
-                                currentPageReaderActive = currentPageReaderActive,
-                                overrideEnabled = overrideEnabled,
-                                preferences = preferences,
-                                onDismissRequest = onDismissRequest,
-                                bookModeActive = bookModeActive,
-                                onPrepareBook = onPrepareBook,
-                                prepareBookInProgress = prepareBookInProgress,
-                                preparedChapterCount = preparedChapterCount,
-                                totalChapterCount = totalChapterCount,
-                            )
-                            1 -> ReadingTab(
-                                settings = settings,
-                                sourceId = sourceId,
-                                overrideEnabled = overrideEnabled,
-                                preferences = preferences,
-                            )
-                            2 -> BehaviorTab(
-                                settings = settings,
-                                sourceId = sourceId,
-                                currentPageReaderActive = currentPageReaderActive,
-                                overrideEnabled = overrideEnabled,
-                                preferences = preferences,
-                            )
-                        }
+            }
+            AuroraTabRow(
+                titles = tabTitles,
+                selectedIndex = pagerState.currentPage,
+                onSelect = { scope.launch { pagerState.animateScrollToPage(it) } },
+            )
+            // No divider under tabs — glass cards already separate content; a rim line
+            // reads as a flat "belt" between the capsule tabs and the first section.
+            HorizontalPager(
+                modifier = Modifier.heightIn(max = pageMaxHeight),
+                state = pagerState,
+                verticalAlignment = Alignment.Top,
+                beyondViewportPageCount = 0,
+            ) { page ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = pageMaxHeight)
+                        .padding(vertical = 8.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    when (page) {
+                        0 -> GeneralTab(
+                            settings = settings,
+                            sourceId = sourceId,
+                            currentWebViewActive = currentWebViewActive,
+                            currentPageReaderActive = currentPageReaderActive,
+                            overrideEnabled = overrideEnabled,
+                            preferences = preferences,
+                            onDismissRequest = onDismissRequest,
+                            bookModeActive = bookModeActive,
+                            onPrepareBook = onPrepareBook,
+                            prepareBookInProgress = prepareBookInProgress,
+                            preparedChapterCount = preparedChapterCount,
+                            totalChapterCount = totalChapterCount,
+                        )
+                        1 -> ReadingTab(
+                            settings = settings,
+                            sourceId = sourceId,
+                            overrideEnabled = overrideEnabled,
+                            preferences = preferences,
+                        )
+                        2 -> BehaviorTab(
+                            settings = settings,
+                            sourceId = sourceId,
+                            currentPageReaderActive = currentPageReaderActive,
+                            overrideEnabled = overrideEnabled,
+                            preferences = preferences,
+                        )
                     }
                 }
-                Spacer(Modifier.height(4.dp))
             }
+            Spacer(Modifier.height(4.dp))
+        }
     }
 }
 

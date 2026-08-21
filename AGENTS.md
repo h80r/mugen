@@ -3,5 +3,5 @@
 ## Memories
 
 <!-- memory:start -->
-- Antes de mergear em develop, executar lint + build e corrigir erros.
+- Antes de mergear em develop, executar lint (`./gradlew spotlessCheck`) + build e corrigir erros.
 <!-- memory:end -->

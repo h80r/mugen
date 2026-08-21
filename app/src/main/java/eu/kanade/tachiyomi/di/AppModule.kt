@@ -10,7 +10,6 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import aniyomi.core.common.torrent.TorrentServerApi
 import aniyomi.core.common.torrent.TorrentServerUtils
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
-import dev.h80r.mugen.BuildConfig
 import data.Chapters
 import data.History
 import data.Mangas
@@ -20,6 +19,7 @@ import dataanime.Episodes
 import datanovel.Novel_chapters
 import datanovel.Novel_history
 import datanovel.Novels
+import dev.h80r.mugen.BuildConfig
 import eu.kanade.domain.extension.novel.interactor.TrustNovelExtension
 import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.domain.track.anime.store.DelayedAnimeTrackingStore

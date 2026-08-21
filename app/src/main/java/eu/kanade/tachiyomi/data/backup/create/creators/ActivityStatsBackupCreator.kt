@@ -51,7 +51,9 @@ class ActivityStatsBackupCreator(
      * - Activity log (last 365 days)
      * - Full statistics
      */
-    suspend operator fun invoke(options: eu.kanade.tachiyomi.data.backup.create.BackupOptions): ActivityStatsBackupData {
+    suspend operator fun invoke(
+        options: eu.kanade.tachiyomi.data.backup.create.BackupOptions,
+    ): ActivityStatsBackupData {
         val activityLog = if (options.activityLog) backupActivityLog() else emptyList()
         val stats = if (options.stats) backupStats() else null
 

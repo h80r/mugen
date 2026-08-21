@@ -568,4 +568,3 @@ internal enum class AboutFooterLinkLabel {
 internal enum class AboutFooterLinkIcon {
     Github,
 }
-

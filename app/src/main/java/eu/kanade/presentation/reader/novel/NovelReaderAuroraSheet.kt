@@ -1,6 +1,5 @@
 package eu.kanade.presentation.reader.novel
 
-import android.graphics.Color as AndroidColor
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.view.Window
@@ -28,6 +27,7 @@ import eu.kanade.presentation.theme.AuroraTheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlin.math.roundToInt
+import android.graphics.Color as AndroidColor
 
 /** Shared Aurora glass chrome for reader sheets, including progressive window effects. */
 @Composable

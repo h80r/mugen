@@ -22,7 +22,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -34,6 +33,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundTexture
@@ -115,7 +115,9 @@ internal fun SpreadPageTurnPageRenderer(
     onTextTap: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> onToggleUi() },
     selectionSessionIdProvider: () -> Long = { 0L },
     onSelectedTextSelectionChanged: (NovelSelectedTextSelection?) -> Unit = {},
-    onSelectionRendererActionsChanged: (eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions) -> Unit = {},
+    onSelectionRendererActionsChanged: (
+        eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextRendererActions,
+    ) -> Unit = {},
     selectionClearRequestToken: Int = 0,
     selectionExpandRequestToken: Int = 0,
 ) {
@@ -149,7 +151,8 @@ internal fun SpreadPageTurnPageRenderer(
 
     // Both surfaces are seeded at the same virtual slot and only ever move together (see the two
     // LaunchedEffects below), so they never observe each other's page content out of step.
-    val leftCurlState = rememberPageCurlState(initialCurrent = (virtualSlotCount - 1 - initialVirtualSlot).coerceAtLeast(0))
+    val leftCurlState =
+        rememberPageCurlState(initialCurrent = (virtualSlotCount - 1 - initialVirtualSlot).coerceAtLeast(0))
     val rightCurlState = rememberPageCurlState(initialCurrent = initialVirtualSlot)
 
     val currentVirtualSlot = (virtualSlotCount - 1 - leftCurlState.current).coerceIn(0, virtualSlotCount - 1)

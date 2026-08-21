@@ -811,5 +811,4 @@ class BrowseNovelSourceScreenModelTest {
         name: String,
         state: NovelFilter.Sort.Selection? = null,
     ) : NovelFilter.Sort(name, arrayOf("A", "B"), state)
-
 }

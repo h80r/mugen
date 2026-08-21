@@ -152,8 +152,20 @@ fun RowScope.AuroraBottomBarItem(
 ) {
     val colors = AuroraTheme.colorsForCurrentTheme()
     val interactionSource = remember { MutableInteractionSource() }
-    val iconColor = if (selected) colors.accent else colors.textSecondary.copy(alpha = if (colors.isDark) 0.72f else 0.78f)
-    val labelColor = if (selected) colors.accent else colors.textSecondary.copy(alpha = if (colors.isDark) 0.82f else 0.88f)
+    val iconColor = if (selected) {
+        colors.accent
+    } else {
+        colors.textSecondary.copy(
+            alpha = if (colors.isDark) 0.72f else 0.78f,
+        )
+    }
+    val labelColor = if (selected) {
+        colors.accent
+    } else {
+        colors.textSecondary.copy(
+            alpha = if (colors.isDark) 0.82f else 0.88f,
+        )
+    }
     val iconShape = RoundedCornerShape(999.dp)
     val iconBackgroundBrush = if (selected) {
         Brush.verticalGradient(
@@ -195,7 +207,13 @@ fun RowScope.AuroraBottomBarItem(
                                 .border(
                                     BorderStroke(
                                         1.dp,
-                                        if (colors.isDark) Color.White.copy(alpha = 0.12f) else colors.accent.copy(alpha = 0.16f),
+                                        if (colors.isDark) {
+                                            Color.White.copy(
+                                                alpha = 0.12f,
+                                            )
+                                        } else {
+                                            colors.accent.copy(alpha = 0.16f)
+                                        },
                                     ),
                                     iconShape,
                                 )

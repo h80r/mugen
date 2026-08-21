@@ -13,7 +13,6 @@ import android.icu.text.BreakIterator
 import android.os.Build
 import android.os.SystemClock
 import android.text.Layout
-import android.util.AttributeSet
 import android.text.Selection
 import android.text.Spannable
 import android.text.SpannableStringBuilder
@@ -26,6 +25,7 @@ import android.text.style.LeadingMarginSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.UnderlineSpan
+import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.ActionMode
 import android.view.Gravity
@@ -842,7 +842,8 @@ internal class NovelPageReaderTextView constructor(
             }
             if (selectionInteractionEnabled) {
                 if (selectionCoordinator?.hasActiveSelection() == true ||
-                    (hasActiveSelection() && !selectionBoundsInView.contains(event.x, event.y))) {
+                    (hasActiveSelection() && !selectionBoundsInView.contains(event.x, event.y))
+                ) {
                     // Clear immediately. The action-mode window or a parent gesture detector may
                     // consume the remainder of this tap, so waiting for ACTION_UP is unreliable.
                     dismissOnlyGesture = true
@@ -1662,7 +1663,10 @@ internal class NovelPageReaderSelectionCoordinator {
 
         val selectedText = orderedViews.mapNotNull { view ->
             val range = ranges[view] ?: return@mapNotNull null
-            view.selectionText().substring(range.first.coerceIn(0, view.selectionText().length), range.second.coerceIn(0, view.selectionText().length))
+            view.selectionText().substring(
+                range.first.coerceIn(0, view.selectionText().length),
+                range.second.coerceIn(0, view.selectionText().length),
+            )
                 .takeIf(String::isNotBlank)
         }.joinToString(separator = "\n")
         val bounds = ranges.keys.mapNotNull(NovelPageReaderTextView::selectionBoundsOnScreen)
