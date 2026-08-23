@@ -24,7 +24,7 @@ enum class SelectedTextAction {
 /** Commands exposed by the reader's Compose-owned selection action console. */
 enum class NovelSelectedTextConsoleAction {
     COPY,
-    SHARE,
+    SAVE_QUOTE,
     EXPAND,
     DICTIONARY,
     TRANSLATE,

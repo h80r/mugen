@@ -18,6 +18,7 @@ import dataanime.Animes
 import dataanime.Episodes
 import datanovel.Novel_chapters
 import datanovel.Novel_history
+import datanovel.Novel_quotes
 import datanovel.Novels
 import dev.h80r.mugen.BuildConfig
 import eu.kanade.domain.extension.novel.interactor.TrustNovelExtension
@@ -497,6 +498,9 @@ class AppModule(val app: Application) : InjektModule {
                     genreAdapter = StringListColumnAdapter,
                     custom_genreAdapter = StringListColumnAdapter,
                     update_strategyAdapter = MangaUpdateStrategyColumnAdapter,
+                ),
+                novel_quotesAdapter = Novel_quotes.Adapter(
+                    saved_atAdapter = DateColumnAdapter,
                 ),
             )
         }

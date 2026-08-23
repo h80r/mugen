@@ -116,4 +116,23 @@ class NovelPageReaderTtsPagingTest {
             utteranceAnchors = anchors,
         ) shouldBe "utterance-1"
     }
+
+    @Test
+    fun `resolvePageIndexForBlock returns the first page containing the block`() {
+        val pageBlockIndices = listOf(
+            listOf(0, 1),
+            listOf(1, 2),
+            listOf(3),
+        )
+
+        resolvePageIndexForBlock(1, pageBlockIndices) shouldBe 0
+        resolvePageIndexForBlock(3, pageBlockIndices) shouldBe 2
+    }
+
+    @Test
+    fun `resolvePageIndexForBlock returns null when the block is not paginated anywhere`() {
+        val pageBlockIndices = listOf(listOf(0), listOf(1))
+
+        resolvePageIndexForBlock(7, pageBlockIndices) shouldBe null
+    }
 }

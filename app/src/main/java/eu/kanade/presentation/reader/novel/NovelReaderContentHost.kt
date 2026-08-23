@@ -179,6 +179,7 @@ import eu.kanade.tachiyomi.ui.reader.novel.tts.PageReaderTtsNavigationAdapter
 import eu.kanade.tachiyomi.ui.reader.novel.tts.PageReaderTtsNavigator
 import eu.kanade.tachiyomi.ui.reader.novel.tts.WebViewTtsNavigationAdapter
 import eu.kanade.tachiyomi.ui.reader.novel.tts.WebViewTtsNavigator
+import eu.kanade.tachiyomi.ui.reader.novel.tts.resolvePageIndexForBlock
 import eu.kanade.tachiyomi.ui.reader.novel.tts.resolvePlainPageReaderTtsAnchors
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
@@ -307,6 +308,7 @@ internal fun NovelReaderContentHost(
     val onSetShowReaderUi = actions.onSetShowReaderUi
     val onOpenBottomSheet = actions.onOpenBottomSheet
     val rawOnSelectedTextSelectionChanged = actions.onSelectedTextSelectionChanged
+    val onSaveQuote = actions.onSaveQuote
     val onTranslateSelectedText = actions.onTranslateSelectedText
     val onRetrySelectedTextTranslation = actions.onRetrySelectedTextTranslation
     val onDismissSelectedTextTranslation = actions.onDismissSelectedTextTranslation
@@ -619,6 +621,7 @@ internal fun NovelReaderContentHost(
     val batteryLevel by rememberBatteryLevel(context)
     val timeText by rememberCurrentTimeText(context)
     val infoChipHazeState = remember { HazeState() }
+    val quoteSavedMessage = stringResource(AYMR.strings.novel_reader_text_selection_quote_saved)
     val geminiTranslationLabel = stringResource(AYMR.strings.novel_reader_gemini_button)
     val googleTranslationLabel = stringResource(AYMR.strings.novel_reader_google_translate)
     val disableGeminiForGoogleMessage = stringResource(
@@ -878,12 +881,29 @@ internal fun NovelReaderContentHost(
     val paragraphSpacing = remember(state.readerSettings.paragraphSpacing) {
         resolveParagraphSpacingDp(state.readerSettings.paragraphSpacing)
     }
+    // Only tried once per chapter open: rich native scroll isn't covered (no plain text list to
+    // search), and a null result — no match, or no pending seek — falls through to the normal
+    // saved-position resolution below unchanged.
+    val pendingSeekQuoteText = remember(state.chapter.id) {
+        actions.onConsumePendingSeekQuoteText(state.chapter.id)
+    }
+    val quoteSeekBlockMatch = remember(pendingSeekQuoteText, state.contentBlocks) {
+        pendingSeekQuoteText?.let { quoteText ->
+            findQuoteTextBlockMatch(
+                blocks = state.contentBlocks.mapIndexedNotNull { index, block ->
+                    (block as? NovelReaderScreenModel.ContentBlock.Text)?.let { index to it.text }
+                },
+                quoteText = quoteText,
+            )
+        }
+    }
     val initialNativeReaderIndex = remember(
         state.lastSavedIndex,
         state.lastSavedPageReaderProgress,
         state.contentBlocks.size,
+        quoteSeekBlockMatch,
     ) {
-        resolveInitialNativeReaderIndex(
+        quoteSeekBlockMatch?.blockIndex ?: resolveInitialNativeReaderIndex(
             nativeLastSavedIndex = state.lastSavedIndex,
             savedPageReaderProgress = state.lastSavedPageReaderProgress,
             itemCount = state.contentBlocks.size,
@@ -1257,7 +1277,43 @@ internal fun NovelReaderContentHost(
         usePageReader -> pageReaderItemsCount > 0
         else -> nativeScrollItemsCount > 0
     }
-    val initialContentPage = resolveInitialPageReaderPage(
+    // Page reader shares the same one-shot pendingSeekQuoteText resolved above for native scroll;
+    // a match here overrides the normal saved-position resolve, covering both plain and rich page
+    // reader since both already normalize their pagination into a blockIndex-addressable shape.
+    val pageReaderQuoteSeekPage =
+        remember(
+            pendingSeekQuoteText,
+            useRichPageReader,
+            pageReaderTextBlocks,
+            richPageReaderBlockTexts,
+            pageReaderPages,
+            richPageReaderPages,
+        ) {
+            pendingSeekQuoteText?.let { quoteText ->
+                val blockMatch = if (useRichPageReader) {
+                    findQuoteTextBlockMatch(
+                        blocks = richPageReaderBlockTexts.map { it.sourceBlockIndex to it.text.text },
+                        quoteText = quoteText,
+                    )
+                } else {
+                    findQuoteTextBlockMatch(
+                        blocks = pageReaderTextBlocks.map { it.sourceBlockIndex to it.text },
+                        quoteText = quoteText,
+                    )
+                }
+                blockMatch?.let { match ->
+                    val pageBlockIndices = if (useRichPageReader) {
+                        richPageReaderPages.map { page ->
+                            page.filterIsInstance<RichPageSlice.Text>().map { it.blockIndex }
+                        }
+                    } else {
+                        pageReaderPages.map { page -> page.map { it.blockIndex } }
+                    }
+                    resolvePageIndexForBlock(match.blockIndex, pageBlockIndices)
+                }
+            }
+        }
+    val initialContentPage = pageReaderQuoteSeekPage ?: resolveInitialPageReaderPage(
         savedPageReaderProgress = state.lastSavedPageReaderProgress,
         legacyLastSavedIndex = state.lastSavedIndex,
         pageCount = pageReaderItemsCount.coerceAtLeast(1),
@@ -3330,7 +3386,21 @@ internal fun NovelReaderContentHost(
                                         )
                                     }
 
-                                    if (shouldRestoreWebScroll) {
+                                    if (pendingSeekQuoteText != null) {
+                                        // Overrides the normal saved-position restore below: no
+                                        // pixel-based scroll is applied, the seek JS's own
+                                        // scrollIntoView does the positioning (falling back to a
+                                        // percent-scroll internally if the text isn't found).
+                                        shouldRestoreWebScroll = false
+                                        view?.evaluateJavascript(
+                                            buildWebReaderTtsSyncJavascript(
+                                                snippet = pendingSeekQuoteText,
+                                                progressPercent = state.lastSavedWebProgressPercent.coerceIn(0, 100),
+                                            ),
+                                            null,
+                                        )
+                                        view?.revealReaderDocumentAndWebView(shouldHideWebViewUntilReveal)
+                                    } else if (shouldRestoreWebScroll) {
                                         view?.restoreWebViewScroll(
                                             progressPercent = state.lastSavedWebProgressPercent.coerceIn(0, 100),
                                             onComplete = { restored ->
@@ -3728,7 +3798,21 @@ internal fun NovelReaderContentHost(
                                         )
                                     }
 
-                                    if (shouldRestoreWebScroll) {
+                                    if (pendingSeekQuoteText != null) {
+                                        // Overrides the normal saved-position restore below: no
+                                        // pixel-based scroll is applied, the seek JS's own
+                                        // scrollIntoView does the positioning (falling back to a
+                                        // percent-scroll internally if the text isn't found).
+                                        shouldRestoreWebScroll = false
+                                        view?.evaluateJavascript(
+                                            buildWebReaderTtsSyncJavascript(
+                                                snippet = pendingSeekQuoteText,
+                                                progressPercent = currentRestoreProgress,
+                                            ),
+                                            null,
+                                        )
+                                        view?.revealReaderDocumentAndWebView(shouldHideWebViewUntilReveal)
+                                    } else if (shouldRestoreWebScroll) {
                                         view?.restoreWebViewScroll(
                                             progressPercent = currentRestoreProgress,
                                             onComplete = { restored ->
@@ -4174,12 +4258,9 @@ internal fun NovelReaderContentHost(
                                 )
                                 clearSelectedTextSelection()
                             }
-                            NovelSelectedTextConsoleAction.SHARE -> {
-                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(android.content.Intent.EXTRA_TEXT, consoleSelection.text)
-                                }
-                                context.startActivity(android.content.Intent.createChooser(shareIntent, null))
+                            NovelSelectedTextConsoleAction.SAVE_QUOTE -> {
+                                onSaveQuote(consoleSelection.text)
+                                Toast.makeText(context, quoteSavedMessage, Toast.LENGTH_SHORT).show()
                                 clearSelectedTextSelection()
                             }
                             NovelSelectedTextConsoleAction.DICTIONARY -> {

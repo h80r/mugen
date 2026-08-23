@@ -27,6 +27,7 @@ import eu.kanade.tachiyomi.ui.download.DownloadsTab
 import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorScreen
 import eu.kanade.tachiyomi.ui.more.DebugAppUpdatePreviewScreen
 import eu.kanade.tachiyomi.ui.more.DebugUpdatedChangelogPreviewScreen
+import eu.kanade.tachiyomi.ui.quote.novel.NovelQuotesScreen
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.stats.StatsTab
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,6 +83,7 @@ data object MoreTab : Tab {
             onIncognitoModeChange = { screenModel.toggleIncognitoMode() },
             onDownloadClick = { navigator.push(DownloadsTab) },
             onCategoriesClick = { navigator.push(CategoriesTab) },
+            onQuotesClick = { navigator.push(NovelQuotesScreen()) },
             onSettingsClick = { navigator.push(SettingsScreen()) },
             onHelpClick = { navigator.push(HelpScreen) },
             onDebugAppUpdatePreviewClick = { navigator.push(DebugAppUpdatePreviewScreen()) },

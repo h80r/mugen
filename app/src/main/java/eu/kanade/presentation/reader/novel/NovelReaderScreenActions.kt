@@ -32,6 +32,8 @@ data class NovelReaderScreenActions(
     val onSeekBookModeProgress: (Float) -> Unit = {},
     val onToggleBookmark: () -> Unit = {},
     val onOpenDictionaryHistory: (() -> Unit)? = null,
+    val onSaveQuote: (String) -> Unit = {},
+    val onConsumePendingSeekQuoteText: (chapterId: Long) -> String? = { null },
     val onStartGeminiTranslation: () -> Unit = {},
     val onStopGeminiTranslation: () -> Unit = {},
     val onToggleGeminiTranslationVisibility: () -> Unit = {},

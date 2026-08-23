@@ -52,7 +52,7 @@ class NovelSelectedTextTranslationStateTest {
     fun `selection console keeps its action order`() {
         NovelSelectedTextConsoleAction.entries shouldBe listOf(
             NovelSelectedTextConsoleAction.COPY,
-            NovelSelectedTextConsoleAction.SHARE,
+            NovelSelectedTextConsoleAction.SAVE_QUOTE,
             NovelSelectedTextConsoleAction.EXPAND,
             NovelSelectedTextConsoleAction.DICTIONARY,
             NovelSelectedTextConsoleAction.TRANSLATE,

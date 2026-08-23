@@ -6,6 +6,7 @@ import data.Mangas
 import dataanime.Animehistory
 import dataanime.Animes
 import datanovel.Novel_history
+import datanovel.Novel_quotes
 import datanovel.Novels
 import eu.kanade.tachiyomi.animesource.model.AnimeUpdateStrategy
 import eu.kanade.tachiyomi.animesource.model.FetchType
@@ -62,6 +63,9 @@ class StatsReadCountSqlTest {
                 genreAdapter = StringListColumnAdapter,
                 custom_genreAdapter = StringListColumnAdapter,
                 update_strategyAdapter = MangaUpdateStrategyColumnAdapter,
+            ),
+            novel_quotesAdapter = Novel_quotes.Adapter(
+                saved_atAdapter = DateColumnAdapter,
             ),
         )
 

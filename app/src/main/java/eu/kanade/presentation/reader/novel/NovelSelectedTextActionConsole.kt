@@ -1,10 +1,10 @@
 package eu.kanade.presentation.reader.novel
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -123,7 +123,9 @@ internal fun NovelSelectedTextActionConsole(
 @Composable
 private fun NovelSelectedTextConsoleAction.label(): String = when (this) {
     NovelSelectedTextConsoleAction.COPY -> stringResource(MR.strings.copy)
-    NovelSelectedTextConsoleAction.SHARE -> stringResource(MR.strings.action_share)
+    NovelSelectedTextConsoleAction.SAVE_QUOTE -> stringResource(
+        AYMR.strings.novel_reader_text_selection_action_save_quote,
+    )
     NovelSelectedTextConsoleAction.EXPAND -> stringResource(AYMR.strings.novel_reader_text_selection_action_expand)
     NovelSelectedTextConsoleAction.DICTIONARY -> stringResource(
         AYMR.strings.novel_reader_text_selection_action_dictionary,
@@ -135,7 +137,7 @@ private fun NovelSelectedTextConsoleAction.label(): String = when (this) {
 
 private fun NovelSelectedTextConsoleAction.icon() = when (this) {
     NovelSelectedTextConsoleAction.COPY -> Icons.Default.ContentCopy
-    NovelSelectedTextConsoleAction.SHARE -> Icons.Default.Share
+    NovelSelectedTextConsoleAction.SAVE_QUOTE -> Icons.Default.Bookmark
     NovelSelectedTextConsoleAction.EXPAND -> Icons.Default.MoreHoriz
     NovelSelectedTextConsoleAction.DICTIONARY -> Icons.Default.Search
     NovelSelectedTextConsoleAction.TRANSLATE -> Icons.Default.Translate

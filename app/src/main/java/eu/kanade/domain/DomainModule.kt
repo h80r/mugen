@@ -131,6 +131,7 @@ import tachiyomi.data.history.novel.NovelHistoryRepositoryImpl
 import tachiyomi.data.items.chapter.ChapterRepositoryImpl
 import tachiyomi.data.items.episode.EpisodeRepositoryImpl
 import tachiyomi.data.items.novelchapter.NovelChapterRepositoryImpl
+import tachiyomi.data.quote.novel.NovelQuoteRepositoryImpl
 import tachiyomi.data.release.ReleaseServiceImpl
 import tachiyomi.data.series.manga.MangaSeriesRepositoryImpl
 import tachiyomi.data.series.novel.NovelSeriesRepositoryImpl
@@ -266,6 +267,10 @@ import tachiyomi.domain.items.novelchapter.repository.NovelChapterRepository
 import tachiyomi.domain.items.season.interactor.GetAnimeSeasonsByParentId
 import tachiyomi.domain.items.season.interactor.SetAnimeDefaultSeasonFlags
 import tachiyomi.domain.items.season.interactor.ShouldUpdateDbSeason
+import tachiyomi.domain.quote.novel.interactor.DeleteNovelQuote
+import tachiyomi.domain.quote.novel.interactor.GetNovelQuotes
+import tachiyomi.domain.quote.novel.interactor.InsertNovelQuote
+import tachiyomi.domain.quote.novel.repository.NovelQuoteRepository
 import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.domain.release.service.AppUpdatePreferences
 import tachiyomi.domain.release.service.ReleaseService
@@ -608,6 +613,11 @@ class DomainModule : InjektModule {
 
         addSingletonFactory<NovelHistoryRepository> { NovelHistoryRepositoryImpl(get()) }
         addFactory { GetTotalNovelReadDuration(get()) }
+
+        addSingletonFactory<NovelQuoteRepository> { NovelQuoteRepositoryImpl(get()) }
+        addFactory { GetNovelQuotes(get()) }
+        addFactory { InsertNovelQuote(get()) }
+        addFactory { DeleteNovelQuote(get()) }
 
         addFactory { DeleteChapterDownload(get(), get()) }
 

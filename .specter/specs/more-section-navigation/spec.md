@@ -105,3 +105,11 @@ Source: navigation audit against `SettingsSearchScreen.kt`.
 - GIVEN Categorias, Estatísticas, Conquistas, Tesouraria, Fila de downloads, Erros de atualização, and Ajuda were reachable from the More tab
 - WHEN the new structure ships
 - THEN all remain reachable directly from the More tab root
+
+### Requirement: Citações is reachable from the More tab
+The system SHALL present "Citações" as a direct navigation entry in the More tab, opening the saved-quotes list screen.
+
+#### Scenario: Citações is reachable directly from the More tab
+- GIVEN the user opens the More tab
+- WHEN they look for the saved-quotes list
+- THEN "Citações" is listed as a direct More-tab entry, opening the quotes list screen

@@ -6,6 +6,7 @@ import `data`.Mangas
 import dataanime.Animehistory
 import dataanime.Animes
 import datanovel.Novel_history
+import datanovel.Novel_quotes
 import datanovel.Novels
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.Dispatchers
@@ -99,6 +100,7 @@ class ExtensionRepoToStoreMigrationIntegrationTest {
                 update_strategyAdapter = MangaUpdateStrategyColumnAdapter,
                 custom_genreAdapter = StringListColumnAdapter,
             ),
+            novel_quotesAdapter = Novel_quotes.Adapter(saved_atAdapter = DateColumnAdapter),
         )
 
         mangaHandler = AndroidMangaDatabaseHandler(

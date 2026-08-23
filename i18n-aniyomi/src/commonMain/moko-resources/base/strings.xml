@@ -873,6 +873,14 @@
     <string name="novel_reader_text_selection_action_select_sentence">Select sentence</string>
     <string name="novel_reader_text_selection_action_select_paragraph">Select paragraph</string>
     <string name="novel_reader_text_selection_action_expand">Expand</string>
+    <string name="novel_reader_text_selection_action_save_quote">Save quote</string>
+    <string name="novel_reader_text_selection_quote_saved">Quote saved</string>
+    <string name="quotes_screen_empty_title">No quotes yet</string>
+    <string name="quotes_screen_empty_message">Select text while reading a novel and tap Save quote to collect it here</string>
+    <string name="quotes_screen_delete_confirm_title">Delete quote</string>
+    <string name="quotes_screen_delete_confirm_message">This quote will be permanently deleted.</string>
+    <string name="quotes_screen_novel_type_label">Novel</string>
+    <string name="quotes_screen_source_line">%1$s • %2$s, Ch. %3$s • %4$s</string>
     <string name="novel_reader_selected_text_translation_action_view_definition">View definition</string>
     <string name="novel_reader_selected_text_translation_action_view_translation">View translation</string>
     <string name="novel_reader_text_selection_action_translate">Translate</string>
@@ -2037,6 +2045,7 @@
     <string name="debug_updated_changelog_preview_summary">Open the post-update changelog sheet with mock release data</string>
     <string name="aurora_library">Library</string>
     <string name="aurora_categories">Categories</string>
+    <string name="aurora_quotes">Quotes</string>
     <string name="aurora_data_storage">Data &amp; Storage</string>
     <string name="aurora_player_settings">Player Settings</string>
     <string name="aurora_download_paused">Paused</string>

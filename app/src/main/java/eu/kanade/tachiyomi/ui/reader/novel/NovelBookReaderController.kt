@@ -56,6 +56,7 @@ internal interface NovelBookReaderHost {
     fun bookApplyBookSectionTranslation(chapterId: Long, bodyHtml: String): String
     fun bookGeminiTranslationVisible(): Boolean
     fun bookGoogleTranslationVisible(): Boolean
+    fun bookConsumePendingSeekQuoteText(chapterId: Long): String?
 }
 
 /**
@@ -273,7 +274,13 @@ internal class NovelBookReaderController(
         val request = bookSeekRequestState.value ?: return
         if (request.id != seekRequestId) return
         bookSeekInFlight = false
-        if (request.reason == BookSeekReason.Resume && bookModeRestoringPosition) {
+        // Search covers the quote-tap seek on open, which sets bookModeRestoringPosition the same
+        // way Resume does (see maybeStartBookMode) whenever the target isn't the book start — so it
+        // needs the same cover-clearing here, or a quote seek away from the start would leave the
+        // reader covered forever.
+        val clearsRestoringCover = request.reason == BookSeekReason.Resume ||
+            request.reason == BookSeekReason.Search
+        if (clearsRestoringCover && bookModeRestoringPosition) {
             bookModeRestoringPosition = false
             refreshBookModeState()
         }
@@ -546,10 +553,15 @@ internal class NovelBookReaderController(
             ?.let { artifact.locationOf(it) }
             ?: artifact.locationOf((bookState?.charOffset ?: 0L).toInt())
         val resumeChapterId = storedLocator?.chapterId ?: bookState?.lastChapterId
-        val resumeLocation = if (resumeChapterId == chapter.id) {
-            storedLocation
-        } else {
-            artifact.locationOfChapter(chapter.id) ?: storedLocation
+        // Overrides the normal stored-position/chapter-start resume below when the reader was
+        // opened from a quote tap: a null match (chapter re-fetched, quote text no longer present,
+        // or no artifact) falls straight through to the existing resumeLocation computation.
+        val quoteSeekLocator = host.bookConsumePendingSeekQuoteText(chapter.id)
+            ?.let { quoteText -> artifact.locatorOfQuoteInChapter(chapter.id, quoteText) }
+        val resumeLocation = when {
+            quoteSeekLocator != null -> artifact.locationOf(quoteSeekLocator)
+            resumeChapterId == chapter.id -> storedLocation
+            else -> artifact.locationOfChapter(chapter.id) ?: storedLocation
         }
         bookModeRuntime.startWithSpine(
             spine = artifact.spine,
@@ -574,7 +586,10 @@ internal class NovelBookReaderController(
         refreshBookModeState()
         // The renderer is told to move exactly once, and the cover above it stays until that move
         // is acknowledged. No timer decides when the resume is "probably" done anymore.
-        requestBookSeek(resumedLocation, BookSeekReason.Resume)
+        requestBookSeek(
+            resumedLocation,
+            if (quoteSeekLocator != null) BookSeekReason.Search else BookSeekReason.Resume,
+        )
         bookModeSessionStartCharOffset = artifactSource
             ?.let { it.chapterStartAt(it.charOffsetOf(resumedLocation)) }
             ?: 0

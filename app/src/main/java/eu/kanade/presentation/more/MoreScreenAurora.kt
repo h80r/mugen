@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.ReportProblem
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -72,6 +73,7 @@ fun MoreScreenAurora(
     onIncognitoModeChange: (Boolean) -> Unit,
     onDownloadClick: () -> Unit,
     onCategoriesClick: () -> Unit,
+    onQuotesClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onDebugAppUpdatePreviewClick: () -> Unit,
     onDebugUpdatedChangelogPreviewClick: () -> Unit,
@@ -168,6 +170,13 @@ fun MoreScreenAurora(
                     title = stringResource(AYMR.strings.aurora_categories),
                     icon = Icons.AutoMirrored.Outlined.Label,
                     onClick = onCategoriesClick,
+                    darkRimLightEnabled = darkRimLightEnabled,
+                )
+
+                AuroraSettingItem(
+                    title = stringResource(AYMR.strings.aurora_quotes),
+                    icon = Icons.Outlined.FormatQuote,
+                    onClick = onQuotesClick,
                     darkRimLightEnabled = darkRimLightEnabled,
                 )
 

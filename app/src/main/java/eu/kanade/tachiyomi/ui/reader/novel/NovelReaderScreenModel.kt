@@ -158,6 +158,7 @@ class NovelReaderScreenModel(
     private val chapterId: Long,
     private val seriesId: Long? = null,
     private val autoStartGeminiTranslation: Boolean = false,
+    seekQuoteText: String? = null,
     private val novelChapterRepository: NovelChapterRepository = Injekt.get(),
     private val syncNovelChaptersWithSource: SyncNovelChaptersWithSource = Injekt.get(),
     private val getNovel: GetNovel = Injekt.get(),
@@ -169,6 +170,7 @@ class NovelReaderScreenModel(
         Injekt.get(),
     private val pluginStorage: NovelPluginStorage = Injekt.get(),
     private val historyRepository: NovelHistoryRepository? = null,
+    private val insertNovelQuote: tachiyomi.domain.quote.novel.interactor.InsertNovelQuote = Injekt.get(),
     private val basePreferences: BasePreferences = Injekt.get(),
     private val getIncognitoState: GetNovelIncognitoState = Injekt.get(),
     private val novelReaderPreferences: NovelReaderPreferences = Injekt.get(),
@@ -529,6 +531,8 @@ class NovelReaderScreenModel(
     override fun bookGeminiTranslationVisible(): Boolean = translationState.isGeminiTranslationVisible
 
     override fun bookGoogleTranslationVisible(): Boolean = translationState.isGoogleTranslationVisible
+
+    override fun bookConsumePendingSeekQuoteText(chapterId: Long): String? = consumePendingSeekQuoteText(chapterId)
 
     override fun bookTtsChapterRepository(): NovelTtsChapterRepository = ttsChapterRepository
 
@@ -1731,6 +1735,36 @@ class NovelReaderScreenModel(
             )
         }
     }
+
+    /**
+     * Saves [text] as a quote sourced from the chapter currently at the reading position, matching
+     * [toggleChapterBookmark]'s scroll-aware chapter resolution so a quote is attributed correctly
+     * even when the selection is made in a chapter other than [currentChapter].
+     */
+    fun saveSelectedTextAsQuote(text: String) {
+        val scrolledChapter = bookController.bookModeChapterAtReadingPosition()
+        val chapterId = scrolledChapter?.id ?: currentChapter?.id ?: return
+        screenModelScope.launch {
+            insertNovelQuote.await(chapterId, text)
+        }
+    }
+
+    /**
+     * Pending "seek to this quote's text" request from opening the reader via a quote tap.
+     *
+     * Consumable once, and only for [chapterId] — the chapter the screen was originally opened
+     * with — so a next/prev chapter navigation never re-applies a stale seek meant for a
+     * different chapter.
+     */
+    private var pendingSeekQuoteText: String? = seekQuoteText
+
+    internal fun consumePendingSeekQuoteText(forChapterId: Long): String? {
+        if (forChapterId != chapterId) return null
+        val text = pendingSeekQuoteText ?: return null
+        pendingSeekQuoteText = null
+        return text
+    }
+
     override fun onDispose() {
         // Fire-and-forget cancellation — no blocking cancelAndJoin calls.
         // Each job is independently cancelled; cleanup happens in clearChapterTransientState().

@@ -1,0 +1,34 @@
+import java.util.Date;
+
+CREATE TABLE novel_quotes(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    chapter_id INTEGER NOT NULL,
+    quote_text TEXT NOT NULL,
+    saved_at INTEGER AS Date NOT NULL,
+    FOREIGN KEY(chapter_id) REFERENCES novel_chapters (_id)
+    ON DELETE CASCADE
+);
+
+insert:
+INSERT INTO novel_quotes(chapter_id, quote_text, saved_at)
+VALUES (:chapterId, :quoteText, :savedAt);
+
+getAll:
+SELECT
+Q._id,
+Q.chapter_id,
+Q.quote_text,
+Q.saved_at,
+N.title AS novel_title,
+C.name AS chapter_name,
+C.chapter_number
+FROM novel_quotes Q
+JOIN novel_chapters C
+ON Q.chapter_id = C._id
+JOIN novels N
+ON C.novel_id = N._id
+ORDER BY Q.saved_at DESC;
+
+delete:
+DELETE FROM novel_quotes
+WHERE _id = :id;

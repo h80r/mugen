@@ -1,0 +1,10 @@
+import java.util.Date;
+
+CREATE TABLE novel_quotes(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    chapter_id INTEGER NOT NULL,
+    quote_text TEXT NOT NULL,
+    saved_at INTEGER AS Date NOT NULL,
+    FOREIGN KEY(chapter_id) REFERENCES novel_chapters (_id)
+    ON DELETE CASCADE
+);

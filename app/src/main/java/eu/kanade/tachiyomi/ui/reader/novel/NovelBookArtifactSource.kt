@@ -4,10 +4,12 @@ import eu.kanade.tachiyomi.data.book.novel.NovelBookArtifact
 import eu.kanade.tachiyomi.data.book.novel.NovelBookBlock
 import eu.kanade.tachiyomi.data.book.novel.NovelBookBlockPlanner
 import eu.kanade.tachiyomi.data.book.novel.NovelBookChapterEntry
+import eu.kanade.tachiyomi.data.book.novel.NovelBookChapterNormalizer
 import eu.kanade.tachiyomi.data.book.novel.NovelBookIndex
 import eu.kanade.tachiyomi.data.book.novel.NovelBookMeta
 import eu.kanade.tachiyomi.data.book.novel.NovelBookNativeBlock
 import eu.kanade.tachiyomi.ui.reader.novel.replace.applyReplaceRulesToHtml
+import org.jsoup.Jsoup
 import java.io.File
 
 /**
@@ -207,6 +209,45 @@ class NovelBookArtifactSource(
             charOffset = 0,
         )
     }
+
+    /**
+     * Locator of a saved quote's text inside [chapterId], for seeking the reader there on open
+     * instead of the book's normal resume position.
+     *
+     * Reads the chapter's own normalized HTML slice (the same `<section class="nb-chapter">`
+     * fragment [documentFor] would read a superset of) and searches its direct block children —
+     * each already carrying [eu.kanade.tachiyomi.data.book.novel.NovelBookChapterNormalizer]'s
+     * `data-o` attribute, an absolute whole-book character offset baked in at compile time — for
+     * [quoteText]. Returns null if the chapter entry is missing, its HTML slice is empty, or no
+     * block's text contains the quote (e.g. the chapter was re-fetched and changed since the quote
+     * was saved); callers must fall back to the normal resume locator in that case.
+     */
+    fun locatorOfQuoteInChapter(chapterId: Long, quoteText: String): BookLocator? = runCatching {
+        val trimmedQuote = quoteText.trim()
+        if (trimmedQuote.isBlank()) return@runCatching null
+        val entry = NovelBookBlockPlanner.chapterById(index, chapterId) ?: return@runCatching null
+        val html = NovelBookArtifact.readRange(directory, entry.byteStart, entry.byteLength)
+        if (html.isEmpty()) return@runCatching null
+
+        val body = Jsoup.parseBodyFragment(html).body()
+        val section = body.selectFirst("section.${NovelBookChapterNormalizer.CHAPTER_CLASS}") ?: body
+        val normalizedQuote = trimmedQuote.replace(Regex("\\s+"), " ")
+        for (block in section.children()) {
+            val blockText = block.text()
+            val localIndex = blockText.indexOf(trimmedQuote).let { direct ->
+                if (direct >= 0) {
+                    direct
+                } else {
+                    val normalizedBlock = blockText.trim().replace(Regex("\\s+"), " ")
+                    normalizedBlock.indexOf(normalizedQuote)
+                }
+            }
+            if (localIndex < 0) continue
+            val blockOffset = block.attr(NovelBookChapterNormalizer.OFFSET_ATTR).toIntOrNull() ?: continue
+            return@runCatching locatorOf(blockOffset + localIndex)
+        }
+        null
+    }.getOrNull()
 
     /**
      * Chapters whose text overlaps the section at [sectionIndex].

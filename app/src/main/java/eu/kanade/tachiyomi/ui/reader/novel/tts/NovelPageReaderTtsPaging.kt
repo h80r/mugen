@@ -29,6 +29,20 @@ data class NovelTtsPlaybackStartRequest(
     val pageReaderPosition: NovelTtsPageReaderPosition? = null,
 )
 
+/**
+ * First page whose slices include [blockIndex], or null if the block isn't paginated anywhere.
+ *
+ * [pageBlockIndices] is each page's list of slice block indices — callers map their own slice
+ * type (`PlainPageSlice`, `RichPageSlice`, [NovelTtsPageSlice]) to just the `blockIndex` field
+ * so this stays usable from any of the page reader's pagination outputs.
+ */
+fun resolvePageIndexForBlock(blockIndex: Int, pageBlockIndices: List<List<Int>>): Int? {
+    pageBlockIndices.forEachIndexed { pageIndex, blockIndices ->
+        if (blockIndex in blockIndices) return pageIndex
+    }
+    return null
+}
+
 fun resolvePlainPageReaderTtsAnchors(
     textBlocks: List<String>,
     pages: List<List<NovelTtsPageSlice>>,
@@ -136,7 +150,7 @@ private fun findUtteranceRangeInBlock(
     return RawTextRange(start = rawStart, endExclusive = rawEndExclusive)
 }
 
-private data class NormalizedTextIndexMap(
+internal data class NormalizedTextIndexMap(
     val text: String,
     val normalizedToRawIndex: List<Int>,
     val rawToNormalizedIndexByRawIndex: IntArray,
@@ -147,7 +161,7 @@ private data class NormalizedTextIndexMap(
     }
 }
 
-private fun buildNormalizedTextWithIndexMap(text: String): NormalizedTextIndexMap {
+internal fun buildNormalizedTextWithIndexMap(text: String): NormalizedTextIndexMap {
     val normalized = StringBuilder(text.length)
     val normalizedToRawIndex = mutableListOf<Int>()
     val rawToNormalized = IntArray(text.length.coerceAtLeast(1))

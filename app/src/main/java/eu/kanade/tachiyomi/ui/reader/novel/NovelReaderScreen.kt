@@ -81,6 +81,7 @@ class NovelReaderScreen(
     private val sourceId: Long? = null,
     private val seriesId: Long? = null,
     private val autoStartGeminiTranslation: Boolean = false,
+    private val seekQuoteText: String? = null,
 ) : eu.kanade.presentation.util.Screen() {
     fun resolveInitialBackdropColor(): Color? {
         val initialReaderSettings = sourceId?.let { id ->
@@ -100,6 +101,7 @@ class NovelReaderScreen(
                 chapterId = chapterId,
                 seriesId = seriesId,
                 autoStartGeminiTranslation = autoStartGeminiTranslation,
+                seekQuoteText = seekQuoteText,
             )
         }
         val state by screenModel.state.collectAsStateWithLifecycle()
@@ -270,6 +272,8 @@ class NovelReaderScreen(
                         onSeekBookModeProgress = screenModel::seekBookModeToProgress,
                         onToggleBookmark = screenModel::toggleChapterBookmark,
                         onOpenDictionaryHistory = { navigator.push(NovelDictionaryHistoryScreen()) },
+                        onSaveQuote = screenModel::saveSelectedTextAsQuote,
+                        onConsumePendingSeekQuoteText = screenModel::consumePendingSeekQuoteText,
                         onStartGeminiTranslation = screenModel::startGeminiTranslation,
                         onStopGeminiTranslation = screenModel::stopGeminiTranslation,
                         onToggleGeminiTranslationVisibility = screenModel::toggleGeminiTranslationVisibility,

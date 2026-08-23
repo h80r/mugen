@@ -2,6 +2,7 @@ package tachiyomi.data.handlers.novel
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import datanovel.Novel_history
+import datanovel.Novel_quotes
 import datanovel.Novels
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import io.kotest.matchers.shouldBe
@@ -37,6 +38,9 @@ class NovelDatabaseHandlerTest {
                 genreAdapter = StringListColumnAdapter,
                 update_strategyAdapter = MangaUpdateStrategyColumnAdapter,
                 custom_genreAdapter = StringListColumnAdapter,
+            ),
+            novel_quotesAdapter = Novel_quotes.Adapter(
+                saved_atAdapter = DateColumnAdapter,
             ),
         )
         handler = AndroidNovelDatabaseHandler(

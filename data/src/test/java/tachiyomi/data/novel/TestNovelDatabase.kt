@@ -2,6 +2,7 @@ package tachiyomi.data.novel
 
 import app.cash.sqldelight.db.SqlDriver
 import datanovel.Novel_history
+import datanovel.Novel_quotes
 import datanovel.Novels
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.MangaUpdateStrategyColumnAdapter
@@ -22,6 +23,9 @@ fun createTestNovelDatabase(driver: SqlDriver): NovelDatabase {
             genreAdapter = StringListColumnAdapter,
             update_strategyAdapter = MangaUpdateStrategyColumnAdapter,
             custom_genreAdapter = StringListColumnAdapter,
+        ),
+        novel_quotesAdapter = Novel_quotes.Adapter(
+            saved_atAdapter = DateColumnAdapter,
         ),
     )
 }

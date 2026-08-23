@@ -1133,6 +1133,14 @@
     <string name="novel_reader_text_selection_action_select_sentence">Selecionar frase</string>
     <string name="novel_reader_text_selection_action_select_paragraph">Selecionar parágrafo</string>
     <string name="novel_reader_text_selection_action_expand">Expandir</string>
+    <string name="novel_reader_text_selection_action_save_quote">Salvar citação</string>
+    <string name="novel_reader_text_selection_quote_saved">Citação salva</string>
+    <string name="quotes_screen_empty_title">Nenhuma citação ainda</string>
+    <string name="quotes_screen_empty_message">Selecione um trecho ao ler um romance e toque em Salvar citação para reuni-lo aqui</string>
+    <string name="quotes_screen_delete_confirm_title">Excluir citação</string>
+    <string name="quotes_screen_delete_confirm_message">Esta citação será excluída permanentemente.</string>
+    <string name="quotes_screen_novel_type_label">Novel</string>
+    <string name="quotes_screen_source_line">%1$s • %2$s, Cap. %3$s • %4$s</string>
     <string name="novel_reader_selected_text_translation_action_view_definition">Ver definição</string>
     <string name="novel_reader_selected_text_translation_action_view_translation">Ver tradução</string>
     <string name="novel_reader_text_selection_action_translate">Traduzir</string>
@@ -1242,6 +1250,7 @@
     <string name="aurora_browse">Explorar</string>
     <string name="aurora_browse_sources">Conectar repositório</string>
     <string name="aurora_categories">Categorias</string>
+    <string name="aurora_quotes">Citações</string>
     <string name="aurora_change_greeting_style">Personalizar saudação</string>
     <string name="aurora_change_nickname">Alterar apelido</string>
     <string name="aurora_chapter_count">%d caps</string>

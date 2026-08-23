@@ -3016,6 +3016,18 @@ class NovelReaderScreenModelTest {
         every { getNovelSeriesWithEntries.subscribe(any()) } returns MutableStateFlow(null)
         Injekt.addSingleton(fullType<GetNovelSeriesWithEntries>(), getNovelSeriesWithEntries)
 
+        runCatching { Injekt.get<tachiyomi.domain.quote.novel.interactor.InsertNovelQuote>() }
+            .getOrElse {
+                // Registered in DomainModule with addFactory for the app; unit tests never run that
+                // module, so back the interactor with a relaxed no-op repository mock.
+                val quoteRepository =
+                    mockk<tachiyomi.domain.quote.novel.repository.NovelQuoteRepository>(relaxed = true)
+                Injekt.addSingleton(
+                    fullType<tachiyomi.domain.quote.novel.interactor.InsertNovelQuote>(),
+                    tachiyomi.domain.quote.novel.interactor.InsertNovelQuote(quoteRepository),
+                )
+            }
+
         runCatching { Injekt.get<BasePreferences>() }
             .getOrElse {
                 Injekt.addSingleton(
