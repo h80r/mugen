@@ -1,4 +1,4 @@
-@file:OptIn(eu.wewox.pagecurl.ExperimentalPageCurlApi::class)
+@file:OptIn(eu.kanade.presentation.reader.novel.curl.ExperimentalPageCurlApi::class)
 
 package eu.kanade.presentation.reader.novel
 
@@ -36,6 +36,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import eu.kanade.presentation.reader.novel.curl.Edge
+import eu.kanade.presentation.reader.novel.curl.ExperimentalPageCurlApi
+import eu.kanade.presentation.reader.novel.curl.PageCurl
+import eu.kanade.presentation.reader.novel.curl.PageCurlConfig
+import eu.kanade.presentation.reader.novel.curl.rememberPageCurlConfig
+import eu.kanade.presentation.reader.novel.curl.rememberPageCurlState
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTurnActivationZone
@@ -47,12 +53,6 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderSettings
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTapZoneAction
 import eu.kanade.tachiyomi.ui.reader.novel.setting.parseNovelReaderTapZoneActions
 import eu.kanade.tachiyomi.ui.reader.novel.setting.resolveConfiguredNovelReaderTapAction
-import eu.wewox.pagecurl.ExperimentalPageCurlApi
-import eu.wewox.pagecurl.config.PageCurlConfig
-import eu.wewox.pagecurl.config.rememberPageCurlConfig
-import eu.wewox.pagecurl.page.Edge
-import eu.wewox.pagecurl.page.PageCurl
-import eu.wewox.pagecurl.page.rememberPageCurlState
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -737,6 +737,9 @@ internal fun PageTurnPageRenderer(
     SideEffect {
         pageCurlConfig.backPageColor = rendererConfig.backPageColor
         pageCurlConfig.backPageContentAlpha = 0f
+        // Single-page CURL keeps the classic tinted back page; only the two-page spread renderer
+        // (SpreadPageTurnPageRenderer) shows the real neighbouring page on the flap's back.
+        pageCurlConfig.independentBackPageEnabled = false
         pageCurlConfig.shadowColor = rendererConfig.shadowColor
         pageCurlConfig.shadowAlpha = rendererConfig.preset.shadowAlpha
         pageCurlConfig.shadowRadius = rendererConfig.shadowRadiusDp.dp

@@ -1,4 +1,4 @@
-@file:OptIn(eu.wewox.pagecurl.ExperimentalPageCurlApi::class)
+@file:OptIn(eu.kanade.presentation.reader.novel.curl.ExperimentalPageCurlApi::class)
 
 package eu.kanade.presentation.reader.novel
 
@@ -6,6 +6,7 @@ import android.graphics.Typeface
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector4D
 import androidx.compose.animation.core.snap
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -28,12 +30,20 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import eu.kanade.presentation.reader.novel.curl.Edge
+import eu.kanade.presentation.reader.novel.curl.ExternalBackContentLayers
+import eu.kanade.presentation.reader.novel.curl.PageCurl
+import eu.kanade.presentation.reader.novel.curl.PageCurlConfig
+import eu.kanade.presentation.reader.novel.curl.PageCurlState
+import eu.kanade.presentation.reader.novel.curl.rememberPageCurlConfig
+import eu.kanade.presentation.reader.novel.curl.rememberPageCurlState
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundTexture
@@ -42,12 +52,6 @@ import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderTapZoneAction
 import eu.kanade.tachiyomi.ui.reader.novel.setting.TextAlign
 import eu.kanade.tachiyomi.ui.reader.novel.setting.parseNovelReaderTapZoneActions
 import eu.kanade.tachiyomi.ui.reader.novel.setting.resolveConfiguredNovelReaderTapAction
-import eu.wewox.pagecurl.config.PageCurlConfig
-import eu.wewox.pagecurl.config.rememberPageCurlConfig
-import eu.wewox.pagecurl.page.Edge
-import eu.wewox.pagecurl.page.PageCurl
-import eu.wewox.pagecurl.page.PageCurlState
-import eu.wewox.pagecurl.page.rememberPageCurlState
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -284,6 +288,9 @@ internal fun SpreadPageTurnPageRenderer(
     SideEffect {
         leftPageCurlConfig.backPageColor = rendererConfig.backPageColor
         leftPageCurlConfig.backPageContentAlpha = 0f
+        // The two-page spread is the only mode meant to show the real neighbouring page on the
+        // flap's back; always on here, unlike the single-page renderer.
+        leftPageCurlConfig.independentBackPageEnabled = true
         leftPageCurlConfig.shadowColor = rendererConfig.shadowColor
         leftPageCurlConfig.shadowAlpha = rendererConfig.preset.shadowAlpha
         leftPageCurlConfig.shadowRadius = rendererConfig.shadowRadiusDp.dp
@@ -317,6 +324,7 @@ internal fun SpreadPageTurnPageRenderer(
 
         rightPageCurlConfig.backPageColor = rendererConfig.backPageColor
         rightPageCurlConfig.backPageContentAlpha = 0f
+        rightPageCurlConfig.independentBackPageEnabled = true
         rightPageCurlConfig.shadowColor = rendererConfig.shadowColor
         rightPageCurlConfig.shadowAlpha = rendererConfig.preset.shadowAlpha
         rightPageCurlConfig.shadowRadius = rendererConfig.shadowRadiusDp.dp
@@ -392,28 +400,51 @@ internal fun SpreadPageTurnPageRenderer(
 
     // A live drag on the right surface (forward turn) is the library's own gesture handling, not
     // the turnForward()/turnBackward() helpers above, so the left surface would never learn the
-    // drag happened. Watching progress here keeps it in lockstep regardless of what drove the
+    // drag happened. Watching `current` here keeps it in lockstep regardless of what drove the
     // move: a drag, a tap, or requestedPage.
-    LaunchedEffect(rightCurlState, virtualSlotCount) {
-        snapshotFlow { rightCurlState.current.coerceIn(0, virtualSlotCount - 1) to rightCurlState.progress }
-            .distinctUntilChanged()
-            .collectLatest { (target, progress) ->
-                val invertedTarget = (virtualSlotCount - 1 - target).coerceAtLeast(0)
-                if (progress == 0f && leftCurlState.current != invertedTarget) {
-                    leftCurlState.snapTo(invertedTarget)
-                }
-            }
+    //
+    // Deliberately keyed on `current` alone, without also waiting for `progress` to fall back to 0.
+    // `current` only ever changes once a turn has committed (see DragCommonGesture's onDragEnd,
+    // which calls onChange() before snapping the edge back), so there is no risk of syncing
+    // mid-animation — but gating on progress made the sibling lag a frame behind, which showed up
+    // as a visible flicker: the flap finished, the stale page flashed back in, and only then did
+    // this column catch up.
+    // Applied during composition rather than from a LaunchedEffect/snapshotFlow: those only run after the frame
+    // that changed `current` has already been composed, so the sibling column rendered one frame with its previous
+    // page still on screen. That one-frame lag is the flicker where the turn completes, the outgoing page flashes
+    // back on the other half of the spread, and only then does it catch up. Reconciling here means both columns
+    // agree within the same frame, before anything is drawn.
+    //
+    // The reconciliation has to be symmetric. Forward turns are driven by rightCurlState.next() and backward turns
+    // by leftCurlState.next() (see turnForward()/turnBackward()) — but *both* only ever increment their own
+    // `current` (dragBackwardEnabled is false on both surfaces below; the left one's forward drag is what plays a
+    // backward book turn, since it is mirrored). So neither column is the permanent source of truth, and — the
+    // mistake in an earlier version of this block — the *direction* of the disagreement doesn't disambiguate it
+    // either: the left column's `current` runs opposite to reading order (it is inverted, see leftReadingSlot
+    // below), so "left's reading slot is now the lower one" is exactly what a genuine left-column turn produces,
+    // not a sign that the right column is the one that moved. Comparing reading-order slots looked plausible but
+    // silently reintroduced the original bug: the instant a real backward drag committed, this block read the
+    // left column as "behind" and snapped it right back to where it started, which is why going back stayed
+    // impossible even after that rewrite.
+    //
+    // The only reliable signal is remembering each column's own previously-synced value and asking which one is
+    // no longer equal to what it was last frame — that works regardless of which slot space either column counts
+    // in, because it never compares the two against each other, only each against its own history.
+    var lastSyncedLeft by remember(leftCurlState) { mutableIntStateOf(leftCurlState.current) }
+    var lastSyncedRight by remember(rightCurlState) { mutableIntStateOf(rightCurlState.current) }
+    val leftChanged = leftCurlState.current != lastSyncedLeft
+    val rightChanged = rightCurlState.current != lastSyncedRight
+    if (leftChanged && !rightChanged) {
+        val rightTarget = (virtualSlotCount - 1 - leftCurlState.current.coerceIn(0, virtualSlotCount - 1))
+            .coerceAtLeast(0)
+        if (rightCurlState.current != rightTarget) rightCurlState.setCurrentImmediately(rightTarget)
+    } else if (rightChanged && !leftChanged) {
+        val leftTarget = (virtualSlotCount - 1 - rightCurlState.current.coerceIn(0, virtualSlotCount - 1))
+            .coerceAtLeast(0)
+        if (leftCurlState.current != leftTarget) leftCurlState.setCurrentImmediately(leftTarget)
     }
-    LaunchedEffect(leftCurlState, virtualSlotCount) {
-        snapshotFlow { leftCurlState.current.coerceIn(0, virtualSlotCount - 1) to leftCurlState.progress }
-            .distinctUntilChanged()
-            .collectLatest { (target, progress) ->
-                val realTarget = (virtualSlotCount - 1 - target).coerceAtLeast(0)
-                if (progress == 0f && rightCurlState.current != realTarget) {
-                    rightCurlState.snapTo(realTarget)
-                }
-            }
-    }
+    lastSyncedLeft = leftCurlState.current
+    lastSyncedRight = rightCurlState.current
 
     LaunchedEffect(leftCurlState, pagerState, spreadSlotCount, hasPreviousChapter, hasNextChapter) {
         snapshotFlow { leftCurlState.current.coerceIn(0, virtualSlotCount - 1) }
@@ -512,12 +543,45 @@ internal fun SpreadPageTurnPageRenderer(
         ) {
             NovelPageTurnSnapshotCache<ImageBitmap>(maxSize = 6)
         }
+        // The physical back of a spread page lives in the *other* column's own PageCurl instance (see the class
+        // doc). This cache lets each column leave a layer behind, keyed by real page index, for its sibling to
+        // pick up when drawing that page's back.
+        val backContentLayerCache = rememberSpreadCurlBackContentLayerCache()
+
+        // Forces both columns' draw phases to re-run whenever *either* PageCurlState changes, independent of
+        // recomposition. A column that isn't itself being dragged has no read inside its own composition or draw
+        // scope that changes when its sibling's `current` does, so Compose correctly sees nothing to redraw —  but
+        // that draw pass is also what records that column's own pages into the shared back-content-layer cache
+        // (see NovelPageTurnSnapshotRenderer's drawWithContent). A static column that never redraws never
+        // (re-)records, so when the dragging column later needs one of its pages as a back layer, the cache holds a
+        // GraphicsLayer that was created but never had record{} called into it: a real GraphicsLayer instance
+        // (non-null, so the "no layer available" fallback never kicks in) that is simply empty — a 0×0 recording,
+        // confirmed on-device via logcat (`drawCurl externalBackContentLayer size=0 x 0`) — which draws as a blank
+        // flap. This is the "verso sem conteúdo" bug: not a wrong page index, but a page whose owning column simply
+        // never got a chance to paint it during the frames the drag needed it.
+        //
+        // Reading both states inside a graphicsLayer{} block (a draw-phase lambda) on *each* column's own modifier
+        // subscribes that column's draw phase to both, so a change on either side invalidates both columns' draws
+        // on the same frame — the dragging column for its own animation, and the idle sibling so it (re-)records
+        // the exact page the drag now needs.
+        val leftProgress = leftCurlState.progress
+        val rightProgress = rightCurlState.progress
+        val leftCurrent = leftCurlState.current
+        val rightCurrent = rightCurlState.current
+        val crossInvalidatingModifier = Modifier.graphicsLayer {
+            @Suppress("UNUSED_EXPRESSION")
+            leftProgress
+            rightProgress
+            leftCurrent
+            rightCurrent
+        }
 
         Row(modifier = Modifier.fillMaxSize()) {
             SpreadColumnCurl(
                 modifier = Modifier
                     .fillMaxWidth(0.5f)
-                    .zIndex(if (leftCurlState.progress > 0f) 1f else 0f),
+                    .zIndex(if (leftCurlState.progress > 0f) 1f else 0f)
+                    .then(crossInvalidatingModifier),
                 mirrored = true,
                 invertPage = true,
                 columnOffset = 0,
@@ -534,6 +598,7 @@ internal fun SpreadPageTurnPageRenderer(
                 nextChapterName = nextChapterName,
                 boundaryChapterHint = boundaryChapterHint,
                 safeContentPages = safeContentPages,
+                backContentLayerCache = backContentLayerCache,
                 rendererConfig = rendererConfig,
                 pageSize = halfPageSize,
                 snapshotCache = snapshotCache,
@@ -569,7 +634,8 @@ internal fun SpreadPageTurnPageRenderer(
             SpreadColumnCurl(
                 modifier = Modifier
                     .fillMaxWidth(1f)
-                    .zIndex(if (rightCurlState.progress > 0f) 1f else 0f),
+                    .zIndex(if (rightCurlState.progress > 0f) 1f else 0f)
+                    .then(crossInvalidatingModifier),
                 mirrored = false,
                 invertPage = false,
                 columnOffset = 1,
@@ -586,6 +652,7 @@ internal fun SpreadPageTurnPageRenderer(
                 nextChapterName = nextChapterName,
                 boundaryChapterHint = boundaryChapterHint,
                 safeContentPages = safeContentPages,
+                backContentLayerCache = backContentLayerCache,
                 rendererConfig = rendererConfig,
                 pageSize = halfPageSize,
                 snapshotCache = snapshotCache,
@@ -707,6 +774,40 @@ private fun handleSpreadCustomTap(
     }
 }
 
+/**
+ * Real (flat, 0-indexed into safeContentPages) content page index shown at [virtualPage] within one
+ * [SpreadColumnCurl] column, or null when [virtualPage] falls on a chapter-boundary placeholder slot (no real
+ * page) or outside the valid virtual range.
+ */
+private fun resolveSpreadColumnRealPageIndex(
+    virtualPage: Int,
+    virtualSlotCount: Int,
+    spreadSlotCount: Int,
+    hasPreviousChapter: Boolean,
+    hasNextChapter: Boolean,
+    showBoundaryChapterPages: Boolean,
+    invertPage: Boolean,
+    columnOffset: Int,
+): Int? {
+    if (virtualPage < 0 || virtualPage >= virtualSlotCount) return null
+    val actualPage = if (invertPage) (virtualSlotCount - 1 - virtualPage).coerceAtLeast(0) else virtualPage
+    if (showBoundaryChapterPages) {
+        val boundaryTarget = resolvePageTurnRendererBoundaryChapterTarget(
+            currentPage = actualPage,
+            contentPageCount = spreadSlotCount,
+            hasPreviousChapter = hasPreviousChapter,
+            hasNextChapter = hasNextChapter,
+        )
+        if (boundaryTarget != HorizontalChapterSwipeAction.NONE) return null
+    }
+    val spreadSlot = resolvePageTurnRendererProgressPageIndex(
+        currentPage = actualPage,
+        contentPageCount = spreadSlotCount,
+        hasPreviousChapter = hasPreviousChapter,
+    )
+    return resolveSpreadSlotFirstPageIndex(spreadSlot, 2) + columnOffset
+}
+
 @Composable
 private fun SpreadColumnCurl(
     modifier: Modifier,
@@ -733,6 +834,7 @@ private fun SpreadColumnCurl(
     nextChapterName: String?,
     boundaryChapterHint: String,
     safeContentPages: List<NovelPageContentPage>,
+    backContentLayerCache: SpreadCurlBackContentLayerCache,
     rendererConfig: NovelPageTurnRendererConfig,
     pageSize: IntSize,
     snapshotCache: NovelPageTurnSnapshotCache<ImageBitmap>,
@@ -770,11 +872,82 @@ private fun SpreadColumnCurl(
     } else {
         modifier.fillMaxSize()
     }
+
+    // The physical back of a page is fixed by its identity, like the two sides of the same sheet of paper in a
+    // real book — real page N (odd, right column) always has real page N + 1 (even, left column) printed on its
+    // back, and vice-versa. This holds regardless of which direction the page is being turned.
+    //
+    // Both slots are populated. Which flap a gesture drives is not fixed the way an earlier version of this comment
+    // assumed: a real finger-drag goes through the library's own DragStartEnd/detectCurlGestures path rather than
+    // the turnForward()/turnBackward() helpers, so relying on "only the forward flap is ever shown" left the
+    // backward flap with a null layer and rendered it fully transparent. Since the physical back of a sheet is
+    // fixed by the sheet's identity — real page N always has N+1 (right column) or N-1 (left column) printed on its
+    // reverse, whichever way it is being turned — the same layer is correct for both slots.
+    //
+    // Resolved off this instance's own current virtual page, since externalBackContentLayers has to be ready
+    // before PageCurl composes its content(Int) lambda.
+    val externalBackContentLayers = if (pageCurlConfig.independentBackPageEnabled) {
+        // Each flap turns a *different* sheet, so each needs its own back page — they are not the same layer.
+        // In PageCurl the forward flap wraps content(current) while the backward flap wraps content(current - 1)
+        // (see PageCurl.kt), so resolving both from `current` handed the backward flap the wrong sheet's reverse:
+        // a page this column never composes, whose layer therefore stays empty and draws as a blank flap. That is
+        // the "verso sem conteúdo" on backward turns.
+        //
+        // Resolve every endpoint through the same slot→real-page mapping rather than deriving one from another
+        // with a ±1 on the *real* index: on the mirrored left column `invertPage` flips the slot space, so slot
+        // `current + 1` is the previous spread, and a raw ±1 on the real index lands on a page the column never
+        // registers.
+        fun realPageAtSlot(slot: Int): Int? = resolveSpreadColumnRealPageIndex(
+            virtualPage = slot,
+            virtualSlotCount = virtualSlotCount,
+            spreadSlotCount = spreadSlotCount,
+            hasPreviousChapter = hasPreviousChapter,
+            hasNextChapter = hasNextChapter,
+            showBoundaryChapterPages = showBoundaryChapterPages,
+            invertPage = invertPage,
+            columnOffset = columnOffset,
+        )
+
+        // The reverse of a turning sheet is whichever real page sits next to it in reading order, on the side away
+        // from the page revealed underneath: the revealed one is across the spine, so the sheet's own back is the
+        // page between the two.
+        //
+        // getOrCreate, not get: within a Row the left column composes before the right one, so on the first frame
+        // after any change the sibling that owns this page has not recorded into the cache yet. A plain read would
+        // return null (transparent flap) and never recover — the cache only mutates when a key is first inserted,
+        // so no later write would invalidate this read and force a recomposition. Creating the entry here hands
+        // both columns the same stable GraphicsLayer object: this column draws it, the owning column fills it in
+        // during its own draw pass later in the very same frame.
+        fun backLayerForTurningSlot(turningSlot: Int): GraphicsLayer? {
+            val turningRealPage = realPageAtSlot(turningSlot) ?: return null
+            val revealedRealPage = realPageAtSlot(turningSlot + 1) ?: return null
+            val backRealPage = if (revealedRealPage > turningRealPage) {
+                turningRealPage + 1
+            } else {
+                turningRealPage - 1
+            }
+            return backRealPage
+                .takeIf { it in safeContentPages.indices }
+                ?.let { registeredSpreadCurlBackContentLayer(backContentLayerCache, it) }
+        }
+
+        ExternalBackContentLayers(
+            forward = backLayerForTurningSlot(pageCurlState.current),
+            backward = backLayerForTurningSlot(pageCurlState.current - 1),
+        )
+    } else {
+        null
+    }
+
     PageCurl(
         count = virtualSlotCount,
         key = { it },
         state = pageCurlState,
         config = pageCurlConfig,
+        externalBackContentLayers = externalBackContentLayers,
+        // curlModifier flips this whole column when `mirrored`, which already supplies the flip the back-page
+        // layer needs — so drawCurl must not apply its own on top of it.
+        onMirroredSurface = mirrored,
         modifier = curlModifier,
     ) { page ->
         val actualPage = if (invertPage) (virtualSlotCount - 1 - page).coerceAtLeast(0) else page
@@ -860,69 +1033,113 @@ private fun SpreadColumnCurl(
             textShadowY = readerSettings.textShadowY,
             bionicReading = readerSettings.bionicReading,
         )
-        val contentModifier = if (mirrored) {
+        // Deliberately NOT mirrored here, even on the mirrored (left) column. The whole column is already flipped
+        // by SpreadColumnCurl's curlModifier (graphicsLayer(scaleX = -1f) on the PageCurl itself), and this inner
+        // flip existed to cancel that back out so the text reads the right way round on screen. But
+        // NovelPageTurnSnapshotRenderer records its GraphicsLayer from *inside* whatever modifier chain it is
+        // given, so an inner flip here means the left column's cached layer is captured in flipped space — and
+        // that cache is exactly what the sibling column paints as its back-of-page. The right column's own layers
+        // are captured unflipped, which is why turning forward (right column's flap, reading the left column's
+        // layer) looked perfect while turning backward (left column's flap, reading the right column's layer) did
+        // not: only one of the two directions had a flip to cancel.
+        //
+        // Un-mirroring is instead applied per-draw in mirroredContentModifier below, which leaves the recorded
+        // layer in the same upright space for both columns.
+        val contentModifier = Modifier.fillMaxSize()
+        // Real page index this column is about to draw as front content, or null on a boundary placeholder slot.
+        // Captured (after un-mirroring, so it holds the same upright pixels a native, unmirrored draw of that page
+        // would produce) into the shared cache so the sibling column can paint it as a back-of-page layer.
+        val frontRealPageIndex = if (boundaryPreview == null) {
+            val spreadSlot = resolvePageTurnRendererProgressPageIndex(
+                currentPage = actualPage,
+                contentPageCount = spreadSlotCount,
+                hasPreviousChapter = hasPreviousChapter,
+            )
+            resolveSpreadSlotFirstPageIndex(spreadSlot, 2) + columnOffset
+        } else {
+            null
+        }
+        // NovelPageTurnSnapshotRenderer(preferCachedBitmap = false) already records this page's draw output into
+        // its own GraphicsLayer every frame. Rather than wrapping it in a second, independently-recorded layer
+        // (which doubled the capture work and was a source of stale/torn frames), hand it the shared cache's layer
+        // directly via externalGraphicsLayer so there is exactly one recording of this page's pixels, which the
+        // sibling column can also read.
+        val backContentLayer = if (pageCurlConfig.independentBackPageEnabled && frontRealPageIndex != null) {
+            registeredSpreadCurlBackContentLayer(
+                cache = backContentLayerCache,
+                realPageIndex = frontRealPageIndex,
+            )
+        } else {
+            null
+        }
+        // The un-mirror lives here, *outside* NovelPageTurnSnapshotRenderer, so it applies to how this page is
+        // displayed without ever entering the layer that renderer records — see the note on contentModifier above.
+        val mirroredContentModifier = if (mirrored) {
             Modifier.fillMaxSize().graphicsLayer(scaleX = -1f)
         } else {
             Modifier.fillMaxSize()
         }
-        NovelPageTurnSnapshotRenderer(
-            snapshotKey = pageSnapshotKey,
-            snapshotCache = snapshotCache,
-            preferCachedBitmap = false,
-            modifier = contentModifier,
-        ) {
-            NovelAtmosphereBackground(
-                backgroundColor = textBackground,
-                backgroundTexture = pageTexture,
-                nativeTextureStrengthPercent = pageTextureStrengthPercent,
-                oledEdgeGradient = activeOledEdgeGradient,
-                isDarkTheme = isDarkTheme,
-                pageEdgeShadow = pageEdgeShadow,
-                pageEdgeShadowAlpha = pageEdgeShadowAlpha,
-                backgroundImageModel = backgroundImageModel,
-            )
-            if (boundaryPreview != null) {
-                NovelPageBoundaryPreviewContent(
-                    preview = boundaryPreview,
-                    textColor = textColor,
-                    chapterTitleTextColor = chapterTitleTextColor,
-                    textBackground = textBackground,
-                    contentPadding = contentPadding,
-                    statusBarTopPadding = statusBarTopPadding,
-                    textTypeface = textTypeface,
-                    chapterTitleTypeface = chapterTitleTypeface,
-                )
-            } else {
-                NovelPageReaderPageContent(
-                    contentPage = contentPage,
-                    readerSettings = readerSettings,
-                    textColor = textColor,
-                    textBackground = textBackground,
-                    pageSurfaceColor = pageSurfaceColor,
+        Box(modifier = mirroredContentModifier) {
+            NovelPageTurnSnapshotRenderer(
+                snapshotKey = pageSnapshotKey,
+                snapshotCache = snapshotCache,
+                preferCachedBitmap = false,
+                externalGraphicsLayer = backContentLayer,
+                modifier = contentModifier,
+            ) {
+                NovelAtmosphereBackground(
+                    backgroundColor = textBackground,
                     backgroundTexture = pageTexture,
                     nativeTextureStrengthPercent = pageTextureStrengthPercent,
-                    chapterTitleTextColor = chapterTitleTextColor,
-                    textTypeface = textTypeface,
-                    chapterTitleTypeface = chapterTitleTypeface,
-                    textShadowEnabled = readerSettings.textShadow,
-                    textShadowColor = readerSettings.textShadowColor,
-                    textShadowBlur = readerSettings.textShadowBlur,
-                    textShadowX = readerSettings.textShadowX,
-                    textShadowY = readerSettings.textShadowY,
-                    contentPadding = contentPadding,
-                    statusBarTopPadding = statusBarTopPadding,
-                    ttsHighlightState = ttsHighlightState,
-                    ttsHighlightColor = ttsHighlightColor,
-                    selectionSessionIdProvider = selectionSessionIdProvider,
-                    onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
-                    onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
-                    selectionClearRequestToken = selectionClearRequestToken,
-                    selectionExpandRequestToken = selectionExpandRequestToken,
-                    onPlainTap = onTextTap,
-                    touchHandlingEnabled = readerSettings.textSelectionEnabled ||
-                        readerSettings.selectedTextTranslationEnabled ||
-                        readerSettings.novelDictionaryEnabled,
+                    oledEdgeGradient = activeOledEdgeGradient,
+                    isDarkTheme = isDarkTheme,
+                    pageEdgeShadow = pageEdgeShadow,
+                    pageEdgeShadowAlpha = pageEdgeShadowAlpha,
+                    backgroundImageModel = backgroundImageModel,
                 )
+                if (boundaryPreview != null) {
+                    NovelPageBoundaryPreviewContent(
+                        preview = boundaryPreview,
+                        textColor = textColor,
+                        chapterTitleTextColor = chapterTitleTextColor,
+                        textBackground = textBackground,
+                        contentPadding = contentPadding,
+                        statusBarTopPadding = statusBarTopPadding,
+                        textTypeface = textTypeface,
+                        chapterTitleTypeface = chapterTitleTypeface,
+                    )
+                } else {
+                    NovelPageReaderPageContent(
+                        contentPage = contentPage,
+                        readerSettings = readerSettings,
+                        textColor = textColor,
+                        textBackground = textBackground,
+                        pageSurfaceColor = pageSurfaceColor,
+                        backgroundTexture = pageTexture,
+                        nativeTextureStrengthPercent = pageTextureStrengthPercent,
+                        chapterTitleTextColor = chapterTitleTextColor,
+                        textTypeface = textTypeface,
+                        chapterTitleTypeface = chapterTitleTypeface,
+                        textShadowEnabled = readerSettings.textShadow,
+                        textShadowColor = readerSettings.textShadowColor,
+                        textShadowBlur = readerSettings.textShadowBlur,
+                        textShadowX = readerSettings.textShadowX,
+                        textShadowY = readerSettings.textShadowY,
+                        contentPadding = contentPadding,
+                        statusBarTopPadding = statusBarTopPadding,
+                        ttsHighlightState = ttsHighlightState,
+                        ttsHighlightColor = ttsHighlightColor,
+                        selectionSessionIdProvider = selectionSessionIdProvider,
+                        onSelectedTextSelectionChanged = onSelectedTextSelectionChanged,
+                        onSelectionRendererActionsChanged = onSelectionRendererActionsChanged,
+                        selectionClearRequestToken = selectionClearRequestToken,
+                        selectionExpandRequestToken = selectionExpandRequestToken,
+                        onPlainTap = onTextTap,
+                        touchHandlingEnabled = readerSettings.textSelectionEnabled ||
+                            readerSettings.selectedTextTranslationEnabled ||
+                            readerSettings.novelDictionaryEnabled,
+                    )
+                }
             }
         }
     }

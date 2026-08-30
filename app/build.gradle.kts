@@ -26,9 +26,9 @@ android {
 
     defaultConfig {
         applicationId = "dev.h80r.mugen"
-        versionCode = 274
+        versionCode = 299
 
-        versionName = "0.65.7"
+        versionName = "0.69.11"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
@@ -348,7 +348,6 @@ dependencies {
     implementation(libs.aboutLibraries.compose)
     implementation(libs.bundles.voyager)
     implementation(libs.compose.materialmotion)
-    implementation(libs.compose.pagecurl)
     implementation(libs.swipe)
     implementation(libs.compose.webview)
     implementation(libs.compose.grid)
