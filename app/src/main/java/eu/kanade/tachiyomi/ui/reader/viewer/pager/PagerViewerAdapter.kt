@@ -219,11 +219,23 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
             if (position != -1) {
                 return position
             }
-            // A ReaderPage merged into a JoinedReaderPage is never directly in items; resolve it via
-            // joined membership so the joined holder survives notifyDataSetChanged on chapter append
-            // instead of being destroyed and recreated.
+            // On a chapter (re)load, setChapters() rebuilds items with brand-new JoinedReaderPage
+            // wrappers while reusing the underlying ReaderPage objects. A visible joined holder still
+            // references the OLD wrapper, so items.indexOf above fails. Resolve it through its halves
+            // (which ARE identity-stable) so the holder survives notifyDataSetChanged instead of
+            // being destroyed and the pager re-anchoring to position 0.
             val item = view.item
-            if (item is ReaderPage) {
+            if (item is JoinedReaderPage) {
+                val joinedPosition = indexOfPageOrJoined(item.firstPage)
+                    .takeIf { it != -1 }
+                    ?: indexOfPageOrJoined(item.secondPage)
+                if (joinedPosition != -1) {
+                    return joinedPosition
+                }
+            } else if (item is ReaderPage) {
+                // A ReaderPage merged into a JoinedReaderPage is never directly in items; resolve it
+                // via joined membership so the joined holder survives notifyDataSetChanged on chapter
+                // append instead of being destroyed and recreated.
                 val joinedPosition = indexOfPageOrJoined(item)
                 if (joinedPosition != -1) {
                     return joinedPosition

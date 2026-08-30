@@ -210,6 +210,13 @@
 -keep class eu.kanade.presentation.browse.local.SecretHallSceneConfig { *; }
 -keep class eu.kanade.presentation.browse.SecretHallGate { *; }
 
+# Migrate manga source screen release stability
+# R8 crashes with a NullPointerException while processing the synthetic lambdas
+# generated for the source migration list composables. Keep the whole file and
+# its lambdas non-optimized so release shrinking can complete.
+-keep class eu.kanade.presentation.browse.manga.MigrateMangaSourceScreenKt { *; }
+-keep class eu.kanade.presentation.browse.manga.MigrateMangaSourceScreenKt$* { *; }
+
 # Novel reader release stability
 # Reader settings and source overrides are persisted and may be restored through
 # preference/serialization layers. Keep these models/enums non-optimized so R8
