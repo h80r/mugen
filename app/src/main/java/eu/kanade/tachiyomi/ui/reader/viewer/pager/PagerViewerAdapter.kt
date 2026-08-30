@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.ui.reader.model.shouldShowChapterTransitionInfo
 import eu.kanade.tachiyomi.ui.reader.viewer.calculateVisibleChapterGap
 import eu.kanade.tachiyomi.util.system.createReaderThemeContext
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
+import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 
 /**
@@ -188,6 +189,28 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
     }
 
     /**
+     * Returns the adapter position of [page], resolving pages that have been merged into a
+     * [JoinedReaderPage] spread. Returns the direct index when [page] is a standalone item, else the
+     * index of the first [JoinedReaderPage] whose [JoinedReaderPage.firstPage] or
+     * [JoinedReaderPage.secondPage] is identity-equal to [page], else -1.
+     */
+    fun indexOfPageOrJoined(page: ReaderPage): Int {
+        val result = indexOfPageOrJoined(items, page)
+        when {
+            result == -1 -> doublePageLog(LogPriority.WARN) {
+                "indexOfPageOrJoined(page=${page.number}): NOT FOUND in ${items.size} items"
+            }
+            items[result] === page -> doublePageLog {
+                "indexOfPageOrJoined(page=${page.number}): resolved directly at $result"
+            }
+            else -> doublePageLog {
+                "indexOfPageOrJoined(page=${page.number}): resolved via joined spread at $result"
+            }
+        }
+        return result
+    }
+
+    /**
      * Returns the current position of the given [view] on the adapter.
      */
     override fun getItemPosition(view: Any): Int {
@@ -195,9 +218,18 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
             val position = items.indexOf(view.item)
             if (position != -1) {
                 return position
-            } else {
-                logcat { "Position for ${view.item} not found" }
             }
+            // A ReaderPage merged into a JoinedReaderPage is never directly in items; resolve it via
+            // joined membership so the joined holder survives notifyDataSetChanged on chapter append
+            // instead of being destroyed and recreated.
+            val item = view.item
+            if (item is ReaderPage) {
+                val joinedPosition = indexOfPageOrJoined(item)
+                if (joinedPosition != -1) {
+                    return joinedPosition
+                }
+            }
+            logcat { "Position for ${view.item} not found" }
         }
         return POSITION_NONE
     }
@@ -246,6 +278,20 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
     }
 }
 
+/**
+ * Returns the index of [page] in [items], resolving pages merged into a [JoinedReaderPage] spread.
+ * Returns the direct index when [page] is a standalone item, else the index of the first
+ * [JoinedReaderPage] whose [JoinedReaderPage.firstPage] or [JoinedReaderPage.secondPage] is
+ * identity-equal to [page], else -1.
+ */
+internal fun indexOfPageOrJoined(items: List<Any>, page: ReaderPage): Int {
+    val direct = items.indexOf(page)
+    if (direct != -1) return direct
+    return items.indexOfFirst {
+        it is JoinedReaderPage && (it.firstPage === page || it.secondPage === page)
+    }
+}
+
 internal fun groupPagesForDoublePage(
     pages: List<ReaderPage>,
     joinDoublePages: Boolean,
@@ -253,6 +299,10 @@ internal fun groupPagesForDoublePage(
     isLandscape: Boolean,
     isR2L: Boolean,
 ): List<Any> {
+    doublePageLog {
+        "groupPagesForDoublePage(joinDoublePages=$joinDoublePages, shiftDoublePages=$shiftDoublePages, " +
+            "isLandscape=$isLandscape, isR2L=$isR2L, pageCount=${pages.size})"
+    }
     if (!joinDoublePages || !isLandscape) {
         return pages
     }
@@ -281,6 +331,12 @@ internal fun groupPagesForDoublePage(
             result.add(currentPage)
             i++
         }
+    }
+    doublePageLog {
+        val joined = result.count { it is JoinedReaderPage }
+        val plain = result.count { it is ReaderPage && it !is JoinedReaderPage }
+        val other = result.size - joined - plain
+        "groupPagesForDoublePage produced ${result.size} items: joined=$joined, single=$plain, other=$other"
     }
     return result
 }

@@ -202,6 +202,52 @@ object ImageUtil {
         return output
     }
 
+    /**
+     * Merge two images side by side into a single image: [left] on the left, [right] on the right,
+     * with their inner edges meeting at the centerline and no gap between them. Used to render a
+     * joined double-page spread as one bitmap on a single zoomable surface.
+     *
+     * The caller is responsible for passing the halves already ordered for the reading direction.
+     *
+     * Height-mismatch handling: the two source pages rarely have identical pixel heights. The result
+     * is sized to the taller of the two and each half is drawn top-aligned in its slot, leaving the
+     * shorter half padded at the bottom. Top-aligning (rather than centering or scaling) keeps the
+     * page content of both halves starting at the same y, which is what a reader expects from a
+     * two-page spread; the bottom padding is unobtrusive and avoids resampling either half.
+     */
+    fun mergeHorizontal(left: BufferedSource, right: BufferedSource): BufferedSource {
+        val leftBitmap = decodeBitmap(left)
+        val rightBitmap = decodeBitmap(right)
+
+        val height = max(leftBitmap.height, rightBitmap.height)
+        val width = leftBitmap.width + rightBitmap.width
+
+        val result = createBitmap(width, height)
+        result.applyCanvas {
+            drawBitmap(
+                leftBitmap,
+                Rect(0, 0, leftBitmap.width, leftBitmap.height),
+                Rect(0, 0, leftBitmap.width, leftBitmap.height),
+                null,
+            )
+            drawBitmap(
+                rightBitmap,
+                Rect(0, 0, rightBitmap.width, rightBitmap.height),
+                Rect(leftBitmap.width, 0, leftBitmap.width + rightBitmap.width, rightBitmap.height),
+                null,
+            )
+        }
+
+        val output = Buffer()
+        result.compress(Bitmap.CompressFormat.JPEG, 100, output.outputStream())
+
+        leftBitmap.recycle()
+        rightBitmap.recycle()
+        result.recycle()
+
+        return output
+    }
+
     enum class Side {
         RIGHT,
         LEFT,

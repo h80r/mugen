@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.doublePageLog
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Slider
 import tachiyomi.presentation.core.i18n.stringResource
@@ -272,6 +273,7 @@ fun ChapterNavigator(
                             value = currentPage,
                             valueRange = 1f..totalPages.toFloat(),
                             onValueChange = f@{
+                                doublePageLog { "VerticalSlider.onValueChange: $currentPage -> $it" }
                                 if (it == currentPage) return@f
                                 onPageIndexChange(it - 1)
                             },
@@ -385,6 +387,7 @@ fun ChapterNavigator(
                                 value = currentPage,
                                 valueRange = 1..totalPages,
                                 onValueChange = f@{
+                                    doublePageLog { "Slider.onValueChange: $currentPage -> $it" }
                                     if (it == currentPage) return@f
                                     onPageIndexChange(it - 1)
                                 },

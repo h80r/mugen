@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import eu.kanade.tachiyomi.data.database.models.manga.ChapterImpl
+import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
+import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.JoinedReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
@@ -132,5 +134,50 @@ class PagerViewerAdapterTest {
         secondGroup.secondPage shouldBe pages[2]
 
         result[2] shouldBe pages[3]
+    }
+
+    @Test
+    fun `indexOfPageOrJoined resolves a page merged into a JoinedReaderPage`() {
+        val p0 = createPage(0)
+        val p1 = createPage(1)
+        val p2 = createPage(2)
+        val items = listOf<Any>(JoinedReaderPage(p0, p1), p2)
+
+        indexOfPageOrJoined(items, p0) shouldBe 0
+        indexOfPageOrJoined(items, p1) shouldBe 0
+    }
+
+    @Test
+    fun `indexOfPageOrJoined returns the direct index for a standalone page`() {
+        val p0 = createPage(0)
+        val p1 = createPage(1)
+        val items = listOf<Any>(p0, JoinedReaderPage(createPage(2), createPage(3)), p1)
+
+        indexOfPageOrJoined(items, p0) shouldBe 0
+        indexOfPageOrJoined(items, p1) shouldBe 2
+    }
+
+    @Test
+    fun `indexOfPageOrJoined returns -1 for a page present in neither`() {
+        val p0 = createPage(0)
+        val absent = createPage(99)
+        val items = listOf<Any>(JoinedReaderPage(p0, createPage(1)), createPage(2))
+
+        indexOfPageOrJoined(items, absent) shouldBe -1
+    }
+
+    @Test
+    fun `indexOfPageOrJoined is unaffected by InsertPage and transition items`() {
+        val p0 = createPage(0)
+        val insert = InsertPage(p0)
+        val transition = ChapterTransition.Prev(
+            from = ReaderChapter(ChapterImpl().apply { id = 1L }),
+            to = null,
+        )
+        val target = createPage(5)
+        val items = listOf<Any>(transition, insert, target)
+
+        indexOfPageOrJoined(items, target) shouldBe 2
+        indexOfPageOrJoined(items, insert) shouldBe 1
     }
 }

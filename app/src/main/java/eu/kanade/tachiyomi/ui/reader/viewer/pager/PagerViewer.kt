@@ -355,7 +355,16 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
         if (pager.isGone) {
             logcat { "Pager first layout" }
             val pages = chapters.currChapter.pages ?: return
-            moveToPage(pages[min(chapters.currChapter.requestedPage, pages.lastIndex)])
+            val requestedPage = chapters.currChapter.requestedPage
+            val chosenIndex = min(requestedPage, pages.lastIndex)
+            val chosenPage = pages[chosenIndex]
+            val resolvedPosition = adapter.indexOfPageOrJoined(chosenPage)
+            doublePageLog {
+                val itemType = adapter.items.getOrNull(resolvedPosition)?.javaClass?.simpleName ?: "none"
+                "setChaptersInternal: requestedPage=$requestedPage, chosenIndex=$chosenIndex, " +
+                    "page=${chosenPage.number}, resolvedPosition=$resolvedPosition, itemThere=$itemType"
+            }
+            moveToPage(chosenPage)
             pager.isVisible = true
         } else {
             pager.post {
@@ -373,7 +382,8 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
      * Tells this viewer to move to the given [page].
      */
     override fun moveToPage(page: ReaderPage) {
-        val position = adapter.items.indexOf(page)
+        val position = adapter.indexOfPageOrJoined(page)
+        doublePageLog { "moveToPage(page=${page.number}) -> position=$position" }
         if (position != -1) {
             val currentPosition = pager.currentItem
             pager.setCurrentItem(position, true)
