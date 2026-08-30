@@ -13,3 +13,7 @@ local.properties
 key.properties
 *.jks
 *.keystore
+
+# Python tooling artifacts
+__pycache__/
+*.pyc

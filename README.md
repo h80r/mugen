@@ -1,32 +1,30 @@
 <div align="center">
-  <img src="app/src/main/res/drawable-nodpi/ic_launcher_foreground.png" alt="Tadami logo" width="160" />
-  <h1>Tadami</h1>
-  <p><strong>A polished Aniyomi fork for anime, manga, and novels (ranobe).</strong></p>
+  <img src="app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png" alt="Mugen logo" width="160" />
+  <h1>Mugen</h1>
+  <p><strong>A personal Aniyomi fork for anime, manga, and novels (ranobe).</strong></p>
   <p>
-    <a href="https://github.com/andarcanum/Tadami-Aniyomi-fork/releases"><img src="https://img.shields.io/github/v/release/andarcanum/Tadami-Aniyomi-fork?display_name=tag" alt="Latest Release"></a>
-    <a href="https://boosty.to/tadami"><img src="https://img.shields.io/badge/Boosty-Blog%20%26%20Previews-F15F2C?logo=boosty&logoColor=white" alt="Boosty Blog"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/andarcanum/Tadami-Aniyomi-fork" alt="License"></a>
+    <a href="https://github.com/h80r/mugen/releases"><img src="https://img.shields.io/github/v/release/h80r/mugen?display_name=tag" alt="Latest Release"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/h80r/mugen" alt="License"></a>
     <a href="https://developer.android.com/about/versions/oreo"><img src="https://img.shields.io/badge/Android-8.0%2B-brightgreen" alt="Android 8+"></a>
   </p>
 </div>
 
 ## About
 
-Tadami is a community fork of Aniyomi with a stronger focus on UI quality, Aurora-style surfaces, and a better reading experience across anime, manga, and novels.
+Mugen is a personal fork in the Mihon / Aniyomi lineage, focused on UI quality
+(Aurora-style surfaces), reading-experience polish, and first-class novel (ranobe) support
+alongside anime and manga.
 
-## Downloads & Release Schedule / Скачивание и Релизы
+## Downloads
 
-Requires Android 8.0+ (API 26+). Package name: `com.tadami.aurora`.
+Requires Android 8.0+ (API 26+). Package name: `dev.h80r.mugen`.
 
-> [!NOTE]
-> **Release Schedule / График выходов**
-> - **GitHub Releases:** Major stable versions are released **weekly**.  
->   _Основные (стабильные) версии публикуются на GitHub **еженедельно**._
-> - **[Boosty Blog](https://boosty.to/tadami):** Intermediate preview builds, dev logs, and early updates are published regularly.  
->   _Промежуточные тестовые сборки, новости разработки и ранний доступ выходят в **[блоге на Boosty](https://boosty.to/tadami)**._
+Stable builds are published as signed APKs on
+[GitHub Releases](https://github.com/h80r/mugen/releases). Each release is tagged
+`v<versionName>` and built automatically by CI when the tag is pushed.
 
-- **Stable Releases:** [GitHub Releases](https://github.com/andarcanum/Tadami-Aniyomi-fork/releases)
-- **Dev & Preview Builds:** [Boosty Blog](https://boosty.to/tadami)
+The in-app updater checks GitHub Releases and offers a one-tap update; the "What's new"
+sheet after an update shows that release's changelog.
 
 ## Screenshots
 
@@ -41,7 +39,8 @@ Requires Android 8.0+ (API 26+). Package name: `com.tadami.aurora`.
 ## What Is Different In This Fork
 
 - Aurora-focused UI direction with dedicated Home, library, title, and settings polish.
-- Compose-first app shell, with a few intentional legacy View/Fragment bridge surfaces kept where reader, player, auth, or extension compatibility still needs them.
+- Compose-first app shell, with a few intentional legacy View/Fragment bridge surfaces kept
+  where reader, player, auth, or extension compatibility still needs them.
 - Full anime, manga, and novel support in one app.
 - Novel-oriented development, including compatibility work for LNReader-style ecosystems.
 - User-facing Aurora customization toggles for key Home and title-card interactions.
@@ -91,6 +90,21 @@ Google Drive sync uses a local-only OAuth override file at
 `app/src/main/assets/client_secrets.json` file as the placeholder template
 and put real OAuth credentials only in the ignored local file.
 
+## Releasing
+
+Releases are cut with the repo-local `/release` skill:
+
+1. Bump `versionName` (and `versionCode`) in `app/build.gradle.kts`.
+2. Run `/release` — it updates `CHANGELOG.md` from the commits since the last documented
+   version, commits it, then creates and pushes the `v<versionName>` tag.
+3. `.github/workflows/release.yml` verifies the tag matches `versionName`, builds and signs
+   the APKs, extracts the matching `CHANGELOG.md` section
+   (`tools/ci/extract-changelog-section.py`), and publishes a non-prerelease GitHub Release
+   with per-ABI APKs and a checksum table.
+
+Pushing to `develop` only runs a fast `spotlessCheck` + debug build
+(`.github/workflows/build_push.yml`); there is no PR gate.
+
 ## Module Map
 
 - `app`: app shell, navigation, screens, activities, and feature wiring
@@ -109,64 +123,22 @@ Pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for contributi
 
 ## Disclaimer
 
-Tadami is a **media library manager and player**. Tadami **does not host, store,
-provide, bundle, or distribute** any content, sources, extensions, or
-repositories. The application ships **without** any preinstalled sources or
-repositories.
+Mugen is a **media library manager and player**. Mugen **does not host, store, provide,
+bundle, or distribute** any content, sources, extensions, or repositories. The application
+ships **without** any preinstalled sources or repositories.
 
-Any content accessed through Tadami comes from **third-party sources that the
-user chooses to add**. The Tadami project has no control over, and assumes no
-responsibility for, such third-party sources, their content, or their legality.
-Users are solely responsible for ensuring they have the right to access any
-content and for complying with applicable laws.
+Any content accessed through Mugen comes from **third-party sources that the user chooses to
+add**. The Mugen project has no control over, and assumes no responsibility for, such
+third-party sources, their content, or their legality. Users are solely responsible for
+ensuring they have the right to access any content and for complying with applicable laws.
 
-Tadami is **not affiliated with, endorsed by, or sponsored by** any anime, manga,
-or novel rights holder, streaming service, publisher, or studio, nor by Aniyomi,
-Mihon, or Tachiyomi as brands. All product names, logos, and brands are the
-property of their respective owners.
+Mugen is **not affiliated with, endorsed by, or sponsored by** any anime, manga, or novel
+rights holder, streaming service, publisher, or studio, nor by Aniyomi, Mihon, or Tachiyomi
+as brands. All product names, logos, and brands are the property of their respective owners.
 
-Tadami is intended for **lawful use only**. Do not use Tadami to infringe the
-rights of others. See [DISCLAIMER.md](DISCLAIMER.md) for the full statement and
-[DMCA.md](DMCA.md) for our copyright/takedown policy.
-
-## Support Development
-
-> [!IMPORTANT]
-> Donations fund **only the development of this open-source application** — coding,
-> maintenance, testing, and infrastructure. They are **not** a payment for content,
-> and they do **not** support, host, or endorse any third-party sources, extensions,
-> repositories, or copyrighted material. Tadami ships no content and provides no
-> access to any. Contributing is entirely voluntary.
->
-> _Пожертвования идут **исключительно на разработку** этого приложения с открытым
-> исходным кодом и **не являются оплатой контента**. Они не поддерживают и не
-> финансируют какие-либо сторонние источники, расширения или нелегальные материалы._
-
-<div align="center">
-
-If you'd like to support the work on the code, here are a few optional ways.
-
-<br />
-
-<a href="https://boosty.to/tadami/donate"><img src="https://img.shields.io/badge/Boosty-Support-F15F2C?style=for-the-badge&logo=boosty&logoColor=white" alt="Boosty" height="34" /></a>&nbsp;&nbsp;
-<a href="https://pay.cloudtips.ru/p/cae17cec"><img src="https://img.shields.io/badge/CloudTips-SBP%20%2F%20Card-1A73E8?style=for-the-badge&logo=cashapp&logoColor=white" alt="CloudTips" height="34" /></a>
-
-<sub>Our Boosty blog: <a href="https://boosty.to/tadami"><b>boosty.to/tadami</b></a></sub>
-
-<br />
-
-<details>
-<summary><b>💠 Crypto (USDT)</b></summary>
-<br />
-
-| Asset | Network | Address |
-| :---: | :---: | :--- |
-| ![USDT](https://img.shields.io/badge/USDT-26A17B?style=flat-square&logo=tether&logoColor=white) | **TON** | `UQBTdyHogZWuUnv10WfFUM0yQ8lc3iXFh-4JyLStNirFCBrm` |
-| ![USDT](https://img.shields.io/badge/USDT-26A17B?style=flat-square&logo=tether&logoColor=white) | **TRON (TRC20)** | `TJwbx9PNLLpMetpyJ83DpGCCdNWwkcEXTt` |
-
-</details>
-
-</div>
+Mugen is intended for **lawful use only**. Do not use Mugen to infringe the rights of others.
+See [DISCLAIMER.md](DISCLAIMER.md) for the full statement and [DMCA.md](DMCA.md) for our
+copyright/takedown policy.
 
 ## Credits
 
