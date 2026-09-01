@@ -12,10 +12,11 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ## Unreleased
 
-## [v0.70.2] - 2026-08-30
+## [v0.72.81] - 2026-09-01
 
 ### Adicionado
 
+- Leitor de curvar página (page curl) para mangá, com animação de virada de página.
 - Modo de leitura em duas páginas no formato paisagem para o leitor de novels.
 - Salvamento e navegação de citações de novels, com toque para pular direto ao trecho.
 - Central de texto selecionado no leitor de novels, reunindo tradução, dicionário e outras ações de seleção.
@@ -29,7 +30,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Corrigido
 
-- Diversas correções no leitor de mangá em modo de página dupla.
+- Diversas correções no leitor de mangá em modo de página dupla, incluindo pulo de página em deslize rápido.
 - A aba de curvar página agora mostra a página vizinha real.
 
 ### Removido
