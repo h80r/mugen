@@ -18,8 +18,10 @@ import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.viewer.AutoScrollableViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
+import eu.kanade.tachiyomi.ui.reader.viewer.autoscroll.AutoScrollTarget
 import eu.kanade.tachiyomi.ui.reader.viewer.autoscroll.PagerAutoScrollManager
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
@@ -31,7 +33,9 @@ import kotlin.math.min
  * Implementation of a [Viewer] to display pages with a [ViewPager].
  */
 @Suppress("LeakingThis")
-abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
+abstract class PagerViewer(val activity: ReaderActivity) : Viewer, AutoScrollableViewer, AutoScrollTarget {
+
+    override val isPagerViewer: Boolean = true
 
     val downloadManager: MangaDownloadManager by injectLazy()
 
@@ -177,14 +181,14 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
      *
      * @param speed The speed value (1-100), where higher is faster.
      */
-    fun startAutoScroll(speed: Int? = null) {
+    override fun startAutoScroll(speed: Int?) {
         autoScrollManager.start(speed)
     }
 
     /**
      * Stops auto-scroll completely.
      */
-    fun stopAutoScroll() {
+    override fun stopAutoScroll() {
         autoScrollManager.stop()
     }
 
@@ -208,7 +212,7 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
      *
      * @param delayMs Duration of the cooldown in milliseconds.
      */
-    fun setAutoScrollCooldown(delayMs: Long) {
+    override fun setAutoScrollCooldown(delayMs: Long) {
         autoScrollManager.setCooldown(delayMs)
     }
 
@@ -399,7 +403,7 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
     /**
      * Moves to the next page.
      */
-    open fun moveToNext() {
+    override fun moveToNext() {
         moveRight()
     }
 

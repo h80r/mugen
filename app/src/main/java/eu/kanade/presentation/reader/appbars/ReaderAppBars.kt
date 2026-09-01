@@ -64,8 +64,6 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
-import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
-import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.aniyomi.AYMR
@@ -145,7 +143,7 @@ fun ReaderAppBars(
     isAutoScrollExpanded: Boolean = false,
     onToggleExpand: () -> Unit = {},
 ) {
-    val isRtl = viewer is R2LPagerViewer
+    val isRtl = viewer?.isRtl == true
     val appHaptics = LocalAppHaptics.current
     val isDark = isSystemInDarkTheme()
     val backgroundColor = MaterialTheme.colorScheme
@@ -287,7 +285,7 @@ fun ReaderAppBars(
                                 onSpeedChange = onSpeedChange,
                                 showAutoScrollFloatingButton = showAutoScrollFloatingButton,
                                 onToggleAutoScrollFloatingButton = onToggleAutoScrollFloatingButton,
-                                isPagerViewer = viewer is PagerViewer,
+                                isPagerViewer = viewer?.isPagerViewer == true,
                             )
                         }
 

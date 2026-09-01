@@ -1,11 +1,8 @@
-@file:OptIn(eu.kanade.presentation.reader.novel.curl.ExperimentalPageCurlApi::class)
+@file:OptIn(eu.kanade.presentation.reader.curl.ExperimentalPageCurlApi::class)
 
 package eu.kanade.presentation.reader.novel
 
 import android.graphics.Typeface
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.AnimationVector4D
-import androidx.compose.animation.core.keyframes
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -36,12 +33,19 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import eu.kanade.presentation.reader.novel.curl.Edge
-import eu.kanade.presentation.reader.novel.curl.ExperimentalPageCurlApi
-import eu.kanade.presentation.reader.novel.curl.PageCurl
-import eu.kanade.presentation.reader.novel.curl.PageCurlConfig
-import eu.kanade.presentation.reader.novel.curl.rememberPageCurlConfig
-import eu.kanade.presentation.reader.novel.curl.rememberPageCurlState
+import eu.kanade.presentation.reader.curl.Edge
+import eu.kanade.presentation.reader.curl.ExperimentalPageCurlApi
+import eu.kanade.presentation.reader.curl.PageCurl
+import eu.kanade.presentation.reader.curl.PageCurlConfig
+import eu.kanade.presentation.reader.curl.createPageTurnAnimation
+import eu.kanade.presentation.reader.curl.rememberPageCurlConfig
+import eu.kanade.presentation.reader.curl.rememberPageCurlState
+import eu.kanade.presentation.reader.curl.resolvePageTurnRendererProgressPageIndex
+import eu.kanade.presentation.reader.curl.resolvePageTurnRendererVirtualPageCount
+import eu.kanade.presentation.reader.curl.resolvePageTurnRendererVirtualPageIndex
+import eu.kanade.presentation.reader.curl.resolveSpreadSlotCount
+import eu.kanade.presentation.reader.curl.resolveSpreadSlotFirstPageIndex
+import eu.kanade.presentation.reader.curl.resolveSpreadSlotForPageIndex
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTurnActivationZone
@@ -82,11 +86,6 @@ internal data class NovelPageTurnRendererConfig(
     val tapCustomEnabled: Boolean,
 )
 
-internal data class PageTurnAnimationTiming(
-    val durationMillis: Int,
-    val midpointMillis: Int,
-)
-
 internal enum class PageTurnCustomTapAction {
     NONE,
     TOGGLE_UI,
@@ -118,71 +117,6 @@ internal fun resolvePageTurnRendererFallbackStyle(
         NovelPageTransitionStyle.DEPTH,
         NovelPageTransitionStyle.BOOK_FLIP,
         -> requestedStyle
-    }
-}
-
-internal fun resolvePageTurnRendererProgressPageIndex(
-    currentPage: Int,
-    contentPageCount: Int = Int.MAX_VALUE,
-    hasPreviousChapter: Boolean = false,
-): Int {
-    val safeContentPageCount = contentPageCount.coerceAtLeast(1)
-    val offset = if (hasPreviousChapter) 1 else 0
-    return (currentPage - offset).coerceIn(0, safeContentPageCount - 1)
-}
-
-internal fun resolvePageTurnRendererVirtualPageCount(
-    contentPageCount: Int,
-    hasPreviousChapter: Boolean,
-    hasNextChapter: Boolean,
-): Int {
-    return contentPageCount.coerceAtLeast(1) +
-        (if (hasPreviousChapter) 1 else 0) +
-        (if (hasNextChapter) 1 else 0)
-}
-
-internal fun resolvePageTurnRendererVirtualPageIndex(
-    actualPageIndex: Int,
-    hasPreviousChapter: Boolean,
-): Int {
-    return actualPageIndex.coerceAtLeast(0) + if (hasPreviousChapter) 1 else 0
-}
-
-internal fun resolvePageTurnRendererBoundaryChapterTarget(
-    currentPage: Int,
-    contentPageCount: Int,
-    hasPreviousChapter: Boolean,
-    hasNextChapter: Boolean,
-): HorizontalChapterSwipeAction {
-    val virtualPageCount = resolvePageTurnRendererVirtualPageCount(
-        contentPageCount = contentPageCount,
-        hasPreviousChapter = hasPreviousChapter,
-        hasNextChapter = hasNextChapter,
-    )
-    return when {
-        hasPreviousChapter && currentPage <= 0 -> HorizontalChapterSwipeAction.PREVIOUS
-        hasNextChapter && currentPage >= virtualPageCount - 1 -> HorizontalChapterSwipeAction.NEXT
-        else -> HorizontalChapterSwipeAction.NONE
-    }
-}
-
-internal fun resolvePageTurnRendererSettledBoundaryChapterTarget(
-    currentPage: Int,
-    progress: Float,
-    contentPageCount: Int,
-    hasPreviousChapter: Boolean,
-    hasNextChapter: Boolean,
-): HorizontalChapterSwipeAction {
-    val boundaryTarget = resolvePageTurnRendererBoundaryChapterTarget(
-        currentPage = currentPage,
-        contentPageCount = contentPageCount,
-        hasPreviousChapter = hasPreviousChapter,
-        hasNextChapter = hasNextChapter,
-    )
-    return if (boundaryTarget != HorizontalChapterSwipeAction.NONE && abs(progress) <= 0.001f) {
-        boundaryTarget
-    } else {
-        HorizontalChapterSwipeAction.NONE
     }
 }
 
@@ -248,19 +182,6 @@ internal fun resolveNovelPageTurnRendererConfig(
         tapBackwardEnabled = canMoveBackward,
         tapForwardEnabled = canMoveForward,
         tapCustomEnabled = true,
-    )
-}
-
-internal fun resolvePageTurnAnimationTiming(durationMillis: Int): PageTurnAnimationTiming {
-    val safeDurationMillis = durationMillis.coerceAtLeast(1)
-    val midpointMillis = if (safeDurationMillis == 1) {
-        0
-    } else {
-        (safeDurationMillis / 3).coerceIn(1, safeDurationMillis - 1)
-    }
-    return PageTurnAnimationTiming(
-        durationMillis = safeDurationMillis,
-        midpointMillis = midpointMillis,
     )
 }
 
@@ -440,70 +361,6 @@ private fun createPageTurnDragInteraction(
             )
         }
     }
-}
-
-internal fun createPageTurnAnimation(
-    animationDurationMillis: Int,
-    forward: Boolean,
-    curlAmount: Float,
-): suspend Animatable<Edge, AnimationVector4D>.(Size) -> Unit {
-    val timing = resolvePageTurnAnimationTiming(animationDurationMillis)
-    return { size ->
-        val startEdge = size.startEdge()
-        val middleEdge = resolvePageTurnCurlMidEdge(size, forward, curlAmount)
-        val endEdge = size.endEdge()
-        animateTo(
-            targetValue = if (forward) startEdge else endEdge,
-            animationSpec = keyframes {
-                durationMillis = timing.durationMillis
-                if (forward) {
-                    endEdge at 0
-                    middleEdge at timing.midpointMillis
-                } else {
-                    startEdge at 0
-                    middleEdge at (timing.durationMillis - timing.midpointMillis)
-                }
-            },
-        )
-    }
-}
-
-internal fun resolvePageTurnCurlMidEdge(
-    size: Size,
-    forward: Boolean,
-    curlAmount: Float,
-): Edge {
-    val normalizedCurl = ((curlAmount - 0.28f) / 0.64f).coerceIn(0f, 1f)
-    val topX = size.width * (0.94f - (0.16f * normalizedCurl))
-    val topY = size.height * (0.18f + (0.04f * normalizedCurl))
-    val bottomX = size.width * (0.56f - (0.18f * normalizedCurl))
-    val bottomY = size.height * (0.98f - (0.02f * normalizedCurl))
-
-    return if (forward) {
-        Edge(
-            top = Offset(topX.coerceIn(0f, size.width), topY.coerceIn(0f, size.height)),
-            bottom = Offset(bottomX.coerceIn(0f, size.width), bottomY.coerceIn(0f, size.height)),
-        )
-    } else {
-        Edge(
-            top = Offset((size.width - topX).coerceIn(0f, size.width), topY.coerceIn(0f, size.height)),
-            bottom = Offset((size.width - bottomX).coerceIn(0f, size.width), bottomY.coerceIn(0f, size.height)),
-        )
-    }
-}
-
-internal fun Size.startEdge(): Edge {
-    return Edge(
-        top = Offset(0f, 0f),
-        bottom = Offset(0f, height),
-    )
-}
-
-internal fun Size.endEdge(): Edge {
-    return Edge(
-        top = Offset(width, height),
-        bottom = Offset(width, height),
-    )
 }
 
 @Composable
@@ -778,7 +635,7 @@ internal fun PageTurnPageRenderer(
             .distinctUntilChanged()
             .collectLatest { (targetVirtualPage, progress) ->
                 when (
-                    resolvePageTurnRendererSettledBoundaryChapterTarget(
+                    resolveNovelPageTurnRendererSettledBoundaryChapterTarget(
                         currentPage = targetVirtualPage,
                         progress = progress,
                         contentPageCount = actualPageCount,
@@ -807,7 +664,7 @@ internal fun PageTurnPageRenderer(
         snapshotFlow { pageCurlState.current.coerceIn(0, virtualPageCount - 1) }
             .distinctUntilChanged()
             .collectLatest { targetVirtualPage ->
-                val boundaryTarget = resolvePageTurnRendererBoundaryChapterTarget(
+                val boundaryTarget = resolveNovelPageTurnRendererBoundaryChapterTarget(
                     currentPage = targetVirtualPage,
                     contentPageCount = actualPageCount,
                     hasPreviousChapter = hasPreviousChapter,
@@ -902,7 +759,7 @@ internal fun PageTurnPageRenderer(
                 null
             } else {
                 when (
-                    resolvePageTurnRendererBoundaryChapterTarget(
+                    resolveNovelPageTurnRendererBoundaryChapterTarget(
                         currentPage = page,
                         contentPageCount = actualPageCount,
                         hasPreviousChapter = hasPreviousChapter,
@@ -1082,7 +939,7 @@ internal fun PageTurnPageRenderer(
             }
         }
 
-        val currentBoundaryTarget = resolvePageTurnRendererBoundaryChapterTarget(
+        val currentBoundaryTarget = resolveNovelPageTurnRendererBoundaryChapterTarget(
             currentPage = currentPage,
             contentPageCount = actualPageCount,
             hasPreviousChapter = hasPreviousChapter,

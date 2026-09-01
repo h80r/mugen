@@ -5,11 +5,15 @@ import dev.h80r.mugen.R
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
+import eu.kanade.tachiyomi.ui.reader.viewer.curl.MangaCurlViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.curl.ReadingDirection
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.L2RPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.VerticalPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
 import tachiyomi.i18n.MR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 enum class ReadingMode(
     val stringRes: StringResource,
@@ -67,10 +71,38 @@ enum class ReadingMode(
         }
 
         fun toViewer(preference: Int?, activity: ReaderActivity): Viewer {
+            // The page-curl preference is orthogonal to reading direction: when it is on, the three
+            // pager modes route to MangaCurlViewer carrying that direction; webtoon modes ignore it
+            // because the curl is a paged metaphor.
+            val pageCurl = Injekt.get<ReaderPreferences>().pageCurl().get()
             return when (fromPreference(preference)) {
-                LEFT_TO_RIGHT -> L2RPagerViewer(activity)
-                RIGHT_TO_LEFT -> R2LPagerViewer(activity)
-                VERTICAL -> VerticalPagerViewer(activity)
+                LEFT_TO_RIGHT ->
+                    if (pageCurl) {
+                        MangaCurlViewer(
+                            activity,
+                            ReadingDirection.LEFT_TO_RIGHT,
+                        )
+                    } else {
+                        L2RPagerViewer(activity)
+                    }
+                RIGHT_TO_LEFT ->
+                    if (pageCurl) {
+                        MangaCurlViewer(
+                            activity,
+                            ReadingDirection.RIGHT_TO_LEFT,
+                        )
+                    } else {
+                        R2LPagerViewer(activity)
+                    }
+                VERTICAL ->
+                    if (pageCurl) {
+                        MangaCurlViewer(
+                            activity,
+                            ReadingDirection.VERTICAL,
+                        )
+                    } else {
+                        VerticalPagerViewer(activity)
+                    }
                 WEBTOON -> WebtoonViewer(activity)
                 CONTINUOUS_VERTICAL -> WebtoonViewer(activity, isContinuous = false)
                 DEFAULT -> throw IllegalStateException(

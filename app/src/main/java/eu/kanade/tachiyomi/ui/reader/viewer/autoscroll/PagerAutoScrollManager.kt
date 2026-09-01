@@ -2,7 +2,6 @@ package eu.kanade.tachiyomi.ui.reader.viewer.autoscroll
 
 import android.os.CountDownTimer
 import android.os.SystemClock
-import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -10,13 +9,22 @@ import kotlinx.coroutines.flow.update
 import tachiyomi.core.common.util.system.logcat
 
 /**
- * Auto-scroll manager for [PagerViewer] that uses a [CountDownTimer] to advance pages
- * at regular intervals based on the configured speed.
+ * A paged viewer this manager can advance. Implemented by the pager and the manga curl viewer,
+ * which share this timer-based page-advance manager (the webtoon viewer scrolls continuously and
+ * has its own).
+ */
+interface AutoScrollTarget {
+    fun moveToNext()
+}
+
+/**
+ * Auto-scroll manager for a paged [AutoScrollTarget] that uses a [CountDownTimer] to advance
+ * pages at regular intervals based on the configured speed.
  *
- * @property viewer The [PagerViewer] instance to control.
+ * @property viewer The [AutoScrollTarget] instance to control.
  */
 class PagerAutoScrollManager(
-    private val viewer: PagerViewer,
+    private val viewer: AutoScrollTarget,
 ) : AutoScrollManager {
 
     private val _state = MutableStateFlow(AutoScrollState())

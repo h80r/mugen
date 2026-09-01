@@ -1,4 +1,4 @@
-package eu.kanade.presentation.reader.novel.curl
+package eu.kanade.presentation.reader.curl
 
 // Vendored from io.github.oleksandrbalan:pagecurl 1.5.1 (Apache 2.0), github.com/oleksandrbalan/pagecurl.
 
@@ -43,7 +43,23 @@ internal fun Modifier.drawCurl(
     // one horizontal flip to read the right way round; on a mirrored surface that flip already comes from the
     // surface itself, so this suppresses the one drawCurl would otherwise apply.
     backContentLayerOnMirroredSurface: Boolean = false,
+    /** Names this flap in the diagnostics trace (temporary). */
+    debugName: String = "?",
 ): Modifier = drawWithCache {
+    // Which branch each flap takes, per draw. `drawNothing` on BOTH flaps of a column means that
+    // column paints nothing at all that frame, which is the shape of an unexplained flash.
+    SpreadCurlDiagnostics.logChanged(
+        "curl.$debugName",
+        "curl.branch",
+        "$debugName " +
+            when {
+                posA == size.toRect().topLeft && posB == size.toRect().bottomLeft -> "NOTHING (parked left)"
+                posA == size.toRect().topRight && posB == size.toRect().bottomRight -> "FULL (parked right)"
+                else -> "CURLING"
+            } +
+            " size=${SpreadCurlDiagnostics.f(size.width)}x${SpreadCurlDiagnostics.f(size.height)}",
+    )
+
     // Fast-check if curl is in left most position (gesture is fully completed)
     // In such case do not bother and draw nothing
     if (posA == size.toRect().topLeft && posB == size.toRect().bottomLeft) {

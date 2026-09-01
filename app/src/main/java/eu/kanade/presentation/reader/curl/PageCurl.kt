@@ -1,4 +1,4 @@
-package eu.kanade.presentation.reader.novel.curl
+package eu.kanade.presentation.reader.curl
 
 // Vendored from io.github.oleksandrbalan:pagecurl 1.5.1 (Apache 2.0), github.com/oleksandrbalan/pagecurl.
 
@@ -44,6 +44,8 @@ public fun PageCurl(
     // Set when this PageCurl is placed inside a horizontally mirrored layer, so an externally supplied back-page
     // layer is not flipped a second time.
     onMirroredSurface: Boolean = false,
+    /** Names this instance in the diagnostics trace (temporary). */
+    curlDebugName: String = "?",
     content: @Composable (Int) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -121,7 +123,31 @@ public fun PageCurl(
                 }
                 val capturesOwnLayers = externalBackContentLayers == null
 
-                if (updatedCurrent + 1 < state.max) {
+                // The page shown underneath the flaps.
+                //
+                // `current + 1` is what a *forward* fold uncovers as it lifts `current` away, and it
+                // is right for every frame where the forward flap is the one moving. A backward fold
+                // is the other way round: it brings `current - 1` back over the top, and the page it
+                // is covering — the one that must sit underneath — is `current` itself.
+                //
+                // Leaving it at `current + 1` throughout meant a backward turn showed the page one
+                // step *ahead* behind the returning flap. Instrumented on the spread's right column
+                // at current=6, the three layers resolved to spreads 6 (under), 5 (fwd) and 4 (bwd):
+                // the layer behind the flap was the spread already on screen, which is what "the
+                // same page appears underneath" describes.
+                //
+                // Only a backward fold in flight changes it, so the forward path composes exactly
+                // the pages it always did.
+                val backwardInFlight = internalState.backward.value != internalState.leftEdge
+                val underPage = if (backwardInFlight) updatedCurrent else updatedCurrent + 1
+                SpreadCurlDiagnostics.logChanged(
+                    "stack.$curlDebugName",
+                    "curl.stack",
+                    "$curlDebugName current=$updatedCurrent backwardInFlight=$backwardInFlight " +
+                        "under=$underPage fwdFlap=$updatedCurrent bwdFlap=${updatedCurrent - 1}",
+                )
+
+                if (underPage < state.max) {
                     if (capturesOwnLayers && nextPageLayer != null) {
                         Box(
                             Modifier.drawWithContent {
@@ -129,14 +155,25 @@ public fun PageCurl(
                                 drawContent()
                             },
                         ) {
-                            content(updatedCurrent + 1)
+                            content(underPage)
                         }
                     } else {
-                        content(updatedCurrent + 1)
+                        content(underPage)
                     }
                 }
 
-                if (updatedCurrent < state.max) {
+                // The forward flap stands down while a backward fold is running.
+                //
+                // A backward fold brings `current - 1` back over the top, so the page it covers —
+                // `current` — belongs *underneath* it. But the forward flap also draws `current`,
+                // and while it sits parked at its resting edge drawCurl's fast path paints it
+                // across the whole surface, on top of everything below. The returning flap then has
+                // the current spread behind it rather than the one it is uncovering, which reads as
+                // "the same page shows under the curl".
+                //
+                // Skipping it is safe: `current` is still drawn, by the under-layer above, which
+                // resolves to exactly this page whenever a backward fold is in flight.
+                if (updatedCurrent < state.max && !backwardInFlight) {
                     val forward = internalState.forward.value
                     Box(
                         Modifier.drawCurl(
@@ -146,6 +183,7 @@ public fun PageCurl(
                             backContentLayer = nextPageLayer,
                             selfContentLayer = if (capturesOwnLayers) currentPageLayer else null,
                             backContentLayerOnMirroredSurface = onMirroredSurface,
+                            debugName = "$curlDebugName/fwd@$updatedCurrent",
                         ),
                     ) {
                         content(updatedCurrent)
@@ -161,6 +199,7 @@ public fun PageCurl(
                             posB = backward.bottom,
                             backContentLayer = currentPageLayer,
                             backContentLayerOnMirroredSurface = onMirroredSurface,
+                            debugName = "$curlDebugName/bwd@$updatedCurrent",
                         ),
                     ) {
                         content(updatedCurrent - 1)
@@ -215,6 +254,8 @@ public fun PageCurl(
     // Set when this PageCurl is placed inside a horizontally mirrored layer, so an externally supplied back-page
     // layer is not flipped a second time.
     onMirroredSurface: Boolean = false,
+    /** Names this instance in the diagnostics trace (temporary). */
+    curlDebugName: String = "?",
     content: @Composable (Int) -> Unit,
 ) {
     var lastKey by remember(state.current) { mutableStateOf(if (count > 0) key(state.current) else null) }
@@ -235,6 +276,7 @@ public fun PageCurl(
         config = config,
         externalBackContentLayers = externalBackContentLayers,
         onMirroredSurface = onMirroredSurface,
+        curlDebugName = curlDebugName,
         content = content,
         modifier = modifier,
     )

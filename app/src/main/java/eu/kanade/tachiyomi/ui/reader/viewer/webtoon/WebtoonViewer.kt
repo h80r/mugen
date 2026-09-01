@@ -24,6 +24,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.resolveWebtoonRestoreOffsetPx
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.viewer.AutoScrollableViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
 import eu.kanade.tachiyomi.ui.reader.viewer.autoscroll.WebtoonAutoScrollManager
@@ -41,7 +42,7 @@ import kotlin.math.min
 /**
  * Implementation of a [Viewer] to display pages with a [RecyclerView].
  */
-class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = true) : Viewer {
+class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = true) : Viewer, AutoScrollableViewer {
 
     val downloadManager: MangaDownloadManager by injectLazy()
 
@@ -294,14 +295,14 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
      *
      * @param speed The scroll speed (1-100). If null, uses the current speed.
      */
-    fun startAutoScroll(speed: Int? = null) {
+    override fun startAutoScroll(speed: Int?) {
         autoScrollManager.start(speed)
     }
 
     /**
      * Stops auto-scroll completely.
      */
-    fun stopAutoScroll() {
+    override fun stopAutoScroll() {
         autoScrollManager.stop()
     }
 
@@ -334,7 +335,7 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
      *
      * @param delayMs Duration of the cooldown in milliseconds.
      */
-    fun setAutoScrollCooldown(delayMs: Long) {
+    override fun setAutoScrollCooldown(delayMs: Long) {
         autoScrollManager.setCooldown(delayMs)
     }
 

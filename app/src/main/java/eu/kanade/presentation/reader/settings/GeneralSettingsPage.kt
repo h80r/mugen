@@ -127,6 +127,10 @@ internal fun ColumnScope.GeneralPage(screenModel: ReaderSettingsScreenModel) {
             pref = screenModel.preferences.pageTransitions(),
         )
         AuroraToggleRow(
+            label = stringResource(AYMR.strings.pref_manga_page_curl),
+            pref = screenModel.preferences.pageCurl(),
+        )
+        AuroraToggleRow(
             label = stringResource(MR.strings.pref_join_double_pages),
             pref = screenModel.preferences.joinDoublePages(),
         )

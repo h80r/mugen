@@ -1,4 +1,4 @@
-package eu.kanade.presentation.reader.novel
+package eu.kanade.presentation.reader.curl
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -10,22 +10,22 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.platform.LocalGraphicsContext
 
 /**
- * Shares [GraphicsLayer]s between the two independent [eu.kanade.presentation.reader.novel.curl.PageCurl]
+ * Shares [GraphicsLayer]s between the two independent [PageCurl]
  * instances of a two-page spread, keyed by real (flat, 0-indexed) content page index.
  *
  * The physical back of a spread page always lives across the spine, in the *other* column's own [PageCurl]
- * instance (see [SpreadPageTurnPageRenderer]'s doc comment): the back of real page N is real page N+1 when N sits
+ * instance (see the spread page-turn renderer's doc comment): the back of real page N is real page N+1 when N sits
  * on the right/forward-turning column, or N-1 when N sits on the left/backward-turning column. Since each column
  * only ever composes its own half of the spread, a column cannot capture a layer for content it never draws — this
  * cache lets the *other* column's own normal draw pass leave a layer behind for it to pick up.
  *
  * Layers are created and owned by this cache itself (via [GraphicsContext.createGraphicsLayer], not
  * `rememberGraphicsLayer()`), and deliberately NOT `remember`-scoped to whichever composable first asks for one.
- * [eu.kanade.presentation.reader.novel.curl.PageCurl] wraps its `content(Int)` calls in a `key(...)` block keyed on
+ * [PageCurl] wraps its `content(Int)` calls in a `key(...)` block keyed on
  * animation progress, so every drag/snap tears down and rebuilds that subtree's composition state — a layer
  * `remember`-owned by a call site inside that subtree would be torn down and orphaned the moment its owning scope
  * is disposed, leaving the cache holding a dead reference that draws nothing. Owning creation here, in a scope tied
- * to [SpreadPageTurnPageRenderer] itself (which never gets torn down by page turns), keeps each real-page-index's
+ * to the spread page-turn renderer itself (which never gets torn down by page turns), keeps each real-page-index's
  * layer alive across any number of sibling-column recompositions.
  *
  * Backed by a [SnapshotStateMap] (not a plain `MutableMap`) so that a read of one key inside composition

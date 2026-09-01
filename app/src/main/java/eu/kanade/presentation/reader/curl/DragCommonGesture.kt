@@ -2,7 +2,7 @@
 
 // Vendored from io.github.oleksandrbalan:pagecurl 1.5.1 (Apache 2.0), github.com/oleksandrbalan/pagecurl.
 
-package eu.kanade.presentation.reader.novel.curl
+package eu.kanade.presentation.reader.curl
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector4D
@@ -36,6 +36,10 @@ internal data class DragConfig(
 internal suspend fun PointerInputScope.detectCurlGestures(
     scope: CoroutineScope,
     newEdgeCreator: NewEdgeCreator,
+    // Bail out of a gesture before consuming anything when this returns true — used by the manga
+    // curl viewer so a pinch (second pointer) or a drag while the page is zoomed passes straight
+    // through to the live ReaderPageImageView behind the curl. Not part of upstream 1.5.1.
+    bailNow: () -> Boolean = { false },
     getConfig: (Offset, Offset) -> DragConfig?,
 ) {
     // Use velocity tracker to support flings
@@ -45,6 +49,7 @@ internal suspend fun PointerInputScope.detectCurlGestures(
     var startOffset: Offset = Offset.Zero
 
     detectCustomDragGestures(
+        bailNow = bailNow,
         onDragStart = { start, end ->
             startOffset = start
             config = getConfig(start, end)
@@ -101,15 +106,26 @@ internal suspend fun PointerInputScope.detectCurlGestures(
 }
 
 internal suspend fun PointerInputScope.detectCustomDragGestures(
+    bailNow: () -> Boolean = { false },
     onDragStart: (Offset, Offset) -> Boolean,
     onDragEnd: (Offset, Boolean) -> Unit,
     onDrag: (change: PointerInputChange, dragAmount: Offset) -> Unit,
 ) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
+        // Nothing has been consumed yet: if a pinch is starting or the page is zoomed, get out of
+        // the way so the event reaches the live image behind the curl.
+        if (bailNow() || currentEvent.changes.count { it.pressed } > 1) {
+            return@awaitEachGesture
+        }
         var drag: PointerInputChange?
         var overSlop = Offset.Zero
         do {
+            // A second finger landing mid-slop is a pinch — abandon before consuming so it falls
+            // through.
+            if (currentEvent.changes.count { it.pressed } > 1) {
+                return@awaitEachGesture
+            }
             drag = awaitTouchSlopOrCancellation(down.id) { change, over ->
                 change.consume()
                 overSlop = over

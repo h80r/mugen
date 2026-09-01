@@ -128,6 +128,9 @@ import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.reader.DisplayRefreshHost
 import eu.kanade.presentation.reader.components.AutoScrollActionFab
+import eu.kanade.presentation.reader.curl.resolveSpreadSlotCount
+import eu.kanade.presentation.reader.curl.resolveSpreadSlotFirstPageIndex
+import eu.kanade.presentation.reader.curl.resolveSpreadSlotForPageIndex
 import eu.kanade.presentation.theme.AuroraTheme
 import eu.kanade.tachiyomi.data.coil.NovelReaderRefererImage
 import eu.kanade.tachiyomi.source.novel.NovelPluginImage

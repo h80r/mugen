@@ -1,4 +1,4 @@
-package eu.kanade.presentation.reader.novel.curl
+package eu.kanade.presentation.reader.curl
 
 // Vendored from io.github.oleksandrbalan:pagecurl 1.5.1 (Apache 2.0), github.com/oleksandrbalan/pagecurl.
 

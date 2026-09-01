@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import eu.kanade.presentation.reader.curl.PageTurnSnapshotLayer
 
 @Composable
 internal fun NovelPageTurnSnapshotRenderer(
@@ -31,26 +32,13 @@ internal fun NovelPageTurnSnapshotRenderer(
     content: @Composable () -> Unit,
 ) {
     if (!preferCachedBitmap) {
-        val ownGraphicsLayer = rememberGraphicsLayer()
-        val graphicsLayer = externalGraphicsLayer ?: ownGraphicsLayer
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-                .drawWithContent {
-                    // GraphicsLayer.clip defaults to false: without it, anything this content draws
-                    // outside the layer's own recorded bounds is never cut off. That matters here because
-                    // externalGraphicsLayer can be a cache entry reused across differently-sized/positioned
-                    // callers over time (e.g. the spread back-content-layer cache) — clip=true guarantees
-                    // drawLayer() below never bleeds this page's pixels past its own bounds.
-                    graphicsLayer.clip = true
-                    graphicsLayer.record {
-                        this@drawWithContent.drawContent()
-                    }
-                    drawLayer(graphicsLayer)
-                },
-        ) {
-            content()
-        }
+        // The layer-replay path is content-agnostic and shared with the manga curl viewer; snapshotKey and
+        // snapshotCache are unused here.
+        PageTurnSnapshotLayer(
+            modifier = modifier,
+            externalGraphicsLayer = externalGraphicsLayer,
+            content = content,
+        )
         return
     }
 

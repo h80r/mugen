@@ -1,5 +1,8 @@
 package eu.kanade.presentation.reader.novel
 
+import eu.kanade.presentation.reader.curl.resolveSpreadSlotCount
+import eu.kanade.presentation.reader.curl.resolveSpreadSlotFirstPageIndex
+import eu.kanade.presentation.reader.curl.resolveSpreadSlotForPageIndex
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test

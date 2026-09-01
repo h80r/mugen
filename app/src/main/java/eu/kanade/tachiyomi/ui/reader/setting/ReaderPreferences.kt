@@ -17,6 +17,8 @@ class ReaderPreferences(
 
     fun pageTransitions() = preferenceStore.getBoolean("pref_enable_transitions_key", true)
 
+    fun pageCurl() = preferenceStore.getBoolean("pref_manga_page_curl_key", false)
+
     fun flashOnPageChange() = preferenceStore.getBoolean("pref_reader_flash", false)
 
     fun flashDurationMillis() = preferenceStore.getInt("pref_reader_flash_duration", MILLI_CONVERSION)

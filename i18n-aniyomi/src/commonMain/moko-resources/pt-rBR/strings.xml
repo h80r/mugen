@@ -2464,6 +2464,7 @@
     <string name="pref_last_sync">Última sincronização</string>
     <string name="pref_long_press_action">Ação de toque longo</string>
     <string name="pref_manga_library_update_interval_category">Frequência de atualização de mangá</string>
+    <string name="pref_manga_page_curl">Animação de virada de página</string>
     <string name="pref_motion_interpolation_always">Sempre</string>
     <string name="pref_motion_interpolation_auto">Automático</string>
     <string name="pref_motion_interpolation_off">Desligado</string>

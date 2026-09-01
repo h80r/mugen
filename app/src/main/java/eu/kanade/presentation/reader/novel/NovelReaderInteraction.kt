@@ -4,6 +4,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import eu.kanade.presentation.reader.curl.PageTurnBoundaryTarget
+import eu.kanade.presentation.reader.curl.resolvePageTurnRendererBoundaryChapterTarget
+import eu.kanade.presentation.reader.curl.resolvePageTurnRendererSettledBoundaryChapterTarget
+import eu.kanade.presentation.reader.curl.resolveSpreadSlotFirstPageIndex
 import eu.kanade.tachiyomi.ui.reader.novel.NovelRichContentBlock
 import eu.kanade.tachiyomi.ui.reader.novel.PageReaderProgress
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelBookFlipAnimationSpeed
@@ -122,6 +126,47 @@ internal enum class HorizontalChapterSwipeAction {
     NONE,
     NEXT,
     PREVIOUS,
+}
+
+/** Maps the shared, content-agnostic [PageTurnBoundaryTarget] onto the novel reader's swipe-action enum. */
+internal fun PageTurnBoundaryTarget.toHorizontalChapterSwipeAction(): HorizontalChapterSwipeAction {
+    return when (this) {
+        PageTurnBoundaryTarget.NONE -> HorizontalChapterSwipeAction.NONE
+        PageTurnBoundaryTarget.PREVIOUS -> HorizontalChapterSwipeAction.PREVIOUS
+        PageTurnBoundaryTarget.NEXT -> HorizontalChapterSwipeAction.NEXT
+    }
+}
+
+/** Novel-typed wrapper over the shared [resolvePageTurnRendererBoundaryChapterTarget]. */
+internal fun resolveNovelPageTurnRendererBoundaryChapterTarget(
+    currentPage: Int,
+    contentPageCount: Int,
+    hasPreviousChapter: Boolean,
+    hasNextChapter: Boolean,
+): HorizontalChapterSwipeAction {
+    return resolvePageTurnRendererBoundaryChapterTarget(
+        currentPage = currentPage,
+        contentPageCount = contentPageCount,
+        hasPreviousChapter = hasPreviousChapter,
+        hasNextChapter = hasNextChapter,
+    ).toHorizontalChapterSwipeAction()
+}
+
+/** Novel-typed wrapper over the shared [resolvePageTurnRendererSettledBoundaryChapterTarget]. */
+internal fun resolveNovelPageTurnRendererSettledBoundaryChapterTarget(
+    currentPage: Int,
+    progress: Float,
+    contentPageCount: Int,
+    hasPreviousChapter: Boolean,
+    hasNextChapter: Boolean,
+): HorizontalChapterSwipeAction {
+    return resolvePageTurnRendererSettledBoundaryChapterTarget(
+        currentPage = currentPage,
+        progress = progress,
+        contentPageCount = contentPageCount,
+        hasPreviousChapter = hasPreviousChapter,
+        hasNextChapter = hasNextChapter,
+    ).toHorizontalChapterSwipeAction()
 }
 
 internal fun resolveHorizontalChapterSwipeAction(
@@ -489,28 +534,6 @@ internal fun shouldUseComposePagerBoundaryPreview(
         NovelPageTransitionStyle.CURL,
         -> false
     }
-}
-
-/**
- * Number of pager slots [contentPageCount] single-column pages collapse into when every slot
- * shows [columnsPerSpread] of them side by side. A trailing odd page still gets its own slot
- * (rendered with an empty second column), the same way a physical book's last page can be a
- * lone right-hand page facing nothing.
- */
-internal fun resolveSpreadSlotCount(contentPageCount: Int, columnsPerSpread: Int): Int {
-    val safeColumns = columnsPerSpread.coerceAtLeast(1)
-    return ceil(contentPageCount.coerceAtLeast(1).toDouble() / safeColumns).toInt().coerceAtLeast(1)
-}
-
-/** First single-column page index shown in spread slot [spreadSlot]. */
-internal fun resolveSpreadSlotFirstPageIndex(spreadSlot: Int, columnsPerSpread: Int): Int {
-    return spreadSlot.coerceAtLeast(0) * columnsPerSpread.coerceAtLeast(1)
-}
-
-/** Which spread slot [pageIndex] (a single-column page index) is shown in. */
-internal fun resolveSpreadSlotForPageIndex(pageIndex: Int, columnsPerSpread: Int): Int {
-    val safeColumns = columnsPerSpread.coerceAtLeast(1)
-    return pageIndex.coerceAtLeast(0) / safeColumns
 }
 
 internal fun resolveComposePagerVirtualPageCount(

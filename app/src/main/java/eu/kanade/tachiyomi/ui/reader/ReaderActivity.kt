@@ -105,8 +105,8 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
+import eu.kanade.tachiyomi.ui.reader.viewer.AutoScrollableViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
-import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.doublePageLog
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
@@ -278,6 +278,18 @@ class ReaderActivity : BaseActivity() {
             .distinctUntilChanged()
             .filterNotNull()
             .onEach(::setChapters)
+            .launchIn(lifecycleScope)
+
+        // The page-curl preference switches which Viewer a pager reading mode resolves to
+        // (ReadingMode.toViewer), so a toggle has to rebuild the viewer and refill it — the same
+        // rebuild the global-default reading-mode change does via Event.RecreateViewer.
+        readerPreferences.pageCurl().changes()
+            .drop(1)
+            .distinctUntilChanged()
+            .onEach {
+                updateViewer()
+                viewModel.state.value.viewerChapters?.let(::setChapters)
+            }
             .launchIn(lifecycleScope)
 
         viewModel.eventFlow
@@ -543,18 +555,12 @@ class ReaderActivity : BaseActivity() {
                     // Auto-scroll effect - start/stop based on state
                     LaunchedEffect(state.autoScrollEnabled, state.autoScrollSpeed, state.viewer) {
                         val viewer = state.viewer
-                        if (viewer != null && state.autoScrollEnabled) {
+                        if (viewer is AutoScrollableViewer && state.autoScrollEnabled) {
                             // Hide menu when auto-scroll starts
                             setMenuVisibility(false)
-                            when (viewer) {
-                                is PagerViewer -> viewer.startAutoScroll(state.autoScrollSpeed)
-                                is WebtoonViewer -> viewer.startAutoScroll(state.autoScrollSpeed)
-                            }
-                        } else if (viewer != null) {
-                            when (viewer) {
-                                is PagerViewer -> viewer.stopAutoScroll()
-                                is WebtoonViewer -> viewer.stopAutoScroll()
-                            }
+                            viewer.startAutoScroll(state.autoScrollSpeed)
+                        } else if (viewer is AutoScrollableViewer) {
+                            viewer.stopAutoScroll()
                         }
                     }
 
@@ -871,11 +877,8 @@ class ReaderActivity : BaseActivity() {
 
         // Touch cooldown: pause auto-scroll briefly on any touch in the active viewer.
         newViewer.getView().setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                when (newViewer) {
-                    is PagerViewer -> newViewer.setAutoScrollCooldown(2000L)
-                    is WebtoonViewer -> newViewer.setAutoScrollCooldown(2000L)
-                }
+            if (event.action == MotionEvent.ACTION_DOWN && newViewer is AutoScrollableViewer) {
+                newViewer.setAutoScrollCooldown(2000L)
             }
             false
         }

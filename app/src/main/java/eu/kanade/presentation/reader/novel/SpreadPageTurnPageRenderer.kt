@@ -1,4 +1,4 @@
-@file:OptIn(eu.kanade.presentation.reader.novel.curl.ExperimentalPageCurlApi::class)
+@file:OptIn(eu.kanade.presentation.reader.curl.ExperimentalPageCurlApi::class)
 
 package eu.kanade.presentation.reader.novel
 
@@ -37,13 +37,24 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import eu.kanade.presentation.reader.novel.curl.Edge
-import eu.kanade.presentation.reader.novel.curl.ExternalBackContentLayers
-import eu.kanade.presentation.reader.novel.curl.PageCurl
-import eu.kanade.presentation.reader.novel.curl.PageCurlConfig
-import eu.kanade.presentation.reader.novel.curl.PageCurlState
-import eu.kanade.presentation.reader.novel.curl.rememberPageCurlConfig
-import eu.kanade.presentation.reader.novel.curl.rememberPageCurlState
+import eu.kanade.presentation.reader.curl.Edge
+import eu.kanade.presentation.reader.curl.ExternalBackContentLayers
+import eu.kanade.presentation.reader.curl.PageCurl
+import eu.kanade.presentation.reader.curl.PageCurlConfig
+import eu.kanade.presentation.reader.curl.PageCurlState
+import eu.kanade.presentation.reader.curl.SpreadCurlBackContentLayerCache
+import eu.kanade.presentation.reader.curl.createPageTurnAnimation
+import eu.kanade.presentation.reader.curl.registeredSpreadCurlBackContentLayer
+import eu.kanade.presentation.reader.curl.rememberPageCurlConfig
+import eu.kanade.presentation.reader.curl.rememberPageCurlState
+import eu.kanade.presentation.reader.curl.rememberSpreadCurlBackContentLayerCache
+import eu.kanade.presentation.reader.curl.resolvePageTurnRendererProgressPageIndex
+import eu.kanade.presentation.reader.curl.resolvePageTurnRendererVirtualPageCount
+import eu.kanade.presentation.reader.curl.resolvePageTurnRendererVirtualPageIndex
+import eu.kanade.presentation.reader.curl.resolveSpreadSlotCount
+import eu.kanade.presentation.reader.curl.resolveSpreadSlotFirstPageIndex
+import eu.kanade.presentation.reader.curl.resolveSpreadSlotForPageIndex
+import eu.kanade.presentation.reader.curl.startEdge
 import eu.kanade.tachiyomi.ui.reader.novel.NovelSelectedTextSelection
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelReaderBackgroundTexture
@@ -373,7 +384,7 @@ internal fun SpreadPageTurnPageRenderer(
             .collectLatest { (targetVirtualSlot, progress) ->
                 val realTarget = (virtualSlotCount - 1 - targetVirtualSlot).coerceAtLeast(0)
                 when (
-                    resolvePageTurnRendererSettledBoundaryChapterTarget(
+                    resolveNovelPageTurnRendererSettledBoundaryChapterTarget(
                         currentPage = realTarget,
                         progress = progress,
                         contentPageCount = spreadSlotCount,
@@ -451,7 +462,7 @@ internal fun SpreadPageTurnPageRenderer(
             .distinctUntilChanged()
             .collectLatest { targetVirtualSlot ->
                 val realTarget = (virtualSlotCount - 1 - targetVirtualSlot).coerceAtLeast(0)
-                val boundaryTarget = resolvePageTurnRendererBoundaryChapterTarget(
+                val boundaryTarget = resolveNovelPageTurnRendererBoundaryChapterTarget(
                     currentPage = realTarget,
                     contentPageCount = spreadSlotCount,
                     hasPreviousChapter = hasPreviousChapter,
@@ -792,7 +803,7 @@ private fun resolveSpreadColumnRealPageIndex(
     if (virtualPage < 0 || virtualPage >= virtualSlotCount) return null
     val actualPage = if (invertPage) (virtualSlotCount - 1 - virtualPage).coerceAtLeast(0) else virtualPage
     if (showBoundaryChapterPages) {
-        val boundaryTarget = resolvePageTurnRendererBoundaryChapterTarget(
+        val boundaryTarget = resolveNovelPageTurnRendererBoundaryChapterTarget(
             currentPage = actualPage,
             contentPageCount = spreadSlotCount,
             hasPreviousChapter = hasPreviousChapter,
@@ -955,7 +966,7 @@ private fun SpreadColumnCurl(
             null
         } else {
             when (
-                resolvePageTurnRendererBoundaryChapterTarget(
+                resolveNovelPageTurnRendererBoundaryChapterTarget(
                     currentPage = actualPage,
                     contentPageCount = spreadSlotCount,
                     hasPreviousChapter = hasPreviousChapter,

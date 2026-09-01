@@ -42,4 +42,15 @@ interface Viewer {
      * return true if the event was handled, false otherwise.
      */
     fun handleGenericMotionEvent(event: MotionEvent): Boolean
+
+    /**
+     * Whether this is a paged (non-webtoon) viewer. Drives paged-only UI such as the auto-scroll
+     * page-time readout. Both the legacy pager and the manga curl viewer are paged.
+     */
+    val isPagerViewer: Boolean get() = false
+
+    /**
+     * Whether pages advance right-to-left. Drives slider direction and other directional UI.
+     */
+    val isRtl: Boolean get() = false
 }

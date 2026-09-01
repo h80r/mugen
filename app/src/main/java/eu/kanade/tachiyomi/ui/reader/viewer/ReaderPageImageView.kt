@@ -75,6 +75,12 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     private var pageView: View? = null
 
+    /**
+     * The inner image view, for diagnostics only (temporary instrumentation): the curl viewer needs
+     * the live scale at the frame it swaps this overlay in for its own columns.
+     */
+    internal val debugPageView: View? get() = pageView
+
     private var config: Config? = null
 
     private var scope: CoroutineScope? = null
@@ -159,7 +165,14 @@ open class ReaderPageImageView @JvmOverloads constructor(
             scale == minScale
         ) {
             handler?.postDelayed(500) {
-                val point = when (config!!.zoomStartPosition) {
+                // Everything this callback touches was validated 500ms ago, and the page can be
+                // recycled in between — which the curl viewer does routinely, turning pages faster
+                // than this delay. A recycled SubsamplingScaleImageView reports isReady false and
+                // makes animateScaleAndCenter return null, so the `!!` below crashed with an NPE on
+                // a page that is already gone. Re-check readiness and bail instead.
+                if (!isReady) return@postDelayed
+                val zoomStartPosition = config?.zoomStartPosition ?: return@postDelayed
+                val point = when (zoomStartPosition) {
                     ZoomStartPosition.LEFT -> if (forward) {
                         PointF(0F, 0F)
                     } else {
@@ -180,17 +193,23 @@ open class ReaderPageImageView @JvmOverloads constructor(
                 }
 
                 val targetScale = height.toFloat() / sHeight.toFloat()
-                animateScaleAndCenter(targetScale, point)!!
-                    .withDuration(500)
-                    .withEasing(EASE_IN_OUT_QUAD)
-                    .withInterruptible(true)
-                    .start()
+                // landscapeZoom deliberately rests the page zoomed in; that becomes its resting
+                // scale, so a drag on a wide page still turns the page instead of panning.
+                restingScale = targetScale
+                // Nullable rather than `!!`: the builder is null whenever the view is not ready, and
+                // the isReady check above cannot rule out a recycle landing between the two.
+                animateScaleAndCenter(targetScale, point)
+                    ?.withDuration(500)
+                    ?.withEasing(EASE_IN_OUT_QUAD)
+                    ?.withInterruptible(true)
+                    ?.start()
             }
         }
     }
 
     fun setImage(drawable: Drawable, config: Config) {
         this.config = config
+        restingScale = null
         smartFitJob?.cancel()
         smartFitJob = null
         if (drawable is Animatable) {
@@ -204,6 +223,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     fun setImage(source: BufferedSource, isAnimated: Boolean, config: Config) {
         this.config = config
+        restingScale = null
         smartFitJob?.cancel()
         smartFitJob = null
         if (isAnimated) {
@@ -216,6 +236,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     fun recycle() {
+        restingScale = null
         smartFitJob?.cancel()
         smartFitJob = null
         pageView?.let {
@@ -225,6 +246,52 @@ open class ReaderPageImageView @JvmOverloads constructor(
             }
             it.isVisible = false
         }
+    }
+
+    /**
+     * The scale the page settles at once laid out, which is NOT always `minScale`: `landscapeZoom`
+     * and a non-centre `zoomStartPosition` deliberately rest the page zoomed in. Recorded so
+     * [isZoomedIn] can tell "the user zoomed" from "this is how the page rests".
+     */
+    private var restingScale: Float? = null
+
+    /**
+     * True when the user has zoomed the page in past the scale it rests at.
+     *
+     * Used by the manga curl viewer to decide whether a drag pans the image or turns the page, so it
+     * must stay false for a page that merely rests zoomed in via `landscapeZoom` — otherwise every
+     * drag on a wide page would be swallowed by the image.
+     */
+    val isZoomedIn: Boolean
+        get() = (pageView as? SubsamplingScaleImageView)?.let {
+            it.scale > (restingScale ?: it.minScale) * 1.01f
+        } ?: ((pageView as? PhotoView)?.let { it.scale > 1.01f } ?: false)
+
+    /**
+     * Toggles double-tap zoom at the given view coordinates, the way the view's own double-tap
+     * handler would.
+     *
+     * Exposed for the manga curl viewer, where a touch dispatcher owns the whole event stream and
+     * has to drive the zoom itself instead of letting the gesture reach this view — see
+     * `CurlTouchDispatcher`. Zooms out to fit when already zoomed in.
+     */
+    fun toggleDoubleTapZoom(viewX: Float, viewY: Float) {
+        val view = pageView as? SubsamplingScaleImageView ?: return
+        if (view.sWidth <= 0 || view.sHeight <= 0) return
+
+        val zoomedIn = view.scale > view.minScale * 1.0001f
+        val targetScale = if (zoomedIn) view.minScale else view.maxScale.coerceAtMost(view.minScale * 2f)
+        val target = if (zoomedIn) {
+            view.center ?: return
+        } else {
+            view.viewToSourceCoord(viewX, viewY) ?: return
+        }
+
+        view.animateScaleAndCenter(targetScale, target)
+            ?.withDuration((config?.zoomDuration ?: 500).getSystemScaledDuration().toLong())
+            ?.withEasing(EASE_IN_OUT_QUAD)
+            ?.withInterruptible(true)
+            ?.start()
     }
 
     /**
@@ -321,6 +388,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
         // 5x zoom
         maxScale = scale * MAX_ZOOM_SCALE
         setDoubleTapZoomScale(scale * 2)
+        // How this page rests, before the user zooms anything (see [restingScale]).
+        restingScale = scale
 
         when (config?.zoomStartPosition) {
             ZoomStartPosition.LEFT -> setScaleAndCenter(scale, PointF(0F, 0F))

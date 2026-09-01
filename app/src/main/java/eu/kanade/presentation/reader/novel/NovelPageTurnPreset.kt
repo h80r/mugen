@@ -1,17 +1,13 @@
 package eu.kanade.presentation.reader.novel
 
+import eu.kanade.presentation.reader.curl.PageTurnPreset
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTransitionStyle
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTurnIntensity
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTurnShadowIntensity
 import eu.kanade.tachiyomi.ui.reader.novel.setting.NovelPageTurnSpeed
 
-internal data class NovelPageTurnPreset(
-    val style: NovelPageTransitionStyle,
-    val animationDurationMillis: Int,
-    val curlAmount: Float,
-    val shadowAlpha: Float,
-    val backPageAlpha: Float,
-)
+/** The novel reader uses the shared [PageTurnPreset] shape directly; only the style→values mapping below is novel-specific. */
+internal typealias NovelPageTurnPreset = PageTurnPreset
 
 internal fun resolveNovelPageTurnPreset(
     style: NovelPageTransitionStyle,
@@ -20,22 +16,19 @@ internal fun resolveNovelPageTurnPreset(
     shadowIntensity: NovelPageTurnShadowIntensity,
 ): NovelPageTurnPreset {
     val base = when (style) {
-        NovelPageTransitionStyle.CURL -> NovelPageTurnPreset(
-            style = style,
+        NovelPageTransitionStyle.CURL -> PageTurnPreset(
             animationDurationMillis = 380,
             curlAmount = 0.72f,
             shadowAlpha = 0.38f,
             backPageAlpha = 0.32f,
         )
-        NovelPageTransitionStyle.BOOK -> NovelPageTurnPreset(
-            style = style,
+        NovelPageTransitionStyle.BOOK -> PageTurnPreset(
             animationDurationMillis = 440,
             curlAmount = 0.18f,
             shadowAlpha = 0.52f,
             backPageAlpha = 0.16f,
         )
-        else -> NovelPageTurnPreset(
-            style = style,
+        else -> PageTurnPreset(
             animationDurationMillis = 420,
             curlAmount = 0.48f,
             shadowAlpha = 0.24f,

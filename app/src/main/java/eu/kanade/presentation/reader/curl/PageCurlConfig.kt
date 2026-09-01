@@ -2,7 +2,7 @@
 
 // Vendored from io.github.oleksandrbalan:pagecurl 1.5.1 (Apache 2.0), github.com/oleksandrbalan/pagecurl.
 
-package eu.kanade.presentation.reader.novel.curl
+package eu.kanade.presentation.reader.curl
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue

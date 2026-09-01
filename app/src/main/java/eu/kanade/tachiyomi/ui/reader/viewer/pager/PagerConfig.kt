@@ -55,6 +55,9 @@ class PagerConfig(
     var shiftDoublePages = false
         private set
 
+    var pageCurl = false
+        private set
+
     init {
         readerPreferences.readerTheme()
             .register(
@@ -128,6 +131,11 @@ class PagerConfig(
                 { shiftDoublePages = it },
                 { imagePropertyChangedListener?.invoke() },
             )
+
+        // Curl on/off selects a different Viewer entirely (see ReadingMode.toViewer); the
+        // running viewer is swapped from ReaderActivity, so nothing to relayout here.
+        readerPreferences.pageCurl()
+            .register({ pageCurl = it })
     }
 
     private fun zoomTypeFromPreference(value: Int) {

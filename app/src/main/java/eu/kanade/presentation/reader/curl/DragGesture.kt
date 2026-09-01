@@ -1,4 +1,4 @@
-package eu.kanade.presentation.reader.novel.curl
+package eu.kanade.presentation.reader.curl
 
 // Vendored from io.github.oleksandrbalan:pagecurl 1.5.1 (Apache 2.0), github.com/oleksandrbalan/pagecurl.
 
@@ -6,13 +6,13 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.input.pointer.pointerInput
-import eu.kanade.presentation.reader.novel.curl.PageCurlConfig.DragInteraction.PointerBehavior
+import eu.kanade.presentation.reader.curl.PageCurlConfig.DragInteraction.PointerBehavior
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 @ExperimentalPageCurlApi
-internal fun Modifier.dragStartEnd(
-    dragInteraction: PageCurlConfig.StartEndDragInteraction,
+internal fun Modifier.dragGesture(
+    dragInteraction: PageCurlConfig.GestureDragInteraction,
     state: PageCurlState.InternalState,
     enabledForward: Boolean,
     enabledBackward: Boolean,
@@ -23,17 +23,15 @@ internal fun Modifier.dragStartEnd(
     val isEnabledBackward = rememberUpdatedState(enabledBackward)
 
     pointerInput(state) {
-        val forwardStartRect by lazy { dragInteraction.forward.start.multiply(size) }
-        val forwardEndRect by lazy { dragInteraction.forward.end.multiply(size) }
-        val backwardStartRect by lazy { dragInteraction.backward.start.multiply(size) }
-        val backwardEndRect by lazy { dragInteraction.backward.end.multiply(size) }
+        val forwardTargetRect by lazy { dragInteraction.forward.target.multiply(size) }
+        val backwardTargetRect by lazy { dragInteraction.backward.target.multiply(size) }
 
         val forwardConfig = DragConfig(
             edge = state.forward,
             start = state.rightEdge,
             end = state.leftEdge,
             isEnabled = { isEnabledForward.value },
-            isDragSucceed = { _, end -> forwardEndRect.contains(end) },
+            isDragSucceed = { start, end -> end.x < start.x },
             onChange = { onChange(+1) },
         )
         val backwardConfig = DragConfig(
@@ -41,7 +39,7 @@ internal fun Modifier.dragStartEnd(
             start = state.leftEdge,
             end = state.rightEdge,
             isEnabled = { isEnabledBackward.value },
-            isDragSucceed = { _, end -> backwardEndRect.contains(end) },
+            isDragSucceed = { start, end -> end.x > start.x },
             onChange = { onChange(-1) },
         )
 
@@ -51,10 +49,12 @@ internal fun Modifier.dragStartEnd(
                 PointerBehavior.Default -> NewEdgeCreator.Default()
                 PointerBehavior.PageEdge -> NewEdgeCreator.PageEdge()
             },
-            getConfig = { start, _ ->
-                val config = if (forwardStartRect.contains(start)) {
+            // Both directions disabled = the page is zoomed; let the drag reach the image behind.
+            bailNow = { !isEnabledForward.value && !isEnabledBackward.value },
+            getConfig = { start, end ->
+                val config = if (forwardTargetRect.contains(start) && end.x < start.x) {
                     forwardConfig
-                } else if (backwardStartRect.contains(start)) {
+                } else if (backwardTargetRect.contains(start) && end.x > start.x) {
                     backwardConfig
                 } else {
                     null

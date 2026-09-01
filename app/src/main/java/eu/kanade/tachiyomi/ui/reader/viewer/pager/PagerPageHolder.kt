@@ -8,8 +8,10 @@ import dev.h80r.mugen.databinding.ReaderErrorBinding
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.ui.reader.viewer.ReaderImageProcessingConfig
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
+import eu.kanade.tachiyomi.ui.reader.viewer.processReaderImage
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
 import kotlinx.coroutines.Job
@@ -203,69 +205,24 @@ class PagerPageHolder(
     )
 
     private fun process(page: ReaderPage, imageSource: BufferedSource): BufferedSource {
-        val isDoublePage = ImageUtil.isWideImage(imageSource)
-        if (isDoublePage && !page.isWide) {
-            page.isWide = true
-            if (viewer.config.joinDoublePages) {
-                viewer.activity.runOnUiThread {
-                    viewer.refreshAdapter()
+        return processReaderImage(
+            config = ReaderImageProcessingConfig(
+                dualPageSplit = viewer.config.dualPageSplit,
+                dualPageInvert = viewer.config.dualPageInvert,
+                dualPageRotateToFit = viewer.config.dualPageRotateToFit,
+                dualPageRotateToFitInvert = viewer.config.dualPageRotateToFitInvert,
+                joinDoublePages = viewer.config.joinDoublePages,
+            ),
+            page = page,
+            imageSource = imageSource,
+            isL2R = viewer is L2RPagerViewer,
+            onWideDetected = {
+                if (viewer.config.joinDoublePages) {
+                    viewer.activity.runOnUiThread { viewer.refreshAdapter() }
                 }
-            }
-        }
-
-        if (viewer.config.dualPageRotateToFit) {
-            return rotateDualPage(imageSource)
-        }
-
-        if (!viewer.config.dualPageSplit) {
-            return imageSource
-        }
-
-        if (page is InsertPage) {
-            return splitInHalf(imageSource)
-        }
-
-        if (!isDoublePage) {
-            return imageSource
-        }
-
-        onPageSplit(page)
-
-        return splitInHalf(imageSource)
-    }
-
-    private fun rotateDualPage(imageSource: BufferedSource): BufferedSource {
-        val isDoublePage = ImageUtil.isWideImage(imageSource)
-        return if (isDoublePage) {
-            val rotation = if (viewer.config.dualPageRotateToFitInvert) -90f else 90f
-            ImageUtil.rotateImage(imageSource, rotation)
-        } else {
-            imageSource
-        }
-    }
-
-    private fun splitInHalf(imageSource: BufferedSource): BufferedSource {
-        var side = when {
-            viewer is L2RPagerViewer && page is InsertPage -> ImageUtil.Side.RIGHT
-            viewer !is L2RPagerViewer && page is InsertPage -> ImageUtil.Side.LEFT
-            viewer is L2RPagerViewer && page !is InsertPage -> ImageUtil.Side.LEFT
-            viewer !is L2RPagerViewer && page !is InsertPage -> ImageUtil.Side.RIGHT
-            else -> error("We should choose a side!")
-        }
-
-        if (viewer.config.dualPageInvert) {
-            side = when (side) {
-                ImageUtil.Side.RIGHT -> ImageUtil.Side.LEFT
-                ImageUtil.Side.LEFT -> ImageUtil.Side.RIGHT
-            }
-        }
-
-        return ImageUtil.splitInHalf(imageSource, side)
-    }
-
-    private fun onPageSplit(page: ReaderPage) {
-        val newPage = InsertPage(page)
-        viewer.onPageSplit(page, newPage)
+            },
+            onRequestSplit = { viewer.onPageSplit(page, InsertPage(page)) },
+        )
     }
 
     /**

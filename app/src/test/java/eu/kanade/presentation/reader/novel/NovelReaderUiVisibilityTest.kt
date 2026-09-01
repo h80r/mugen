@@ -18,8 +18,14 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowInsetsControllerCompat
-import eu.kanade.presentation.reader.novel.curl.ExperimentalPageCurlApi
-import eu.kanade.presentation.reader.novel.curl.PageCurlConfig
+import eu.kanade.presentation.reader.curl.ExperimentalPageCurlApi
+import eu.kanade.presentation.reader.curl.PageCurlConfig
+import eu.kanade.presentation.reader.curl.PageTurnAnimationTiming
+import eu.kanade.presentation.reader.curl.resolvePageTurnAnimationTiming
+import eu.kanade.presentation.reader.curl.resolvePageTurnCurlMidEdge
+import eu.kanade.presentation.reader.curl.resolvePageTurnRendererProgressPageIndex
+import eu.kanade.presentation.reader.curl.resolvePageTurnRendererVirtualPageCount
+import eu.kanade.presentation.reader.curl.resolvePageTurnRendererVirtualPageIndex
 import eu.kanade.tachiyomi.ui.reader.novel.NovelRichBlockTextAlign
 import eu.kanade.tachiyomi.ui.reader.novel.NovelRichContentBlock
 import eu.kanade.tachiyomi.ui.reader.novel.NovelRichTextSegment
@@ -2786,7 +2792,7 @@ class NovelReaderUiVisibilityTest {
     fun `page turn renderer resolves chapter boundary targets from synthetic pages`() {
         assertEquals(
             HorizontalChapterSwipeAction.PREVIOUS,
-            resolvePageTurnRendererBoundaryChapterTarget(
+            resolveNovelPageTurnRendererBoundaryChapterTarget(
                 currentPage = 0,
                 contentPageCount = 5,
                 hasPreviousChapter = true,
@@ -2795,7 +2801,7 @@ class NovelReaderUiVisibilityTest {
         )
         assertEquals(
             HorizontalChapterSwipeAction.NEXT,
-            resolvePageTurnRendererBoundaryChapterTarget(
+            resolveNovelPageTurnRendererBoundaryChapterTarget(
                 currentPage = 6,
                 contentPageCount = 5,
                 hasPreviousChapter = true,
@@ -2804,7 +2810,7 @@ class NovelReaderUiVisibilityTest {
         )
         assertEquals(
             HorizontalChapterSwipeAction.NONE,
-            resolvePageTurnRendererBoundaryChapterTarget(
+            resolveNovelPageTurnRendererBoundaryChapterTarget(
                 currentPage = 3,
                 contentPageCount = 5,
                 hasPreviousChapter = true,
@@ -2817,7 +2823,7 @@ class NovelReaderUiVisibilityTest {
     fun `page turn renderer opens boundary chapter only after curl settles`() {
         assertEquals(
             HorizontalChapterSwipeAction.NONE,
-            resolvePageTurnRendererSettledBoundaryChapterTarget(
+            resolveNovelPageTurnRendererSettledBoundaryChapterTarget(
                 currentPage = 0,
                 progress = -0.42f,
                 contentPageCount = 5,
@@ -2827,7 +2833,7 @@ class NovelReaderUiVisibilityTest {
         )
         assertEquals(
             HorizontalChapterSwipeAction.PREVIOUS,
-            resolvePageTurnRendererSettledBoundaryChapterTarget(
+            resolveNovelPageTurnRendererSettledBoundaryChapterTarget(
                 currentPage = 0,
                 progress = 0f,
                 contentPageCount = 5,
@@ -2837,7 +2843,7 @@ class NovelReaderUiVisibilityTest {
         )
         assertEquals(
             HorizontalChapterSwipeAction.NONE,
-            resolvePageTurnRendererSettledBoundaryChapterTarget(
+            resolveNovelPageTurnRendererSettledBoundaryChapterTarget(
                 currentPage = 6,
                 progress = 0.24f,
                 contentPageCount = 5,
@@ -2847,7 +2853,7 @@ class NovelReaderUiVisibilityTest {
         )
         assertEquals(
             HorizontalChapterSwipeAction.NEXT,
-            resolvePageTurnRendererSettledBoundaryChapterTarget(
+            resolveNovelPageTurnRendererSettledBoundaryChapterTarget(
                 currentPage = 6,
                 progress = 0f,
                 contentPageCount = 5,
@@ -3301,8 +3307,6 @@ class NovelReaderUiVisibilityTest {
             shadowIntensity = NovelPageTurnShadowIntensity.STRONGER,
         )
 
-        assertEquals(NovelPageTransitionStyle.BOOK, softerPreset.style)
-        assertEquals(NovelPageTransitionStyle.BOOK, strongerPreset.style)
         assertTrue(softerPreset.animationDurationMillis > strongerPreset.animationDurationMillis)
         assertTrue(softerPreset.curlAmount < strongerPreset.curlAmount)
         assertTrue(softerPreset.shadowAlpha < strongerPreset.shadowAlpha)
@@ -3390,8 +3394,6 @@ class NovelReaderUiVisibilityTest {
             shadowIntensity = NovelPageTurnShadowIntensity.LOW,
         )
 
-        assertEquals(NovelPageTransitionStyle.CURL, basePreset.style)
-        assertEquals(NovelPageTransitionStyle.CURL, tunedPreset.style)
         assertTrue(tunedPreset.animationDurationMillis < basePreset.animationDurationMillis)
         assertTrue(tunedPreset.curlAmount > basePreset.curlAmount)
         assertTrue(tunedPreset.shadowAlpha < basePreset.shadowAlpha)
